@@ -1,8 +1,8 @@
 {
-  "schema": "dip-mdm-cache-v2",
+  "schema": "dip-mdm-cache-v3",
   "playable": false,
-  "status": "raw_smpl_and_inplace_vrma_cache",
-  "note": "The direct DiP XYZ to BVH export was retired because it loaded but retargeted badly on VRM avatars. The in-place VRMA files are converted through the bvh2vrma/XR Animator path with hips X/Z translation locked so the avatar stays on camera.",
+  "status": "raw_and_smpl_cache_only",
+  "note": "Direct DiP XYZ to BVH and bvh2vrma/in-place VRMA tests were retired because they either retargeted badly or did not launch reliably on the VRM. Keep the raw DiP and SMPL caches as source data for a future VMC/XR Animator or proper SMPL-to-humanoid retarget path.",
   "source": {
     "repo": "C:/Users/SUBSECT/Documents/motion-lab/motion-diffusion-model",
     "checkpoint": "save/DiP_no-target_10steps_context20_predict40/model000600343.pt",
@@ -25,65 +25,56 @@
       "id": "idle",
       "sample": 0,
       "prompt": "A person stands idle with subtle breathing and a relaxed posture.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample0_idle_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_idle.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample0_idle_smpl_params.npy"
     },
     {
       "id": "talking",
       "sample": 1,
       "prompt": "A person talks expressively with natural upper body movement and small hand gestures.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample1_talking_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_talking.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample1_talking_smpl_params.npy"
     },
     {
       "id": "hand_gestures",
       "sample": 2,
       "prompt": "A person gestures with both hands while explaining something enthusiastically.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample2_hand_gestures_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_hand_gestures.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample2_hand_gestures_smpl_params.npy"
     },
     {
       "id": "listening",
       "sample": 3,
       "prompt": "A person listens attentively, nodding slightly and keeping a calm stance.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample3_listening_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_listening.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample3_listening_smpl_params.npy"
     },
     {
       "id": "looking",
       "sample": 4,
       "prompt": "A person looks around casually, turning the head and upper body left and right.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample4_looking_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_looking.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample4_looking_smpl_params.npy"
     },
     {
       "id": "laugh",
       "sample": 5,
       "prompt": "A person laughs happily with a quick shoulder bounce and open body language.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample5_laugh_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_laugh.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample5_laugh_smpl_params.npy"
     },
     {
       "id": "react",
       "sample": 6,
       "prompt": "A person reacts with surprise, leaning back slightly and lifting their hands.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample6_react_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_react.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample6_react_smpl_params.npy"
     },
     {
       "id": "leave",
       "sample": 7,
       "prompt": "A person steps backward, turns slightly, and leaves the conversation.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample7_leave_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_leave.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample7_leave_smpl_params.npy"
     },
     {
       "id": "thinking",
       "sample": 8,
       "prompt": "A person thinks for a moment, pausing with one hand near their chin.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample8_thinking_smpl_params.npy",
-      "inplaceVrma": "/assets/animations/dip/vrma/dip_thinking.inplace.vrma"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample8_thinking_smpl_params.npy"
     }
   ],
-  "nextExport": "Test the in-place VRMA clips on the live VRM. If pose quality is still bad, keep the VRMA tooling but replace the source skeleton with a proper SMPL-to-humanoid retarget or route through VMC/XR Animator."
+  "nextExport": "Try DiP -> VMC/tracker stream -> XR Animator/VMC receiver -> export, or build a proper SMPL-to-humanoid retarget before producing any new app-facing animation files."
 }

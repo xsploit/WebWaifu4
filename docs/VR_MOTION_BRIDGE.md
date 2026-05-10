@@ -78,11 +78,10 @@ motion source
 Practical repo result:
 
 - Pulled XR Animator/System Animator Online locally to inspect the path.
-- XR Animator's VRMA export calls the `bvh2vrma` converter.
-- Pulled `vrm-c/bvh2vrma` directly and used its MIT-licensed converter surface for local scripts.
-- Generated disabled experimental in-place `DiP VRMA ...` clips from the retired BVH files so the web VRM can test the VRMA path without exposing raw BVH again or letting root motion move the avatar off camera.
+- XR Animator's VRMA export calls a `bvh2vrma` converter.
+- The direct bvh2vrma/in-place VRMA clips were removed from the app because they did not launch reliably on the VRM.
 
-This only proves the VRMA bridge works. It does not prove the original DiP BVH skeleton is visually good. If the avatar still moves wrong, the next fix is a better source retarget or a DiP -> VMC -> XR Animator capture/export route, not another blind file extension change.
+That failure points back to the motion source/retarget layer. The next useful test is DiP -> VMC/tracker stream -> XR Animator/VMC receiver -> export, or a proper SMPL-to-humanoid retarget before creating app-facing clips again.
 
 ## VMC/VMT Direction
 

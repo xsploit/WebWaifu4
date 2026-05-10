@@ -484,12 +484,17 @@ function normalizeAnimationFormat(value: unknown, url: string): AnimationFormat 
 
 function isRejectedGeneratedAnimation(id: string, url: string, format: AnimationFormat): boolean {
   const cleanUrl = url.split('?')[0]?.split('#')[0]?.toLowerCase() ?? '';
-  return (
+  const retiredDipBvh =
     id.startsWith('dip-') &&
     format === 'bvh' &&
     cleanUrl.startsWith('/assets/animations/dip/dip_') &&
-    cleanUrl.endsWith('.bvh')
-  );
+    cleanUrl.endsWith('.bvh');
+  const retiredDipVrma =
+    id.startsWith('dip-vrma-') &&
+    format === 'vrma' &&
+    cleanUrl.startsWith('/assets/animations/dip/vrma/') &&
+    cleanUrl.endsWith('.vrma');
+  return retiredDipBvh || retiredDipVrma;
 }
 
 function normalizeAnimationEntry(value: unknown): AnimationEntry | null {
