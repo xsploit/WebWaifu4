@@ -1,8 +1,8 @@
 {
   "schema": "dip-mdm-cache-v2",
   "playable": false,
-  "status": "raw_and_smpl_cache",
-  "note": "The direct DiP XYZ to BVH export was retired because it loaded but retargeted badly on VRM avatars. Use these cached raw and SMPL outputs as the source for a real FBX or VRMA retarget/export step.",
+  "status": "raw_smpl_and_grounded_vrma_cache",
+  "note": "The direct DiP XYZ to BVH export was retired because it loaded but retargeted badly on VRM avatars. The grounded VRMA files are converted through the bvh2vrma/XR Animator path and are exposed as disabled experimental test clips.",
   "source": {
     "repo": "C:/Users/SUBSECT/Documents/motion-lab/motion-diffusion-model",
     "checkpoint": "save/DiP_no-target_10steps_context20_predict40/model000600343.pt",
@@ -25,56 +25,65 @@
       "id": "idle",
       "sample": 0,
       "prompt": "A person stands idle with subtle breathing and a relaxed posture.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample0_idle_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample0_idle_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_idle.grounded.vrma"
     },
     {
       "id": "talking",
       "sample": 1,
       "prompt": "A person talks expressively with natural upper body movement and small hand gestures.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample1_talking_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample1_talking_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_talking.grounded.vrma"
     },
     {
       "id": "hand_gestures",
       "sample": 2,
       "prompt": "A person gestures with both hands while explaining something enthusiastically.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample2_hand_gestures_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample2_hand_gestures_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_hand_gestures.grounded.vrma"
     },
     {
       "id": "listening",
       "sample": 3,
       "prompt": "A person listens attentively, nodding slightly and keeping a calm stance.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample3_listening_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample3_listening_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_listening.grounded.vrma"
     },
     {
       "id": "looking",
       "sample": 4,
       "prompt": "A person looks around casually, turning the head and upper body left and right.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample4_looking_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample4_looking_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_looking.grounded.vrma"
     },
     {
       "id": "laugh",
       "sample": 5,
       "prompt": "A person laughs happily with a quick shoulder bounce and open body language.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample5_laugh_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample5_laugh_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_laugh.grounded.vrma"
     },
     {
       "id": "react",
       "sample": 6,
       "prompt": "A person reacts with surprise, leaning back slightly and lifting their hands.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample6_react_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample6_react_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_react.grounded.vrma"
     },
     {
       "id": "leave",
       "sample": 7,
       "prompt": "A person steps backward, turns slightly, and leaves the conversation.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample7_leave_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample7_leave_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_leave.grounded.vrma"
     },
     {
       "id": "thinking",
       "sample": 8,
       "prompt": "A person thinks for a moment, pausing with one hand near their chin.",
-      "smplParams": "/assets/animations/dip/cache/smpl/sample8_thinking_smpl_params.npy"
+      "smplParams": "/assets/animations/dip/cache/smpl/sample8_thinking_smpl_params.npy",
+      "groundedVrma": "/assets/animations/dip/vrma/dip_thinking.grounded.vrma"
     }
   ],
-  "nextExport": "Retarget SMPL motion to a VRM humanoid armature, then export FBX or VRMA. Do not use the retired direct BVH exporter."
+  "nextExport": "Test the grounded VRMA clips on the live VRM. If pose quality is still bad, keep the VRMA tooling but replace the source skeleton with a proper SMPL-to-humanoid retarget."
 }

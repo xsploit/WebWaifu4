@@ -13,7 +13,8 @@ The real cache format is now:
 1. DiP/MDM `results.npy`: raw XYZ joint output.
 2. MDM `visualize.render_mesh`: official SMPLify conversion.
 3. `sampleN_rep00_smpl_params.npy`: stable SMPL motion parameters.
-4. Next step: retarget SMPL motion to a humanoid rig and export FBX or VRMA.
+4. Grounded VRMA test clips: generated through the `bvh2vrma` converter path that XR Animator also uses.
+5. Next step: visually test those VRM-native clips, then replace the source skeleton with a better SMPL-to-humanoid retarget if needed.
 
 Do not regenerate app-facing BVH clips from the raw XYZ cache without a real skeleton/retarget pass.
 
@@ -48,6 +49,7 @@ Committed app cache:
 - `public/assets/animations/dip/cache/samples_03_to_05.mp4`
 - `public/assets/animations/dip/cache/samples_06_to_08.mp4`
 - `public/assets/animations/dip/cache/smpl/sample*_smpl_params.npy`
+- `public/assets/animations/dip/vrma/dip_*.grounded.vrma`
 
 ## Regenerate DiP Cache
 
@@ -113,8 +115,34 @@ sample8_thinking_smpl_params.npy
 Use the SMPL params, not the retired direct BVH files.
 
 - FBX: import SMPL motion into Blender, retarget to a humanoid armature, export FBX.
-- VRMA: retarget to VRM humanoid bones and export VRM Animation.
+- VRMA: the app now has disabled experimental `DiP VRMA ...` entries generated through `bvh2vrma`; if they still pose badly, keep the VRMA exporter and replace the source retarget.
 - Unity/VRChat: import FBX or VRMA source, map to Humanoid, bake an `.anim` clip for an avatar controller.
+- Live VR control: extract tracker poses and stream them through VMC/VMT-style OSC instead of baking a clip.
+
+See `docs/VR_MOTION_BRIDGE.md` for the split between baked web clips and live VR-style tracker motion.
+
+## Convert Grounded BVH To VRMA
+
+XR Animator points at the same `bvh2vrma` bridge. The local Node wrapper is:
+
+```bash
+node scripts/convert-bvh-to-vrma.mjs \
+  /path/to/input.bvh \
+  public/assets/animations/dip/vrma/output.grounded.vrma \
+  0.01
+```
+
+Verify a VRMA:
+
+```bash
+node scripts/verify-vrma.mjs public/assets/animations/dip/vrma/dip_idle.grounded.vrma
+```
+
+Expected shape:
+
+```json
+{"animations":1,"duration":3.95,"humanoidRotationTracks":21,"humanoidTranslationTracks":1}
+```
 
 ## Hook Shape
 
