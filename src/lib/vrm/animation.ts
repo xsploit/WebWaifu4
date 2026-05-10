@@ -11,6 +11,8 @@ import {
 } from '@pixiv/three-vrm-animation';
 import type { AnimationEntry, AnimationFormat } from '../menu/types';
 
+type VrmExpressionManager = NonNullable<VRM['expressionManager']>;
+
 // Mixamo to VRM humanoid bone map (from three-vrm examples)
 export const mixamoVRMRigMap: Partial<Record<string, VRMHumanBoneName>> = {
   mixamorigHips: 'hips',
@@ -136,6 +138,40 @@ const genericVRMRigMap: Record<string, VRMHumanBoneName> = {
   rightfoot: 'rightFoot',
   righttoebase: 'rightToes',
   righttoe: 'rightToes',
+};
+
+const expressionAliases: Record<string, string> = {
+  a: 'aa',
+  blinkl: 'blinkLeft',
+  blinkleft: 'blinkLeft',
+  blinkr: 'blinkRight',
+  blinkright: 'blinkRight',
+  e: 'ee',
+  fclallangry: 'angry',
+  fclallfun: 'relaxed',
+  fclalljoy: 'happy',
+  fclallneutral: 'neutral',
+  fclallsorrow: 'sad',
+  fclallsurprised: 'surprised',
+  fcleyeclose: 'blink',
+  fcleyeclosel: 'blinkLeft',
+  fcleyecloser: 'blinkRight',
+  fclmtha: 'aa',
+  fclmthe: 'ee',
+  fclmthi: 'ih',
+  fclmtho: 'oh',
+  fclmthu: 'ou',
+  fun: 'relaxed',
+  i: 'ih',
+  joy: 'happy',
+  lookdown: 'lookDown',
+  lookleft: 'lookLeft',
+  lookright: 'lookRight',
+  lookup: 'lookUp',
+  o: 'oh',
+  sorrow: 'sad',
+  surprise: 'surprised',
+  u: 'ou',
 };
 
 const fbxLoader = new FBXLoader();
@@ -295,8 +331,199 @@ function normalizeRigName(name: string) {
     .toLowerCase();
 }
 
+function normalizeExpressionKey(name: string) {
+  return name.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+function addExpressionNameCandidates(candidates: string[], rawName: string | null | undefined) {
+  const trimmed = rawName?.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const baseNames = [
+    trimmed,
+    trimmed.split('|').pop() ?? trimmed,
+    trimmed.split(':').pop() ?? trimmed,
+    trimmed.split('/').pop() ?? trimmed,
+    trimmed.split('.').pop() ?? trimmed,
+  ];
+  const prefixes = [
+    /^VRMExpression[_\s.-]*/i,
+    /^BlendShape[_\s.-]*/i,
+    /^BlendShapeProxy[_\s.-]*/i,
+    /^Expression[_\s.-]*/i,
+    /^Preset[_\s.-]*/i,
+    /^Custom[_\s.-]*/i,
+  ];
+
+  for (const baseName of baseNames) {
+    if (baseName && !candidates.includes(baseName)) {
+      candidates.push(baseName);
+    }
+    for (const prefix of prefixes) {
+      const candidate = baseName?.replace(prefix, '');
+      if (candidate && !candidates.includes(candidate)) {
+        candidates.push(candidate);
+      }
+    }
+  }
+}
+
+function resolveExpressionName(
+  expressionManager: VrmExpressionManager,
+  candidates: string[],
+): string | null {
+  const expressionNames = Object.keys(expressionManager.expressionMap);
+  const exact = new Set(expressionNames);
+  const byLower = new Map(expressionNames.map((name) => [name.toLowerCase(), name]));
+  const byNormalized = new Map(
+    expressionNames.map((name) => [normalizeExpressionKey(name), name] as const),
+  );
+
+  for (const candidate of candidates) {
+    if (exact.has(candidate)) {
+      return candidate;
+    }
+
+    const lowerMatch = byLower.get(candidate.toLowerCase());
+    if (lowerMatch) {
+      return lowerMatch;
+    }
+
+    const normalized = normalizeExpressionKey(candidate);
+    const alias = expressionAliases[normalized];
+    if (alias && exact.has(alias)) {
+      return alias;
+    }
+
+    const normalizedMatch = byNormalized.get(alias ? normalizeExpressionKey(alias) : normalized);
+    if (normalizedMatch) {
+      return normalizedMatch;
+    }
+  }
+
+  return null;
+}
+
 function resolveVRMBoneName(rigName: string): VRMHumanBoneName | null {
   return mixamoVRMRigMap[rigName] ?? genericVRMRigMap[normalizeRigName(rigName)] ?? null;
+}
+
+function parseTrackBinding(trackName: string) {
+  try {
+    return THREE.PropertyBinding.parseTrackName(trackName) as {
+      nodeName?: string;
+      objectName?: string;
+      propertyName?: string;
+      propertyIndex?: string;
+    };
+  } catch {
+    const match =
+      /^(?<nodeName>.+?)\.(?<propertyName>[^[.]+)(?:\[(?<propertyIndex>[^\]]+)])?$/.exec(trackName);
+    return match?.groups ?? null;
+  }
+}
+
+function getSourceMorphTargetName(
+  sourceRoot: THREE.Object3D,
+  nodeName: string | undefined,
+  propertyIndex: string | undefined,
+) {
+  if (!propertyIndex || Number.isNaN(Number(propertyIndex))) {
+    return propertyIndex;
+  }
+
+  const sourceNode = nodeName ? sourceRoot.getObjectByName(nodeName) : null;
+  const morphTargetDictionary = (sourceNode as THREE.Mesh | null)?.morphTargetDictionary;
+  if (!morphTargetDictionary) {
+    return null;
+  }
+
+  const targetIndex = Number(propertyIndex);
+  return (
+    Object.entries(morphTargetDictionary).find(([, index]) => index === targetIndex)?.[0] ?? null
+  );
+}
+
+function toNumberKeyframeValues(track: THREE.KeyframeTrack, componentIndex: number) {
+  const stride = track.values.length / track.times.length;
+  if (!Number.isInteger(stride) || stride <= componentIndex) {
+    return null;
+  }
+
+  const values = new Float32Array(track.times.length);
+  for (let index = 0; index < values.length; index += 1) {
+    values[index] = THREE.MathUtils.clamp(track.values[index * stride + componentIndex] ?? 0, 0, 1);
+  }
+  return values;
+}
+
+function createExpressionTrack(
+  track: THREE.KeyframeTrack,
+  targetTrackName: string,
+  componentIndex: number,
+) {
+  const values = toNumberKeyframeValues(track, componentIndex);
+  if (!values) {
+    return null;
+  }
+
+  return new THREE.NumberKeyframeTrack(
+    targetTrackName,
+    track.times,
+    values,
+    track.getInterpolation(),
+  );
+}
+
+function createGltfExpressionTracks(
+  clip: THREE.AnimationClip,
+  sourceRoot: THREE.Object3D,
+  vrm: VRM,
+) {
+  const expressionManager = vrm.expressionManager;
+  if (!expressionManager) {
+    return [];
+  }
+
+  const expressionTracks: THREE.KeyframeTrack[] = [];
+  for (const track of clip.tracks) {
+    const binding = parseTrackBinding(track.name);
+    const propertyName = binding?.propertyName;
+    const candidates: string[] = [];
+    let componentIndex = 0;
+
+    if (propertyName === 'weight') {
+      addExpressionNameCandidates(candidates, binding?.nodeName);
+    } else if (propertyName === 'position') {
+      addExpressionNameCandidates(candidates, binding?.nodeName);
+      componentIndex = 0;
+    } else if (propertyName === 'morphTargetInfluences') {
+      addExpressionNameCandidates(candidates, binding?.propertyIndex);
+      addExpressionNameCandidates(
+        candidates,
+        getSourceMorphTargetName(sourceRoot, binding?.nodeName, binding?.propertyIndex),
+      );
+    } else {
+      continue;
+    }
+
+    const expressionName = resolveExpressionName(expressionManager, candidates);
+    const targetTrackName = expressionName
+      ? expressionManager.getExpressionTrackName(expressionName)
+      : null;
+    if (!targetTrackName) {
+      continue;
+    }
+
+    const expressionTrack = createExpressionTrack(track, targetTrackName, componentIndex);
+    if (expressionTrack) {
+      expressionTracks.push(expressionTrack);
+    }
+  }
+
+  return expressionTracks;
 }
 
 function copyQuaternionTrackValues(track: THREE.QuaternionKeyframeTrack, vrm: VRM) {
@@ -531,7 +758,21 @@ async function loadGltfAnimation(url: string, vrm: VRM): Promise<THREE.Animation
   }
 
   const clip = asset.animations[0];
-  return clip ? retargetHumanoidClipByBoneName(clip, vrm, { includeHipsTranslation: true }) : null;
+  if (!clip) {
+    return null;
+  }
+
+  const humanoidClip = retargetHumanoidClipByBoneName(clip, vrm, {
+    includeHipsTranslation: true,
+  });
+  const tracks = [
+    ...(humanoidClip?.tracks ?? []),
+    ...createGltfExpressionTracks(clip, asset.scene, vrm),
+  ];
+
+  return tracks.length > 0
+    ? new THREE.AnimationClip(clip.name || 'vrmAnimation', clip.duration, tracks)
+    : null;
 }
 
 export async function loadVrmAnimationClip(

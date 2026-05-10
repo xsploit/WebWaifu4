@@ -288,8 +288,24 @@ function updateAutoBlink(
   }
 }
 
-function updateVrmFrame(vrm: VRM, ttsManager: TtsManager, delta: number) {
-  updateLipSync(vrm, ttsManager);
+function isTtsPlaybackActive(ttsManager: TtsManager) {
+  return (
+    (!!ttsManager.currentAudio &&
+      !ttsManager.currentAudio.paused &&
+      !ttsManager.currentAudio.ended) ||
+    ttsManager.isPlaying
+  );
+}
+
+function updateVrmFrame(
+  vrm: VRM,
+  ttsManager: TtsManager,
+  delta: number,
+  updateMouthFromTts: boolean,
+) {
+  if (updateMouthFromTts) {
+    updateLipSync(vrm, ttsManager);
+  }
 
   if (!ROUTELET_RENDER_MODE) {
     vrm.update(delta);
@@ -413,10 +429,18 @@ function SceneRuntime({
 
   useFrame((_state, delta) => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
+    const ttsPlaybackActive = isTtsPlaybackActive(ttsManager);
     const cameraLerp = 1 - Math.exp(-delta * 9);
     perspectiveCamera.position.lerp(cameraTargetPositionRef.current, cameraLerp);
     cameraLookAtRef.current.lerp(cameraLookAtTargetRef.current, cameraLerp);
     perspectiveCamera.lookAt(cameraLookAtRef.current);
+
+    if (vrm && active) {
+      if (!ttsPlaybackActive) {
+        updateLipSync(vrm, ttsManager);
+      }
+      updateAutoBlink(vrm, blinkRuntimeRef.current, delta, visualSettings);
+    }
 
     if (mixer && active) {
       mixer.timeScale = animationSpeed;
@@ -424,8 +448,7 @@ function SceneRuntime({
     }
 
     if (vrm && active) {
-      updateAutoBlink(vrm, blinkRuntimeRef.current, delta, visualSettings);
-      updateVrmFrame(vrm, ttsManager, delta);
+      updateVrmFrame(vrm, ttsManager, delta, ttsPlaybackActive);
     }
 
     const postProcessing = postProcessingRef.current;
