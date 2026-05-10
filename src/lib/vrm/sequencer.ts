@@ -36,7 +36,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-idle',
     name: 'DiP VRMA Idle',
-    url: '/assets/animations/dip/vrma/dip_idle.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_idle.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -44,7 +44,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-talking',
     name: 'DiP VRMA Talking',
-    url: '/assets/animations/dip/vrma/dip_talking.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_talking.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -52,7 +52,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-hand-gestures',
     name: 'DiP VRMA Hand Gestures',
-    url: '/assets/animations/dip/vrma/dip_hand_gestures.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_hand_gestures.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -60,7 +60,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-listening',
     name: 'DiP VRMA Listening',
-    url: '/assets/animations/dip/vrma/dip_listening.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_listening.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -68,7 +68,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-looking',
     name: 'DiP VRMA Looking',
-    url: '/assets/animations/dip/vrma/dip_looking.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_looking.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -76,7 +76,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-laugh',
     name: 'DiP VRMA Laugh',
-    url: '/assets/animations/dip/vrma/dip_laugh.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_laugh.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -84,7 +84,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-react',
     name: 'DiP VRMA React',
-    url: '/assets/animations/dip/vrma/dip_react.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_react.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -92,7 +92,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-leave',
     name: 'DiP VRMA Leave',
-    url: '/assets/animations/dip/vrma/dip_leave.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_leave.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,
@@ -100,7 +100,7 @@ export const DEFAULT_ANIMATIONS: AnimationEntry[] = [
   {
     id: 'dip-vrma-thinking',
     name: 'DiP VRMA Thinking',
-    url: '/assets/animations/dip/vrma/dip_thinking.grounded.vrma',
+    url: '/assets/animations/dip/vrma/dip_thinking.inplace.vrma',
     format: 'vrma',
     enabled: false,
     experimental: true,

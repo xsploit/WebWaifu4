@@ -20,10 +20,29 @@ function createSkeletonBoundingBox(skeleton) {
     }
     return boundingBox;
 }
+function normalizeHipsPositionTrack(track, mode) {
+    if (track == null || mode === "none") {
+        return;
+    }
+    const values = track.values;
+    const baseX = values[0] ?? 0;
+    const baseZ = values[2] ?? 0;
+    for (let i = 0; i < values.length; i += 3) {
+        if (mode === "in-place") {
+            values[i] = 0;
+            values[i + 2] = 0;
+        }
+        else {
+            values[i] -= baseX;
+            values[i + 2] -= baseZ;
+        }
+    }
+}
 export function convertBVHToVRMAnimation(bvh, options) {
-    var _a;
+    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         const scale = (_a = options === null || options === void 0 ? void 0 : options.scale) !== null && _a !== void 0 ? _a : 0.01;
+        const rootTranslation = (_b = options === null || options === void 0 ? void 0 : options.rootTranslation) !== null && _b !== void 0 ? _b : "in-place";
         const skeleton = bvh.skeleton.clone();
         const clip = bvh.clip.clone();
         // find root bone of the skeleton
@@ -69,6 +88,7 @@ export function convertBVHToVRMAnimation(bvh, options) {
             for (let i = 0; i < hipsPositionTrack.values.length; i++) {
                 hipsPositionTrack.values[i] -= offset[i % 3];
             }
+            normalizeHipsPositionTrack(hipsPositionTrack, rootTranslation);
         }
         // some BVHs does not ground correctly
         const boundingBox = createSkeletonBoundingBox(skeleton);

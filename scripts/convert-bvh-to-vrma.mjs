@@ -15,18 +15,22 @@ if (typeof globalThis.FileReader === 'undefined') {
   };
 }
 
-const [, , inputPath, outputPath, scaleArg] = process.argv;
+const [, , inputPath, outputPath, scaleArg, rootTranslationArg] = process.argv;
 
 if (!inputPath || !outputPath) {
-  console.error('Usage: node scripts/convert-bvh-to-vrma.mjs <input.bvh> <output.vrma> [scale]');
+  console.error(
+    'Usage: node scripts/convert-bvh-to-vrma.mjs <input.bvh> <output.vrma> [scale] [in-place|center-xz|none]',
+  );
   process.exit(1);
 }
 
 const scale = Number.isFinite(Number(scaleArg)) ? Number(scaleArg) : 0.01;
+const rootTranslation =
+  rootTranslationArg === 'none' || rootTranslationArg === 'center-xz' ? rootTranslationArg : 'in-place';
 const source = await fs.readFile(inputPath, 'utf8');
 const loader = new BVHLoader();
 const bvh = loader.parse(source);
-const vrma = await convertBVHToVRMAnimation(bvh, { scale });
+const vrma = await convertBVHToVRMAnimation(bvh, { scale, rootTranslation });
 const bytes = vrma instanceof ArrayBuffer ? Buffer.from(vrma) : Buffer.from(await vrma.arrayBuffer());
 
 await fs.mkdir(path.dirname(outputPath), { recursive: true });

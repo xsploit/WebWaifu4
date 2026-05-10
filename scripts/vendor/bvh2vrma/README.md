@@ -10,5 +10,8 @@ Local adaptation:
 
 - `convertBVHToVRMAnimation.js` imports `GLTFExporter` from this app's installed
   `three` package.
+- `convertBVHToVRMAnimation.js` accepts a local `rootTranslation` option:
+  `in-place` locks hips X/Z translation, `center-xz` recenters it, and `none`
+  preserves the source motion.
 - `scripts/convert-bvh-to-vrma.mjs` adds a tiny Node `FileReader` polyfill so
   Three's `GLTFExporter` can write binary VRMA from Node.

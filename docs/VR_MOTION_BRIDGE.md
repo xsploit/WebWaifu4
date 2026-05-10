@@ -80,9 +80,9 @@ Practical repo result:
 - Pulled XR Animator/System Animator Online locally to inspect the path.
 - XR Animator's VRMA export calls the `bvh2vrma` converter.
 - Pulled `vrm-c/bvh2vrma` directly and used its MIT-licensed converter surface for local scripts.
-- Generated disabled experimental `DiP VRMA ...` clips from the retired BVH files so the web VRM can test the VRMA path without exposing raw BVH again.
+- Generated disabled experimental in-place `DiP VRMA ...` clips from the retired BVH files so the web VRM can test the VRMA path without exposing raw BVH again or letting root motion move the avatar off camera.
 
-This only proves the VRMA bridge works. It does not prove the original DiP BVH skeleton is visually good. If the avatar still moves wrong, the next fix is a better source retarget, not another format change.
+This only proves the VRMA bridge works. It does not prove the original DiP BVH skeleton is visually good. If the avatar still moves wrong, the next fix is a better source retarget or a DiP -> VMC -> XR Animator capture/export route, not another blind file extension change.
 
 ## VMC/VMT Direction
 
