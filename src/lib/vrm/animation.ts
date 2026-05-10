@@ -6,6 +6,7 @@ import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
 import {
   createVRMAnimationClip,
   VRMAnimationLoaderPlugin,
+  VRMLookAtQuaternionProxy,
   type VRMAnimation,
 } from '@pixiv/three-vrm-animation';
 import type { AnimationEntry, AnimationFormat } from '../menu/types';
@@ -143,6 +144,7 @@ const vrmaLoader = new GLTFLoader();
 const fbxAssetCache = new Map<string, Promise<THREE.Group>>();
 const bvhAssetCache = new Map<string, ReturnType<typeof bvhLoader.loadAsync>>();
 const vrmaAssetCache = new Map<string, ReturnType<typeof vrmaLoader.loadAsync>>();
+const sniffedFormatCache = new Map<string, Promise<AnimationFormat | null>>();
 
 bvhLoader.animateBonePositions = false;
 vrmaLoader.register((parser) => new VRMAnimationLoaderPlugin(parser));
@@ -197,6 +199,56 @@ function loadVrmaAsset(url: string) {
   return pending;
 }
 
+async function sniffAnimationFormat(url: string): Promise<AnimationFormat | null> {
+  const normalizedUrl = normalizeAnimationUrl(url);
+  const cached = sniffedFormatCache.get(normalizedUrl);
+  if (cached) {
+    return cached;
+  }
+
+  const pending = fetch(normalizedUrl)
+    .then(async (response) => {
+      if (!response.ok) {
+        return null;
+      }
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const prefix = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 96));
+      const trimmedPrefix = prefix.trimStart();
+
+      if (bytes[0] === 0x67 && bytes[1] === 0x6c && bytes[2] === 0x54 && bytes[3] === 0x46) {
+        const version = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(
+          4,
+          true,
+        );
+        return version >= 2 ? 'glb' : null;
+      }
+      if (prefix.startsWith('Kaydara FBX Binary') || trimmedPrefix.startsWith('; FBX')) {
+        return 'fbx';
+      }
+      if (trimmedPrefix.startsWith('HIERARCHY')) {
+        return 'bvh';
+      }
+      if (trimmedPrefix.startsWith('{')) {
+        try {
+          const gltf = JSON.parse(new TextDecoder('utf-8', { fatal: false }).decode(bytes)) as {
+            asset?: { version?: unknown };
+          };
+          const version = Number.parseFloat(String(gltf.asset?.version ?? '0'));
+          return version >= 2 ? 'gltf' : null;
+        } catch {
+          return null;
+        }
+      }
+
+      return null;
+    })
+    .catch(() => null);
+
+  sniffedFormatCache.set(normalizedUrl, pending);
+  return pending;
+}
+
 function inferAnimationFormat(url: string, format?: AnimationFormat): AnimationFormat {
   if (format) {
     return format;
@@ -208,6 +260,28 @@ function inferAnimationFormat(url: string, format?: AnimationFormat): AnimationF
   if (cleanUrl.endsWith('.glb')) return 'glb';
   if (cleanUrl.endsWith('.gltf')) return 'gltf';
   return 'fbx';
+}
+
+async function resolveAnimationFormat(
+  entry: Pick<AnimationEntry, 'url' | 'format'>,
+): Promise<AnimationFormat> {
+  const requested = inferAnimationFormat(entry.url, entry.format);
+  if (requested === 'fbx' || requested === 'bvh') {
+    return requested;
+  }
+
+  const sniffed = await sniffAnimationFormat(entry.url);
+  if (!sniffed || sniffed === requested) {
+    return requested;
+  }
+  if (requested === 'vrma' && (sniffed === 'glb' || sniffed === 'gltf')) {
+    return requested;
+  }
+
+  console.warn(
+    `[VrmStage] Animation "${entry.url}" was marked as ${requested}, but the file header looks like ${sniffed}. Using ${sniffed}.`,
+  );
+  return sniffed;
 }
 
 function normalizeRigName(name: string) {
@@ -292,6 +366,39 @@ function retargetHumanoidClipByBoneName(
   return tracks.length > 0
     ? new THREE.AnimationClip(clip.name || 'vrmAnimation', clip.duration, tracks)
     : null;
+}
+
+function ensureLookAtQuaternionProxy(vrm: VRM) {
+  if (!vrm.lookAt) {
+    return;
+  }
+
+  const existing = vrm.scene.children.find((child) => child instanceof VRMLookAtQuaternionProxy);
+  if (existing) {
+    if (!existing.name) {
+      existing.name = 'VRMLookAtQuaternionProxy';
+    }
+    return;
+  }
+
+  const proxy = new VRMLookAtQuaternionProxy(vrm.lookAt);
+  proxy.name = 'VRMLookAtQuaternionProxy';
+  vrm.scene.add(proxy);
+}
+
+function createVrmClip(vrmAnimation: VRMAnimation, vrm: VRM) {
+  ensureLookAtQuaternionProxy(vrm);
+  return createVRMAnimationClip(vrmAnimation, vrm);
+}
+
+function animationLoadError(error: unknown, url: string, expected: string) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('Unsupported asset') || message.includes('glTF versions >=2.0')) {
+    return new Error(
+      `Animation "${url}" is not a valid ${expected} file. Expected VRMA/glTF 2.0, FBX, or BVH motion data.`,
+    );
+  }
+  return error;
 }
 
 export async function loadMixamoAnimation(
@@ -401,10 +508,12 @@ export async function loadMixamoAnimation(
 }
 
 async function loadVrmaAnimation(url: string, vrm: VRM): Promise<THREE.AnimationClip | null> {
-  const asset = await loadVrmaAsset(url);
+  const asset = await loadVrmaAsset(url).catch((error) => {
+    throw animationLoadError(error, url, 'VRMA');
+  });
   const animations = asset.userData['vrmAnimations'] as VRMAnimation[] | undefined;
   const vrmAnimation = animations?.[0];
-  return vrmAnimation ? createVRMAnimationClip(vrmAnimation, vrm) : null;
+  return vrmAnimation ? createVrmClip(vrmAnimation, vrm) : null;
 }
 
 async function loadBvhAnimation(url: string, vrm: VRM): Promise<THREE.AnimationClip | null> {
@@ -413,10 +522,12 @@ async function loadBvhAnimation(url: string, vrm: VRM): Promise<THREE.AnimationC
 }
 
 async function loadGltfAnimation(url: string, vrm: VRM): Promise<THREE.AnimationClip | null> {
-  const asset = await loadVrmaAsset(url);
+  const asset = await loadVrmaAsset(url).catch((error) => {
+    throw animationLoadError(error, url, 'glTF');
+  });
   const vrmAnimation = (asset.userData['vrmAnimations'] as VRMAnimation[] | undefined)?.[0];
   if (vrmAnimation) {
-    return createVRMAnimationClip(vrmAnimation, vrm);
+    return createVrmClip(vrmAnimation, vrm);
   }
 
   const clip = asset.animations[0];
@@ -427,7 +538,7 @@ export async function loadVrmAnimationClip(
   entry: Pick<AnimationEntry, 'url' | 'format'>,
   vrm: VRM,
 ): Promise<THREE.AnimationClip | null> {
-  switch (inferAnimationFormat(entry.url, entry.format)) {
+  switch (await resolveAnimationFormat(entry)) {
     case 'vrma':
       return loadVrmaAnimation(entry.url, vrm);
     case 'bvh':
