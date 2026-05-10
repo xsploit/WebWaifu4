@@ -1,0 +1,160 @@
+import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
+
+export const MEMORY_AGENT_INTERVAL_TURNS = 10;
+export const MEMORY_AGENT_JSON_FORMAT = { type: 'json_object' } as const;
+
+const MEMORY_MODEL_PREFERENCES = [
+  'gpt-5.4-mini',
+  'claude-haiku-4-5',
+  'gpt-5',
+  'claude-sonnet-4-6',
+  'claude-opus-4-1',
+] as const;
+
+const ACTION_TAGS = [
+  'none',
+  'compliment',
+  'flirt',
+  'tease',
+  'apologize',
+  'ask_personal',
+  'challenge',
+  'reassure',
+  'push_boundaries',
+  'stay_silent',
+  'ask_follow',
+  'ask_open_up',
+].join(', ');
+
+const MOODS = [
+  'cold',
+  'guarded',
+  'curious',
+  'teasing',
+  'flustered',
+  'annoyed',
+  'soft',
+  'affectionate',
+].join(', ');
+
+export function shouldRunMemoryAgent(memory: RelationshipMemory) {
+  return memory.turnCount > 0 && memory.turnCount - memory.lastDiaryTurnCount >= MEMORY_AGENT_INTERVAL_TURNS;
+}
+
+export function chooseMemoryAgentModel(availableModels: string[], fallbackModel: string) {
+  return getMemoryAgentModelCandidates(availableModels, fallbackModel)[0] ?? fallbackModel;
+}
+
+export function getMemoryAgentModelCandidates(
+  availableModels: string[],
+  fallbackModel: string,
+  excludedModels: string[] = [],
+  preferredModel = '',
+) {
+  const lowered = availableModels.map((model) => model.toLowerCase());
+  const availableByLower = new Map(
+    availableModels.map((model) => [model.toLowerCase(), model]),
+  );
+  const excluded = new Set(excludedModels.map((model) => model.toLowerCase()));
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+
+  const pushCandidate = (model: string | undefined) => {
+    const normalized = model?.trim();
+    if (!normalized) {
+      return;
+    }
+
+    const resolvedModel =
+      availableModels.length > 0
+        ? availableByLower.get(normalized.toLowerCase())
+        : normalized;
+
+    if (!resolvedModel) {
+      return;
+    }
+
+    const loweredModel = resolvedModel.toLowerCase();
+    if (excluded.has(loweredModel) || seen.has(loweredModel)) {
+      return;
+    }
+
+    seen.add(loweredModel);
+    candidates.push(resolvedModel);
+  };
+
+  pushCandidate(preferredModel);
+
+  for (const preferred of MEMORY_MODEL_PREFERENCES) {
+    const index = lowered.indexOf(preferred);
+    if (index >= 0) {
+      pushCandidate(availableModels[index]);
+    }
+  }
+
+  availableModels.forEach((model) => {
+    const loweredModel = model.toLowerCase();
+    if (!loweredModel.includes('codex') && !loweredModel.includes('claude-sonnet')) {
+      pushCandidate(model);
+    }
+  });
+
+  pushCandidate(fallbackModel);
+
+  return candidates;
+}
+
+export function buildMemoryAgentMessages(
+  history: ChatMessage[],
+  relationshipMemory: RelationshipMemory,
+  persona: PersonaProfile | null,
+) {
+  const recentHistory = history
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .slice(-20)
+    .map((message) => `${message.role === 'user' ? 'User' : (persona?.name ?? 'Riko')}: ${message.content.trim()}`)
+    .join('\n');
+
+  const currentMemoryBlock = {
+    relationshipStage: relationshipMemory.relationshipStage,
+    mood: relationshipMemory.mood,
+    turnCount: relationshipMemory.turnCount,
+    trust: relationshipMemory.trust,
+    attraction: relationshipMemory.attraction,
+    respect: relationshipMemory.respect,
+    irritation: relationshipMemory.irritation,
+    jealousy: relationshipMemory.jealousy,
+    guard: relationshipMemory.guard,
+    lastActionTag: relationshipMemory.lastActionTag,
+    facts: relationshipMemory.facts,
+    latestDiaryEntry: relationshipMemory.diaryEntry,
+    summary: relationshipMemory.summary,
+  };
+
+  return [
+    {
+      role: 'system',
+      content: [
+        `You are a background relationship-memory classifier for ${persona?.name ?? 'Riko'}.`,
+        'You are not writing a user-facing reply.',
+        'Return ONLY valid JSON. No markdown. No commentary.',
+        `actionTag must be one of: ${ACTION_TAGS}.`,
+        `mood must be one of: ${MOODS}.`,
+        'All delta fields must be integers in the range -2 to 2.',
+        'facts must be short, concrete user facts only. Do not invent lore.',
+        'summary must be compact and neutral, under 220 chars.',
+        'rikoDiaryEntry must be a short first-person private diary note in Riko voice, under 220 chars.',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: [
+        `Current memory: ${JSON.stringify(currentMemoryBlock)}`,
+        'Analyze the recent exchange and return this JSON object shape:',
+        '{"actionTag":"none","mood":"guarded","trustDelta":0,"attractionDelta":0,"respectDelta":0,"irritationDelta":0,"jealousyDelta":0,"guardDelta":0,"facts":[],"summary":"","rikoDiaryEntry":""}',
+        'Recent chat:',
+        recentHistory || 'No recent chat available.',
+      ].join('\n\n'),
+    },
+  ];
+}
