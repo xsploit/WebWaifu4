@@ -87,7 +87,7 @@ export const CUSTOM_RIKO_PIPER_VOICES: PiperVoiceProfile[] = [
     'en_US-neuro_100_32k_2259-medium',
     'Riko 32k HQ',
     '32 kHz Riko continuation from the neuro_100_32k_2259 Piper branch',
-    ['riko-32k', 'riko-hq', 'riko-2259'],
+    ['riko-32k', 'riko-hq', 'riko-2259', 'hikari', 'hikari-jen', 'hickeyc', 'hikkyc'],
   ),
   createCustomRikoPiperVoice(
     'en_US-azuretts_fish_s2_200_32k_2259-medium',
@@ -101,6 +101,7 @@ export const CUSTOM_RIKO_PIPER_VOICE: PiperVoiceProfile = CUSTOM_RIKO_PIPER_VOIC
 
 export const RIKO_PIPER_VOICE_KEY = CUSTOM_RIKO_PIPER_VOICE.key;
 export const NEURO_PIPER_VOICE_KEY = 'en_US-neuro-sama-medium';
+export const HIKARI_PIPER_VOICE_KEY = 'en_US-neuro_100_32k_2259-medium';
 
 export function sortPiperVoices(left: PiperVoiceProfile, right: PiperVoiceProfile) {
   const customVoiceOrder = new Map(

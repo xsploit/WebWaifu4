@@ -3,6 +3,7 @@ import { fetchGameAssetBlob } from '../cdn/assets';
 import {
   CUSTOM_RIKO_PIPER_VOICE,
   CUSTOM_RIKO_PIPER_VOICES,
+  HIKARI_PIPER_VOICE_KEY,
   NEURO_PIPER_VOICE_KEY,
   RIKO_PIPER_VOICE_KEY,
   type PiperVoiceProfile,
@@ -134,6 +135,7 @@ export type { LipSyncData, PiperVoiceProfile, SynthesizedPiperChunkPayload, Word
 export {
   CUSTOM_RIKO_PIPER_VOICE,
   CUSTOM_RIKO_PIPER_VOICES,
+  HIKARI_PIPER_VOICE_KEY,
   NEURO_PIPER_VOICE_KEY,
   RIKO_PIPER_VOICE_KEY,
 };

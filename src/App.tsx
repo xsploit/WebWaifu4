@@ -46,6 +46,7 @@ import type {
 import { fetchGameAssetBlob } from './lib/cdn/assets';
 import {
   CUSTOM_RIKO_PIPER_VOICES,
+  HIKARI_PIPER_VOICE_KEY,
   RIKO_PIPER_VOICE_KEY,
   cachePiperVoice,
   getStoredPiperVoiceKeys,
@@ -146,6 +147,7 @@ const BUNDLED_VRM_MODELS: BundledVrmOption[] = [
 ];
 
 const RIKO_BUNDLED_MODEL_ID = 'riko-final-fixed-v2';
+const HIKARI_BUNDLED_MODEL_ID = 'hikkyc2';
 const DEFAULT_BUNDLED_MODEL_ID = 'neuro-sama';
 const PERSONA_SCENE_PRESETS: PersonaScenePreset[] = [
   {
@@ -174,6 +176,20 @@ const PERSONA_SCENE_PRESETS: PersonaScenePreset[] = [
     border: 'rgba(255, 136, 177, 0.38)',
     panel: 'rgba(42, 20, 32, 0.76)',
     textMuted: '#f0b8ce',
+  },
+  {
+    id: 'hikari',
+    personaSelectors: ['hikari-jen', 'hikarijen', 'hikari', 'hickeyc', 'hikkyc', 'hikkyc2'],
+    bundledModelId: HIKARI_BUNDLED_MODEL_ID,
+    ttsVoice: HIKARI_PIPER_VOICE_KEY,
+    backgroundImage: '/cdn-assets/backgrounds/neuro-bedroom.png',
+    backgroundOverlay:
+      'linear-gradient(180deg, rgba(255, 245, 231, 0.06), rgba(125, 59, 38, 0.18))',
+    backgroundFilter: 'saturate(1.04) brightness(0.98) contrast(1.01)',
+    accent: '#ffb45f',
+    border: 'rgba(255, 186, 109, 0.4)',
+    panel: 'rgba(38, 23, 20, 0.76)',
+    textMuted: '#ffd1a6',
   },
 ];
 const PERSIST_DEBOUNCE_MS = 900;
@@ -626,6 +642,13 @@ function getPersonaMentionTags(persona: PersonaProfile | null) {
   if (persona?.id) {
     tags.add(normalizeMentionTag(persona.id));
   }
+  const candidates = [persona?.id, persona?.name].map(normalizePersonaSelector);
+  const preset = PERSONA_SCENE_PRESETS.find((entry) =>
+    entry.personaSelectors
+      .map(normalizePersonaSelector)
+      .some((selector) => selector && candidates.includes(selector)),
+  );
+  preset?.personaSelectors.forEach((selector) => tags.add(normalizeMentionTag(selector)));
 
   return [...tags].filter(Boolean);
 }
@@ -2502,7 +2525,7 @@ function App() {
 
     startupStatusSentRef.current = true;
     appendSystemMessage(
-      `[Startup] Client Twitch IRC ${DIRECT_TWITCH_CHAT_ENABLED ? `listening to #${DIRECT_TWITCH_CHANNEL}` : 'disabled'}; server Twitch is off by default. AI: ${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}. Browser audio stream exposed at window.__yourwifeyAudio.getStream(). Commands: !yw help, status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro>, llm <model>, vrm <id>, camera close|full, anim <name|index>, tts on|off, autospeak on|off, say <text>, chat on|off.`,
+      `[Startup] Client Twitch IRC ${DIRECT_TWITCH_CHAT_ENABLED ? `listening to #${DIRECT_TWITCH_CHANNEL}` : 'disabled'}; server Twitch is off by default. AI: ${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}. Browser audio stream exposed at window.__yourwifeyAudio.getStream(). Commands: !yw help, status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro|hikari>, llm <model>, vrm <id>, camera close|full, anim <name|index>, tts on|off, autospeak on|off, say <text>, chat on|off.`,
     );
   }, [appendSystemMessage, hydrated]);
 
@@ -2764,7 +2787,7 @@ function App() {
 
       if (verb === 'help' || verb === '?') {
         respond(
-          'Commands: status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro>, personas, llm <model>, vrm <id>, vrms, camera full|half|close, anim <name|index>, anims, anim start|stop|next|random, anim speed <n>, anim duration <sec>, tts on|off, autospeak on|off, say <text>, chat on|off.',
+          'Commands: status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro|hikari>, personas, llm <model>, vrm <id>, vrms, camera full|half|close, anim <name|index>, anims, anim start|stop|next|random, anim speed <n>, anim duration <sec>, tts on|off, autospeak on|off, say <text>, chat on|off.',
         );
         return true;
       }
