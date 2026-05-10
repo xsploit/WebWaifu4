@@ -144,6 +144,29 @@ const GAZE_HEAD_FOLLOW_FLOOR = 0.55;
 const GAZE_EYE_MICRO_HORIZONTAL = 0.018;
 const GAZE_EYE_MICRO_VERTICAL = 0.009;
 const GAZE_OVERLAY_EPSILON = 0.002;
+const ARM_GUARD_EPSILON = 0.0001;
+const ARM_GUARD_MAX_UPPER_ANGLE = 0.42;
+const ARM_GUARD_MAX_LOWER_ANGLE = 0.34;
+const ARM_GUARD_MAX_HAND_ANGLE = 0.24;
+const ARM_GUARD_LINE_PADDING = 0.05;
+
+const armGuardHips = new THREE.Vector3();
+const armGuardChest = new THREE.Vector3();
+const armGuardTorsoPoint = new THREE.Vector3();
+const armGuardPoint = new THREE.Vector3();
+const armGuardTarget = new THREE.Vector3();
+const armGuardAnchor = new THREE.Vector3();
+const armGuardShoulder = new THREE.Vector3();
+const armGuardPush = new THREE.Vector3();
+const armGuardCurrentDirection = new THREE.Vector3();
+const armGuardDesiredDirection = new THREE.Vector3();
+const armGuardLine = new THREE.Vector3();
+const armGuardPointDelta = new THREE.Vector3();
+const armGuardWorldDelta = new THREE.Quaternion();
+const armGuardLimitedDelta = new THREE.Quaternion();
+const armGuardParentWorld = new THREE.Quaternion();
+const armGuardParentInverse = new THREE.Quaternion();
+const armGuardLocalDelta = new THREE.Quaternion();
 
 function clampCameraVerticalOffset(value: number) {
   return THREE.MathUtils.clamp(
@@ -591,6 +614,217 @@ function updateAutoGaze(
   vrm.humanoid.update();
 }
 
+function getBoneWorldPosition(bone: THREE.Object3D | null | undefined, target: THREE.Vector3) {
+  return bone ? bone.getWorldPosition(target) : null;
+}
+
+function getNearestTorsoPoint(
+  point: THREE.Vector3,
+  hips: THREE.Vector3,
+  chest: THREE.Vector3,
+  target: THREE.Vector3,
+) {
+  armGuardLine.subVectors(chest, hips);
+  const lineLengthSq = armGuardLine.lengthSq();
+  if (lineLengthSq <= ARM_GUARD_EPSILON) {
+    return target.copy(chest);
+  }
+
+  const t = THREE.MathUtils.clamp(
+    armGuardPointDelta.subVectors(point, hips).dot(armGuardLine) / lineLengthSq,
+    ARM_GUARD_LINE_PADDING,
+    1 + ARM_GUARD_LINE_PADDING,
+  );
+  return target.copy(hips).addScaledVector(armGuardLine, t);
+}
+
+function getGuardedArmPoint(
+  point: THREE.Vector3,
+  torsoPoint: THREE.Vector3,
+  shoulder: THREE.Vector3,
+  radius: number,
+  strength: number,
+  target: THREE.Vector3,
+) {
+  armGuardPush.subVectors(point, torsoPoint);
+  armGuardPush.y = 0;
+  let distance = armGuardPush.length();
+
+  if (distance >= radius) {
+    return false;
+  }
+
+  if (distance <= ARM_GUARD_EPSILON) {
+    armGuardPush.set(shoulder.x < torsoPoint.x ? -1 : 1, 0, 0);
+    distance = 0;
+  } else {
+    armGuardPush.multiplyScalar(1 / distance);
+  }
+
+  target.copy(point).addScaledVector(armGuardPush, (radius - distance) * strength);
+  return true;
+}
+
+function applyArmGuardCorrection(
+  bone: THREE.Object3D | null | undefined,
+  anchor: THREE.Vector3,
+  point: THREE.Vector3,
+  target: THREE.Vector3,
+  maxAngle: number,
+) {
+  if (!bone || !bone.parent) {
+    return false;
+  }
+
+  armGuardCurrentDirection.subVectors(point, anchor);
+  armGuardDesiredDirection.subVectors(target, anchor);
+  if (
+    armGuardCurrentDirection.lengthSq() <= ARM_GUARD_EPSILON ||
+    armGuardDesiredDirection.lengthSq() <= ARM_GUARD_EPSILON
+  ) {
+    return false;
+  }
+
+  armGuardCurrentDirection.normalize();
+  armGuardDesiredDirection.normalize();
+  armGuardWorldDelta.setFromUnitVectors(armGuardCurrentDirection, armGuardDesiredDirection);
+  const angle = 2 * Math.acos(THREE.MathUtils.clamp(armGuardWorldDelta.w, -1, 1));
+  if (angle <= ARM_GUARD_EPSILON) {
+    return false;
+  }
+
+  if (angle > maxAngle) {
+    armGuardLimitedDelta.identity().slerp(armGuardWorldDelta, maxAngle / angle);
+  } else {
+    armGuardLimitedDelta.copy(armGuardWorldDelta);
+  }
+
+  bone.parent.getWorldQuaternion(armGuardParentWorld);
+  armGuardParentInverse.copy(armGuardParentWorld).invert();
+  armGuardLocalDelta
+    .copy(armGuardParentInverse)
+    .multiply(armGuardLimitedDelta)
+    .multiply(armGuardParentWorld);
+  bone.quaternion.premultiply(armGuardLocalDelta);
+  return true;
+}
+
+function guardArmSide(
+  vrm: VRM,
+  upperArm: THREE.Object3D | null | undefined,
+  lowerArm: THREE.Object3D | null | undefined,
+  hand: THREE.Object3D | null | undefined,
+  torsoRadius: number,
+  strength: number,
+) {
+  if (!upperArm) {
+    return false;
+  }
+
+  const shoulder = getBoneWorldPosition(upperArm, armGuardShoulder);
+  if (!shoulder) {
+    return false;
+  }
+
+  let changed = false;
+  const elbow = getBoneWorldPosition(lowerArm, armGuardPoint);
+  if (elbow) {
+    const torsoPoint = getNearestTorsoPoint(elbow, armGuardHips, armGuardChest, armGuardTorsoPoint);
+    if (getGuardedArmPoint(elbow, torsoPoint, shoulder, torsoRadius, strength, armGuardTarget)) {
+      changed = applyArmGuardCorrection(
+        upperArm,
+        shoulder,
+        elbow,
+        armGuardTarget,
+        ARM_GUARD_MAX_UPPER_ANGLE * strength,
+      );
+      if (changed) {
+        vrm.scene.updateMatrixWorld(true);
+      }
+    }
+  }
+
+  const wrist = getBoneWorldPosition(hand, armGuardPoint);
+  if (wrist) {
+    const refreshedShoulder = getBoneWorldPosition(upperArm, armGuardShoulder) ?? shoulder;
+    const torsoPoint = getNearestTorsoPoint(wrist, armGuardHips, armGuardChest, armGuardTorsoPoint);
+    if (
+      getGuardedArmPoint(
+        wrist,
+        torsoPoint,
+        refreshedShoulder,
+        torsoRadius,
+        strength,
+        armGuardTarget,
+      )
+    ) {
+      const elbowAnchor = getBoneWorldPosition(lowerArm, armGuardAnchor);
+      const lowerChanged = elbowAnchor
+        ? applyArmGuardCorrection(
+            lowerArm,
+            elbowAnchor,
+            wrist,
+            armGuardTarget,
+            ARM_GUARD_MAX_LOWER_ANGLE * strength,
+          )
+        : false;
+      const upperChanged = applyArmGuardCorrection(
+        upperArm,
+        refreshedShoulder,
+        wrist,
+        armGuardTarget,
+        ARM_GUARD_MAX_HAND_ANGLE * strength,
+      );
+      changed = lowerChanged || upperChanged || changed;
+      if (lowerChanged || upperChanged) {
+        vrm.scene.updateMatrixWorld(true);
+      }
+    }
+  }
+
+  return changed;
+}
+
+function updateArmClipGuard(vrm: VRM, settings: VisualSettings) {
+  const strength = THREE.MathUtils.clamp(settings.armClipGuardStrength, 0, 1);
+  if (!settings.armClipGuard || strength <= 0) {
+    return;
+  }
+
+  const humanoid = vrm.humanoid;
+  const hips = humanoid.getNormalizedBoneNode('hips');
+  const chest =
+    humanoid.getNormalizedBoneNode('upperChest') ??
+    humanoid.getNormalizedBoneNode('chest') ??
+    humanoid.getNormalizedBoneNode('spine');
+  if (!getBoneWorldPosition(hips, armGuardHips) || !getBoneWorldPosition(chest, armGuardChest)) {
+    return;
+  }
+
+  const sceneScale = Math.max(Math.abs(vrm.scene.scale.x), Math.abs(vrm.scene.scale.y), 1);
+  const torsoRadius = THREE.MathUtils.clamp(settings.armClipTorsoRadius, 0.08, 0.55) * sceneScale;
+  const changedLeft = guardArmSide(
+    vrm,
+    humanoid.getNormalizedBoneNode('leftUpperArm'),
+    humanoid.getNormalizedBoneNode('leftLowerArm'),
+    humanoid.getNormalizedBoneNode('leftHand'),
+    torsoRadius,
+    strength,
+  );
+  const changedRight = guardArmSide(
+    vrm,
+    humanoid.getNormalizedBoneNode('rightUpperArm'),
+    humanoid.getNormalizedBoneNode('rightLowerArm'),
+    humanoid.getNormalizedBoneNode('rightHand'),
+    torsoRadius,
+    strength,
+  );
+
+  if (changedLeft || changedRight) {
+    vrm.humanoid.update();
+  }
+}
+
 function isTtsPlaybackActive(ttsManager: TtsManager) {
   return (
     (!!ttsManager.currentAudio &&
@@ -760,6 +994,7 @@ function SceneRuntime({
 
     if (vrm && active) {
       updateVrmFrame(vrm, ttsManager, delta, ttsPlaybackActive);
+      updateArmClipGuard(vrm, visualSettings);
       updateAutoGaze(vrm, gazeRuntimeRef.current, delta, visualSettings, frameState.pointer);
     } else if (vrm) {
       clearProceduralGaze(vrm, gazeRuntimeRef.current);

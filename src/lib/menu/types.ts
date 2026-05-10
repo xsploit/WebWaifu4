@@ -35,6 +35,9 @@ export type VisualSettings = {
   gazeEyeMotion: number;
   gazePointerFollow: boolean;
   gazeAudienceYOffset: number;
+  armClipGuard: boolean;
+  armClipGuardStrength: number;
+  armClipTorsoRadius: number;
   crossfadeDuration: number;
   postProcessingEnabled: boolean;
   outline: boolean;

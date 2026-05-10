@@ -295,6 +295,35 @@ export function VrmTab({
           step={0.1}
           value={visualSettings.crossfadeDuration}
         />
+        <div className="toggle-row">
+          <span>Arm Clip Guard</span>
+          <Toggle
+            checked={visualSettings.armClipGuard}
+            onChange={(checked) =>
+              updateVisualSettings(setVisualSettings, { armClipGuard: checked })
+            }
+          />
+        </div>
+        <Slider
+          label="Arm Guard"
+          max={1}
+          min={0}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { armClipGuardStrength: value })
+          }
+          step={0.05}
+          value={visualSettings.armClipGuardStrength}
+        />
+        <Slider
+          label="Torso Radius"
+          max={0.55}
+          min={0.08}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { armClipTorsoRadius: value })
+          }
+          step={0.01}
+          value={visualSettings.armClipTorsoRadius}
+        />
       </div>
 
       <div className="control-group">

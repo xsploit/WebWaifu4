@@ -308,6 +308,8 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'gazeHeadDrift',
     'gazeEyeMotion',
     'gazeAudienceYOffset',
+    'armClipGuardStrength',
+    'armClipTorsoRadius',
     'crossfadeDuration',
     'bloomStrength',
     'bloomRadius',
@@ -333,6 +335,7 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'autoBlink',
     'autoGaze',
     'gazePointerFollow',
+    'armClipGuard',
     'postProcessingEnabled',
     'outline',
     'bloom',
@@ -373,6 +376,8 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   next.gazeHeadDrift = Math.max(0, Math.min(1, next.gazeHeadDrift));
   next.gazeEyeMotion = Math.max(0, Math.min(1, next.gazeEyeMotion));
   next.gazeAudienceYOffset = Math.max(-0.25, Math.min(0.15, next.gazeAudienceYOffset));
+  next.armClipGuardStrength = Math.max(0, Math.min(1, next.armClipGuardStrength));
+  next.armClipTorsoRadius = Math.max(0.08, Math.min(0.55, next.armClipTorsoRadius));
 
   return next;
 }
