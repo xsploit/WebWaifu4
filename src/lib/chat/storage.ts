@@ -540,7 +540,12 @@ function normalizeSequencerSettings(value: unknown) {
   const persistedById = new Map(persistedPlaylist.map((entry) => [entry.id, entry]));
   const mergedDefaults = DEFAULT_ANIMATIONS.map((entry) => {
     const persisted = persistedById.get(entry.id);
-    const merged = persisted ? { ...entry, ...persisted } : { ...entry };
+    const merged = persisted
+      ? {
+          ...entry,
+          enabled: persisted.enabled,
+        }
+      : { ...entry };
     return entry.id === 'idle' && entry.url.endsWith('/Idle.fbx')
       ? { ...merged, enabled: false }
       : merged;
