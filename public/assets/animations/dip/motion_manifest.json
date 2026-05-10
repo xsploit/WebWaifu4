@@ -1,0 +1,74 @@
+[
+  {
+    "name": "idle",
+    "prompt": "A person stands idle with subtle breathing and a relaxed posture.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_idle.bvh"
+  },
+  {
+    "name": "talking",
+    "prompt": "A person talks expressively with natural upper body movement and small hand gestures.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_talking.bvh"
+  },
+  {
+    "name": "hand_gestures",
+    "prompt": "A person gestures with both hands while explaining something enthusiastically.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_hand_gestures.bvh"
+  },
+  {
+    "name": "listening",
+    "prompt": "A person listens attentively, nodding slightly and keeping a calm stance.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_listening.bvh"
+  },
+  {
+    "name": "looking",
+    "prompt": "A person looks around casually, turning the head and upper body left and right.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_looking.bvh"
+  },
+  {
+    "name": "laugh",
+    "prompt": "A person laughs happily with a quick shoulder bounce and open body language.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_laugh.bvh"
+  },
+  {
+    "name": "react",
+    "prompt": "A person reacts with surprise, leaning back slightly and lifting their hands.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_react.bvh"
+  },
+  {
+    "name": "leave",
+    "prompt": "A person steps backward, turns slightly, and leaves the conversation.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_leave.bvh"
+  },
+  {
+    "name": "thinking",
+    "prompt": "A person thinks for a moment, pausing with one hand near their chin.",
+    "frames": 80,
+    "fps": 20.0,
+    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "url": "/assets/animations/dip/dip_thinking.bvh"
+  }
+]
