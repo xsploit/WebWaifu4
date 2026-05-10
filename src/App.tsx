@@ -131,7 +131,7 @@ const BUNDLED_VRM_MODELS: BundledVrmOption[] = [
   },
   {
     id: 'hikkyc2',
-    label: 'Hikky Sample',
+    label: 'Hikari / Hikky C',
     assetPath: 'models/hikkyc2.vrm',
   },
   {
@@ -179,7 +179,18 @@ const PERSONA_SCENE_PRESETS: PersonaScenePreset[] = [
   },
   {
     id: 'hikari',
-    personaSelectors: ['hikari-jen', 'hikarijen', 'hikari', 'hickeyc', 'hikkyc', 'hikkyc2'],
+    personaSelectors: [
+      'hikari-chan',
+      'hikarichan',
+      'hikari',
+      'hikky-c',
+      'hikkyc',
+      'hikky c',
+      'hikkyc2',
+      'hikari-jen',
+      'hikarijen',
+      'hickeyc',
+    ],
     bundledModelId: HIKARI_BUNDLED_MODEL_ID,
     ttsVoice: HIKARI_PIPER_VOICE_KEY,
     backgroundImage: '/cdn-assets/backgrounds/neuro-bedroom.png',

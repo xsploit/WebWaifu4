@@ -1,5 +1,6 @@
 import {
   DEFAULT_PERSONA,
+  HIKARI_PERSONA,
   createDefaultAiSettings,
   createDefaultRelationshipMemory,
   createDefaultPersonas,
@@ -477,6 +478,15 @@ function isLegacyDefaultPersona(persona: PersonaProfile) {
   );
 }
 
+function isLegacyHikariPersona(persona: PersonaProfile) {
+  return (
+    persona.id === 'hikari-jen' ||
+    persona.name.trim().toLowerCase() === 'hikari-jen' ||
+    persona.systemPrompt.includes('Hikari-jen') ||
+    persona.systemPrompt.includes('HickeyC')
+  );
+}
+
 function mergeBuiltInPersonas(
   persistedPersonas: PersonaProfile[],
   defaultPersonas: PersonaProfile[],
@@ -485,7 +495,9 @@ function mergeBuiltInPersonas(
   const builtInIds = new Set(defaultPersonas.map((persona) => persona.id));
 
   const mergedBuiltIns = defaultPersonas.map((defaultPersona) => {
-    const persistedPersona = persistedById.get(defaultPersona.id);
+    const persistedPersona =
+      persistedById.get(defaultPersona.id) ??
+      (defaultPersona.id === HIKARI_PERSONA.id ? persistedById.get('hikari-jen') : undefined);
     if (!persistedPersona) {
       return { ...defaultPersona };
     }
@@ -497,10 +509,19 @@ function mergeBuiltInPersonas(
       };
     }
 
+    if (defaultPersona.id === HIKARI_PERSONA.id && isLegacyHikariPersona(persistedPersona)) {
+      return {
+        ...HIKARI_PERSONA,
+        userNickname: persistedPersona.userNickname ?? '',
+      };
+    }
+
     return persistedPersona;
   });
 
-  const customPersonas = persistedPersonas.filter((persona) => !builtInIds.has(persona.id));
+  const customPersonas = persistedPersonas.filter(
+    (persona) => !builtInIds.has(persona.id) && !isLegacyHikariPersona(persona),
+  );
   return [...mergedBuiltIns, ...customPersonas];
 }
 

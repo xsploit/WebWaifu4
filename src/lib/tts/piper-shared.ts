@@ -87,7 +87,17 @@ export const CUSTOM_RIKO_PIPER_VOICES: PiperVoiceProfile[] = [
     'en_US-neuro_100_32k_2259-medium',
     'Riko 32k HQ',
     '32 kHz Riko continuation from the neuro_100_32k_2259 Piper branch',
-    ['riko-32k', 'riko-hq', 'riko-2259', 'hikari', 'hikari-jen', 'hickeyc', 'hikkyc'],
+    [
+      'riko-32k',
+      'riko-hq',
+      'riko-2259',
+      'hikari',
+      'hikari-chan',
+      'hikarichan',
+      'hikky-c',
+      'hikkyc',
+      'hikky c',
+    ],
   ),
   createCustomRikoPiperVoice(
     'en_US-azuretts_fish_s2_200_32k_2259-medium',
