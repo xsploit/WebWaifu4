@@ -125,10 +125,12 @@ const BLINK_TOTAL_SECONDS = BLINK_CLOSE_SECONDS + BLINK_HOLD_SECONDS + BLINK_OPE
 const BLINK_EXPRESSION_CACHE = new WeakMap<VrmExpressionManager, readonly string[]>();
 const GAZE_CENTER_Y = 1.42;
 const GAZE_CENTER_Z = 2.2;
-const GAZE_MAX_HORIZONTAL = 0.32;
-const GAZE_MAX_VERTICAL = 0.14;
-const GAZE_DEPTH_RANGE = 0.45;
-const GAZE_LERP_RATE = 3.8;
+const GAZE_AUDIENCE_Y_BIAS = -0.08;
+const GAZE_HEAD_MAX_HORIZONTAL = 0.24;
+const GAZE_HEAD_MAX_VERTICAL = 0.1;
+const GAZE_HEAD_LERP_RATE = 2.6;
+const GAZE_EYE_MICRO_HORIZONTAL = 0.018;
+const GAZE_EYE_MICRO_VERTICAL = 0.009;
 const GAZE_OVERLAY_EPSILON = 0.002;
 
 function clampCameraVerticalOffset(value: number) {
@@ -245,7 +247,7 @@ function resetBlinkRuntimeState(state: BlinkRuntimeState, vrm: VRM | null, inter
 }
 
 function getNextGazeDelay() {
-  return 1.35 + Math.random() * 2.4;
+  return 2.4 + Math.random() * 3.4;
 }
 
 function createGazeRuntimeState(): GazeRuntimeState {
@@ -428,27 +430,29 @@ function updateAutoGaze(
 
   const safeDelta = Math.min(delta, 0.1);
   const baseY = GAZE_CENTER_Y + settings.cameraVerticalOffset;
+  const audienceY = baseY + GAZE_AUDIENCE_Y_BIAS * intensity;
   state.elapsed += safeDelta;
 
   if (state.elapsed >= state.nextAt) {
     state.elapsed = 0;
     state.nextAt = getNextGazeDelay();
     state.target.set(
-      (Math.random() * 2 - 1) * GAZE_MAX_HORIZONTAL * intensity,
-      baseY + (Math.random() * 2 - 1) * GAZE_MAX_VERTICAL * intensity,
-      GAZE_CENTER_Z + Math.random() * GAZE_DEPTH_RANGE,
+      (Math.random() * 2 - 1) * GAZE_HEAD_MAX_HORIZONTAL * intensity,
+      baseY + (Math.random() * 2 - 1) * GAZE_HEAD_MAX_VERTICAL * intensity,
+      GAZE_CENTER_Z,
     );
   }
 
   const time = performance.now() * 0.001;
+  state.current.lerp(state.target, 1 - Math.exp(-safeDelta * GAZE_HEAD_LERP_RATE));
   state.noisyTarget.set(
-    state.target.x +
-      (Math.sin(time * 0.93) * 0.025 + Math.sin(time * 2.17 + 1.7) * 0.008) * intensity,
-    state.target.y + Math.sin(time * 1.21 + 0.8) * 0.012 * intensity,
-    state.target.z,
+    (Math.sin(time * 0.93) + Math.sin(time * 2.17 + 1.7) * 0.35) *
+      GAZE_EYE_MICRO_HORIZONTAL *
+      intensity,
+    audienceY + Math.sin(time * 1.21 + 0.8) * GAZE_EYE_MICRO_VERTICAL * intensity,
+    GAZE_CENTER_Z,
   );
-  state.current.lerp(state.noisyTarget, 1 - Math.exp(-safeDelta * GAZE_LERP_RATE));
-  state.targetObject.position.copy(state.current);
+  state.targetObject.position.copy(state.noisyTarget);
   state.targetObject.updateMatrixWorld(true);
 
   if (vrm.lookAt) {
@@ -459,10 +463,10 @@ function updateAutoGaze(
   const follow = intensity * headFollow;
   const head = vrm.humanoid.getNormalizedBoneNode('head');
   const neck = vrm.humanoid.getNormalizedBoneNode('neck');
-  const xAmount = THREE.MathUtils.clamp(state.current.x / GAZE_MAX_HORIZONTAL, -1, 1);
-  const yAmount = THREE.MathUtils.clamp((state.current.y - baseY) / GAZE_MAX_VERTICAL, -1, 1);
-  const yaw = xAmount * 0.12 * follow;
-  const pitch = -yAmount * 0.045 * follow;
+  const xAmount = THREE.MathUtils.clamp(state.current.x / GAZE_HEAD_MAX_HORIZONTAL, -1, 1);
+  const yAmount = THREE.MathUtils.clamp((state.current.y - baseY) / GAZE_HEAD_MAX_VERTICAL, -1, 1);
+  const yaw = xAmount * 0.16 * follow;
+  const pitch = (0.025 - yAmount * 0.055) * follow;
 
   state.euler.set(pitch, yaw, -yaw * 0.1, 'YXZ');
   state.headTargetOverlay.setFromEuler(state.euler);
