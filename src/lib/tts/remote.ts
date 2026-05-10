@@ -85,6 +85,7 @@ function base64ToBytes(value: string) {
 
 export function createRemoteTtsStream(
   request: RemoteTtsRequest,
+  signal?: AbortSignal,
 ): AsyncIterable<RemoteTtsAudioChunk> {
   const queue: RemoteTtsAudioChunk[] = [];
   const waiters: Array<() => void> = [];
@@ -131,6 +132,7 @@ export function createRemoteTtsStream(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
+        signal,
       });
       if (!response.ok) {
         throw new Error(`Remote TTS proxy failed with HTTP ${response.status}.`);
@@ -172,6 +174,11 @@ export function createRemoteTtsStream(
       done = true;
       wake();
     } catch (error) {
+      if (signal?.aborted) {
+        done = true;
+        wake();
+        return;
+      }
       failure = error instanceof Error ? error : new Error(String(error));
       done = true;
       wake();

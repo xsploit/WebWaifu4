@@ -141,7 +141,7 @@ function parseFishSpeechFormat(): StreamBotConfig['fishSpeechFormat'] {
   if (raw === 'wav' || raw === 'pcm' || raw === 'opus' || raw === 'mp3') {
     return raw;
   }
-  return 'mp3';
+  return 'pcm';
 }
 
 function parseFishSpeechMp3Bitrate(): StreamBotConfig['fishSpeechMp3Bitrate'] {

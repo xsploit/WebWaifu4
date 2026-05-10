@@ -55,6 +55,8 @@ export class TtsManager {
   onLipSyncData: ((data: LipSyncData) => void) | null = null;
 
   private playbackQueue: Promise<void> = Promise.resolve();
+  private remoteSynthesisQueue: Promise<void> = Promise.resolve();
+  private remoteAbortControllers = new Set<AbortController>();
   private queueGeneration = 0;
 
   private disconnectAudioSource() {
@@ -214,14 +216,12 @@ export class TtsManager {
     }
 
     const generation = this.queueGeneration;
-    const remoteStream = createRemoteTtsStream({
-      ...options,
-      text: cleaned,
-    });
 
-    const playbackPromise = this.playbackQueue
+    let playbackTail: Promise<void> = Promise.resolve();
+
+    const synthesisPromise = this.remoteSynthesisQueue
       .catch(() => {
-        // Keep later queued speech moving if an earlier chunk fails.
+        // Keep later queued speech moving if an earlier remote request fails.
       })
       .then(async () => {
         if (generation !== this.queueGeneration) {
@@ -233,32 +233,67 @@ export class TtsManager {
         if (generation !== this.queueGeneration) {
           return;
         }
+        const abortController = new AbortController();
+        this.remoteAbortControllers.add(abortController);
         let playedChunk = false;
-        for await (const chunk of remoteStream) {
-          if (generation !== this.queueGeneration) {
-            return;
+        try {
+          const remoteStream = createRemoteTtsStream(
+            {
+              ...options,
+              text: cleaned,
+            },
+            abortController.signal,
+          );
+          for await (const chunk of remoteStream) {
+            if (generation !== this.queueGeneration || abortController.signal.aborted) {
+              return;
+            }
+            playedChunk = true;
+            const chunkData: ChunkData = {
+              audioBlob: chunk.audioBlob,
+              wordBoundaries: [],
+              phonemes: null,
+              text: cleaned,
+              sampleRate: chunk.sampleRate,
+            };
+            playbackTail = this.playbackQueue
+              .catch(() => {
+                // Keep later queued speech moving if an earlier audio chunk fails.
+              })
+              .then(async () => {
+                if (generation !== this.queueGeneration) {
+                  return;
+                }
+                if (!this.audioContext) {
+                  await this.initialize();
+                }
+                if (generation !== this.queueGeneration) {
+                  return;
+                }
+                await this.playAudioChunk(chunkData);
+              });
+            this.playbackQueue = playbackTail;
           }
-          playedChunk = true;
-          await this.playAudioChunk({
-            audioBlob: chunk.audioBlob,
-            wordBoundaries: [],
-            phonemes: null,
-            text: cleaned,
-            sampleRate: chunk.sampleRate,
-          });
+        } finally {
+          this.remoteAbortControllers.delete(abortController);
         }
-        if (!playedChunk) {
+        if (!playedChunk && generation === this.queueGeneration && !abortController.signal.aborted) {
           throw new Error('Remote TTS returned no audio chunks.');
         }
       });
 
-    this.playbackQueue = playbackPromise;
-    return playbackPromise;
+    this.remoteSynthesisQueue = synthesisPromise;
+    return synthesisPromise.then(() => playbackTail);
   }
 
   resetSpeechQueue() {
     this.queueGeneration += 1;
     this.playbackQueue = Promise.resolve();
+    this.remoteSynthesisQueue = Promise.resolve();
+    for (const controller of this.remoteAbortControllers) {
+      controller.abort();
+    }
+    this.remoteAbortControllers.clear();
   }
 
   stop() {
