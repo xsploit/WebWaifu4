@@ -19,6 +19,8 @@ import {
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
 import {
   buildMemoryAgentMessages,
+  MEMORY_AGENT_INTERVAL_TURNS,
+  MEMORY_AGENT_JSON_FORMAT,
   getMemoryAgentModelCandidates,
   shouldRunMemoryAgent,
 } from './lib/chat/memory-agent';
@@ -247,6 +249,10 @@ type AppCompletionMessage = {
   content: string;
 };
 
+type AppCompletionResponseFormat = {
+  type: 'json_object';
+};
+
 type AppCompletionResponse = {
   choices: Array<{
     message: {
@@ -433,6 +439,7 @@ async function requestChatCompletion({
   mode = 'direct',
   model,
   onTextDelta,
+  responseFormat,
   stateKey,
   stateScope = 'chat',
   temperature,
@@ -445,6 +452,7 @@ async function requestChatCompletion({
   mode?: 'direct' | 'batch';
   model: string;
   onTextDelta?: (delta: string) => void;
+  responseFormat?: AppCompletionResponseFormat;
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
   temperature: number;
@@ -474,6 +482,7 @@ async function requestChatCompletion({
       messages,
       mode,
       model,
+      responseFormat,
       stateKey,
       stateScope,
       stream: Boolean(onTextDelta),
@@ -799,6 +808,25 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null) {
   ]
     .filter((value): value is string => Boolean(value))
     .join('\n\n');
+}
+
+function buildTwitchMemoryMessage(job: TwitchAiJob) {
+  if (job.mode === 'direct') {
+    const [target] = job.messages;
+    return `Twitch viewer ${target?.displayName ?? 'chat'}: ${target?.text ?? ''}`.trim();
+  }
+
+  return `Twitch batch:\n${formatTwitchMessages(job.messages, 30)}`;
+}
+
+function getMemoryProgressStatus(memory: RelationshipMemory) {
+  const turnsSinceDiary = memory.turnCount - memory.lastDiaryTurnCount;
+  const remainingTurns = Math.max(0, MEMORY_AGENT_INTERVAL_TURNS - turnsSinceDiary);
+  if (remainingTurns === 0) {
+    return 'Memory updated. Diary pass queued.';
+  }
+
+  return `Memory updated. Diary pass in ${remainingTurns} turn${remainingTurns === 1 ? '' : 's'}.`;
 }
 
 function getRunAiErrorMessage(error: unknown, context: 'chat' | 'models' = 'chat') {
@@ -2249,6 +2277,7 @@ function App() {
                 activePersona ?? DEFAULT_PERSONA,
               ),
               maxTokens: 260,
+              responseFormat: MEMORY_AGENT_JSON_FORMAT,
               stateKey: getMemoryStateKey(
                 getTwitchConversationStateKey(twitchChannel, activePersona ?? DEFAULT_PERSONA),
               ),
@@ -2419,6 +2448,7 @@ function App() {
         );
         setChatHistory(updatedHistory);
         setRelationshipMemory(nextRelationshipMemory);
+        setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory);
         setChatGenerating(false);
       } catch (error) {
@@ -2947,9 +2977,16 @@ function App() {
         DEFAULT_RUN_MODEL,
       );
       const prompt = buildTwitchAiPrompt(job, persona);
+      const twitchUserContent = buildTwitchMemoryMessage(job);
+      const twitchUserMessage = createChatMessage('user', twitchUserContent);
+      const promptMessage = createChatMessage('user', prompt);
       const requestHistory = trimChatHistory([
         ...chatHistoryRef.current,
-        createChatMessage('user', prompt),
+        promptMessage,
+      ]);
+      const memoryHistory = trimChatHistory([
+        ...chatHistoryRef.current,
+        twitchUserMessage,
       ]);
       const assistantMessage = createChatMessage('assistant', '');
       const speechPlayer = createStreamingAssistantPlayer(
@@ -2957,7 +2994,7 @@ function App() {
         settings.ttsEnabled && settings.ttsAutoSpeak,
         `${persona.name} Twitch reply`,
       );
-      setChatHistory((current) => trimChatHistory([...current, assistantMessage]));
+      setChatHistory((current) => trimChatHistory([...current, twitchUserMessage, assistantMessage]));
 
       try {
         const response = await requestChatCompletion({
@@ -2984,18 +3021,28 @@ function App() {
         if (!assistantContent) {
           throw new Error('RUN AI returned an empty Twitch reply.');
         }
+        const completedAssistantMessage = {
+          ...assistantMessage,
+          content: assistantContent,
+        };
+        const updatedHistory = trimChatHistory([...memoryHistory, completedAssistantMessage]);
         setChatHistory((current) =>
           trimChatHistory(
             current.map((message) =>
               message.id === assistantMessage.id
-                ? {
-                    ...assistantMessage,
-                    content: assistantContent,
-                  }
+                ? completedAssistantMessage
                 : message,
             ),
           ),
         );
+        const nextRelationshipMemory = updateRelationshipMemory(
+          relationshipMemoryRef.current,
+          updatedHistory,
+          twitchUserContent,
+        );
+        setRelationshipMemory(nextRelationshipMemory);
+        setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
+        scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory);
       } catch (error) {
         const message = getRunAiErrorMessage(error, 'chat');
         appendSystemMessage(`[Twitch] AI reply failed: ${message}`);
@@ -3006,6 +3053,7 @@ function App() {
       appendSystemMessage,
       createStreamingAssistantPlayer,
       runtimeContext,
+      scheduleRelationshipMemoryRefresh,
       twitchChannel,
     ],
   );

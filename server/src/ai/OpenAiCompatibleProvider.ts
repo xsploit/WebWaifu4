@@ -43,6 +43,9 @@ export class OpenAiCompatibleProvider implements ChatProvider {
         messages: request.messages,
         max_tokens: request.maxTokens ?? this.options.maxTokens,
         temperature: request.temperature ?? this.options.temperature,
+        ...(request.responseFormat?.type === 'json_object'
+          ? { response_format: { type: 'json_object' } }
+          : {}),
       }),
     });
 

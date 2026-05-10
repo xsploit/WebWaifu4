@@ -504,6 +504,14 @@ export class OpenAiResponsesProvider implements ChatProvider {
       store: this.options.store,
     };
 
+    if (request.responseFormat?.type === 'json_object') {
+      payload.text = {
+        format: {
+          type: 'json_object',
+        },
+      };
+    }
+
     if (supportsTemperature(this.options.model, reasoningEffort)) {
       payload.temperature = normalizeTemperature(request.temperature, this.options.temperature);
     }

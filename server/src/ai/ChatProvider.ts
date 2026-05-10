@@ -11,6 +11,9 @@ export type ChatProviderRequest = {
   messages: ChatProviderMessage[];
   sourceMessages: TwitchChatMessage[];
   disableState?: boolean;
+  responseFormat?: {
+    type: 'json_object';
+  };
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
   target?: TwitchChatMessage;

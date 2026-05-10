@@ -144,6 +144,15 @@ function normalizeStateScope(value: unknown): 'chat' | 'memory' {
   return value === 'memory' ? 'memory' : 'chat';
 }
 
+function normalizeResponseFormat(value: unknown): ChatProviderRequest['responseFormat'] {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const source = value as { type?: unknown };
+  return source.type === 'json_object' ? { type: 'json_object' } : undefined;
+}
+
 function normalizeStateKey(value: unknown, fallback: string) {
   const raw = typeof value === 'string' && value.trim() ? value : fallback;
   const key = raw
@@ -192,6 +201,7 @@ const httpServer = createServer(async (request, response) => {
         model?: string;
         messages?: unknown;
         maxTokens?: number;
+        responseFormat?: unknown;
         stateKey?: string;
         stateScope?: 'chat' | 'memory';
         stream?: boolean;
@@ -214,6 +224,7 @@ const httpServer = createServer(async (request, response) => {
         messages,
         sourceMessages: [],
         maxTokens: body.maxTokens,
+        responseFormat: normalizeResponseFormat(body.responseFormat),
         stateKey: normalizeStateKey(body.stateKey, `twitch:${config.twitchChannel}:persona:riko`),
         stateScope: normalizeStateScope(body.stateScope),
         temperature: body.temperature,
