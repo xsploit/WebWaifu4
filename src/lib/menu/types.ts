@@ -25,6 +25,9 @@ export type VisualSettings = {
   modelVerticalOffset: number;
   modelScale: number;
   realisticMode: boolean;
+  autoBlink: boolean;
+  blinkInterval: number;
+  blinkIntensity: number;
   crossfadeDuration: number;
   postProcessingEnabled: boolean;
   outline: boolean;

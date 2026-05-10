@@ -49,6 +49,14 @@ type SceneRuntimeProps = {
   vrm: VRM | null;
 };
 
+type VrmExpressionManager = NonNullable<VRM['expressionManager']>;
+
+type BlinkRuntimeState = {
+  elapsed: number;
+  nextAt: number;
+  value: number;
+};
+
 const SCALE_LIMITS = {
   min: 0.25,
   max: 4,
@@ -91,6 +99,11 @@ const ROUTELET_PIXEL_RATIO = ROUTELET_RENDER_MODE
       2,
     )
   : 1;
+const BLINK_CLOSE_SECONDS = 0.045;
+const BLINK_HOLD_SECONDS = 0.028;
+const BLINK_OPEN_SECONDS = 0.105;
+const BLINK_TOTAL_SECONDS = BLINK_CLOSE_SECONDS + BLINK_HOLD_SECONDS + BLINK_OPEN_SECONDS;
+const BLINK_EXPRESSION_CACHE = new WeakMap<VrmExpressionManager, readonly string[]>();
 
 function clampCameraVerticalOffset(value: number) {
   return THREE.MathUtils.clamp(
@@ -181,6 +194,100 @@ function applyPostProcessingSettings(refs: PostProcessingRefs, visualSettings: V
   refs.outlinePass.enabled = false;
 }
 
+function easeBlink(value: number) {
+  return 0.5 - Math.cos(Math.PI * THREE.MathUtils.clamp(value, 0, 1)) * 0.5;
+}
+
+function getNextBlinkDelay(interval: number) {
+  const safeInterval = THREE.MathUtils.clamp(interval, 1.5, 10);
+  return THREE.MathUtils.clamp(safeInterval * (0.7 + Math.random() * 0.7), 1, 12);
+}
+
+function createBlinkRuntimeState(): BlinkRuntimeState {
+  return {
+    elapsed: 0,
+    nextAt: getNextBlinkDelay(4.2),
+    value: 0,
+  };
+}
+
+function resetBlinkRuntimeState(state: BlinkRuntimeState, vrm: VRM | null, interval: number) {
+  state.elapsed = 0;
+  state.nextAt = getNextBlinkDelay(interval);
+  state.value = 0;
+  setBlinkExpression(vrm, 0);
+}
+
+function getBlinkExpressionNames(manager: VrmExpressionManager) {
+  const cached = BLINK_EXPRESSION_CACHE.get(manager);
+  if (cached) {
+    return cached;
+  }
+
+  let names: readonly string[] = ['blink'];
+  if (!manager.getExpression('blink')) {
+    const fallbackNames = ['blinkLeft', 'blinkRight'].filter((name) =>
+      Boolean(manager.getExpression(name)),
+    );
+    names = fallbackNames.length > 0 ? fallbackNames : names;
+  }
+
+  BLINK_EXPRESSION_CACHE.set(manager, names);
+  return names;
+}
+
+function setBlinkExpression(vrm: VRM | null, value: number) {
+  const manager = vrm?.expressionManager;
+  if (!manager) {
+    return;
+  }
+
+  const nextValue = THREE.MathUtils.clamp(value, 0, 1);
+  const expressionNames = getBlinkExpressionNames(manager);
+  for (const expressionName of expressionNames) {
+    manager.setValue(expressionName, nextValue);
+  }
+}
+
+function updateAutoBlink(
+  vrm: VRM,
+  state: BlinkRuntimeState,
+  delta: number,
+  settings: VisualSettings,
+) {
+  if (!settings.autoBlink || settings.blinkIntensity <= 0) {
+    if (state.value !== 0) {
+      state.value = 0;
+      setBlinkExpression(vrm, 0);
+    }
+    return;
+  }
+
+  state.elapsed += Math.min(delta, 0.1);
+  let nextValue = 0;
+
+  if (state.elapsed >= state.nextAt) {
+    const blinkTime = state.elapsed - state.nextAt;
+    if (blinkTime <= BLINK_CLOSE_SECONDS) {
+      nextValue = easeBlink(blinkTime / BLINK_CLOSE_SECONDS);
+    } else if (blinkTime <= BLINK_CLOSE_SECONDS + BLINK_HOLD_SECONDS) {
+      nextValue = 1;
+    } else if (blinkTime <= BLINK_TOTAL_SECONDS) {
+      nextValue =
+        1 - easeBlink((blinkTime - BLINK_CLOSE_SECONDS - BLINK_HOLD_SECONDS) / BLINK_OPEN_SECONDS);
+    } else {
+      state.elapsed = 0;
+      state.nextAt = getNextBlinkDelay(settings.blinkInterval);
+    }
+  }
+
+  const weightedValue = nextValue * settings.blinkIntensity;
+  if (Math.abs(weightedValue - state.value) > 0.001) {
+    state.value = weightedValue;
+    setBlinkExpression(vrm, weightedValue);
+  }
+}
+
 function updateVrmFrame(vrm: VRM, ttsManager: TtsManager, delta: number) {
   updateLipSync(vrm, ttsManager);
 
@@ -222,6 +329,7 @@ function SceneRuntime({
   const cameraLookAtTargetRef = useRef(
     initialPreset.target.clone().add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0)),
   );
+  const blinkRuntimeRef = useRef(createBlinkRuntimeState());
 
   useEffect(() => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
@@ -299,6 +407,10 @@ function SceneRuntime({
     postProcessingRef.current.outlinePass.selectedObjects = vrm ? [vrm.scene] : [];
   }, [vrm]);
 
+  useEffect(() => {
+    resetBlinkRuntimeState(blinkRuntimeRef.current, vrm, visualSettings.blinkInterval);
+  }, [visualSettings.autoBlink, visualSettings.blinkInterval, vrm]);
+
   useFrame((_state, delta) => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
     const cameraLerp = 1 - Math.exp(-delta * 9);
@@ -312,6 +424,7 @@ function SceneRuntime({
     }
 
     if (vrm && active) {
+      updateAutoBlink(vrm, blinkRuntimeRef.current, delta, visualSettings);
       updateVrmFrame(vrm, ttsManager, delta);
     }
 

@@ -98,8 +98,7 @@ export function VrmTab({
           className="select-tech"
           onChange={(event) =>
             updateVisualSettings(setVisualSettings, {
-              cameraViewMode:
-                event.target.value === 'half-body' ? 'half-body' : 'full-body',
+              cameraViewMode: event.target.value === 'half-body' ? 'half-body' : 'full-body',
             })
           }
           value={visualSettings.cameraViewMode}
@@ -203,6 +202,29 @@ export function VrmTab({
 
       <div className="control-group">
         <div className="control-label">Animation Quality</div>
+        <div className="toggle-row">
+          <span>Auto Blink</span>
+          <Toggle
+            checked={visualSettings.autoBlink}
+            onChange={(checked) => updateVisualSettings(setVisualSettings, { autoBlink: checked })}
+          />
+        </div>
+        <Slider
+          label="Blink Every"
+          max={10}
+          min={1.5}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { blinkInterval: value })}
+          step={0.1}
+          value={visualSettings.blinkInterval}
+        />
+        <Slider
+          label="Blink Strength"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { blinkIntensity: value })}
+          step={0.05}
+          value={visualSettings.blinkIntensity}
+        />
         <Slider
           label="Crossfade"
           max={3}

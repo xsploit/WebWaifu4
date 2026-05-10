@@ -300,6 +300,8 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'cameraVerticalOffset',
     'modelVerticalOffset',
     'modelScale',
+    'blinkInterval',
+    'blinkIntensity',
     'crossfadeDuration',
     'bloomStrength',
     'bloomRadius',
@@ -322,6 +324,7 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   ];
   const booleanKeys: Array<keyof VisualSettings> = [
     'realisticMode',
+    'autoBlink',
     'postProcessingEnabled',
     'outline',
     'bloom',
@@ -355,6 +358,8 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   next.cameraVerticalOffset = Math.max(-0.9, Math.min(0.9, next.cameraVerticalOffset));
   next.modelVerticalOffset = Math.max(-2, Math.min(2, next.modelVerticalOffset));
   next.modelScale = Math.max(0.25, Math.min(4, next.modelScale));
+  next.blinkInterval = Math.max(1.5, Math.min(10, next.blinkInterval));
+  next.blinkIntensity = Math.max(0, Math.min(1, next.blinkIntensity));
 
   return next;
 }
