@@ -57,6 +57,25 @@ type BlinkRuntimeState = {
   value: number;
 };
 
+type GazeRuntimeState = {
+  elapsed: number;
+  nextAt: number;
+  target: THREE.Vector3;
+  current: THREE.Vector3;
+  noisyTarget: THREE.Vector3;
+  targetObject: THREE.Object3D;
+  headOverlay: THREE.Quaternion;
+  headResult: THREE.Quaternion;
+  headTargetOverlay: THREE.Quaternion;
+  neckOverlay: THREE.Quaternion;
+  neckResult: THREE.Quaternion;
+  neckTargetOverlay: THREE.Quaternion;
+  inverseOverlay: THREE.Quaternion;
+  hasHeadOverlay: boolean;
+  hasNeckOverlay: boolean;
+  euler: THREE.Euler;
+};
+
 const SCALE_LIMITS = {
   min: 0.25,
   max: 4,
@@ -104,6 +123,13 @@ const BLINK_HOLD_SECONDS = 0.028;
 const BLINK_OPEN_SECONDS = 0.105;
 const BLINK_TOTAL_SECONDS = BLINK_CLOSE_SECONDS + BLINK_HOLD_SECONDS + BLINK_OPEN_SECONDS;
 const BLINK_EXPRESSION_CACHE = new WeakMap<VrmExpressionManager, readonly string[]>();
+const GAZE_CENTER_Y = 1.42;
+const GAZE_CENTER_Z = 2.2;
+const GAZE_MAX_HORIZONTAL = 0.32;
+const GAZE_MAX_VERTICAL = 0.14;
+const GAZE_DEPTH_RANGE = 0.45;
+const GAZE_LERP_RATE = 3.8;
+const GAZE_OVERLAY_EPSILON = 0.002;
 
 function clampCameraVerticalOffset(value: number) {
   return THREE.MathUtils.clamp(
@@ -218,6 +244,105 @@ function resetBlinkRuntimeState(state: BlinkRuntimeState, vrm: VRM | null, inter
   setBlinkExpression(vrm, 0);
 }
 
+function getNextGazeDelay() {
+  return 1.35 + Math.random() * 2.4;
+}
+
+function createGazeRuntimeState(): GazeRuntimeState {
+  const targetObject = new THREE.Object3D();
+  targetObject.name = 'YourWifeyProceduralGazeTarget';
+  targetObject.position.set(0, GAZE_CENTER_Y, GAZE_CENTER_Z);
+
+  return {
+    elapsed: 0,
+    nextAt: getNextGazeDelay(),
+    target: new THREE.Vector3(0, GAZE_CENTER_Y, GAZE_CENTER_Z),
+    current: new THREE.Vector3(0, GAZE_CENTER_Y, GAZE_CENTER_Z),
+    noisyTarget: new THREE.Vector3(0, GAZE_CENTER_Y, GAZE_CENTER_Z),
+    targetObject,
+    headOverlay: new THREE.Quaternion(),
+    headResult: new THREE.Quaternion(),
+    headTargetOverlay: new THREE.Quaternion(),
+    neckOverlay: new THREE.Quaternion(),
+    neckResult: new THREE.Quaternion(),
+    neckTargetOverlay: new THREE.Quaternion(),
+    inverseOverlay: new THREE.Quaternion(),
+    hasHeadOverlay: false,
+    hasNeckOverlay: false,
+    euler: new THREE.Euler(0, 0, 0, 'YXZ'),
+  };
+}
+
+function removeProceduralOverlay(
+  bone: THREE.Object3D | null | undefined,
+  state: GazeRuntimeState,
+  part: 'head' | 'neck',
+) {
+  const hasOverlay = part === 'head' ? state.hasHeadOverlay : state.hasNeckOverlay;
+  if (!hasOverlay) {
+    return;
+  }
+
+  const overlay = part === 'head' ? state.headOverlay : state.neckOverlay;
+  const result = part === 'head' ? state.headResult : state.neckResult;
+  if (bone && bone.quaternion.angleTo(result) < GAZE_OVERLAY_EPSILON) {
+    state.inverseOverlay.copy(overlay).invert();
+    bone.quaternion.multiply(state.inverseOverlay);
+  }
+
+  if (part === 'head') {
+    state.hasHeadOverlay = false;
+  } else {
+    state.hasNeckOverlay = false;
+  }
+}
+
+function applyProceduralOverlay(
+  bone: THREE.Object3D | null | undefined,
+  state: GazeRuntimeState,
+  part: 'head' | 'neck',
+  overlay: THREE.Quaternion,
+) {
+  removeProceduralOverlay(bone, state, part);
+  if (!bone) {
+    return;
+  }
+
+  bone.quaternion.multiply(overlay);
+  if (part === 'head') {
+    state.headOverlay.copy(overlay);
+    state.headResult.copy(bone.quaternion);
+    state.hasHeadOverlay = true;
+  } else {
+    state.neckOverlay.copy(overlay);
+    state.neckResult.copy(bone.quaternion);
+    state.hasNeckOverlay = true;
+  }
+}
+
+function clearProceduralGaze(vrm: VRM | null, state: GazeRuntimeState) {
+  const head = vrm?.humanoid?.getNormalizedBoneNode('head');
+  const neck = vrm?.humanoid?.getNormalizedBoneNode('neck');
+  removeProceduralOverlay(head, state, 'head');
+  removeProceduralOverlay(neck, state, 'neck');
+
+  if (vrm?.lookAt?.target === state.targetObject) {
+    vrm.lookAt.target = null;
+  }
+}
+
+function resetGazeRuntimeState(state: GazeRuntimeState, vrm: VRM | null, settings: VisualSettings) {
+  clearProceduralGaze(vrm, state);
+  const baseY = GAZE_CENTER_Y + settings.cameraVerticalOffset;
+  state.elapsed = 0;
+  state.nextAt = getNextGazeDelay();
+  state.target.set(0, baseY, GAZE_CENTER_Z);
+  state.current.copy(state.target);
+  state.noisyTarget.copy(state.target);
+  state.targetObject.position.copy(state.current);
+  state.targetObject.updateMatrixWorld(true);
+}
+
 function getBlinkExpressionNames(manager: VrmExpressionManager) {
   const cached = BLINK_EXPRESSION_CACHE.get(manager);
   if (cached) {
@@ -288,6 +413,66 @@ function updateAutoBlink(
   }
 }
 
+function updateAutoGaze(
+  vrm: VRM,
+  state: GazeRuntimeState,
+  delta: number,
+  settings: VisualSettings,
+) {
+  const intensity = THREE.MathUtils.clamp(settings.gazeIntensity, 0, 1);
+  const headFollow = THREE.MathUtils.clamp(settings.gazeHeadFollow, 0, 1);
+  if (!settings.autoGaze || intensity <= 0) {
+    clearProceduralGaze(vrm, state);
+    return;
+  }
+
+  const safeDelta = Math.min(delta, 0.1);
+  const baseY = GAZE_CENTER_Y + settings.cameraVerticalOffset;
+  state.elapsed += safeDelta;
+
+  if (state.elapsed >= state.nextAt) {
+    state.elapsed = 0;
+    state.nextAt = getNextGazeDelay();
+    state.target.set(
+      (Math.random() * 2 - 1) * GAZE_MAX_HORIZONTAL * intensity,
+      baseY + (Math.random() * 2 - 1) * GAZE_MAX_VERTICAL * intensity,
+      GAZE_CENTER_Z + Math.random() * GAZE_DEPTH_RANGE,
+    );
+  }
+
+  const time = performance.now() * 0.001;
+  state.noisyTarget.set(
+    state.target.x +
+      (Math.sin(time * 0.93) * 0.025 + Math.sin(time * 2.17 + 1.7) * 0.008) * intensity,
+    state.target.y + Math.sin(time * 1.21 + 0.8) * 0.012 * intensity,
+    state.target.z,
+  );
+  state.current.lerp(state.noisyTarget, 1 - Math.exp(-safeDelta * GAZE_LERP_RATE));
+  state.targetObject.position.copy(state.current);
+  state.targetObject.updateMatrixWorld(true);
+
+  if (vrm.lookAt) {
+    vrm.lookAt.autoUpdate = true;
+    vrm.lookAt.target = state.targetObject;
+  }
+
+  const follow = intensity * headFollow;
+  const head = vrm.humanoid.getNormalizedBoneNode('head');
+  const neck = vrm.humanoid.getNormalizedBoneNode('neck');
+  const xAmount = THREE.MathUtils.clamp(state.current.x / GAZE_MAX_HORIZONTAL, -1, 1);
+  const yAmount = THREE.MathUtils.clamp((state.current.y - baseY) / GAZE_MAX_VERTICAL, -1, 1);
+  const yaw = xAmount * 0.12 * follow;
+  const pitch = -yAmount * 0.045 * follow;
+
+  state.euler.set(pitch, yaw, -yaw * 0.1, 'YXZ');
+  state.headTargetOverlay.setFromEuler(state.euler);
+  applyProceduralOverlay(head, state, 'head', state.headTargetOverlay);
+
+  state.euler.set(pitch * 0.3, yaw * 0.35, 0, 'YXZ');
+  state.neckTargetOverlay.setFromEuler(state.euler);
+  applyProceduralOverlay(neck, state, 'neck', state.neckTargetOverlay);
+}
+
 function isTtsPlaybackActive(ttsManager: TtsManager) {
   return (
     (!!ttsManager.currentAudio &&
@@ -346,6 +531,7 @@ function SceneRuntime({
     initialPreset.target.clone().add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0)),
   );
   const blinkRuntimeRef = useRef(createBlinkRuntimeState());
+  const gazeRuntimeRef = useRef(createGazeRuntimeState());
 
   useEffect(() => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
@@ -427,6 +613,11 @@ function SceneRuntime({
     resetBlinkRuntimeState(blinkRuntimeRef.current, vrm, visualSettings.blinkInterval);
   }, [visualSettings.autoBlink, visualSettings.blinkInterval, vrm]);
 
+  useEffect(() => {
+    resetGazeRuntimeState(gazeRuntimeRef.current, vrm, visualSettings);
+    return () => clearProceduralGaze(vrm, gazeRuntimeRef.current);
+  }, [visualSettings.autoGaze, vrm]);
+
   useFrame((_state, delta) => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
     const ttsPlaybackActive = isTtsPlaybackActive(ttsManager);
@@ -448,7 +639,10 @@ function SceneRuntime({
     }
 
     if (vrm && active) {
+      updateAutoGaze(vrm, gazeRuntimeRef.current, delta, visualSettings);
       updateVrmFrame(vrm, ttsManager, delta, ttsPlaybackActive);
+    } else if (vrm) {
+      clearProceduralGaze(vrm, gazeRuntimeRef.current);
     }
 
     const postProcessing = postProcessingRef.current;

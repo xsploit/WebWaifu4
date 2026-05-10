@@ -225,6 +225,29 @@ export function VrmTab({
           step={0.05}
           value={visualSettings.blinkIntensity}
         />
+        <div className="toggle-row">
+          <span>Auto Gaze</span>
+          <Toggle
+            checked={visualSettings.autoGaze}
+            onChange={(checked) => updateVisualSettings(setVisualSettings, { autoGaze: checked })}
+          />
+        </div>
+        <Slider
+          label="Gaze Motion"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeIntensity: value })}
+          step={0.05}
+          value={visualSettings.gazeIntensity}
+        />
+        <Slider
+          label="Head Follow"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeHeadFollow: value })}
+          step={0.05}
+          value={visualSettings.gazeHeadFollow}
+        />
         <Slider
           label="Crossfade"
           max={3}

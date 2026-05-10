@@ -28,6 +28,9 @@ export type VisualSettings = {
   autoBlink: boolean;
   blinkInterval: number;
   blinkIntensity: number;
+  autoGaze: boolean;
+  gazeIntensity: number;
+  gazeHeadFollow: number;
   crossfadeDuration: number;
   postProcessingEnabled: boolean;
   outline: boolean;

@@ -302,6 +302,8 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'modelScale',
     'blinkInterval',
     'blinkIntensity',
+    'gazeIntensity',
+    'gazeHeadFollow',
     'crossfadeDuration',
     'bloomStrength',
     'bloomRadius',
@@ -325,6 +327,7 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   const booleanKeys: Array<keyof VisualSettings> = [
     'realisticMode',
     'autoBlink',
+    'autoGaze',
     'postProcessingEnabled',
     'outline',
     'bloom',
@@ -360,6 +363,8 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   next.modelScale = Math.max(0.25, Math.min(4, next.modelScale));
   next.blinkInterval = Math.max(1.5, Math.min(10, next.blinkInterval));
   next.blinkIntensity = Math.max(0, Math.min(1, next.blinkIntensity));
+  next.gazeIntensity = Math.max(0, Math.min(1, next.gazeIntensity));
+  next.gazeHeadFollow = Math.max(0, Math.min(1, next.gazeHeadFollow));
 
   return next;
 }
