@@ -331,6 +331,7 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'realisticMode',
     'autoBlink',
     'autoGaze',
+    'gazePointerFollow',
     'postProcessingEnabled',
     'outline',
     'bloom',

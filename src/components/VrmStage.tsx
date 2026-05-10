@@ -57,6 +57,8 @@ type BlinkRuntimeState = {
   value: number;
 };
 
+type GazeOverlayPart = 'head' | 'neck' | 'leftEye' | 'rightEye';
+
 type GazeRuntimeState = {
   elapsed: number;
   nextAt: number;
@@ -70,9 +72,17 @@ type GazeRuntimeState = {
   neckOverlay: THREE.Quaternion;
   neckResult: THREE.Quaternion;
   neckTargetOverlay: THREE.Quaternion;
+  leftEyeOverlay: THREE.Quaternion;
+  leftEyeResult: THREE.Quaternion;
+  leftEyeTargetOverlay: THREE.Quaternion;
+  rightEyeOverlay: THREE.Quaternion;
+  rightEyeResult: THREE.Quaternion;
+  rightEyeTargetOverlay: THREE.Quaternion;
   inverseOverlay: THREE.Quaternion;
   hasHeadOverlay: boolean;
   hasNeckOverlay: boolean;
+  hasLeftEyeOverlay: boolean;
+  hasRightEyeOverlay: boolean;
   euler: THREE.Euler;
 };
 
@@ -270,9 +280,17 @@ function createGazeRuntimeState(): GazeRuntimeState {
     neckOverlay: new THREE.Quaternion(),
     neckResult: new THREE.Quaternion(),
     neckTargetOverlay: new THREE.Quaternion(),
+    leftEyeOverlay: new THREE.Quaternion(),
+    leftEyeResult: new THREE.Quaternion(),
+    leftEyeTargetOverlay: new THREE.Quaternion(),
+    rightEyeOverlay: new THREE.Quaternion(),
+    rightEyeResult: new THREE.Quaternion(),
+    rightEyeTargetOverlay: new THREE.Quaternion(),
     inverseOverlay: new THREE.Quaternion(),
     hasHeadOverlay: false,
     hasNeckOverlay: false,
+    hasLeftEyeOverlay: false,
+    hasRightEyeOverlay: false,
     euler: new THREE.Euler(0, 0, 0, 'YXZ'),
   };
 }
@@ -280,15 +298,29 @@ function createGazeRuntimeState(): GazeRuntimeState {
 function removeProceduralOverlay(
   bone: THREE.Object3D | null | undefined,
   state: GazeRuntimeState,
-  part: 'head' | 'neck',
+  part: GazeOverlayPart,
 ) {
-  const hasOverlay = part === 'head' ? state.hasHeadOverlay : state.hasNeckOverlay;
+  let hasOverlay = state.hasHeadOverlay;
+  let overlay = state.headOverlay;
+  let result = state.headResult;
+  if (part === 'neck') {
+    hasOverlay = state.hasNeckOverlay;
+    overlay = state.neckOverlay;
+    result = state.neckResult;
+  } else if (part === 'leftEye') {
+    hasOverlay = state.hasLeftEyeOverlay;
+    overlay = state.leftEyeOverlay;
+    result = state.leftEyeResult;
+  } else if (part === 'rightEye') {
+    hasOverlay = state.hasRightEyeOverlay;
+    overlay = state.rightEyeOverlay;
+    result = state.rightEyeResult;
+  }
+
   if (!hasOverlay) {
     return;
   }
 
-  const overlay = part === 'head' ? state.headOverlay : state.neckOverlay;
-  const result = part === 'head' ? state.headResult : state.neckResult;
   if (bone && bone.quaternion.angleTo(result) < GAZE_OVERLAY_EPSILON) {
     state.inverseOverlay.copy(overlay).invert();
     bone.quaternion.multiply(state.inverseOverlay);
@@ -296,15 +328,19 @@ function removeProceduralOverlay(
 
   if (part === 'head') {
     state.hasHeadOverlay = false;
-  } else {
+  } else if (part === 'neck') {
     state.hasNeckOverlay = false;
+  } else if (part === 'leftEye') {
+    state.hasLeftEyeOverlay = false;
+  } else {
+    state.hasRightEyeOverlay = false;
   }
 }
 
 function applyProceduralOverlay(
   bone: THREE.Object3D | null | undefined,
   state: GazeRuntimeState,
-  part: 'head' | 'neck',
+  part: GazeOverlayPart,
   overlay: THREE.Quaternion,
 ) {
   removeProceduralOverlay(bone, state, part);
@@ -317,18 +353,30 @@ function applyProceduralOverlay(
     state.headOverlay.copy(overlay);
     state.headResult.copy(bone.quaternion);
     state.hasHeadOverlay = true;
-  } else {
+  } else if (part === 'neck') {
     state.neckOverlay.copy(overlay);
     state.neckResult.copy(bone.quaternion);
     state.hasNeckOverlay = true;
+  } else if (part === 'leftEye') {
+    state.leftEyeOverlay.copy(overlay);
+    state.leftEyeResult.copy(bone.quaternion);
+    state.hasLeftEyeOverlay = true;
+  } else {
+    state.rightEyeOverlay.copy(overlay);
+    state.rightEyeResult.copy(bone.quaternion);
+    state.hasRightEyeOverlay = true;
   }
 }
 
 function clearProceduralGaze(vrm: VRM | null, state: GazeRuntimeState) {
   const head = vrm?.humanoid?.getNormalizedBoneNode('head');
   const neck = vrm?.humanoid?.getNormalizedBoneNode('neck');
+  const leftEye = vrm?.humanoid?.getNormalizedBoneNode('leftEye');
+  const rightEye = vrm?.humanoid?.getNormalizedBoneNode('rightEye');
   removeProceduralOverlay(head, state, 'head');
   removeProceduralOverlay(neck, state, 'neck');
+  removeProceduralOverlay(leftEye, state, 'leftEye');
+  removeProceduralOverlay(rightEye, state, 'rightEye');
 
   if (vrm?.lookAt?.target === state.targetObject) {
     vrm.lookAt.target = null;
@@ -422,12 +470,16 @@ function updateAutoGaze(
   state: GazeRuntimeState,
   delta: number,
   settings: VisualSettings,
+  pointer?: THREE.Vector2,
 ) {
   const intensity = THREE.MathUtils.clamp(settings.gazeIntensity, 0, 1);
   const headFollow = THREE.MathUtils.clamp(settings.gazeHeadFollow, 0, 1);
   const headDrift = intensity * THREE.MathUtils.clamp(settings.gazeHeadDrift, 0, 1);
   const eyeMotion = intensity * THREE.MathUtils.clamp(settings.gazeEyeMotion, 0, 1);
   const audienceYOffset = THREE.MathUtils.clamp(settings.gazeAudienceYOffset, -0.25, 0.15);
+  const pointerFollow = settings.gazePointerFollow && Boolean(pointer);
+  const pointerX = pointerFollow ? THREE.MathUtils.clamp(pointer?.x ?? 0, -1, 1) : 0;
+  const pointerY = pointerFollow ? THREE.MathUtils.clamp(pointer?.y ?? 0, -1, 1) : 0;
   if (!settings.autoGaze || intensity <= 0) {
     clearProceduralGaze(vrm, state);
     return;
@@ -438,7 +490,13 @@ function updateAutoGaze(
   const audienceY = baseY + audienceYOffset;
   state.elapsed += safeDelta;
 
-  if (state.elapsed >= state.nextAt) {
+  if (pointerFollow) {
+    state.target.set(
+      pointerX * GAZE_HEAD_MAX_HORIZONTAL * headDrift,
+      baseY + pointerY * GAZE_HEAD_MAX_VERTICAL * headDrift,
+      GAZE_CENTER_Z,
+    );
+  } else if (state.elapsed >= state.nextAt) {
     state.elapsed = 0;
     state.nextAt = getNextGazeDelay();
     state.target.set(
@@ -461,18 +519,31 @@ function updateAutoGaze(
       GAZE_HEAD_SWAY_VERTICAL *
       headDrift;
   state.noisyTarget.set(
-    (Math.sin(time * 0.93) + Math.sin(time * 2.17 + 1.7) * 0.35) *
-      GAZE_EYE_MICRO_HORIZONTAL *
-      eyeMotion,
-    audienceY + Math.sin(time * 1.21 + 0.8) * GAZE_EYE_MICRO_VERTICAL * eyeMotion,
+    pointerFollow
+      ? pointerX * GAZE_HEAD_MAX_HORIZONTAL * 0.9 * eyeMotion
+      : (Math.sin(time * 0.93) + Math.sin(time * 2.17 + 1.7) * 0.35) *
+          GAZE_EYE_MICRO_HORIZONTAL *
+          eyeMotion,
+    pointerFollow
+      ? audienceY + pointerY * GAZE_HEAD_MAX_VERTICAL * 1.1 * eyeMotion
+      : audienceY + Math.sin(time * 1.21 + 0.8) * GAZE_EYE_MICRO_VERTICAL * eyeMotion,
     GAZE_CENTER_Z,
   );
   state.targetObject.position.copy(state.noisyTarget);
   state.targetObject.updateMatrixWorld(true);
 
+  const leftEye = vrm.humanoid.getNormalizedBoneNode('leftEye');
+  const rightEye = vrm.humanoid.getNormalizedBoneNode('rightEye');
+  const hasEyeBones = Boolean(leftEye || rightEye);
   if (vrm.lookAt) {
-    vrm.lookAt.autoUpdate = true;
-    vrm.lookAt.target = state.targetObject;
+    if (hasEyeBones) {
+      if (vrm.lookAt.target === state.targetObject) {
+        vrm.lookAt.target = null;
+      }
+    } else {
+      vrm.lookAt.autoUpdate = true;
+      vrm.lookAt.target = state.targetObject;
+    }
   }
 
   const follow = headDrift * THREE.MathUtils.lerp(GAZE_HEAD_FOLLOW_FLOOR, 1, headFollow);
@@ -490,6 +561,25 @@ function updateAutoGaze(
   state.euler.set(pitch * 0.3, yaw * 0.35, 0, 'YXZ');
   state.neckTargetOverlay.setFromEuler(state.euler);
   applyProceduralOverlay(neck, state, 'neck', state.neckTargetOverlay);
+
+  if (hasEyeBones && eyeMotion > 0) {
+    const eyeYaw =
+      THREE.MathUtils.clamp(state.noisyTarget.x * 4.8 - yaw * 0.8, -0.22, 0.22) * eyeMotion;
+    const eyePitch =
+      THREE.MathUtils.clamp((state.noisyTarget.y - audienceY) * 3.2 - pitch * 0.55, -0.15, 0.15) *
+      eyeMotion;
+
+    state.euler.set(eyePitch, eyeYaw, 0, 'YXZ');
+    state.leftEyeTargetOverlay.setFromEuler(state.euler);
+    applyProceduralOverlay(leftEye, state, 'leftEye', state.leftEyeTargetOverlay);
+
+    state.euler.set(eyePitch, eyeYaw, 0, 'YXZ');
+    state.rightEyeTargetOverlay.setFromEuler(state.euler);
+    applyProceduralOverlay(rightEye, state, 'rightEye', state.rightEyeTargetOverlay);
+  } else {
+    removeProceduralOverlay(leftEye, state, 'leftEye');
+    removeProceduralOverlay(rightEye, state, 'rightEye');
+  }
 }
 
 function isTtsPlaybackActive(ttsManager: TtsManager) {
@@ -637,7 +727,7 @@ function SceneRuntime({
     return () => clearProceduralGaze(vrm, gazeRuntimeRef.current);
   }, [visualSettings.autoGaze, vrm]);
 
-  useFrame((_state, delta) => {
+  useFrame((frameState, delta) => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
     const ttsPlaybackActive = isTtsPlaybackActive(ttsManager);
     const cameraLerp = 1 - Math.exp(-delta * 9);
@@ -658,7 +748,7 @@ function SceneRuntime({
     }
 
     if (vrm && active) {
-      updateAutoGaze(vrm, gazeRuntimeRef.current, delta, visualSettings);
+      updateAutoGaze(vrm, gazeRuntimeRef.current, delta, visualSettings, frameState.pointer);
       updateVrmFrame(vrm, ttsManager, delta, ttsPlaybackActive);
     } else if (vrm) {
       clearProceduralGaze(vrm, gazeRuntimeRef.current);

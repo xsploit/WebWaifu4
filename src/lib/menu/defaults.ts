@@ -16,6 +16,7 @@ export function createDefaultVisualSettings(): VisualSettings {
     gazeHeadFollow: 0.75,
     gazeHeadDrift: 0.9,
     gazeEyeMotion: 0.8,
+    gazePointerFollow: false,
     gazeAudienceYOffset: -0.1,
     crossfadeDuration: 1,
     postProcessingEnabled: true,

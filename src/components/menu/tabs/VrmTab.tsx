@@ -156,6 +156,15 @@ export function VrmTab({
             onChange={(checked) => updateVisualSettings(setVisualSettings, { autoGaze: checked })}
           />
         </div>
+        <div className="toggle-row">
+          <span>Pointer Follow</span>
+          <Toggle
+            checked={visualSettings.gazePointerFollow}
+            onChange={(checked) =>
+              updateVisualSettings(setVisualSettings, { gazePointerFollow: checked })
+            }
+          />
+        </div>
         <Slider
           label="Strength"
           max={1}
