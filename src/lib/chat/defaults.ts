@@ -107,6 +107,7 @@ export function createDefaultAiSettings(): AiSettings {
     ttsEnabled: true,
     ttsAutoSpeak: true,
     ttsSimulatedStreaming: true,
+    ttsExpressionTagsEnabled: false,
     ttsProvider: 'piper',
     ttsVoice: NEURO_PIPER_VOICE_KEY,
     fishSpeechVoiceId: '',

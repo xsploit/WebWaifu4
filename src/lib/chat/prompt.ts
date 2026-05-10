@@ -17,6 +17,8 @@ type BuildChatCompletionMessagesOptions = {
   persona: PersonaProfile | null;
   relationshipMemory: RelationshipMemory;
   runtimeContext: RuntimeContextSnapshot;
+  ttsExpressionTagsEnabled?: boolean;
+  ttsProvider?: string;
 };
 
 function serializeContextSection(label: string, values: Record<string, string>) {
@@ -39,6 +41,8 @@ export function buildChatCompletionMessages({
   persona,
   relationshipMemory,
   runtimeContext,
+  ttsExpressionTagsEnabled = false,
+  ttsProvider = 'piper',
 }: BuildChatCompletionMessagesOptions): CompletionMessage[] {
   const messages: CompletionMessage[] = [];
   const personaBlocks: string[] = [];
@@ -68,6 +72,14 @@ export function buildChatCompletionMessages({
     });
   }
 
+  if (ttsExpressionTagsEnabled && ttsProvider !== 'piper') {
+    messages.push({
+      role: 'system',
+      content:
+        'Speech expression tags are enabled for the active TTS engine. You may add short bracketed delivery tags sparingly inside spoken dialogue when they improve performance, such as [laughs], [sighs], [whispers], [excited], [sarcastic], [nervous], or [pause]. Keep replies as natural spoken dialogue, do not explain the tags, and do not use markdown or stage directions outside those short tags.',
+    });
+  }
+
   if (includeHostContext) {
     const contextBlocks = [
       serializeContextSection('launchParams', runtimeContext.launchParams),
@@ -84,10 +96,10 @@ export function buildChatCompletionMessages({
   }
 
   if (
-    relationshipMemory.turnCount > 0
-    || relationshipMemory.summary
-    || relationshipMemory.facts.length > 0
-    || relationshipMemory.diaryEntry
+    relationshipMemory.turnCount > 0 ||
+    relationshipMemory.summary ||
+    relationshipMemory.facts.length > 0 ||
+    relationshipMemory.diaryEntry
   ) {
     const memoryBlocks = [
       `Relationship stage: ${relationshipMemory.relationshipStage}`,

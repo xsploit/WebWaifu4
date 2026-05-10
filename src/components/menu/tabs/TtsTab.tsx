@@ -119,6 +119,15 @@ export function TtsTab({
             }
           />
         </div>
+        <div className="toggle-row">
+          <span>LLM Expression Tags</span>
+          <Toggle
+            checked={aiSettings.ttsExpressionTagsEnabled}
+            onChange={(checked) =>
+              updateAiSettings(setAiSettings, { ttsExpressionTagsEnabled: checked })
+            }
+          />
+        </div>
       </div>
 
       <div className="control-group">

@@ -2568,6 +2568,8 @@ function App() {
             persona: activePersona ?? DEFAULT_PERSONA,
             relationshipMemory,
             runtimeContext,
+            ttsExpressionTagsEnabled: aiSettings.ttsExpressionTagsEnabled,
+            ttsProvider: aiSettings.ttsProvider,
           }),
           maxTokens: aiSettings.maxTokens,
           stateKey: getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA),
@@ -2668,14 +2670,6 @@ function App() {
     appliedPersonaSceneKeyRef.current = sceneKey;
 
     stopTtsPlayback();
-    setAiSettings((current) =>
-      current.ttsVoice === activePersonaScenePreset.ttsVoice
-        ? current
-        : {
-            ...current,
-            ttsVoice: activePersonaScenePreset.ttsVoice,
-          },
-    );
 
     if (currentBundledModelId !== activePersonaScenePreset.bundledModelId) {
       void handleLoadBundledModel(activePersonaScenePreset.bundledModelId).catch((error) => {
@@ -3154,6 +3148,8 @@ function App() {
             persona,
             relationshipMemory: relationshipMemoryRef.current,
             runtimeContext,
+            ttsExpressionTagsEnabled: settings.ttsExpressionTagsEnabled,
+            ttsProvider: settings.ttsProvider,
           }),
           maxTokens: settings.maxTokens,
           stateKey: getTwitchConversationStateKey(channel, persona),

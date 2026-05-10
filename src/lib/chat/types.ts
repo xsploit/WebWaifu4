@@ -33,6 +33,7 @@ export type AiSettings = {
   ttsEnabled: boolean;
   ttsAutoSpeak: boolean;
   ttsSimulatedStreaming: boolean;
+  ttsExpressionTagsEnabled: boolean;
   ttsProvider: TtsProvider;
   ttsVoice: string;
   fishSpeechVoiceId: string;

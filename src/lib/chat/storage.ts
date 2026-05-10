@@ -208,6 +208,10 @@ function normalizeAiSettings(value: unknown): AiSettings {
       typeof source.ttsSimulatedStreaming === 'boolean'
         ? source.ttsSimulatedStreaming
         : defaults.ttsSimulatedStreaming,
+    ttsExpressionTagsEnabled:
+      typeof source.ttsExpressionTagsEnabled === 'boolean'
+        ? source.ttsExpressionTagsEnabled
+        : defaults.ttsExpressionTagsEnabled,
     ttsProvider,
     ttsVoice: String(source.ttsVoice ?? defaults.ttsVoice),
     fishSpeechVoiceId: String(source.fishSpeechVoiceId ?? defaults.fishSpeechVoiceId),
