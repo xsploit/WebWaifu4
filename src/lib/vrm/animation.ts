@@ -174,6 +174,17 @@ const expressionAliases: Record<string, string> = {
   u: 'ou',
 };
 
+const PROCEDURAL_GAZE_TRACK_MARKERS = [
+  'vrmlookatquaternionproxy',
+  'lookat',
+  'lookleft',
+  'lookright',
+  'lookup',
+  'lookdown',
+  'lefteye',
+  'righteye',
+];
+
 const fbxLoader = new FBXLoader();
 const bvhLoader = new BVHLoader();
 const vrmaLoader = new GLTFLoader();
@@ -477,6 +488,18 @@ function createExpressionTrack(
   );
 }
 
+function isProceduralGazeTrackName(trackName: string) {
+  const normalized = trackName.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return PROCEDURAL_GAZE_TRACK_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function stripProceduralGazeTracks(clip: THREE.AnimationClip) {
+  const tracks = clip.tracks.filter((track) => !isProceduralGazeTrackName(track.name));
+  return tracks.length === clip.tracks.length
+    ? clip
+    : new THREE.AnimationClip(clip.name || 'vrmAnimation', clip.duration, tracks);
+}
+
 function createGltfExpressionTracks(
   clip: THREE.AnimationClip,
   sourceRoot: THREE.Object3D,
@@ -510,6 +533,10 @@ function createGltfExpressionTracks(
     }
 
     const expressionName = resolveExpressionName(expressionManager, candidates);
+    if (expressionName && isProceduralGazeTrackName(expressionName)) {
+      continue;
+    }
+
     const targetTrackName = expressionName
       ? expressionManager.getExpressionTrackName(expressionName)
       : null;
@@ -615,7 +642,7 @@ function ensureLookAtQuaternionProxy(vrm: VRM) {
 
 function createVrmClip(vrmAnimation: VRMAnimation, vrm: VRM) {
   ensureLookAtQuaternionProxy(vrm);
-  return createVRMAnimationClip(vrmAnimation, vrm);
+  return stripProceduralGazeTracks(createVRMAnimationClip(vrmAnimation, vrm));
 }
 
 function animationLoadError(error: unknown, url: string, expected: string) {
@@ -779,18 +806,24 @@ export async function loadVrmAnimationClip(
   entry: Pick<AnimationEntry, 'url' | 'format'>,
   vrm: VRM,
 ): Promise<THREE.AnimationClip | null> {
+  let clip: THREE.AnimationClip | null = null;
   switch (await resolveAnimationFormat(entry)) {
     case 'vrma':
-      return loadVrmaAnimation(entry.url, vrm);
+      clip = await loadVrmaAnimation(entry.url, vrm);
+      break;
     case 'bvh':
-      return loadBvhAnimation(entry.url, vrm);
+      clip = await loadBvhAnimation(entry.url, vrm);
+      break;
     case 'glb':
     case 'gltf':
-      return loadGltfAnimation(entry.url, vrm);
+      clip = await loadGltfAnimation(entry.url, vrm);
+      break;
     case 'fbx':
     default:
-      return loadMixamoAnimation(entry.url, vrm);
+      clip = await loadMixamoAnimation(entry.url, vrm);
+      break;
   }
+  return clip ? stripProceduralGazeTracks(clip) : null;
 }
 
 export function retargetClip(clip: THREE.AnimationClip, vrm: VRM): THREE.AnimationClip | null {

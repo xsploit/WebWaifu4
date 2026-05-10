@@ -381,6 +381,9 @@ function clearProceduralGaze(vrm: VRM | null, state: GazeRuntimeState) {
   if (vrm?.lookAt?.target === state.targetObject) {
     vrm.lookAt.target = null;
   }
+  if (vrm?.lookAt) {
+    vrm.lookAt.autoUpdate = true;
+  }
 }
 
 function resetGazeRuntimeState(state: GazeRuntimeState, vrm: VRM | null, settings: VisualSettings) {
@@ -537,6 +540,7 @@ function updateAutoGaze(
   const hasEyeBones = Boolean(leftEye || rightEye);
   if (vrm.lookAt) {
     if (hasEyeBones) {
+      vrm.lookAt.autoUpdate = false;
       if (vrm.lookAt.target === state.targetObject) {
         vrm.lookAt.target = null;
       }
@@ -580,6 +584,11 @@ function updateAutoGaze(
     removeProceduralOverlay(leftEye, state, 'leftEye');
     removeProceduralOverlay(rightEye, state, 'rightEye');
   }
+
+  if (!hasEyeBones) {
+    vrm.lookAt?.update(safeDelta);
+  }
+  vrm.humanoid.update();
 }
 
 function isTtsPlaybackActive(ttsManager: TtsManager) {
@@ -607,7 +616,9 @@ function updateVrmFrame(
   }
 
   vrm.humanoid.update();
-  vrm.lookAt?.update(delta);
+  if (vrm.lookAt?.autoUpdate !== false) {
+    vrm.lookAt?.update(delta);
+  }
   vrm.expressionManager?.update();
   vrm.materials?.forEach((material) => {
     const updatableMaterial = material as THREE.Material & { update?: (delta: number) => void };
@@ -748,8 +759,8 @@ function SceneRuntime({
     }
 
     if (vrm && active) {
-      updateAutoGaze(vrm, gazeRuntimeRef.current, delta, visualSettings, frameState.pointer);
       updateVrmFrame(vrm, ttsManager, delta, ttsPlaybackActive);
+      updateAutoGaze(vrm, gazeRuntimeRef.current, delta, visualSettings, frameState.pointer);
     } else if (vrm) {
       clearProceduralGaze(vrm, gazeRuntimeRef.current);
     }
