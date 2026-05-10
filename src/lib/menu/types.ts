@@ -31,6 +31,9 @@ export type VisualSettings = {
   autoGaze: boolean;
   gazeIntensity: number;
   gazeHeadFollow: number;
+  gazeHeadDrift: number;
+  gazeEyeMotion: number;
+  gazeAudienceYOffset: number;
   crossfadeDuration: number;
   postProcessingEnabled: boolean;
   outline: boolean;

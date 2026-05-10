@@ -304,6 +304,9 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'blinkIntensity',
     'gazeIntensity',
     'gazeHeadFollow',
+    'gazeHeadDrift',
+    'gazeEyeMotion',
+    'gazeAudienceYOffset',
     'crossfadeDuration',
     'bloomStrength',
     'bloomRadius',
@@ -365,6 +368,9 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   next.blinkIntensity = Math.max(0, Math.min(1, next.blinkIntensity));
   next.gazeIntensity = Math.max(0, Math.min(1, next.gazeIntensity));
   next.gazeHeadFollow = Math.max(0, Math.min(1, next.gazeHeadFollow));
+  next.gazeHeadDrift = Math.max(0, Math.min(1, next.gazeHeadDrift));
+  next.gazeEyeMotion = Math.max(0, Math.min(1, next.gazeEyeMotion));
+  next.gazeAudienceYOffset = Math.max(-0.25, Math.min(0.15, next.gazeAudienceYOffset));
 
   return next;
 }

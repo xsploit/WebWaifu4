@@ -148,6 +148,59 @@ export function VrmTab({
       </div>
 
       <div className="control-group">
+        <div className="control-label">Audience Gaze</div>
+        <div className="toggle-row">
+          <span>Auto Gaze</span>
+          <Toggle
+            checked={visualSettings.autoGaze}
+            onChange={(checked) => updateVisualSettings(setVisualSettings, { autoGaze: checked })}
+          />
+        </div>
+        <Slider
+          label="Strength"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeIntensity: value })}
+          step={0.05}
+          value={visualSettings.gazeIntensity}
+        />
+        <Slider
+          label="Eye Motion"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeEyeMotion: value })}
+          step={0.05}
+          value={visualSettings.gazeEyeMotion}
+        />
+        <Slider
+          label="Head Drift"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeHeadDrift: value })}
+          step={0.05}
+          value={visualSettings.gazeHeadDrift}
+        />
+        <Slider
+          label="Head Follow"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeHeadFollow: value })}
+          step={0.05}
+          value={visualSettings.gazeHeadFollow}
+        />
+        <Slider
+          label="Eye Aim Y"
+          max={0.15}
+          min={-0.25}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { gazeAudienceYOffset: value })
+          }
+          step={0.01}
+          value={visualSettings.gazeAudienceYOffset}
+        />
+      </div>
+
+      <div className="control-group">
         <div className="control-label">Post-Processing FX</div>
         <div className="toggle-row">
           <span>Anime Outlines</span>
@@ -224,29 +277,6 @@ export function VrmTab({
           onInput={(value) => updateVisualSettings(setVisualSettings, { blinkIntensity: value })}
           step={0.05}
           value={visualSettings.blinkIntensity}
-        />
-        <div className="toggle-row">
-          <span>Auto Gaze</span>
-          <Toggle
-            checked={visualSettings.autoGaze}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { autoGaze: checked })}
-          />
-        </div>
-        <Slider
-          label="Gaze Motion"
-          max={1}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeIntensity: value })}
-          step={0.05}
-          value={visualSettings.gazeIntensity}
-        />
-        <Slider
-          label="Head Follow"
-          max={1}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { gazeHeadFollow: value })}
-          step={0.05}
-          value={visualSettings.gazeHeadFollow}
         />
         <Slider
           label="Crossfade"

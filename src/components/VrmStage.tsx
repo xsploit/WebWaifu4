@@ -125,10 +125,12 @@ const BLINK_TOTAL_SECONDS = BLINK_CLOSE_SECONDS + BLINK_HOLD_SECONDS + BLINK_OPE
 const BLINK_EXPRESSION_CACHE = new WeakMap<VrmExpressionManager, readonly string[]>();
 const GAZE_CENTER_Y = 1.42;
 const GAZE_CENTER_Z = 2.2;
-const GAZE_AUDIENCE_Y_BIAS = -0.08;
 const GAZE_HEAD_MAX_HORIZONTAL = 0.24;
 const GAZE_HEAD_MAX_VERTICAL = 0.1;
 const GAZE_HEAD_LERP_RATE = 2.6;
+const GAZE_HEAD_SWAY_HORIZONTAL = 0.16;
+const GAZE_HEAD_SWAY_VERTICAL = 0.06;
+const GAZE_HEAD_FOLLOW_FLOOR = 0.55;
 const GAZE_EYE_MICRO_HORIZONTAL = 0.018;
 const GAZE_EYE_MICRO_VERTICAL = 0.009;
 const GAZE_OVERLAY_EPSILON = 0.002;
@@ -257,7 +259,7 @@ function createGazeRuntimeState(): GazeRuntimeState {
 
   return {
     elapsed: 0,
-    nextAt: getNextGazeDelay(),
+    nextAt: 0.2,
     target: new THREE.Vector3(0, GAZE_CENTER_Y, GAZE_CENTER_Z),
     current: new THREE.Vector3(0, GAZE_CENTER_Y, GAZE_CENTER_Z),
     noisyTarget: new THREE.Vector3(0, GAZE_CENTER_Y, GAZE_CENTER_Z),
@@ -337,7 +339,7 @@ function resetGazeRuntimeState(state: GazeRuntimeState, vrm: VRM | null, setting
   clearProceduralGaze(vrm, state);
   const baseY = GAZE_CENTER_Y + settings.cameraVerticalOffset;
   state.elapsed = 0;
-  state.nextAt = getNextGazeDelay();
+  state.nextAt = 0.2;
   state.target.set(0, baseY, GAZE_CENTER_Z);
   state.current.copy(state.target);
   state.noisyTarget.copy(state.target);
@@ -423,6 +425,9 @@ function updateAutoGaze(
 ) {
   const intensity = THREE.MathUtils.clamp(settings.gazeIntensity, 0, 1);
   const headFollow = THREE.MathUtils.clamp(settings.gazeHeadFollow, 0, 1);
+  const headDrift = intensity * THREE.MathUtils.clamp(settings.gazeHeadDrift, 0, 1);
+  const eyeMotion = intensity * THREE.MathUtils.clamp(settings.gazeEyeMotion, 0, 1);
+  const audienceYOffset = THREE.MathUtils.clamp(settings.gazeAudienceYOffset, -0.25, 0.15);
   if (!settings.autoGaze || intensity <= 0) {
     clearProceduralGaze(vrm, state);
     return;
@@ -430,26 +435,36 @@ function updateAutoGaze(
 
   const safeDelta = Math.min(delta, 0.1);
   const baseY = GAZE_CENTER_Y + settings.cameraVerticalOffset;
-  const audienceY = baseY + GAZE_AUDIENCE_Y_BIAS * intensity;
+  const audienceY = baseY + audienceYOffset;
   state.elapsed += safeDelta;
 
   if (state.elapsed >= state.nextAt) {
     state.elapsed = 0;
     state.nextAt = getNextGazeDelay();
     state.target.set(
-      (Math.random() * 2 - 1) * GAZE_HEAD_MAX_HORIZONTAL * intensity,
-      baseY + (Math.random() * 2 - 1) * GAZE_HEAD_MAX_VERTICAL * intensity,
+      (Math.random() * 2 - 1) * GAZE_HEAD_MAX_HORIZONTAL * headDrift,
+      baseY + (Math.random() * 2 - 1) * GAZE_HEAD_MAX_VERTICAL * headDrift,
       GAZE_CENTER_Z,
     );
   }
 
   const time = performance.now() * 0.001;
   state.current.lerp(state.target, 1 - Math.exp(-safeDelta * GAZE_HEAD_LERP_RATE));
+  const headX =
+    state.current.x +
+    (Math.sin(time * 0.42) + Math.sin(time * 0.17 + 1.4) * 0.45) *
+      GAZE_HEAD_SWAY_HORIZONTAL *
+      headDrift;
+  const headY =
+    state.current.y +
+    (Math.sin(time * 0.31 + 0.9) + Math.sin(time * 0.13 + 2.1) * 0.35) *
+      GAZE_HEAD_SWAY_VERTICAL *
+      headDrift;
   state.noisyTarget.set(
     (Math.sin(time * 0.93) + Math.sin(time * 2.17 + 1.7) * 0.35) *
       GAZE_EYE_MICRO_HORIZONTAL *
-      intensity,
-    audienceY + Math.sin(time * 1.21 + 0.8) * GAZE_EYE_MICRO_VERTICAL * intensity,
+      eyeMotion,
+    audienceY + Math.sin(time * 1.21 + 0.8) * GAZE_EYE_MICRO_VERTICAL * eyeMotion,
     GAZE_CENTER_Z,
   );
   state.targetObject.position.copy(state.noisyTarget);
@@ -460,13 +475,13 @@ function updateAutoGaze(
     vrm.lookAt.target = state.targetObject;
   }
 
-  const follow = intensity * headFollow;
+  const follow = headDrift * THREE.MathUtils.lerp(GAZE_HEAD_FOLLOW_FLOOR, 1, headFollow);
   const head = vrm.humanoid.getNormalizedBoneNode('head');
   const neck = vrm.humanoid.getNormalizedBoneNode('neck');
-  const xAmount = THREE.MathUtils.clamp(state.current.x / GAZE_HEAD_MAX_HORIZONTAL, -1, 1);
-  const yAmount = THREE.MathUtils.clamp((state.current.y - baseY) / GAZE_HEAD_MAX_VERTICAL, -1, 1);
-  const yaw = xAmount * 0.16 * follow;
-  const pitch = (0.025 - yAmount * 0.055) * follow;
+  const xAmount = THREE.MathUtils.clamp(headX / GAZE_HEAD_MAX_HORIZONTAL, -1, 1);
+  const yAmount = THREE.MathUtils.clamp((headY - baseY) / GAZE_HEAD_MAX_VERTICAL, -1, 1);
+  const yaw = xAmount * 0.28 * follow;
+  const pitch = (0.035 - yAmount * 0.08) * follow;
 
   state.euler.set(pitch, yaw, -yaw * 0.1, 'YXZ');
   state.headTargetOverlay.setFromEuler(state.euler);
