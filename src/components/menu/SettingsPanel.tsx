@@ -15,6 +15,7 @@ import type {
   VisualSettings,
 } from '../../lib/menu/types';
 import type { PiperVoiceProfile } from '../../lib/tts/piper';
+import type { RemoteTtsProvider, RemoteTtsVoice } from '../../lib/tts/remote';
 import { DEFAULT_PERSONA } from '../../lib/chat/defaults';
 import { AiTab } from './tabs/AiTab';
 import { AnimTab } from './tabs/AnimTab';
@@ -45,6 +46,7 @@ type SettingsPanelProps = {
   onLoadSample: () => void;
   onPlayAnimation: (request: ManualPlayRequest) => void;
   onRefreshModels: () => void;
+  onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
   onResetContext: () => void;
   onRunMemoryAgent: () => void;
@@ -69,6 +71,9 @@ type SettingsPanelProps = {
   ttsCached: boolean;
   ttsStatus: string;
   ttsVoices: PiperVoiceProfile[];
+  remoteTtsVoices: RemoteTtsVoice[];
+  remoteVoicesError: string | null;
+  remoteVoicesLoading: boolean;
   visualSettings: VisualSettings;
   modelsError: string | null;
   modelsLoading: boolean;
@@ -107,6 +112,7 @@ export function SettingsPanel({
   onLoadSample,
   onPlayAnimation,
   onRefreshModels,
+  onRefreshRemoteVoices,
   onRefreshVoices,
   onResetContext,
   onRunMemoryAgent,
@@ -131,6 +137,9 @@ export function SettingsPanel({
   ttsCached,
   ttsStatus,
   ttsVoices,
+  remoteTtsVoices,
+  remoteVoicesError,
+  remoteVoicesLoading,
   visualSettings,
   modelsError,
   modelsLoading,
@@ -191,6 +200,7 @@ export function SettingsPanel({
         aiSettings={aiSettings}
         onCacheVoice={onCacheVoice}
         onRefreshVoices={onRefreshVoices}
+        onRefreshRemoteVoices={onRefreshRemoteVoices}
         onSelectVoice={onSelectVoice}
         onSpeakLastReply={onSpeakLastReply}
         onStopTts={onStopTts}
@@ -200,6 +210,9 @@ export function SettingsPanel({
         ttsCached={ttsCached}
         ttsStatus={ttsStatus}
         ttsVoices={ttsVoices}
+        remoteTtsVoices={remoteTtsVoices}
+        remoteVoicesError={remoteVoicesError}
+        remoteVoicesLoading={remoteVoicesLoading}
         ttsActiveVoice={ttsActiveVoice}
         voicesError={voicesError}
         voicesLoading={voicesLoading}

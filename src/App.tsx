@@ -56,7 +56,8 @@ import {
 } from './lib/tts/piper';
 import type { PiperVoiceProfile, WordBoundary } from './lib/tts/piper';
 import { getTtsManager } from './lib/tts/manager';
-import type { RemoteTtsRequest } from './lib/tts/remote';
+import { fetchRemoteTtsVoices } from './lib/tts/remote';
+import type { RemoteTtsProvider, RemoteTtsRequest, RemoteTtsVoice } from './lib/tts/remote';
 import {
   getOverlaySocketUrl,
   parseOverlayServerEvent,
@@ -1021,6 +1022,14 @@ function App() {
   const [ttsCachedVoiceKeys, setTtsCachedVoiceKeys] = useState<string[]>([]);
   const [ttsVoicesLoading, setTtsVoicesLoading] = useState(false);
   const [ttsVoicesError, setTtsVoicesError] = useState<string | null>(null);
+  const [remoteTtsVoices, setRemoteTtsVoices] = useState<
+    Record<RemoteTtsProvider, RemoteTtsVoice[]>
+  >({
+    'fish-speech': [],
+    inworld: [],
+  });
+  const [remoteTtsVoicesLoading, setRemoteTtsVoicesLoading] = useState(false);
+  const [remoteTtsVoicesError, setRemoteTtsVoicesError] = useState<string | null>(null);
   const [ttsBusy, setTtsBusy] = useState(false);
   const [ttsStatus, setTtsStatus] = useState('Voice idle.');
   const [ttsActiveVoiceKey, setTtsActiveVoiceKey] = useState<string | null>(null);
@@ -1030,6 +1039,7 @@ function App() {
   const bundledModelUrlCacheRef = useRef<Map<string, string>>(new Map());
   const didHydrateAvatarRef = useRef(false);
   const ttsWarmVoicesRef = useRef<Set<string>>(new Set());
+  const remoteTtsVoiceFetchAttemptedRef = useRef<Set<RemoteTtsProvider>>(new Set());
   const assistantRenderRunRef = useRef(0);
   const chatRequestRunRef = useRef(0);
   const chatHistoryRef = useRef<ChatMessage[]>([]);
@@ -1095,6 +1105,8 @@ function App() {
     () => ttsVoices.find((voice) => voice.key === ttsActiveVoiceKey) ?? null,
     [ttsActiveVoiceKey, ttsVoices],
   );
+  const activeRemoteTtsVoices =
+    aiSettings.ttsProvider === 'piper' ? [] : remoteTtsVoices[aiSettings.ttsProvider];
 
   useEffect(() => {
     chatHistoryRef.current = chatHistory;
@@ -1263,6 +1275,40 @@ function App() {
       setTtsVoicesLoading(false);
     }
   }, [refreshStoredTtsVoices]);
+
+  const loadRemoteTtsVoices = useCallback(async (provider: RemoteTtsProvider, force = false) => {
+    if (!force && remoteTtsVoiceFetchAttemptedRef.current.has(provider)) {
+      return;
+    }
+    remoteTtsVoiceFetchAttemptedRef.current.add(provider);
+    setRemoteTtsVoicesLoading(true);
+    setRemoteTtsVoicesError(null);
+
+    try {
+      const voices = await fetchRemoteTtsVoices(provider);
+      setRemoteTtsVoices((current) => ({
+        ...current,
+        [provider]: voices,
+      }));
+      setTtsStatus(`${getTtsProviderLabel(provider)} voices ready (${voices.length}).`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Remote voice registry unavailable.';
+      setRemoteTtsVoicesError(message);
+      setTtsStatus(`Remote voice fetch failed: ${message}`);
+      if (force) {
+        remoteTtsVoiceFetchAttemptedRef.current.delete(provider);
+      }
+    } finally {
+      setRemoteTtsVoicesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aiSettings.ttsProvider === 'piper') {
+      return;
+    }
+    void loadRemoteTtsVoices(aiSettings.ttsProvider);
+  }, [aiSettings.ttsProvider, loadRemoteTtsVoices]);
 
   const speakWithSelectedTts = useCallback(
     async (text: string, label: string) => {
@@ -3582,6 +3628,10 @@ function App() {
             onRefreshModels={() => {
               void loadAvailableModels();
             }}
+            onRefreshRemoteVoices={(provider) => {
+              remoteTtsVoiceFetchAttemptedRef.current.delete(provider);
+              void loadRemoteTtsVoices(provider, true);
+            }}
             onRefreshVoices={() => {
               void loadTtsVoices();
             }}
@@ -3608,6 +3658,9 @@ function App() {
             ttsCached={selectedTtsCached}
             ttsStatus={ttsStatus}
             ttsVoices={ttsVoices}
+            remoteTtsVoices={activeRemoteTtsVoices}
+            remoteVoicesError={remoteTtsVoicesError}
+            remoteVoicesLoading={remoteTtsVoicesLoading}
             visualSettings={visualSettings}
             voicesError={ttsVoicesError}
             voicesLoading={ttsVoicesLoading}

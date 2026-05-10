@@ -255,7 +255,7 @@ export function loadConfig(): StreamBotConfig {
       normalizeBaseUrl(process.env.FISH_SPEECH_WS_URL, '/v1/tts/live'),
     fishSpeechVoiceId:
       process.env.FISH_SPEECH_VOICE_ID?.trim() || process.env.FISH_AUDIO_VOICE_ID?.trim() || '',
-    fishSpeechModel: process.env.FISH_SPEECH_MODEL?.trim() || 's1',
+    fishSpeechModel: process.env.FISH_SPEECH_MODEL?.trim() || 's2',
     fishSpeechLatency: parseFishSpeechLatency(),
     fishSpeechFormat: parseFishSpeechFormat(),
     fishSpeechSampleRate: numberFromEnv('FISH_SPEECH_SAMPLE_RATE', 44100),
@@ -270,7 +270,7 @@ export function loadConfig(): StreamBotConfig {
       process.env.INWORLD_TTS_BASE_URL?.trim() ||
       normalizeBaseUrl(process.env.INWORLD_TTS_WS_URL, '/tts/v1/voice:streamBidirectional'),
     inworldVoiceId: process.env.INWORLD_TTS_VOICE_ID?.trim() || '',
-    inworldModelId: process.env.INWORLD_TTS_MODEL_ID?.trim() || 'inworld-tts-1.5-mini',
+    inworldModelId: process.env.INWORLD_TTS_MODEL_ID?.trim() || 'inworld-tts-2',
     inworldDeliveryMode: parseInworldDeliveryMode(),
     inworldSampleRate: numberFromEnv('INWORLD_TTS_SAMPLE_RATE', 22050),
     inworldBufferCharThreshold: numberFromEnv('INWORLD_TTS_BUFFER_CHARS', 90),

@@ -167,7 +167,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
   const fishSpeechModel =
     typeof source.fishSpeechModel === 'string' && source.fishSpeechModel.trim()
       ? source.fishSpeechModel.trim() === 's2-pro'
-        ? defaults.fishSpeechModel
+        ? 's2'
         : source.fishSpeechModel.trim()
       : defaults.fishSpeechModel;
   const fishSpeechChunkLength =

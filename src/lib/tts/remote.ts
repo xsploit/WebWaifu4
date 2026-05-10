@@ -20,6 +20,16 @@ export type RemoteTtsAudioChunk = {
   sampleRate?: number | null;
 };
 
+export type RemoteTtsVoice = {
+  provider: RemoteTtsProvider;
+  id: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+  languages?: string[];
+  source?: string;
+};
+
 type RemoteTtsStreamEvent =
   | {
       type: 'audio';
@@ -39,19 +49,27 @@ type RemoteTtsStreamEvent =
 
 const TTS_PROXY_URL = (import.meta.env['VITE_TTS_PROXY_URL'] || '').trim();
 
-function getTtsProxyUrl() {
+function getTtsProxyUrl(path = '/tts/stream') {
   if (TTS_PROXY_URL) {
-    return TTS_PROXY_URL;
+    const url = new URL(TTS_PROXY_URL, window.location.href);
+    if (path !== '/tts/stream') {
+      url.pathname = url.pathname.replace(/\/stream$/, '/voices');
+      if (!url.pathname.endsWith('/voices')) {
+        url.pathname = path;
+      }
+      url.search = '';
+    }
+    return url.toString();
   }
 
   const isLocalDev =
     ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname) ||
     window.location.hostname.endsWith('.local');
-  const url = new URL('/tts/stream', window.location.href);
+  const url = new URL(path, window.location.href);
   if (isLocalDev && (url.port === '5173' || url.port === '4173')) {
     url.port = '8787';
   } else if (!isLocalDev) {
-    url.pathname = '/api/tts/stream';
+    url.pathname = `/api${path}`;
   }
   return url.toString();
 }
@@ -109,7 +127,7 @@ export function createRemoteTtsStream(
 
   void (async () => {
     try {
-      const response = await fetch(getTtsProxyUrl(), {
+      const response = await fetch(getTtsProxyUrl('/tts/stream'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -177,4 +195,26 @@ export function createRemoteTtsStream(
       }
     },
   };
+}
+
+export async function fetchRemoteTtsVoices(provider: RemoteTtsProvider) {
+  const url = new URL(getTtsProxyUrl('/tts/voices'));
+  url.searchParams.set('provider', provider);
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`Remote TTS voice fetch failed with HTTP ${response.status}.`);
+  }
+
+  const data = (await response.json()) as {
+    ok?: boolean;
+    error?: string;
+    voices?: RemoteTtsVoice[];
+  };
+  if (!data.ok) {
+    throw new Error(data.error || 'Remote TTS voice fetch failed.');
+  }
+  return data.voices ?? [];
 }

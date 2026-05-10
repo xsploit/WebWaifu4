@@ -1,12 +1,14 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AiSettings } from '../../../lib/chat/types';
 import type { PiperVoiceProfile } from '../../../lib/tts/piper';
+import type { RemoteTtsProvider, RemoteTtsVoice } from '../../../lib/tts/remote';
 import { Toggle } from '../ui/Toggle';
 import { Slider } from '../ui/Slider';
 
 type TtsTabProps = {
   aiSettings: AiSettings;
   onCacheVoice: () => void;
+  onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
   onSelectVoice: (voiceId: string) => void;
   onSpeakLastReply: () => void;
@@ -18,6 +20,9 @@ type TtsTabProps = {
   ttsStatus: string;
   ttsActiveVoice: PiperVoiceProfile | null;
   ttsVoices: PiperVoiceProfile[];
+  remoteTtsVoices: RemoteTtsVoice[];
+  remoteVoicesError: string | null;
+  remoteVoicesLoading: boolean;
   voicesError: string | null;
   voicesLoading: boolean;
 };
@@ -35,6 +40,7 @@ function updateAiSettings(
 export function TtsTab({
   aiSettings,
   onCacheVoice,
+  onRefreshRemoteVoices,
   onRefreshVoices,
   onSelectVoice,
   onSpeakLastReply,
@@ -46,11 +52,45 @@ export function TtsTab({
   ttsStatus,
   ttsActiveVoice,
   ttsVoices,
+  remoteTtsVoices,
+  remoteVoicesError,
+  remoteVoicesLoading,
   voicesError,
   voicesLoading,
 }: TtsTabProps) {
   const selectedVoice = ttsVoices.find((voice) => voice.key === aiSettings.ttsVoice) ?? null;
   const remoteProviderSelected = aiSettings.ttsProvider !== 'piper';
+  const selectedRemoteVoiceId =
+    aiSettings.ttsProvider === 'fish-speech'
+      ? aiSettings.fishSpeechVoiceId
+      : aiSettings.ttsProvider === 'inworld'
+        ? aiSettings.inworldVoiceId
+        : '';
+  const selectedRemoteVoice = remoteTtsVoices.find((voice) => voice.id === selectedRemoteVoiceId);
+  const remoteVoiceOptions = selectedRemoteVoice
+    ? remoteTtsVoices
+    : selectedRemoteVoiceId
+      ? [
+          {
+            provider: aiSettings.ttsProvider as RemoteTtsProvider,
+            id: selectedRemoteVoiceId,
+            name: `Manual: ${selectedRemoteVoiceId}`,
+          },
+          ...remoteTtsVoices,
+        ]
+      : remoteTtsVoices;
+
+  const renderRemoteVoiceOptions = () =>
+    remoteVoiceOptions.map((voice) => {
+      const label = [voice.name, voice.id, voice.languages?.join(','), voice.source]
+        .filter(Boolean)
+        .join(' | ');
+      return (
+        <option key={`${voice.provider}-${voice.id}`} value={voice.id}>
+          {label}
+        </option>
+      );
+    });
 
   return (
     <>
@@ -156,6 +196,17 @@ export function TtsTab({
       {aiSettings.ttsProvider === 'fish-speech' ? (
         <div className="control-group">
           <div className="control-label">FishSpeech Live</div>
+          <select
+            className="select-tech"
+            disabled={remoteVoicesLoading}
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, { fishSpeechVoiceId: event.target.value })
+            }
+            value={aiSettings.fishSpeechVoiceId}
+          >
+            <option value="">Server default / manual Fish reference</option>
+            {renderRemoteVoiceOptions()}
+          </select>
           <input
             autoComplete="off"
             className="input-tech"
@@ -165,6 +216,17 @@ export function TtsTab({
             placeholder="Fish reference_id; blank uses server default"
             value={aiSettings.fishSpeechVoiceId}
           />
+          <div className="btn-row">
+            <button
+              className="btn-tech secondary"
+              disabled={remoteVoicesLoading}
+              onClick={() => onRefreshRemoteVoices('fish-speech')}
+              type="button"
+            >
+              {remoteVoicesLoading ? 'Fetching...' : 'Fetch Fish Voices'}
+            </button>
+          </div>
+          {remoteVoicesError ? <div className="status-copy">{remoteVoicesError}</div> : null}
           <select
             className="select-tech"
             onChange={(event) =>
@@ -172,6 +234,8 @@ export function TtsTab({
             }
             value={aiSettings.fishSpeechModel}
           >
+            <option value="s2">s2</option>
+            <option value="s2-mini">s2-mini</option>
             <option value="s1">s1</option>
             <option value="s1-mini">s1-mini</option>
             <option value="speech-1.6">speech-1.6</option>
@@ -218,6 +282,17 @@ export function TtsTab({
       {aiSettings.ttsProvider === 'inworld' ? (
         <div className="control-group">
           <div className="control-label">Inworld Realtime</div>
+          <select
+            className="select-tech"
+            disabled={remoteVoicesLoading}
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, { inworldVoiceId: event.target.value })
+            }
+            value={aiSettings.inworldVoiceId}
+          >
+            <option value="">Server default / manual Inworld voice</option>
+            {renderRemoteVoiceOptions()}
+          </select>
           <input
             autoComplete="off"
             className="input-tech"
@@ -227,13 +302,24 @@ export function TtsTab({
             placeholder="Inworld voiceId; blank uses server default"
             value={aiSettings.inworldVoiceId}
           />
+          <div className="btn-row">
+            <button
+              className="btn-tech secondary"
+              disabled={remoteVoicesLoading}
+              onClick={() => onRefreshRemoteVoices('inworld')}
+              type="button"
+            >
+              {remoteVoicesLoading ? 'Fetching...' : 'Fetch Inworld Voices'}
+            </button>
+          </div>
+          {remoteVoicesError ? <div className="status-copy">{remoteVoicesError}</div> : null}
           <input
             autoComplete="off"
             className="input-tech"
             onChange={(event) =>
               updateAiSettings(setAiSettings, { inworldModelId: event.target.value })
             }
-            placeholder="inworld-tts-1.5-mini"
+            placeholder="inworld-tts-2"
             value={aiSettings.inworldModelId}
           />
           <select

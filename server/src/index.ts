@@ -9,7 +9,11 @@ import { CommandRouter } from './commands/CommandRouter.js';
 import { MockTwitchChatSource, type MockChatInjection } from './mock/MockTwitchChatSource.js';
 import { OverlaySocket, type OverlayClientEvent } from './overlay/OverlaySocket.js';
 import { ChatScheduler } from './scheduler/ChatScheduler.js';
-import { streamRemoteTts, type RemoteTtsProvider } from './tts/RemoteTtsProvider.js';
+import {
+  listRemoteTtsVoices,
+  streamRemoteTts,
+  type RemoteTtsProvider,
+} from './tts/RemoteTtsProvider.js';
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
 
@@ -228,6 +232,25 @@ const httpServer = createServer(async (request, response) => {
         },
       },
     });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/tts/voices') {
+    try {
+      const providerName = normalizeRemoteTtsProvider(url.searchParams.get('provider'));
+      const voices = await listRemoteTtsVoices(config, providerName);
+      writeJson(response, 200, {
+        ok: true,
+        provider: providerName,
+        voices,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Remote TTS voice fetch failed.',
+        voices: [],
+      });
+    }
     return;
   }
 

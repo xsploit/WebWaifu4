@@ -1,5 +1,11 @@
-import { InworldTTS, type DeliveryMode } from '@inworld/tts';
-import { FishAudioClient, RealtimeEvents, type Backends, type TTSRequest } from 'fish-audio';
+import { InworldTTS, type DeliveryMode, type VoiceInfo } from '@inworld/tts';
+import {
+  FishAudioClient,
+  RealtimeEvents,
+  type Backends,
+  type ModelEntity,
+  type TTSRequest,
+} from 'fish-audio';
 import type { StreamBotConfig } from '../config.js';
 
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
@@ -23,6 +29,16 @@ export type RemoteTtsAudioChunk = {
   audio: Buffer;
   mimeType: string;
   sampleRate?: number;
+};
+
+export type RemoteTtsVoice = {
+  provider: RemoteTtsProvider;
+  id: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+  languages?: string[];
+  source?: string;
 };
 
 type StreamHandlers = {
@@ -201,6 +217,75 @@ export async function streamRemoteTts(
   await streamInworld(config, { ...request, text }, handlers);
 }
 
+export async function listRemoteTtsVoices(
+  config: StreamBotConfig,
+  provider: RemoteTtsProvider,
+): Promise<RemoteTtsVoice[]> {
+  if (provider === 'fish-speech') {
+    return listFishSpeechVoices(config);
+  }
+  return listInworldVoices(config);
+}
+
+async function listFishSpeechVoices(config: StreamBotConfig) {
+  if (!config.fishSpeechApiKey) {
+    throw new Error('FishSpeech voices require FISH_AUDIO_API_KEY or FISHSPEECH_API_KEY.');
+  }
+
+  const client = new FishAudioClient({
+    apiKey: config.fishSpeechApiKey,
+    ...(config.fishSpeechBaseUrl ? { baseUrl: config.fishSpeechBaseUrl } : {}),
+  });
+  const response = await client.voices.search(
+    {
+      page_number: 1,
+      page_size: 100,
+      sort_by: 'created_at',
+    },
+    { timeoutInSeconds: 20 },
+  );
+
+  return response.items.map(mapFishVoice).filter((voice) => voice.id);
+}
+
+async function listInworldVoices(config: StreamBotConfig) {
+  if (!config.inworldApiKey) {
+    throw new Error('Inworld voices require INWORLD_API_KEY.');
+  }
+
+  const client = InworldTTS({
+    apiKey: config.inworldApiKey,
+    timeout: 20000,
+    ...(config.inworldBaseUrl ? { baseUrl: config.inworldBaseUrl } : {}),
+  });
+  const voices = await client.listVoices();
+  return voices.map(mapInworldVoice).filter((voice) => voice.id);
+}
+
+function mapFishVoice(voice: ModelEntity): RemoteTtsVoice {
+  return {
+    provider: 'fish-speech',
+    id: voice._id,
+    name: voice.title || voice._id,
+    description: voice.description || undefined,
+    tags: voice.tags,
+    languages: voice.languages,
+    source: voice.author?.nickname,
+  };
+}
+
+function mapInworldVoice(voice: VoiceInfo): RemoteTtsVoice {
+  return {
+    provider: 'inworld',
+    id: voice.voiceId,
+    name: voice.displayName || voice.name || voice.voiceId,
+    description: voice.description,
+    tags: voice.tags,
+    languages: voice.langCode ? [voice.langCode] : undefined,
+    source: voice.source,
+  };
+}
+
 async function streamFishSpeech(
   config: StreamBotConfig,
   request: RemoteTtsRequest & { text: string },
@@ -311,7 +396,7 @@ async function streamInworld(
     throw new Error('Inworld TTS requires a voice id.');
   }
 
-  const modelId = request.modelId?.trim() || config.inworldModelId || 'inworld-tts-1.5-mini';
+  const modelId = request.modelId?.trim() || config.inworldModelId || 'inworld-tts-2';
   const deliveryMode = normalizeInworldDeliveryMode(
     request.deliveryMode ?? config.inworldDeliveryMode,
   );
