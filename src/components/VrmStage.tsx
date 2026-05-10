@@ -36,6 +36,11 @@ type VrmStageProps = {
 
 type AvatarProps = {
   modelScale: number;
+  modelPositionX: number;
+  modelPositionZ: number;
+  modelRotationX: number;
+  modelRotationY: number;
+  modelRotationZ: number;
   modelVerticalOffset: number;
   vrm: VRM | null;
 };
@@ -99,6 +104,33 @@ const CAMERA_VERTICAL_OFFSET_LIMITS = {
 const MODEL_VERTICAL_OFFSET_LIMITS = {
   min: -2,
   max: 2,
+};
+
+const MODEL_HORIZONTAL_POSITION_LIMITS = {
+  min: -3,
+  max: 3,
+};
+
+const MODEL_DEPTH_POSITION_LIMITS = {
+  min: -3,
+  max: 3,
+};
+
+const MODEL_PITCH_ROLL_LIMITS = {
+  min: -45,
+  max: 45,
+};
+
+const MODEL_YAW_LIMITS = {
+  min: -180,
+  max: 180,
+};
+
+const CAMERA_OFFSET_LIMITS = {
+  horizontal: { min: -3, max: 3 },
+  vertical: { min: -1.5, max: 1.5 },
+  depth: { min: -4, max: 4 },
+  fov: { min: 18, max: 70 },
 };
 
 const VRM_BASE_VERTICAL_OFFSET = 0.5;
@@ -167,6 +199,7 @@ const armGuardLimitedDelta = new THREE.Quaternion();
 const armGuardParentWorld = new THREE.Quaternion();
 const armGuardParentInverse = new THREE.Quaternion();
 const armGuardLocalDelta = new THREE.Quaternion();
+const vrmBaseRotations = new WeakMap<THREE.Object3D, THREE.Quaternion>();
 
 function clampCameraVerticalOffset(value: number) {
   return THREE.MathUtils.clamp(
@@ -182,6 +215,55 @@ function clampModelVerticalOffset(value: number) {
     MODEL_VERTICAL_OFFSET_LIMITS.min,
     MODEL_VERTICAL_OFFSET_LIMITS.max,
   );
+}
+
+function getCameraRigVectors(visualSettings: VisualSettings) {
+  const preset = CAMERA_PRESETS[visualSettings.cameraViewMode];
+  const cameraPosition = preset.position
+    .clone()
+    .add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0));
+  const cameraTarget = preset.target
+    .clone()
+    .add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0));
+
+  if (visualSettings.cameraRigMode === 'custom') {
+    cameraPosition.add(
+      new THREE.Vector3(
+        visualSettings.cameraOffsetX,
+        visualSettings.cameraOffsetY,
+        visualSettings.cameraOffsetZ,
+      ),
+    );
+    cameraTarget.add(
+      new THREE.Vector3(
+        visualSettings.cameraTargetOffsetX,
+        visualSettings.cameraTargetOffsetY,
+        visualSettings.cameraTargetOffsetZ,
+      ),
+    );
+  }
+
+  return {
+    position: cameraPosition,
+    target: cameraTarget,
+    fov:
+      visualSettings.cameraRigMode === 'custom'
+        ? THREE.MathUtils.clamp(
+            visualSettings.cameraFov,
+            CAMERA_OFFSET_LIMITS.fov.min,
+            CAMERA_OFFSET_LIMITS.fov.max,
+          )
+        : 35,
+  };
+}
+
+function getBaseVrmRotation(scene: THREE.Object3D) {
+  let baseRotation = vrmBaseRotations.get(scene);
+  if (!baseRotation) {
+    baseRotation = scene.quaternion.clone();
+    vrmBaseRotations.set(scene, baseRotation);
+  }
+  return baseRotation;
 }
 
 function hasActivePass(refs: PostProcessingRefs | null) {
@@ -872,30 +954,16 @@ function SceneRuntime({
   const scene = useThree((state) => state.scene);
   const size = useThree((state) => state.size);
   const postProcessingRef = useRef<PostProcessingRefs | null>(null);
-  const initialPreset = CAMERA_PRESETS[visualSettings.cameraViewMode];
-  const cameraTargetPositionRef = useRef(
-    initialPreset.position
-      .clone()
-      .add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0)),
-  );
-  const cameraLookAtRef = useRef(
-    initialPreset.target.clone().add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0)),
-  );
-  const cameraLookAtTargetRef = useRef(
-    initialPreset.target.clone().add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0)),
-  );
+  const initialCameraRig = getCameraRigVectors(visualSettings);
+  const cameraTargetPositionRef = useRef(initialCameraRig.position.clone());
+  const cameraLookAtRef = useRef(initialCameraRig.target.clone());
+  const cameraLookAtTargetRef = useRef(initialCameraRig.target.clone());
   const blinkRuntimeRef = useRef(createBlinkRuntimeState());
   const gazeRuntimeRef = useRef(createGazeRuntimeState());
 
   useEffect(() => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
-    const preset = CAMERA_PRESETS[visualSettings.cameraViewMode];
-    const cameraPosition = preset.position
-      .clone()
-      .add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0));
-    const cameraTarget = preset.target
-      .clone()
-      .add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0));
+    const cameraRig = getCameraRigVectors(visualSettings);
 
     gl.setPixelRatio(
       ROUTELET_RENDER_MODE ? ROUTELET_PIXEL_RATIO : Math.min(window.devicePixelRatio, 2),
@@ -907,15 +975,15 @@ function SceneRuntime({
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.shadowMap.enabled = false;
 
-    perspectiveCamera.fov = 35;
+    perspectiveCamera.fov = cameraRig.fov;
     perspectiveCamera.near = 0.1;
     perspectiveCamera.far = 100;
-    perspectiveCamera.position.copy(cameraPosition);
-    perspectiveCamera.lookAt(cameraTarget);
+    perspectiveCamera.position.copy(cameraRig.position);
+    perspectiveCamera.lookAt(cameraRig.target);
     perspectiveCamera.updateProjectionMatrix();
-    cameraTargetPositionRef.current.copy(cameraPosition);
-    cameraLookAtRef.current.copy(cameraTarget);
-    cameraLookAtTargetRef.current.copy(cameraTarget);
+    cameraTargetPositionRef.current.copy(cameraRig.position);
+    cameraLookAtRef.current.copy(cameraRig.target);
+    cameraLookAtTargetRef.current.copy(cameraRig.target);
 
     if (!ROUTELET_RENDER_MODE) {
       const postProcessing = initPostProcessing(gl, scene, perspectiveCamera);
@@ -930,14 +998,27 @@ function SceneRuntime({
   }, [camera, gl, scene]);
 
   useEffect(() => {
-    const preset = CAMERA_PRESETS[visualSettings.cameraViewMode];
-    cameraTargetPositionRef.current.copy(
-      preset.position.clone().add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0)),
-    );
-    cameraLookAtTargetRef.current.copy(
-      preset.target.clone().add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0)),
-    );
-  }, [visualSettings.cameraViewMode, visualSettings.cameraVerticalOffset]);
+    const perspectiveCamera = camera as THREE.PerspectiveCamera;
+    const cameraRig = getCameraRigVectors(visualSettings);
+    cameraTargetPositionRef.current.copy(cameraRig.position);
+    cameraLookAtTargetRef.current.copy(cameraRig.target);
+    if (Math.abs(perspectiveCamera.fov - cameraRig.fov) > 0.001) {
+      perspectiveCamera.fov = cameraRig.fov;
+      perspectiveCamera.updateProjectionMatrix();
+    }
+  }, [
+    camera,
+    visualSettings.cameraFov,
+    visualSettings.cameraOffsetX,
+    visualSettings.cameraOffsetY,
+    visualSettings.cameraOffsetZ,
+    visualSettings.cameraRigMode,
+    visualSettings.cameraTargetOffsetX,
+    visualSettings.cameraTargetOffsetY,
+    visualSettings.cameraTargetOffsetZ,
+    visualSettings.cameraVerticalOffset,
+    visualSettings.cameraViewMode,
+  ]);
 
   useEffect(() => {
     if (!postProcessingRef.current) {
@@ -1025,15 +1106,68 @@ function SceneRuntime({
   return null;
 }
 
-function Avatar({ modelScale, modelVerticalOffset, vrm }: AvatarProps) {
+function Avatar({
+  modelPositionX,
+  modelPositionZ,
+  modelRotationX,
+  modelRotationY,
+  modelRotationZ,
+  modelScale,
+  modelVerticalOffset,
+  vrm,
+}: AvatarProps) {
   useEffect(() => {
     if (!vrm) {
       return;
     }
 
     vrm.scene.scale.set(modelScale, modelScale, 1);
-    vrm.scene.position.y = VRM_BASE_VERTICAL_OFFSET + modelVerticalOffset;
-  }, [modelScale, modelVerticalOffset, vrm]);
+    vrm.scene.position.set(
+      THREE.MathUtils.clamp(
+        modelPositionX,
+        MODEL_HORIZONTAL_POSITION_LIMITS.min,
+        MODEL_HORIZONTAL_POSITION_LIMITS.max,
+      ),
+      VRM_BASE_VERTICAL_OFFSET + modelVerticalOffset,
+      THREE.MathUtils.clamp(
+        modelPositionZ,
+        MODEL_DEPTH_POSITION_LIMITS.min,
+        MODEL_DEPTH_POSITION_LIMITS.max,
+      ),
+    );
+    const placementRotation = new THREE.Euler(
+      THREE.MathUtils.degToRad(
+        THREE.MathUtils.clamp(
+          modelRotationX,
+          MODEL_PITCH_ROLL_LIMITS.min,
+          MODEL_PITCH_ROLL_LIMITS.max,
+        ),
+      ),
+      THREE.MathUtils.degToRad(
+        THREE.MathUtils.clamp(modelRotationY, MODEL_YAW_LIMITS.min, MODEL_YAW_LIMITS.max),
+      ),
+      THREE.MathUtils.degToRad(
+        THREE.MathUtils.clamp(
+          modelRotationZ,
+          MODEL_PITCH_ROLL_LIMITS.min,
+          MODEL_PITCH_ROLL_LIMITS.max,
+        ),
+      ),
+      'YXZ',
+    );
+    vrm.scene.quaternion.copy(getBaseVrmRotation(vrm.scene)).multiply(
+      new THREE.Quaternion().setFromEuler(placementRotation),
+    );
+  }, [
+    modelPositionX,
+    modelPositionZ,
+    modelRotationX,
+    modelRotationY,
+    modelRotationZ,
+    modelScale,
+    modelVerticalOffset,
+    vrm,
+  ]);
 
   if (!vrm) {
     return null;
@@ -1216,6 +1350,7 @@ export function VrmStage({
         }
 
         loadedVrm = nextVrm;
+        vrmBaseRotations.set(nextVrm.scene, nextVrm.scene.quaternion.clone());
         vrmRef.current = nextVrm;
         mixerRef.current = null;
         setVrm(nextVrm);
@@ -1580,6 +1715,11 @@ export function VrmStage({
         />
 
         <Avatar
+          modelPositionX={visualSettings.modelPositionX}
+          modelPositionZ={visualSettings.modelPositionZ}
+          modelRotationX={visualSettings.modelRotationX}
+          modelRotationY={visualSettings.modelRotationY}
+          modelRotationZ={visualSettings.modelRotationZ}
           modelScale={modelScale}
           modelVerticalOffset={visualSettings.modelVerticalOffset}
           vrm={vrm}

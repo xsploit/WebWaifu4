@@ -2,6 +2,8 @@ export type SettingsTabId = 'vrm' | 'anim' | 'character' | 'ai' | 'context' | 't
 
 export type CameraViewMode = 'full-body' | 'half-body';
 
+export type CameraRigMode = 'locked' | 'custom';
+
 export type BundledVrmOption = {
   id: string;
   label: string;
@@ -21,7 +23,20 @@ export type AnimationEntry = {
 
 export type VisualSettings = {
   cameraViewMode: CameraViewMode;
+  cameraRigMode: CameraRigMode;
   cameraVerticalOffset: number;
+  cameraOffsetX: number;
+  cameraOffsetY: number;
+  cameraOffsetZ: number;
+  cameraTargetOffsetX: number;
+  cameraTargetOffsetY: number;
+  cameraTargetOffsetZ: number;
+  cameraFov: number;
+  modelPositionX: number;
+  modelPositionZ: number;
+  modelRotationX: number;
+  modelRotationY: number;
+  modelRotationZ: number;
   modelVerticalOffset: number;
   modelScale: number;
   realisticMode: boolean;

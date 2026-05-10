@@ -112,6 +112,15 @@ export function VrmTab({
         <div className="field-hint">
           Hold <strong>Alt</strong> and drag on the stage to move the avatar up or down.
         </div>
+        <div className="control-label">World Placement</div>
+        <Slider
+          label="Avatar X"
+          max={3}
+          min={-3}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { modelPositionX: value })}
+          step={0.01}
+          value={visualSettings.modelPositionX}
+        />
         <Slider
           label="Avatar Y"
           max={2}
@@ -122,18 +131,171 @@ export function VrmTab({
           step={0.01}
           value={visualSettings.modelVerticalOffset}
         />
+        <Slider
+          label="Avatar Z"
+          max={3}
+          min={-3}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { modelPositionZ: value })}
+          step={0.01}
+          value={visualSettings.modelPositionZ}
+        />
+        <Slider
+          label="Avatar Scale"
+          max={4}
+          min={0.25}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { modelScale: value })}
+          step={0.01}
+          value={visualSettings.modelScale}
+        />
+        <Slider
+          label="Pitch"
+          max={45}
+          min={-45}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { modelRotationX: value })}
+          step={0.1}
+          value={visualSettings.modelRotationX}
+        />
+        <Slider
+          label="Yaw"
+          max={180}
+          min={-180}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { modelRotationY: value })}
+          step={0.1}
+          value={visualSettings.modelRotationY}
+        />
+        <Slider
+          label="Roll"
+          max={45}
+          min={-45}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { modelRotationZ: value })}
+          step={0.1}
+          value={visualSettings.modelRotationZ}
+        />
         <div className="btn-row">
           <button
             className="btn-tech secondary"
             onClick={() =>
               updateVisualSettings(setVisualSettings, {
-                cameraVerticalOffset: 0,
+                modelPositionX: 0,
+                modelPositionZ: 0,
+                modelRotationX: 0,
+                modelRotationY: 0,
+                modelRotationZ: 0,
                 modelVerticalOffset: -0.62,
+                modelScale: 1,
               })
             }
             type="button"
           >
-            Reset Position
+            Reset Avatar
+          </button>
+        </div>
+        <div className="control-label">Camera Rig</div>
+        <select
+          className="select-tech"
+          onChange={(event) =>
+            updateVisualSettings(setVisualSettings, {
+              cameraRigMode: event.target.value === 'custom' ? 'custom' : 'locked',
+            })
+          }
+          value={visualSettings.cameraRigMode}
+        >
+          <option value="locked">Locked Preset</option>
+          <option value="custom">Custom Camera</option>
+        </select>
+        <Slider
+          label="Camera Y"
+          max={0.9}
+          min={-0.9}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { cameraVerticalOffset: value })}
+          step={0.01}
+          value={visualSettings.cameraVerticalOffset}
+        />
+        {visualSettings.cameraRigMode === 'custom' ? (
+          <>
+            <Slider
+              label="Cam X"
+              max={3}
+              min={-3}
+              onInput={(value) => updateVisualSettings(setVisualSettings, { cameraOffsetX: value })}
+              step={0.01}
+              value={visualSettings.cameraOffsetX}
+            />
+            <Slider
+              label="Cam Lift"
+              max={1.5}
+              min={-1.5}
+              onInput={(value) => updateVisualSettings(setVisualSettings, { cameraOffsetY: value })}
+              step={0.01}
+              value={visualSettings.cameraOffsetY}
+            />
+            <Slider
+              label="Cam Depth"
+              max={4}
+              min={-4}
+              onInput={(value) => updateVisualSettings(setVisualSettings, { cameraOffsetZ: value })}
+              step={0.01}
+              value={visualSettings.cameraOffsetZ}
+            />
+            <Slider
+              label="Aim X"
+              max={3}
+              min={-3}
+              onInput={(value) =>
+                updateVisualSettings(setVisualSettings, { cameraTargetOffsetX: value })
+              }
+              step={0.01}
+              value={visualSettings.cameraTargetOffsetX}
+            />
+            <Slider
+              label="Aim Y"
+              max={1.5}
+              min={-1.5}
+              onInput={(value) =>
+                updateVisualSettings(setVisualSettings, { cameraTargetOffsetY: value })
+              }
+              step={0.01}
+              value={visualSettings.cameraTargetOffsetY}
+            />
+            <Slider
+              label="Aim Z"
+              max={4}
+              min={-4}
+              onInput={(value) =>
+                updateVisualSettings(setVisualSettings, { cameraTargetOffsetZ: value })
+              }
+              step={0.01}
+              value={visualSettings.cameraTargetOffsetZ}
+            />
+            <Slider
+              label="FOV"
+              max={70}
+              min={18}
+              onInput={(value) => updateVisualSettings(setVisualSettings, { cameraFov: value })}
+              step={0.5}
+              value={visualSettings.cameraFov}
+            />
+          </>
+        ) : null}
+        <div className="btn-row">
+          <button
+            className="btn-tech secondary"
+            onClick={() =>
+              updateVisualSettings(setVisualSettings, {
+                cameraRigMode: 'locked',
+                cameraVerticalOffset: 0,
+                cameraOffsetX: 0,
+                cameraOffsetY: 0,
+                cameraOffsetZ: 0,
+                cameraTargetOffsetX: 0,
+                cameraTargetOffsetY: 0,
+                cameraTargetOffsetZ: 0,
+                cameraFov: 35,
+              })
+            }
+            type="button"
+          >
+            Reset Camera
           </button>
         </div>
         <div className="toggle-row">

@@ -350,6 +350,18 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   const source = value as Partial<VisualSettings>;
   const numericKeys: Array<keyof VisualSettings> = [
     'cameraVerticalOffset',
+    'cameraOffsetX',
+    'cameraOffsetY',
+    'cameraOffsetZ',
+    'cameraTargetOffsetX',
+    'cameraTargetOffsetY',
+    'cameraTargetOffsetZ',
+    'cameraFov',
+    'modelPositionX',
+    'modelPositionZ',
+    'modelRotationX',
+    'modelRotationY',
+    'modelRotationZ',
     'modelVerticalOffset',
     'modelScale',
     'blinkInterval',
@@ -417,7 +429,22 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   if (source.cameraViewMode === 'full-body' || source.cameraViewMode === 'half-body') {
     next.cameraViewMode = source.cameraViewMode;
   }
+  if (source.cameraRigMode === 'locked' || source.cameraRigMode === 'custom') {
+    next.cameraRigMode = source.cameraRigMode;
+  }
   next.cameraVerticalOffset = Math.max(-0.9, Math.min(0.9, next.cameraVerticalOffset));
+  next.cameraOffsetX = Math.max(-3, Math.min(3, next.cameraOffsetX));
+  next.cameraOffsetY = Math.max(-1.5, Math.min(1.5, next.cameraOffsetY));
+  next.cameraOffsetZ = Math.max(-4, Math.min(4, next.cameraOffsetZ));
+  next.cameraTargetOffsetX = Math.max(-3, Math.min(3, next.cameraTargetOffsetX));
+  next.cameraTargetOffsetY = Math.max(-1.5, Math.min(1.5, next.cameraTargetOffsetY));
+  next.cameraTargetOffsetZ = Math.max(-4, Math.min(4, next.cameraTargetOffsetZ));
+  next.cameraFov = Math.max(18, Math.min(70, next.cameraFov));
+  next.modelPositionX = Math.max(-3, Math.min(3, next.modelPositionX));
+  next.modelPositionZ = Math.max(-3, Math.min(3, next.modelPositionZ));
+  next.modelRotationX = Math.max(-45, Math.min(45, next.modelRotationX));
+  next.modelRotationY = Math.max(-180, Math.min(180, next.modelRotationY));
+  next.modelRotationZ = Math.max(-45, Math.min(45, next.modelRotationZ));
   next.modelVerticalOffset = Math.max(-2, Math.min(2, next.modelVerticalOffset));
   next.modelScale = Math.max(0.25, Math.min(4, next.modelScale));
   next.blinkInterval = Math.max(1.5, Math.min(10, next.blinkInterval));
