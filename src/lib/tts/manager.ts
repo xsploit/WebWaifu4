@@ -1,6 +1,7 @@
 import type { WLipSyncAudioNode, Profile as WLipSyncProfile } from 'wlipsync';
 import type { LipSyncData, WordBoundary } from './piper';
 import { synthesizePiperChunk } from './piper';
+import { createRemoteTtsStream, type RemoteTtsRequest } from './remote';
 
 const LIP_SYNC_PROFILE_URL =
   typeof window === 'undefined'
@@ -162,6 +163,11 @@ export class TtsManager {
     await this.queuePiperText(text, voiceId);
   }
 
+  async speakRemoteText(options: RemoteTtsRequest) {
+    this.resetSpeechQueue();
+    await this.queueRemoteText(options);
+  }
+
   queuePiperText(text: string, voiceId: string) {
     if (!this.enableTts) {
       return Promise.resolve();
@@ -191,6 +197,59 @@ export class TtsManager {
           return;
         }
         await this.playAudioChunk(chunkData);
+      });
+
+    this.playbackQueue = playbackPromise;
+    return playbackPromise;
+  }
+
+  queueRemoteText(options: RemoteTtsRequest) {
+    if (!this.enableTts) {
+      return Promise.resolve();
+    }
+
+    const cleaned = this.cleanForSpeech(options.text);
+    if (!cleaned) {
+      return Promise.resolve();
+    }
+
+    const generation = this.queueGeneration;
+    const remoteStream = createRemoteTtsStream({
+      ...options,
+      text: cleaned,
+    });
+
+    const playbackPromise = this.playbackQueue
+      .catch(() => {
+        // Keep later queued speech moving if an earlier chunk fails.
+      })
+      .then(async () => {
+        if (generation !== this.queueGeneration) {
+          return;
+        }
+        if (!this.audioContext) {
+          await this.initialize();
+        }
+        if (generation !== this.queueGeneration) {
+          return;
+        }
+        let playedChunk = false;
+        for await (const chunk of remoteStream) {
+          if (generation !== this.queueGeneration) {
+            return;
+          }
+          playedChunk = true;
+          await this.playAudioChunk({
+            audioBlob: chunk.audioBlob,
+            wordBoundaries: [],
+            phonemes: null,
+            text: cleaned,
+            sampleRate: chunk.sampleRate,
+          });
+        }
+        if (!playedChunk) {
+          throw new Error('Remote TTS returned no audio chunks.');
+        }
       });
 
     this.playbackQueue = playbackPromise;

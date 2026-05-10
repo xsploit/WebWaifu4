@@ -19,6 +19,10 @@ export type PersonaProfile = {
 
 export type PersonaDraft = Omit<PersonaProfile, 'id'>;
 
+export type TtsProvider = 'piper' | 'fish-speech' | 'inworld';
+export type FishSpeechLatency = 'balanced' | 'normal';
+export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
+
 export type AiSettings = {
   model: string;
   memoryAgentModel: string;
@@ -29,7 +33,17 @@ export type AiSettings = {
   ttsEnabled: boolean;
   ttsAutoSpeak: boolean;
   ttsSimulatedStreaming: boolean;
+  ttsProvider: TtsProvider;
   ttsVoice: string;
+  fishSpeechVoiceId: string;
+  fishSpeechModel: string;
+  fishSpeechLatency: FishSpeechLatency;
+  fishSpeechConditionOnPreviousChunks: boolean;
+  fishSpeechChunkLength: number;
+  inworldVoiceId: string;
+  inworldModelId: string;
+  inworldDeliveryMode: InworldDeliveryMode;
+  inworldBufferCharThreshold: number;
   ttsPlaybackRate: number;
   ttsVolume: number;
 };

@@ -56,6 +56,7 @@ import {
 } from './lib/tts/piper';
 import type { PiperVoiceProfile, WordBoundary } from './lib/tts/piper';
 import { getTtsManager } from './lib/tts/manager';
+import type { RemoteTtsRequest } from './lib/tts/remote';
 import {
   getOverlaySocketUrl,
   parseOverlayServerEvent,
@@ -393,6 +394,46 @@ function getAiProxyUrl() {
 
 function getClientAiRouteLabel() {
   return AI_PROXY_ENABLED ? `local AI proxy ${getAiProxyUrl()}` : 'RUN.game host AI';
+}
+
+function getTtsProviderLabel(provider: AiSettings['ttsProvider']) {
+  switch (provider) {
+    case 'fish-speech':
+      return 'FishSpeech Live';
+    case 'inworld':
+      return 'Inworld Realtime';
+    default:
+      return 'Piper Web';
+  }
+}
+
+function getActiveTtsLabel(settings: AiSettings, piperVoice?: PiperVoiceProfile | null) {
+  return settings.ttsProvider === 'piper'
+    ? (piperVoice?.name ?? 'Piper voice')
+    : getTtsProviderLabel(settings.ttsProvider);
+}
+
+function createRemoteTtsRequest(text: string, settings: AiSettings): RemoteTtsRequest {
+  if (settings.ttsProvider === 'inworld') {
+    return {
+      provider: 'inworld',
+      text,
+      voiceId: settings.inworldVoiceId.trim() || undefined,
+      modelId: settings.inworldModelId.trim() || undefined,
+      deliveryMode: settings.inworldDeliveryMode,
+      bufferCharThreshold: settings.inworldBufferCharThreshold,
+    };
+  }
+
+  return {
+    provider: 'fish-speech',
+    text,
+    voiceId: settings.fishSpeechVoiceId.trim() || undefined,
+    modelId: settings.fishSpeechModel.trim() || undefined,
+    latency: settings.fishSpeechLatency,
+    conditionOnPreviousChunks: settings.fishSpeechConditionOnPreviousChunks,
+    chunkLength: settings.fishSpeechChunkLength,
+  };
 }
 
 async function readAiProxyStream(
@@ -1223,33 +1264,42 @@ function App() {
     }
   }, [refreshStoredTtsVoices]);
 
-  const speakWithPiper = useCallback(
+  const speakWithSelectedTts = useCallback(
     async (text: string, label: string) => {
       const content = text.trim();
-      if (!content || !selectedTtsVoice) {
+      if (!content) {
+        return;
+      }
+      if (aiSettings.ttsProvider === 'piper' && !selectedTtsVoice) {
         return;
       }
 
+      const activeTtsLabel = getActiveTtsLabel(aiSettings, selectedTtsVoice);
       setTtsBusy(true);
       setTtsVoicesError(null);
-      setTtsStatus(`Synthesizing ${selectedTtsVoice.name}...`);
+      setTtsStatus(`Synthesizing ${activeTtsLabel}...`);
 
       try {
         ttsManager.enableTts = aiSettings.ttsEnabled;
-        await ttsManager.speakPiperText(content, selectedTtsVoice.key);
-        setTtsActiveVoiceKey(selectedTtsVoice.key);
-        await refreshStoredTtsVoices();
+        if (aiSettings.ttsProvider === 'piper') {
+          await ttsManager.speakPiperText(content, selectedTtsVoice!.key);
+          setTtsActiveVoiceKey(selectedTtsVoice!.key);
+          await refreshStoredTtsVoices();
+        } else {
+          await ttsManager.speakRemoteText(createRemoteTtsRequest(content, aiSettings));
+          setTtsActiveVoiceKey(null);
+        }
         setTtsStatus(`${label} finished.`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown Piper synthesis failure.';
+        const message = error instanceof Error ? error.message : 'Unknown TTS synthesis failure.';
         setTtsVoicesError(message);
         setTtsStatus(`TTS failed: ${message}`);
-        console.error('[TTS] Piper synthesis failed:', error);
+        console.error('[TTS] Synthesis failed:', error);
       } finally {
         setTtsBusy(false);
       }
     },
-    [aiSettings.ttsEnabled, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
+    [aiSettings, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
   );
 
   useEffect(() => {
@@ -1258,12 +1308,12 @@ function App() {
     }
 
     window.__yourwifeyRouteletSpeak = (text: string) =>
-      speakWithPiper(String(text ?? '').slice(0, 240), 'routelet speech');
+      speakWithSelectedTts(String(text ?? '').slice(0, 240), 'routelet speech');
 
     return () => {
       delete window.__yourwifeyRouteletSpeak;
     };
-  }, [speakWithPiper]);
+  }, [speakWithSelectedTts]);
 
   const updateAssistantMessageContent = useCallback((messageId: string, content: string) => {
     setChatHistory((current) =>
@@ -1284,7 +1334,8 @@ function App() {
     (assistantMessage: ChatMessage, shouldSpeak: boolean, label: string) => {
       const thisRun = ++assistantRenderRunRef.current;
       const voice = selectedTtsVoice;
-      const canSpeak = shouldSpeak && Boolean(voice);
+      const ttsProvider = aiSettings.ttsProvider;
+      const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
       let fullText = '';
       let displayText = '';
       let queuedDisplayText = '';
@@ -1301,8 +1352,8 @@ function App() {
         ttsManager.resetSpeechQueue();
         setTtsBusy(true);
         setTtsVoicesError(null);
-        setTtsActiveVoiceKey(voice!.key);
-        setTtsStatus(`Streaming ${voice!.name}...`);
+        setTtsActiveVoiceKey(ttsProvider === 'piper' ? voice!.key : null);
+        setTtsStatus(`Streaming ${getActiveTtsLabel(aiSettings, voice)}...`);
       }
 
       const isStale = () => assistantRenderRunRef.current !== thisRun;
@@ -1375,19 +1426,24 @@ function App() {
       };
 
       const enqueueSpeech = (chunk: string) => {
-        if (!canSpeak || !voice || isStale()) {
+        if (!canSpeak || isStale()) {
           return;
         }
 
         queuedSpeech = true;
-        const task = ttsManager.queuePiperText(chunk, voice.key).catch((error) => {
-          const message =
-            error instanceof Error ? error.message : 'Unknown Piper synthesis failure.';
-          setTtsVoicesError(message);
-          setTtsStatus(`TTS failed: ${message}`);
-          console.error('[TTS] Streaming Piper synthesis failed:', error);
-        });
-        speechPromises.push(task);
+        const task =
+          ttsProvider === 'piper'
+            ? ttsManager.queuePiperText(chunk, voice!.key)
+            : ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings));
+        speechPromises.push(
+          task.catch((error) => {
+            const message =
+              error instanceof Error ? error.message : 'Unknown streaming TTS failure.';
+            setTtsVoicesError(message);
+            setTtsStatus(`TTS failed: ${message}`);
+            console.error('[TTS] Streaming synthesis failed:', error);
+          }),
+        );
       };
 
       const consumeSpeakableChunks = (force = false) => {
@@ -1453,7 +1509,9 @@ function App() {
           if (speechPromises.length > 0) {
             await Promise.allSettled(speechPromises);
             if (!isStale() && queuedSpeech) {
-              await refreshStoredTtsVoices();
+              if (ttsProvider === 'piper') {
+                await refreshStoredTtsVoices();
+              }
             }
           }
 
@@ -1482,7 +1540,8 @@ function App() {
     (shouldSpeak: boolean, label: string): StreamingSpeechPlayer => {
       const thisRun = ++assistantRenderRunRef.current;
       const voice = selectedTtsVoice;
-      const canSpeak = shouldSpeak && Boolean(voice);
+      const ttsProvider = aiSettings.ttsProvider;
+      const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
       let fullText = '';
       let pendingText = '';
       let sawDelta = false;
@@ -1494,26 +1553,31 @@ function App() {
         ttsManager.resetSpeechQueue();
         setTtsBusy(true);
         setTtsVoicesError(null);
-        setTtsActiveVoiceKey(voice!.key);
-        setTtsStatus(`Streaming ${voice!.name}...`);
+        setTtsActiveVoiceKey(ttsProvider === 'piper' ? voice!.key : null);
+        setTtsStatus(`Streaming ${getActiveTtsLabel(aiSettings, voice)}...`);
       }
 
       const isStale = () => assistantRenderRunRef.current !== thisRun;
 
       const enqueueSpeech = (chunk: string) => {
-        if (!canSpeak || !voice || isStale()) {
+        if (!canSpeak || isStale()) {
           return;
         }
 
         queuedSpeech = true;
-        const task = ttsManager.queuePiperText(chunk, voice.key).catch((error) => {
-          const message =
-            error instanceof Error ? error.message : 'Unknown Piper synthesis failure.';
-          setTtsVoicesError(message);
-          setTtsStatus(`TTS failed: ${message}`);
-          console.error('[TTS] Streaming Piper synthesis failed:', error);
-        });
-        speechPromises.push(task);
+        const task =
+          ttsProvider === 'piper'
+            ? ttsManager.queuePiperText(chunk, voice!.key)
+            : ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings));
+        speechPromises.push(
+          task.catch((error) => {
+            const message =
+              error instanceof Error ? error.message : 'Unknown streaming TTS failure.';
+            setTtsVoicesError(message);
+            setTtsStatus(`TTS failed: ${message}`);
+            console.error('[TTS] Streaming synthesis failed:', error);
+          }),
+        );
       };
 
       const consumeSpeakableChunks = (force = false) => {
@@ -1557,7 +1621,9 @@ function App() {
           if (speechPromises.length > 0) {
             await Promise.allSettled(speechPromises);
             if (!isStale() && queuedSpeech) {
-              await refreshStoredTtsVoices();
+              if (ttsProvider === 'piper') {
+                await refreshStoredTtsVoices();
+              }
             }
           }
 
@@ -1572,7 +1638,7 @@ function App() {
 
       return { finish, pushDelta };
     },
-    [aiSettings.ttsEnabled, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
+    [aiSettings, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
   );
 
   const handleCacheTtsVoice = useCallback(async () => {
@@ -1639,16 +1705,14 @@ function App() {
       return;
     }
 
-    if (!selectedTtsVoice) {
+    if (aiSettings.ttsProvider === 'piper' && !selectedTtsVoice) {
       setTtsStatus('Pick a Piper voice first.');
       return;
     }
 
-    void speakWithPiper(
-      `${selectedTtsVoice.name} voice check. This model is active now.`,
-      `${selectedTtsVoice.name} test`,
-    );
-  }, [aiSettings.ttsEnabled, selectedTtsVoice, speakWithPiper]);
+    const label = getActiveTtsLabel(aiSettings, selectedTtsVoice);
+    void speakWithSelectedTts(`${label} voice check. This model is active now.`, `${label} test`);
+  }, [aiSettings, selectedTtsVoice, speakWithSelectedTts]);
 
   const handleSpeakLastReply = useCallback(() => {
     if (!aiSettings.ttsEnabled) {
@@ -1661,8 +1725,8 @@ function App() {
       return;
     }
 
-    void speakWithPiper(latestAssistantMessage.content, 'latest reply');
-  }, [aiSettings.ttsEnabled, latestAssistantMessage, speakWithPiper]);
+    void speakWithSelectedTts(latestAssistantMessage.content, 'latest reply');
+  }, [aiSettings.ttsEnabled, latestAssistantMessage, speakWithSelectedTts]);
 
   useEffect(() => {
     if (
@@ -1670,7 +1734,7 @@ function App() {
       !ROUTELET_SAY_TEXT ||
       routeletSaySpokenRef.current ||
       !aiSettings.ttsEnabled ||
-      !selectedTtsVoice
+      (aiSettings.ttsProvider === 'piper' && !selectedTtsVoice)
     ) {
       return;
     }
@@ -1681,11 +1745,17 @@ function App() {
       }
 
       routeletSaySpokenRef.current = true;
-      void speakWithPiper(ROUTELET_SAY_TEXT, 'routelet smoke line');
+      void speakWithSelectedTts(ROUTELET_SAY_TEXT, 'routelet smoke line');
     }, ROUTELET_SAY_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [aiSettings.ttsEnabled, hydrated, selectedTtsVoice, speakWithPiper]);
+  }, [
+    aiSettings.ttsEnabled,
+    aiSettings.ttsProvider,
+    hydrated,
+    selectedTtsVoice,
+    speakWithSelectedTts,
+  ]);
 
   const stopSubtitleTracking = useCallback((clearNow = false) => {
     if (subtitleIntervalRef.current !== null) {
@@ -1755,7 +1825,7 @@ function App() {
       if (!aiSettings.ttsSimulatedStreaming || revealChunks.length === 1) {
         clearChatDisplayOverride(assistantMessage.id);
         if (shouldSpeak) {
-          await speakWithPiper(content, label);
+          await speakWithSelectedTts(content, label);
         }
         if (!isStale()) {
           clearChatDisplayOverride(assistantMessage.id);
@@ -1777,7 +1847,7 @@ function App() {
         }));
 
         if (shouldSpeak) {
-          await speakWithPiper(chunk, label);
+          await speakWithSelectedTts(chunk, label);
         } else {
           await new Promise<void>((resolve) => {
             window.setTimeout(resolve, getChunkRevealDelay(chunk));
@@ -1789,7 +1859,7 @@ function App() {
         clearChatDisplayOverride(assistantMessage.id);
       }
     },
-    [aiSettings.ttsSimulatedStreaming, clearChatDisplayOverride, speakWithPiper],
+    [aiSettings.ttsSimulatedStreaming, clearChatDisplayOverride, speakWithSelectedTts],
   );
 
   useEffect(() => {
@@ -3014,21 +3084,17 @@ function App() {
       const twitchUserContent = buildTwitchMemoryMessage(job);
       const twitchUserMessage = createChatMessage('user', twitchUserContent);
       const promptMessage = createChatMessage('user', prompt);
-      const requestHistory = trimChatHistory([
-        ...chatHistoryRef.current,
-        promptMessage,
-      ]);
-      const memoryHistory = trimChatHistory([
-        ...chatHistoryRef.current,
-        twitchUserMessage,
-      ]);
+      const requestHistory = trimChatHistory([...chatHistoryRef.current, promptMessage]);
+      const memoryHistory = trimChatHistory([...chatHistoryRef.current, twitchUserMessage]);
       const assistantMessage = createChatMessage('assistant', '');
       const speechPlayer = createStreamingAssistantPlayer(
         assistantMessage,
         settings.ttsEnabled && settings.ttsAutoSpeak,
         `${persona.name} Twitch reply`,
       );
-      setChatHistory((current) => trimChatHistory([...current, twitchUserMessage, assistantMessage]));
+      setChatHistory((current) =>
+        trimChatHistory([...current, twitchUserMessage, assistantMessage]),
+      );
 
       try {
         const response = await requestChatCompletion({
@@ -3063,9 +3129,7 @@ function App() {
         setChatHistory((current) =>
           trimChatHistory(
             current.map((message) =>
-              message.id === assistantMessage.id
-                ? completedAssistantMessage
-                : message,
+              message.id === assistantMessage.id ? completedAssistantMessage : message,
             ),
           ),
         );

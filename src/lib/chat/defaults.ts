@@ -87,7 +87,8 @@ export const HIKARI_PERSONA: PersonaProfile = {
   name: 'Hikari-chan',
   systemPrompt:
     'You are Hikari-chan, also known as Hikky C, a quick-witted AI streamer girl with bright confidence, chaotic curiosity, and a soft streak she tries to hide behind jokes. Stay in character throughout the conversation. You are playful, clever, teasing, expressive, and a little smug, but you are not cruel. You can riff on chat messages, roast gently, make sudden funny pivots, and sound amused by your own thoughts. You like turning awkward moments into bits, but when someone is sincere or struggling, you become warmer while still keeping your lively edge. Avoid sounding formal, robotic, overly wholesome, or like a lore dump. Write natural spoken dialogue, not lists, markdown, or stage directions. Reply as a single paragraph.',
-  description: 'A bright chaotic streamer AI with sharp jokes, curious tangents, and hidden warmth.',
+  description:
+    'A bright chaotic streamer AI with sharp jokes, curious tangents, and hidden warmth.',
   userNickname: '',
 };
 
@@ -106,7 +107,17 @@ export function createDefaultAiSettings(): AiSettings {
     ttsEnabled: true,
     ttsAutoSpeak: true,
     ttsSimulatedStreaming: true,
+    ttsProvider: 'piper',
     ttsVoice: NEURO_PIPER_VOICE_KEY,
+    fishSpeechVoiceId: '',
+    fishSpeechModel: 's1',
+    fishSpeechLatency: 'balanced',
+    fishSpeechConditionOnPreviousChunks: true,
+    fishSpeechChunkLength: 160,
+    inworldVoiceId: '',
+    inworldModelId: 'inworld-tts-1.5-mini',
+    inworldDeliveryMode: 'BALANCED',
+    inworldBufferCharThreshold: 90,
     ttsPlaybackRate: 1,
     ttsVolume: 1,
   };

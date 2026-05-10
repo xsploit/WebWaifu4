@@ -3,16 +3,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
 import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
-import type {
-  ChatProvider,
-  ChatProviderMessage,
-  ChatProviderRequest,
-} from './ai/ChatProvider.js';
+import type { ChatProvider, ChatProviderMessage, ChatProviderRequest } from './ai/ChatProvider.js';
 import { loadConfig, type StreamBotConfig } from './config.js';
 import { CommandRouter } from './commands/CommandRouter.js';
 import { MockTwitchChatSource, type MockChatInjection } from './mock/MockTwitchChatSource.js';
 import { OverlaySocket, type OverlayClientEvent } from './overlay/OverlaySocket.js';
 import { ChatScheduler } from './scheduler/ChatScheduler.js';
+import { streamRemoteTts, type RemoteTtsProvider } from './tts/RemoteTtsProvider.js';
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
 
@@ -115,6 +112,25 @@ function writeSseEvent(response: ServerResponse, body: unknown) {
   (response as ServerResponse & { flush?: () => void }).flush?.();
 }
 
+function writeNdjsonHead(response: ServerResponse) {
+  response.socket?.setNoDelay(true);
+  response.writeHead(200, {
+    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'X-Accel-Buffering': 'no',
+  });
+  response.flushHeaders();
+}
+
+function writeNdjsonEvent(response: ServerResponse, body: unknown) {
+  response.write(`${JSON.stringify(body)}\n`);
+  (response as ServerResponse & { flush?: () => void }).flush?.();
+}
+
 function normalizeProviderMessages(value: unknown): ChatProviderMessage[] {
   if (!Array.isArray(value)) {
     return [];
@@ -164,6 +180,14 @@ function normalizeStateKey(value: unknown, fallback: string) {
   return key || 'default';
 }
 
+function normalizeRemoteTtsProvider(value: unknown): RemoteTtsProvider {
+  return value === 'inworld' ? 'inworld' : 'fish-speech';
+}
+
+function normalizeTtsLatency(value: unknown) {
+  return value === 'balanced' || value === 'normal' ? value : undefined;
+}
+
 const config = loadConfig();
 const provider = createProvider(config);
 
@@ -188,7 +212,90 @@ const httpServer = createServer(async (request, response) => {
       aiProvider: config.aiProvider,
       model: provider.getModel?.() ?? config.aiModel,
       providerState: provider.getState?.() ?? null,
+      ttsProviders: {
+        fishSpeech: {
+          configured: Boolean(config.fishSpeechApiKey),
+          defaultVoice: Boolean(config.fishSpeechVoiceId),
+          model: config.fishSpeechModel,
+          latency: config.fishSpeechLatency,
+          conditionOnPreviousChunks: config.fishSpeechConditionOnPreviousChunks,
+        },
+        inworld: {
+          configured: Boolean(config.inworldApiKey),
+          defaultVoice: Boolean(config.inworldVoiceId),
+          model: config.inworldModelId,
+          deliveryMode: config.inworldDeliveryMode,
+        },
+      },
     });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/tts/stream') {
+    try {
+      const body = await readRequestJson<{
+        provider?: unknown;
+        text?: unknown;
+        voiceId?: unknown;
+        modelId?: unknown;
+        latency?: unknown;
+        conditionOnPreviousChunks?: unknown;
+        chunkLength?: unknown;
+        deliveryMode?: unknown;
+        bufferCharThreshold?: unknown;
+      }>(request);
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text) {
+        writeJson(response, 200, { ok: false, error: 'text is required.' });
+        return;
+      }
+
+      writeNdjsonHead(response);
+      await streamRemoteTts(
+        config,
+        {
+          provider: normalizeRemoteTtsProvider(body.provider),
+          text,
+          voiceId: typeof body.voiceId === 'string' ? body.voiceId : undefined,
+          modelId: typeof body.modelId === 'string' ? body.modelId : undefined,
+          latency: normalizeTtsLatency(body.latency),
+          conditionOnPreviousChunks:
+            typeof body.conditionOnPreviousChunks === 'boolean'
+              ? body.conditionOnPreviousChunks
+              : undefined,
+          chunkLength: typeof body.chunkLength === 'number' ? body.chunkLength : undefined,
+          deliveryMode: typeof body.deliveryMode === 'string' ? body.deliveryMode : undefined,
+          bufferCharThreshold:
+            typeof body.bufferCharThreshold === 'number' ? body.bufferCharThreshold : undefined,
+        },
+        {
+          onAudioChunk: (chunk) => {
+            writeNdjsonEvent(response, {
+              type: 'audio',
+              audio: chunk.audio.toString('base64'),
+              mimeType: chunk.mimeType,
+              sampleRate: chunk.sampleRate,
+            });
+          },
+        },
+      );
+      writeNdjsonEvent(response, { type: 'done', ok: true });
+      response.end();
+    } catch (error) {
+      if (response.headersSent) {
+        writeNdjsonEvent(response, {
+          type: 'error',
+          ok: false,
+          error: error instanceof Error ? error.message : 'Remote TTS failed.',
+        });
+        response.end();
+        return;
+      }
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Remote TTS failed.',
+      });
+    }
     return;
   }
 

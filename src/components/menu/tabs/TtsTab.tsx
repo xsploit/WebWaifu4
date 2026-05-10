@@ -50,6 +50,7 @@ export function TtsTab({
   voicesLoading,
 }: TtsTabProps) {
   const selectedVoice = ttsVoices.find((voice) => voice.key === aiSettings.ttsVoice) ?? null;
+  const remoteProviderSelected = aiSettings.ttsProvider !== 'piper';
 
   return (
     <>
@@ -81,44 +82,196 @@ export function TtsTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Piper Voice</div>
+        <div className="control-label">TTS Engine</div>
         <select
           className="select-tech"
-          disabled={voicesLoading}
-          onChange={(event) => onSelectVoice(event.target.value)}
-          value={aiSettings.ttsVoice}
+          onChange={(event) =>
+            updateAiSettings(setAiSettings, {
+              ttsProvider: event.target.value as AiSettings['ttsProvider'],
+            })
+          }
+          value={aiSettings.ttsProvider}
         >
-          {ttsVoices.map((voice) => {
-            const label = [
-              voice.name,
-              voice.key,
-              voice.quality,
-              voice.kind === 'custom' ? 'local' : voice.language?.name_english,
-            ]
-              .filter(Boolean)
-              .join(' | ');
-
-            return (
-              <option key={voice.key} value={voice.key}>
-                {label}
-              </option>
-            );
-          })}
+          <option value="piper">Piper Web</option>
+          <option value="fish-speech">FishSpeech Live</option>
+          <option value="inworld">Inworld Realtime</option>
         </select>
-        <div className="btn-row">
-          <button className="btn-tech secondary" onClick={onRefreshVoices} type="button">
-            {voicesLoading ? 'Refreshing...' : 'Refresh Voices'}
-          </button>
-          <button
-            className="btn-tech secondary"
-            disabled={!selectedVoice || voicesLoading}
-            onClick={onCacheVoice}
-            title="Load the selected Piper voice model into the browser and prime audio."
-            type="button"
-          >
-            {ttsCached ? 'Reload Model' : 'Load Model'}
-          </button>
+        <div className="field-hint">
+          Remote engines stream through the local bot server so provider keys stay server-side.
         </div>
+      </div>
+
+      {aiSettings.ttsProvider === 'piper' ? (
+        <div className="control-group">
+          <div className="control-label">Piper Voice</div>
+          <select
+            className="select-tech"
+            disabled={voicesLoading}
+            onChange={(event) => onSelectVoice(event.target.value)}
+            value={aiSettings.ttsVoice}
+          >
+            {ttsVoices.map((voice) => {
+              const label = [
+                voice.name,
+                voice.key,
+                voice.quality,
+                voice.kind === 'custom' ? 'local' : voice.language?.name_english,
+              ]
+                .filter(Boolean)
+                .join(' | ');
+
+              return (
+                <option key={voice.key} value={voice.key}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
+          <div className="btn-row">
+            <button className="btn-tech secondary" onClick={onRefreshVoices} type="button">
+              {voicesLoading ? 'Refreshing...' : 'Refresh Voices'}
+            </button>
+            <button
+              className="btn-tech secondary"
+              disabled={!selectedVoice || voicesLoading}
+              onClick={onCacheVoice}
+              title="Load the selected Piper voice model into the browser and prime audio."
+              type="button"
+            >
+              {ttsCached ? 'Reload Model' : 'Load Model'}
+            </button>
+          </div>
+          {voicesError ? <div className="status-copy">{voicesError}</div> : null}
+          <div className="status-copy">
+            Voice cache: <strong>{ttsCached ? 'ready' : 'not cached'}</strong>
+          </div>
+          <div className="status-copy">
+            Selected: <strong>{selectedVoice?.name ?? 'none'}</strong> / Active:{' '}
+            <strong>{ttsActiveVoice?.name ?? 'none'}</strong>
+          </div>
+          <div className="status-copy">{ttsStatus}</div>
+        </div>
+      ) : null}
+
+      {aiSettings.ttsProvider === 'fish-speech' ? (
+        <div className="control-group">
+          <div className="control-label">FishSpeech Live</div>
+          <input
+            autoComplete="off"
+            className="input-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, { fishSpeechVoiceId: event.target.value })
+            }
+            placeholder="Fish reference_id; blank uses server default"
+            value={aiSettings.fishSpeechVoiceId}
+          />
+          <select
+            className="select-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, { fishSpeechModel: event.target.value })
+            }
+            value={aiSettings.fishSpeechModel}
+          >
+            <option value="s1">s1</option>
+            <option value="s1-mini">s1-mini</option>
+            <option value="speech-1.6">speech-1.6</option>
+            <option value="speech-1.5">speech-1.5</option>
+            <option value="agent-x0">agent-x0</option>
+          </select>
+          <select
+            className="select-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, {
+                fishSpeechLatency: event.target.value as AiSettings['fishSpeechLatency'],
+              })
+            }
+            value={aiSettings.fishSpeechLatency}
+          >
+            <option value="balanced">Balanced / fastest</option>
+            <option value="normal">Normal quality</option>
+          </select>
+          <div className="toggle-row">
+            <span>Condition Previous Chunks</span>
+            <Toggle
+              checked={aiSettings.fishSpeechConditionOnPreviousChunks}
+              onChange={(checked) =>
+                updateAiSettings(setAiSettings, {
+                  fishSpeechConditionOnPreviousChunks: checked,
+                })
+              }
+            />
+          </div>
+          <Slider
+            label={`Fish Chunk ${aiSettings.fishSpeechChunkLength} chars`}
+            max={300}
+            min={100}
+            onInput={(value) =>
+              updateAiSettings(setAiSettings, { fishSpeechChunkLength: Math.round(value) })
+            }
+            step={10}
+            value={aiSettings.fishSpeechChunkLength}
+          />
+          <div className="status-copy">{ttsStatus}</div>
+        </div>
+      ) : null}
+
+      {aiSettings.ttsProvider === 'inworld' ? (
+        <div className="control-group">
+          <div className="control-label">Inworld Realtime</div>
+          <input
+            autoComplete="off"
+            className="input-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, { inworldVoiceId: event.target.value })
+            }
+            placeholder="Inworld voiceId; blank uses server default"
+            value={aiSettings.inworldVoiceId}
+          />
+          <input
+            autoComplete="off"
+            className="input-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, { inworldModelId: event.target.value })
+            }
+            placeholder="inworld-tts-1.5-mini"
+            value={aiSettings.inworldModelId}
+          />
+          <select
+            className="select-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, {
+                inworldDeliveryMode: event.target.value as AiSettings['inworldDeliveryMode'],
+              })
+            }
+            value={aiSettings.inworldDeliveryMode}
+          >
+            <option value="STABLE">Stable</option>
+            <option value="BALANCED">Balanced</option>
+            <option value="CREATIVE">Creative</option>
+          </select>
+          <Slider
+            label={`Buffer ${aiSettings.inworldBufferCharThreshold} chars`}
+            max={300}
+            min={20}
+            onInput={(value) =>
+              updateAiSettings(setAiSettings, {
+                inworldBufferCharThreshold: Math.round(value),
+              })
+            }
+            step={10}
+            value={aiSettings.inworldBufferCharThreshold}
+          />
+          <div className="status-copy">{ttsStatus}</div>
+        </div>
+      ) : null}
+
+      <div className="control-group">
+        <div className="control-label">Controls</div>
+        {remoteProviderSelected ? null : (
+          <div className="status-copy">
+            Voice cache: <strong>{ttsCached ? 'ready' : 'not cached'}</strong>
+          </div>
+        )}
         <div className="btn-row">
           <button
             className="btn-tech secondary"
@@ -140,15 +293,6 @@ export function TtsTab({
             Stop Audio
           </button>
         </div>
-        {voicesError ? <div className="status-copy">{voicesError}</div> : null}
-        <div className="status-copy">
-          Voice cache: <strong>{ttsCached ? 'ready' : 'not cached'}</strong>
-        </div>
-        <div className="status-copy">
-          Selected: <strong>{selectedVoice?.name ?? 'none'}</strong> / Active:{' '}
-          <strong>{ttsActiveVoice?.name ?? 'none'}</strong>
-        </div>
-        <div className="status-copy">{ttsStatus}</div>
       </div>
 
       <div className="control-group">
@@ -178,8 +322,8 @@ export function TtsTab({
           value={aiSettings.ttsVolume}
         />
         <div className="field-hint">
-          Piper web only exposes `text + voice` for synthesis here, so speed and volume are the
-          two real playback controls available in this runtime.
+          Speed and volume are browser playback controls. Remote providers still use their own
+          server-side generation settings.
         </div>
       </div>
     </>

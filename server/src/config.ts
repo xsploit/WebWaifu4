@@ -34,6 +34,23 @@ export type StreamBotConfig = {
   tavilyMaxResults: number;
   tavilyCrawlLimit: number;
   tavilyTimeoutMs: number;
+  fishSpeechApiKey: string;
+  fishSpeechBaseUrl: string;
+  fishSpeechVoiceId: string;
+  fishSpeechModel: string;
+  fishSpeechLatency: 'balanced' | 'normal';
+  fishSpeechFormat: 'mp3' | 'wav' | 'pcm' | 'opus';
+  fishSpeechSampleRate: number;
+  fishSpeechMp3Bitrate: 64 | 128 | 192;
+  fishSpeechChunkLength: number;
+  fishSpeechConditionOnPreviousChunks: boolean;
+  inworldApiKey: string;
+  inworldBaseUrl: string;
+  inworldVoiceId: string;
+  inworldModelId: string;
+  inworldDeliveryMode: 'STABLE' | 'BALANCED' | 'CREATIVE';
+  inworldSampleRate: number;
+  inworldBufferCharThreshold: number;
   overlayPort: number;
   botPort: number;
 };
@@ -111,6 +128,62 @@ function parseTavilySearchDepth() {
     : 'basic';
 }
 
+function parseFishSpeechLatency(): StreamBotConfig['fishSpeechLatency'] {
+  const raw = process.env.FISH_SPEECH_LATENCY?.trim().toLowerCase();
+  if (raw === 'balanced' || raw === 'normal') {
+    return raw;
+  }
+  return 'balanced';
+}
+
+function parseFishSpeechFormat(): StreamBotConfig['fishSpeechFormat'] {
+  const raw = process.env.FISH_SPEECH_FORMAT?.trim().toLowerCase();
+  if (raw === 'wav' || raw === 'pcm' || raw === 'opus' || raw === 'mp3') {
+    return raw;
+  }
+  return 'mp3';
+}
+
+function parseFishSpeechMp3Bitrate(): StreamBotConfig['fishSpeechMp3Bitrate'] {
+  const parsed = numberFromEnv('FISH_SPEECH_MP3_BITRATE', 128);
+  return parsed === 64 || parsed === 192 ? parsed : 128;
+}
+
+function normalizeBaseUrl(value: string | undefined, endpointSuffix: string) {
+  const raw = value?.trim();
+  if (!raw) {
+    return '';
+  }
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol === 'wss:') {
+      url.protocol = 'https:';
+    } else if (url.protocol === 'ws:') {
+      url.protocol = 'http:';
+    }
+    if (url.pathname.endsWith(endpointSuffix)) {
+      url.pathname = url.pathname.slice(0, -endpointSuffix.length) || '/';
+      url.search = '';
+      url.hash = '';
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return raw.replace(new RegExp(`${endpointSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), '');
+  }
+}
+
+function parseInworldDeliveryMode(): StreamBotConfig['inworldDeliveryMode'] {
+  const raw = process.env.INWORLD_TTS_DELIVERY_MODE?.trim().toUpperCase();
+  if (raw === 'STABLE' || raw === 'BALANCED' || raw === 'CREATIVE') {
+    return raw;
+  }
+  if (raw === 'EXPRESSIVE') {
+    return 'CREATIVE';
+  }
+  return 'BALANCED';
+}
+
 function csvFromEnv(name: string, fallback: string[]) {
   const raw = process.env[name];
   if (!raw) {
@@ -174,6 +247,33 @@ export function loadConfig(): StreamBotConfig {
     tavilyMaxResults: numberFromEnv('TAVILY_MAX_RESULTS', 5),
     tavilyCrawlLimit: numberFromEnv('TAVILY_CRAWL_LIMIT', 8),
     tavilyTimeoutMs: numberFromEnv('TAVILY_TIMEOUT_MS', 10000),
+    fishSpeechApiKey:
+      process.env.FISH_AUDIO_API_KEY?.trim() || process.env.FISHSPEECH_API_KEY?.trim() || '',
+    fishSpeechBaseUrl:
+      process.env.FISH_AUDIO_BASE_URL?.trim() ||
+      process.env.FISH_SPEECH_BASE_URL?.trim() ||
+      normalizeBaseUrl(process.env.FISH_SPEECH_WS_URL, '/v1/tts/live'),
+    fishSpeechVoiceId:
+      process.env.FISH_SPEECH_VOICE_ID?.trim() || process.env.FISH_AUDIO_VOICE_ID?.trim() || '',
+    fishSpeechModel: process.env.FISH_SPEECH_MODEL?.trim() || 's1',
+    fishSpeechLatency: parseFishSpeechLatency(),
+    fishSpeechFormat: parseFishSpeechFormat(),
+    fishSpeechSampleRate: numberFromEnv('FISH_SPEECH_SAMPLE_RATE', 44100),
+    fishSpeechMp3Bitrate: parseFishSpeechMp3Bitrate(),
+    fishSpeechChunkLength: numberFromEnv('FISH_SPEECH_CHUNK_LENGTH', 160),
+    fishSpeechConditionOnPreviousChunks: booleanFromEnv(
+      'FISH_SPEECH_CONDITION_ON_PREVIOUS_CHUNKS',
+      true,
+    ),
+    inworldApiKey: process.env.INWORLD_API_KEY?.trim() ?? '',
+    inworldBaseUrl:
+      process.env.INWORLD_TTS_BASE_URL?.trim() ||
+      normalizeBaseUrl(process.env.INWORLD_TTS_WS_URL, '/tts/v1/voice:streamBidirectional'),
+    inworldVoiceId: process.env.INWORLD_TTS_VOICE_ID?.trim() || '',
+    inworldModelId: process.env.INWORLD_TTS_MODEL_ID?.trim() || 'inworld-tts-1.5-mini',
+    inworldDeliveryMode: parseInworldDeliveryMode(),
+    inworldSampleRate: numberFromEnv('INWORLD_TTS_SAMPLE_RATE', 22050),
+    inworldBufferCharThreshold: numberFromEnv('INWORLD_TTS_BUFFER_CHARS', 90),
     overlayPort: numberFromEnv('OVERLAY_PORT', 5173),
     botPort: numberFromEnv('BOT_PORT', 8787),
   };

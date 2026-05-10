@@ -156,6 +156,40 @@ function normalizeAiSettings(value: unknown): AiSettings {
     typeof source.ttsVolume === 'number' && Number.isFinite(source.ttsVolume)
       ? Math.max(0, Math.min(2, source.ttsVolume))
       : defaults.ttsVolume;
+  const ttsProvider =
+    source.ttsProvider === 'fish-speech' || source.ttsProvider === 'inworld'
+      ? source.ttsProvider
+      : defaults.ttsProvider;
+  const fishSpeechLatency =
+    source.fishSpeechLatency === 'balanced' || source.fishSpeechLatency === 'normal'
+      ? source.fishSpeechLatency
+      : defaults.fishSpeechLatency;
+  const fishSpeechModel =
+    typeof source.fishSpeechModel === 'string' && source.fishSpeechModel.trim()
+      ? source.fishSpeechModel.trim() === 's2-pro'
+        ? defaults.fishSpeechModel
+        : source.fishSpeechModel.trim()
+      : defaults.fishSpeechModel;
+  const fishSpeechChunkLength =
+    typeof source.fishSpeechChunkLength === 'number' &&
+    Number.isFinite(source.fishSpeechChunkLength)
+      ? Math.max(100, Math.min(300, Math.round(source.fishSpeechChunkLength)))
+      : defaults.fishSpeechChunkLength;
+  const inworldBufferCharThreshold =
+    typeof source.inworldBufferCharThreshold === 'number' &&
+    Number.isFinite(source.inworldBufferCharThreshold)
+      ? Math.max(20, Math.min(1000, Math.round(source.inworldBufferCharThreshold)))
+      : defaults.inworldBufferCharThreshold;
+  const inworldDeliveryMode =
+    source.inworldDeliveryMode === 'STABLE' ||
+    source.inworldDeliveryMode === 'BALANCED' ||
+    source.inworldDeliveryMode === 'CREATIVE'
+      ? source.inworldDeliveryMode
+      : source.inworldDeliveryMode === 'EXPRESSIVE'
+        ? 'CREATIVE'
+        : source.inworldDeliveryMode === 'LOW_LATENCY'
+          ? 'STABLE'
+          : defaults.inworldDeliveryMode;
 
   return {
     model: normalizedModel,
@@ -174,7 +208,20 @@ function normalizeAiSettings(value: unknown): AiSettings {
       typeof source.ttsSimulatedStreaming === 'boolean'
         ? source.ttsSimulatedStreaming
         : defaults.ttsSimulatedStreaming,
+    ttsProvider,
     ttsVoice: String(source.ttsVoice ?? defaults.ttsVoice),
+    fishSpeechVoiceId: String(source.fishSpeechVoiceId ?? defaults.fishSpeechVoiceId),
+    fishSpeechModel,
+    fishSpeechLatency,
+    fishSpeechConditionOnPreviousChunks:
+      typeof source.fishSpeechConditionOnPreviousChunks === 'boolean'
+        ? source.fishSpeechConditionOnPreviousChunks
+        : defaults.fishSpeechConditionOnPreviousChunks,
+    fishSpeechChunkLength,
+    inworldVoiceId: String(source.inworldVoiceId ?? defaults.inworldVoiceId),
+    inworldModelId: String(source.inworldModelId ?? defaults.inworldModelId),
+    inworldDeliveryMode,
+    inworldBufferCharThreshold,
     ttsPlaybackRate: playbackRate,
     ttsVolume,
   };
