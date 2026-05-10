@@ -193,7 +193,7 @@ const PERSONA_SCENE_PRESETS: PersonaScenePreset[] = [
     ],
     bundledModelId: HIKARI_BUNDLED_MODEL_ID,
     ttsVoice: HIKARI_PIPER_VOICE_KEY,
-    backgroundImage: '/cdn-assets/backgrounds/neuro-bedroom.png',
+    backgroundImage: '/cdn-assets/backgrounds/hikari-bedroom.png',
     backgroundOverlay:
       'linear-gradient(180deg, rgba(255, 245, 231, 0.06), rgba(125, 59, 38, 0.18))',
     backgroundFilter: 'saturate(1.04) brightness(0.98) contrast(1.01)',
