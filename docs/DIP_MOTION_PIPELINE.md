@@ -2,6 +2,21 @@
 
 This is the current local bridge from DiP/MDM generated motion into the web waifu app.
 
+## Current Truth
+
+DiP generation works. The first direct DiP XYZ to BVH bridge did not.
+
+The generated BVHs loaded in the app, but the VRM retarget was bad enough to make the avatar move incorrectly. Those BVHs are retired and no longer exposed in the default animation playlist. Old saved playlist entries for `/assets/animations/dip/dip_*.bvh` are filtered out during settings normalization.
+
+The real cache format is now:
+
+1. DiP/MDM `results.npy`: raw XYZ joint output.
+2. MDM `visualize.render_mesh`: official SMPLify conversion.
+3. `sampleN_rep00_smpl_params.npy`: stable SMPL motion parameters.
+4. Next step: retarget SMPL motion to a humanoid rig and export FBX or VRMA.
+
+Do not regenerate app-facing BVH clips from the raw XYZ cache without a real skeleton/retarget pass.
+
 ## Current Pack
 
 Generated with:
@@ -25,7 +40,6 @@ Prompts:
 
 Committed app cache:
 
-- `public/assets/animations/dip/*.bvh`
 - `public/assets/animations/dip/motion_manifest.json`
 - `public/assets/animations/dip/cache/results.npy`
 - `public/assets/animations/dip/cache/results.txt`
@@ -33,10 +47,9 @@ Committed app cache:
 - `public/assets/animations/dip/cache/samples_00_to_02.mp4`
 - `public/assets/animations/dip/cache/samples_03_to_05.mp4`
 - `public/assets/animations/dip/cache/samples_06_to_08.mp4`
+- `public/assets/animations/dip/cache/smpl/sample*_smpl_params.npy`
 
-The Anim tab exposes the pack as experimental default playlist entries named `DiP ...`.
-
-## Regenerate
+## Regenerate DiP Cache
 
 From the MDM checkout:
 
@@ -56,46 +69,62 @@ micromamba run -n mdm310 python -m sample.generate \
   --output_dir outputs/vtuber_motion_pack_dip
 ```
 
-## Export To App BVH
+## Render SMPL Params
 
-From this app repo:
+From WSL, inside this app repo:
 
 ```bash
 cd /mnt/c/Users/SUBSECT/Documents/Codex/2026-05-04/https-github-com-prismml-eng-bonsai/yourwifey-stream
-export MAMBA_ROOT_PREFIX=/opt/micromamba
-micromamba run -n mdm310 python scripts/export-dip-results-to-bvh.py \
-  --results /mnt/c/Users/SUBSECT/Documents/motion-lab/motion-diffusion-model/outputs/vtuber_motion_pack_dip/results.npy \
-  --out public/assets/animations/dip \
-  --asset-base /assets/animations/dip \
-  --names idle,talking,hand_gestures,listening,looking,laugh,react,leave,thinking \
-  --source DiP_no-target_10steps_context20_predict40/model000600343.pt \
-  --copy-raw
+bash scripts/render-dip-results-to-smpl.sh
 ```
 
-Then copy preview MP4s into `public/assets/animations/dip/cache/` if needed.
+To render specific samples:
+
+```bash
+bash scripts/render-dip-results-to-smpl.sh 7 8
+```
+
+The script writes OBJ frame folders while it is running, then writes `sampleN_rep00_smpl_params.npy` when a sample finishes.
+
+## Copy SMPL Params Into App Cache
+
+Copy the finished `.npy` files into:
+
+```text
+public/assets/animations/dip/cache/smpl/
+```
+
+Use the names from `motion_manifest.json`:
+
+```text
+sample0_idle_smpl_params.npy
+sample1_talking_smpl_params.npy
+sample2_hand_gestures_smpl_params.npy
+sample3_listening_smpl_params.npy
+sample4_looking_smpl_params.npy
+sample5_laugh_smpl_params.npy
+sample6_react_smpl_params.npy
+sample7_leave_smpl_params.npy
+sample8_thinking_smpl_params.npy
+```
 
 ## Translation Targets
 
-Current:
+Use the SMPL params, not the retired direct BVH files.
 
-- DiP `results.npy`: raw generated XYZ joint cache.
-- BVH: exported app format, loadable by Three `BVHLoader`.
-
-Next useful translations:
-
-- FBX: easiest via Blender import BVH, retarget to an armature, export FBX.
+- FBX: import SMPL motion into Blender, retarget to a humanoid armature, export FBX.
 - VRMA: retarget to VRM humanoid bones and export VRM Animation.
-- Unity/VRChat: import BVH/FBX, map to Humanoid, bake an `.anim` clip for an avatar controller.
-- Higher quality SMPL: run MDM `visualize.render_mesh` / SMPLify to produce SMPL params, then export through Blender. This is slower but gives better skeleton fidelity than the current direct XYZ-to-BVH bridge.
+- Unity/VRChat: import FBX or VRMA source, map to Humanoid, bake an `.anim` clip for an avatar controller.
 
 ## Hook Shape
 
 The clean version of our own hook is:
 
 1. Generate or choose cached DiP prompt clips.
-2. Export each clip into a stable asset format.
-3. Add clips to `motion_manifest.json`.
-4. Let the app's animation sequencer load them by URL.
-5. Later, add semantic animation tags so chat/LLM output can request `talking`, `laugh`, `react`, `thinking`, etc.
+2. Convert through SMPL params.
+3. Retarget to a stable humanoid/VRM skeleton.
+4. Export each clip into FBX or VRMA.
+5. Add those exported clips to the app animation sequencer.
+6. Later, add semantic animation tags so chat/LLM output can request `talking`, `laugh`, `react`, `thinking`, etc.
 
-That same bridge can target VRChat by replacing step 2 with a Unity/Blender retarget export.
+That same bridge can target VRChat by replacing step 4 with a Unity-ready Humanoid `.anim` clip.

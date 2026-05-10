@@ -1,74 +1,80 @@
-[
-  {
-    "name": "idle",
-    "prompt": "A person stands idle with subtle breathing and a relaxed posture.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_idle.bvh"
+{
+  "schema": "dip-mdm-cache-v2",
+  "playable": false,
+  "status": "raw_and_smpl_cache",
+  "note": "The direct DiP XYZ to BVH export was retired because it loaded but retargeted badly on VRM avatars. Use these cached raw and SMPL outputs as the source for a real FBX or VRMA retarget/export step.",
+  "source": {
+    "repo": "C:/Users/SUBSECT/Documents/motion-lab/motion-diffusion-model",
+    "checkpoint": "save/DiP_no-target_10steps_context20_predict40/model000600343.pt",
+    "outputCache": "outputs/vtuber_motion_pack_dip",
+    "fps": 20,
+    "frames": 80
   },
-  {
-    "name": "talking",
-    "prompt": "A person talks expressively with natural upper body movement and small hand gestures.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_talking.bvh"
+  "raw": {
+    "results": "/assets/animations/dip/cache/results.npy",
+    "texts": "/assets/animations/dip/cache/results.txt",
+    "lengths": "/assets/animations/dip/cache/results_len.txt"
   },
-  {
-    "name": "hand_gestures",
-    "prompt": "A person gestures with both hands while explaining something enthusiastically.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_hand_gestures.bvh"
-  },
-  {
-    "name": "listening",
-    "prompt": "A person listens attentively, nodding slightly and keeping a calm stance.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_listening.bvh"
-  },
-  {
-    "name": "looking",
-    "prompt": "A person looks around casually, turning the head and upper body left and right.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_looking.bvh"
-  },
-  {
-    "name": "laugh",
-    "prompt": "A person laughs happily with a quick shoulder bounce and open body language.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_laugh.bvh"
-  },
-  {
-    "name": "react",
-    "prompt": "A person reacts with surprise, leaning back slightly and lifting their hands.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_react.bvh"
-  },
-  {
-    "name": "leave",
-    "prompt": "A person steps backward, turns slightly, and leaves the conversation.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_leave.bvh"
-  },
-  {
-    "name": "thinking",
-    "prompt": "A person thinks for a moment, pausing with one hand near their chin.",
-    "frames": 80,
-    "fps": 20.0,
-    "source": "DiP_no-target_10steps_context20_predict40/model000600343.pt",
-    "url": "/assets/animations/dip/dip_thinking.bvh"
-  }
-]
+  "previews": [
+    "/assets/animations/dip/cache/samples_00_to_02.mp4",
+    "/assets/animations/dip/cache/samples_03_to_05.mp4",
+    "/assets/animations/dip/cache/samples_06_to_08.mp4"
+  ],
+  "motions": [
+    {
+      "id": "idle",
+      "sample": 0,
+      "prompt": "A person stands idle with subtle breathing and a relaxed posture.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample0_idle_smpl_params.npy"
+    },
+    {
+      "id": "talking",
+      "sample": 1,
+      "prompt": "A person talks expressively with natural upper body movement and small hand gestures.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample1_talking_smpl_params.npy"
+    },
+    {
+      "id": "hand_gestures",
+      "sample": 2,
+      "prompt": "A person gestures with both hands while explaining something enthusiastically.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample2_hand_gestures_smpl_params.npy"
+    },
+    {
+      "id": "listening",
+      "sample": 3,
+      "prompt": "A person listens attentively, nodding slightly and keeping a calm stance.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample3_listening_smpl_params.npy"
+    },
+    {
+      "id": "looking",
+      "sample": 4,
+      "prompt": "A person looks around casually, turning the head and upper body left and right.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample4_looking_smpl_params.npy"
+    },
+    {
+      "id": "laugh",
+      "sample": 5,
+      "prompt": "A person laughs happily with a quick shoulder bounce and open body language.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample5_laugh_smpl_params.npy"
+    },
+    {
+      "id": "react",
+      "sample": 6,
+      "prompt": "A person reacts with surprise, leaning back slightly and lifting their hands.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample6_react_smpl_params.npy"
+    },
+    {
+      "id": "leave",
+      "sample": 7,
+      "prompt": "A person steps backward, turns slightly, and leaves the conversation.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample7_leave_smpl_params.npy"
+    },
+    {
+      "id": "thinking",
+      "sample": 8,
+      "prompt": "A person thinks for a moment, pausing with one hand near their chin.",
+      "smplParams": "/assets/animations/dip/cache/smpl/sample8_thinking_smpl_params.npy"
+    }
+  ],
+  "nextExport": "Retarget SMPL motion to a VRM humanoid armature, then export FBX or VRMA. Do not use the retired direct BVH exporter."
+}

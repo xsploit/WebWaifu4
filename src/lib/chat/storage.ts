@@ -482,6 +482,16 @@ function normalizeAnimationFormat(value: unknown, url: string): AnimationFormat 
   }
 }
 
+function isRejectedGeneratedAnimation(id: string, url: string, format: AnimationFormat): boolean {
+  const cleanUrl = url.split('?')[0]?.split('#')[0]?.toLowerCase() ?? '';
+  return (
+    id.startsWith('dip-') &&
+    format === 'bvh' &&
+    cleanUrl.startsWith('/assets/animations/dip/dip_') &&
+    cleanUrl.endsWith('.bvh')
+  );
+}
+
 function normalizeAnimationEntry(value: unknown): AnimationEntry | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -497,11 +507,17 @@ function normalizeAnimationEntry(value: unknown): AnimationEntry | null {
     return null;
   }
 
+  const id = String(source.id);
+  const format = normalizeAnimationFormat(source.format, url);
+  if (isRejectedGeneratedAnimation(id, url, format)) {
+    return null;
+  }
+
   return {
-    id: String(source.id),
+    id,
     name: String(source.name),
     url,
-    format: normalizeAnimationFormat(source.format, url),
+    format,
     enabled: typeof source.enabled === 'boolean' ? source.enabled : true,
     experimental: typeof source.experimental === 'boolean' ? source.experimental : false,
   };
