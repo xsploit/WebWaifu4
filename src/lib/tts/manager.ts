@@ -36,6 +36,9 @@ export class TtsManager {
   isPlaying = false;
   currentSource: AudioBufferSourceNode | null = null;
   currentAudio: HTMLAudioElement | null = null;
+  private currentStreamSources = new Set<AudioBufferSourceNode>();
+  private streamPlaybackEndTime = 0;
+  private streamStartedTimer: number | null = null;
 
   wordBoundaries: WordBoundary[] = [];
   currentPhonemes: string[] | null = null;
@@ -97,6 +100,24 @@ export class TtsManager {
       this.currentAudio = null;
     }
 
+    for (const source of this.currentStreamSources) {
+      try {
+        source.stop();
+      } catch {
+        // ignore
+      }
+      try {
+        source.disconnect();
+      } catch {
+        // ignore
+      }
+    }
+    this.currentStreamSources.clear();
+    if (this.streamStartedTimer !== null) {
+      window.clearTimeout(this.streamStartedTimer);
+      this.streamStartedTimer = null;
+    }
+    this.streamPlaybackEndTime = 0;
     this.disconnectAudioSource();
     this.clearPlaybackState();
 
@@ -236,6 +257,8 @@ export class TtsManager {
         const abortController = new AbortController();
         this.remoteAbortControllers.add(abortController);
         const audioChunks: RemoteTtsAudioChunk[] = [];
+        let playingPcmStream = false;
+        let pcmStreamTail: Promise<void> = Promise.resolve();
         try {
           const remoteStream = createRemoteTtsStream(
             {
@@ -248,10 +271,33 @@ export class TtsManager {
             if (generation !== this.queueGeneration || abortController.signal.aborted) {
               return;
             }
-            audioChunks.push(chunk);
+            if (chunk.mimeType === 'audio/pcm') {
+              if (!playingPcmStream) {
+                playingPcmStream = true;
+                this.beginRemotePcmStream(cleaned);
+              }
+              pcmStreamTail = this.scheduleRemotePcmChunk(
+                chunk,
+                generation,
+                abortController.signal,
+                cleaned,
+              );
+            } else if (playingPcmStream) {
+              console.warn('[TTS] Mixed remote audio formats during PCM stream; dropping chunk.');
+            } else {
+              audioChunks.push(chunk);
+            }
           }
         } finally {
           this.remoteAbortControllers.delete(abortController);
+        }
+        if (playingPcmStream) {
+          await pcmStreamTail;
+          if (generation === this.queueGeneration && !abortController.signal.aborted) {
+            this.onSpeechFinished?.();
+            this.clearPlaybackState();
+          }
+          return;
         }
         if (
           audioChunks.length === 0 &&
@@ -305,6 +351,83 @@ export class TtsManager {
       text,
       sampleRate,
     };
+  }
+
+  private beginRemotePcmStream(text: string) {
+    this.teardownCurrentAudio();
+    this.wordBoundaries = [];
+    this.currentPhonemes = null;
+    this.wordBoundaryStartTime = null;
+    this.onLipSyncData?.({ wordBoundaries: [], phonemes: null, text });
+    if (!this.audioContext) {
+      throw new Error('AudioContext not initialized');
+    }
+    if (this.audioContext.state === 'suspended' && canAttemptAudioResume()) {
+      void this.audioContext.resume().catch(() => {});
+    }
+    this.streamPlaybackEndTime = Math.max(this.audioContext.currentTime + 0.05, this.audioContext.currentTime);
+  }
+
+  private async scheduleRemotePcmChunk(
+    chunk: RemoteTtsAudioChunk,
+    generation: number,
+    signal: AbortSignal,
+    text: string,
+  ) {
+    if (!this.audioContext || !this.audioAnalyser) {
+      throw new Error('AudioContext not initialized');
+    }
+    const raw = new Uint8Array(await chunk.audioBlob.arrayBuffer());
+    if (generation !== this.queueGeneration || signal.aborted || raw.byteLength < 2) {
+      return Promise.resolve();
+    }
+
+    const sampleRate = chunk.sampleRate ?? 24000;
+    const sampleCount = Math.floor(raw.byteLength / 2);
+    const view = new DataView(raw.buffer, raw.byteOffset, sampleCount * 2);
+    const audioBuffer = this.audioContext.createBuffer(1, sampleCount, sampleRate);
+    const channel = audioBuffer.getChannelData(0);
+    for (let index = 0; index < sampleCount; index += 1) {
+      channel[index] = Math.max(-1, Math.min(1, view.getInt16(index * 2, true) / 32768));
+    }
+
+    const source = this.audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.playbackRate.value = this.playbackRate;
+    source.connect(this.audioAnalyser);
+    if (this.lipsyncNode) {
+      source.connect(this.lipsyncNode);
+    }
+    this.ensureAnalyserConnected();
+
+    const startAt = Math.max(this.streamPlaybackEndTime, this.audioContext.currentTime + 0.02);
+    const duration = audioBuffer.duration / Math.max(0.01, this.playbackRate);
+    this.streamPlaybackEndTime = startAt + duration;
+    this.currentStreamSources.add(source);
+
+    const tail = new Promise<void>((resolve) => {
+      source.onended = () => {
+        this.currentStreamSources.delete(source);
+        resolve();
+      };
+    });
+
+    if (!this.isPlaying) {
+      const delayMs = Math.max(0, (startAt - this.audioContext.currentTime) * 1000);
+      this.streamStartedTimer = window.setTimeout(() => {
+        this.streamStartedTimer = null;
+        if (generation !== this.queueGeneration || signal.aborted) {
+          return;
+        }
+        this.wordBoundaryStartTime = 0;
+        this.isPlaying = true;
+        this.onSpeechStarted?.();
+        this.onLipSyncData?.({ wordBoundaries: [], phonemes: null, text });
+      }, delayMs);
+    }
+
+    source.start(startAt);
+    return tail;
   }
 
   resetSpeechQueue() {

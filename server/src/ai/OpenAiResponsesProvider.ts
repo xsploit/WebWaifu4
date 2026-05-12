@@ -352,7 +352,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
   }
 
   private get canUsePreviousResponse() {
-    return this.options.stateMode === 'previous-response' && this.options.store;
+    return (
+      this.options.stateMode === 'previous-response' &&
+      (this.options.store || this.options.useWebSocket)
+    );
   }
 
   resetState() {
@@ -475,6 +478,8 @@ export class OpenAiResponsesProvider implements ChatProvider {
     const state = this.getScopedState(key);
     const stateDisabled = request.disableState === true || request.stateScope === 'memory';
     const usesConversation = !stateDisabled && this.options.stateMode === 'conversation';
+    const canContinuePreviousResponse =
+      !stateDisabled && this.canUsePreviousResponse && Boolean(state.previousResponseId);
     const signature = createStateSignature(this.options.model, this.options.promptCacheKey);
     if (!stateDisabled) {
       if (!usesConversation && state.stateSignature && state.stateSignature !== signature) {
@@ -491,7 +496,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
         : null;
     const payload: Record<string, unknown> = {
       model: this.options.model,
-      input,
+      input: canContinuePreviousResponse && input.length > 0 ? input.slice(-1) : input,
       max_output_tokens: normalizeMaxOutputTokens(request.maxTokens, this.options.maxOutputTokens),
       store: this.options.store,
     };
