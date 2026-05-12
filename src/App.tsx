@@ -26,6 +26,20 @@ import {
 } from './lib/chat/memory-agent';
 import { updateRelationshipMemory } from './lib/chat/memory';
 import { buildChatCompletionMessages, trimChatHistory } from './lib/chat/prompt';
+import {
+  buildAnimationCatalogInstruction,
+  createAssistantMetadataStreamFilter,
+  resolveAnimationIndexForReplyMetadata,
+  stripAssistantReplyMetadata,
+  type AssistantReplyMetadata,
+  type AssistantReplyParseResult,
+} from './lib/chat/reply-metadata';
+import {
+  addSemanticMemoryTurn,
+  buildSemanticMemoryContext,
+  findSemanticMemoryMatches,
+  loadSemanticMemory,
+} from './lib/chat/semantic-memory';
 import { loadPersistedChatState, savePersistedChatState } from './lib/chat/storage';
 import type {
   AiSettings,
@@ -270,6 +284,7 @@ type TwitchAiJob = {
   mode: 'direct' | 'batch';
   activeChatterCount: number;
   context: DirectTwitchChatMessage[];
+  firstTimeChatter?: boolean;
   messages: DirectTwitchChatMessage[];
 };
 
@@ -298,8 +313,14 @@ type AiProxyStreamEvent = {
   text?: string;
 };
 
+type AppEmbeddingResponse = {
+  embedding?: number[];
+  error?: string;
+  ok?: boolean;
+};
+
 type StreamingSpeechPlayer = {
-  finish: (finalText?: string) => Promise<string>;
+  finish: (finalText?: string) => Promise<AssistantReplyParseResult>;
   pushDelta: (delta: string) => void;
 };
 
@@ -389,6 +410,15 @@ function getAiProxyUrl() {
     url.port = '8787';
   } else if (!isLocalDev) {
     url.pathname = '/api/ai/chat';
+  }
+  return url.toString();
+}
+
+function getAiEmbeddingUrl() {
+  const url = new URL(getAiProxyUrl());
+  url.pathname = url.pathname.replace(/\/chat\/?$/, '/embeddings');
+  if (!/\/embeddings\/?$/.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/embeddings`;
   }
   return url.toString();
 }
@@ -594,6 +624,59 @@ async function requestChatCompletion({
       },
     ],
   };
+}
+
+async function requestTextEmbedding(input: string): Promise<number[] | null> {
+  const text = input.trim();
+  if (!AI_PROXY_ENABLED || !text) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 1800);
+  try {
+    const response = await fetch(getAiEmbeddingUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({ input: text.slice(0, 4000) }),
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as AppEmbeddingResponse;
+    return data.ok && Array.isArray(data.embedding) ? data.embedding : null;
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function getSemanticMemoryContext(scopeKey: string, query: string) {
+  if (loadSemanticMemory(scopeKey).length === 0) {
+    return '';
+  }
+
+  const embedding = await requestTextEmbedding(query);
+  return buildSemanticMemoryContext(findSemanticMemoryMatches(scopeKey, query, embedding));
+}
+
+async function rememberSemanticTurn(
+  scopeKey: string,
+  userText: string,
+  assistantText: string,
+  persona: PersonaProfile | null,
+) {
+  const embedding = await requestTextEmbedding(`${userText}\n${assistantText}`);
+  addSemanticMemoryTurn({
+    assistantText,
+    embedding,
+    persona,
+    scopeKey,
+    userText,
+  });
 }
 
 function normalizeCommandSelector(value: string) {
@@ -866,6 +949,9 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null) {
       `Live Twitch chat mode: tagged queue for ${personaName}.`,
       `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
       `Viewer ${target?.displayName ?? 'chat'} tagged you: "${target?.text ?? ''}"`,
+      job.firstTimeChatter
+        ? 'This is the first message seen from this viewer in this browser session; greet them naturally.'
+        : null,
       'Reply directly to that viewer in one or two short spoken sentences.',
       'Do not mention command syntax, queues, batching, or system internals.',
       recentContext ? `Recent chat context:\n${recentContext}` : null,
@@ -1053,6 +1139,7 @@ function App() {
   );
   const directTwitchAiHandlerRef = useRef<(message: DirectTwitchChatMessage) => void>(() => {});
   const twitchActiveChattersRef = useRef<Map<string, number>>(new Map());
+  const twitchKnownUsersRef = useRef<Set<string>>(new Set());
   const twitchContextRef = useRef<DirectTwitchChatMessage[]>([]);
   const twitchBatchRef = useRef<DirectTwitchChatMessage[]>([]);
   const twitchAiQueueRef = useRef<TwitchAiJob[]>([]);
@@ -1382,6 +1469,7 @@ function App() {
       const voice = selectedTtsVoice;
       const ttsProvider = aiSettings.ttsProvider;
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
+      const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
       let displayText = '';
       let queuedDisplayText = '';
@@ -1505,15 +1593,21 @@ function App() {
           return;
         }
 
+        const visibleDelta = metadataFilter.push(delta);
+        if (!visibleDelta) {
+          return;
+        }
+
         sawDelta = true;
-        fullText += delta;
-        pendingText += delta;
-        queueDisplayText(delta);
+        fullText += visibleDelta;
+        pendingText += visibleDelta;
+        queueDisplayText(visibleDelta);
         consumeSpeakableChunks(false);
       };
 
       const finish = async (finalText?: string) => {
-        const normalizedFinal = finalText?.trim() ?? '';
+        const parsedReply = metadataFilter.finish(finalText ?? fullText);
+        const normalizedFinal = parsedReply.text;
         if (!isStale() && normalizedFinal && normalizedFinal !== fullText.trim()) {
           if (!sawDelta) {
             fullText = normalizedFinal;
@@ -1538,7 +1632,7 @@ function App() {
           }
         }
         if (!isStale() && fullText.trim()) {
-          updateAssistantMessageContent(assistantMessage.id, fullText);
+          updateAssistantMessageContent(assistantMessage.id, fullText.trim());
         }
 
         consumeSpeakableChunks(true);
@@ -1567,7 +1661,10 @@ function App() {
           }
         }
 
-        return fullText.trim() || normalizedFinal;
+        return {
+          metadata: parsedReply.metadata,
+          text: fullText.trim() || normalizedFinal,
+        };
       };
 
       return { finish, pushDelta };
@@ -1588,6 +1685,7 @@ function App() {
       const voice = selectedTtsVoice;
       const ttsProvider = aiSettings.ttsProvider;
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
+      const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
       let pendingText = '';
       let sawDelta = false;
@@ -1639,14 +1737,20 @@ function App() {
           return;
         }
 
+        const visibleDelta = metadataFilter.push(delta);
+        if (!visibleDelta) {
+          return;
+        }
+
         sawDelta = true;
-        fullText += delta;
-        pendingText += delta;
+        fullText += visibleDelta;
+        pendingText += visibleDelta;
         consumeSpeakableChunks(false);
       };
 
       const finish = async (finalText?: string) => {
-        const normalizedFinal = finalText?.trim() ?? '';
+        const parsedReply = metadataFilter.finish(finalText ?? fullText);
+        const normalizedFinal = parsedReply.text;
         if (!isStale() && normalizedFinal && normalizedFinal !== fullText.trim()) {
           if (!sawDelta) {
             fullText = normalizedFinal;
@@ -1679,7 +1783,10 @@ function App() {
           }
         }
 
-        return fullText.trim() || normalizedFinal;
+        return {
+          metadata: parsedReply.metadata,
+          text: fullText.trim() || normalizedFinal,
+        };
       };
 
       return { finish, pushDelta };
@@ -1849,7 +1956,8 @@ function App() {
 
   const playAssistantResponse = useCallback(
     async (assistantMessage: ChatMessage, shouldSpeak: boolean, label: string) => {
-      const content = assistantMessage.content.trim();
+      const parsedReply = stripAssistantReplyMetadata(assistantMessage.content);
+      const content = parsedReply.text;
       if (!content) {
         clearChatDisplayOverride(assistantMessage.id);
         return;
@@ -2531,6 +2639,21 @@ function App() {
     void runRelationshipMemoryRefresh(historySnapshot, memorySnapshot, scheduledRun, 'manual');
   }, [chatHistory, runRelationshipMemoryRefresh]);
 
+  const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
+    const index = resolveAnimationIndexForReplyMetadata(
+      metadata,
+      sequencerSettingsRef.current.playlist,
+    );
+    if (index === -1) {
+      return;
+    }
+
+    setManualPlayRequest({
+      index,
+      nonce: Date.now(),
+    });
+  }, []);
+
   const handleSendMessage = useCallback(
     async (overrideInput?: string) => {
       const message = (overrideInput ?? chatInput).trim();
@@ -2548,10 +2671,12 @@ function App() {
       const userMessage = createChatMessage('user', message);
       const nextHistory = trimChatHistory([...chatHistory, userMessage]);
       const assistantMessage = createChatMessage('assistant', '');
+      const persona = activePersona ?? DEFAULT_PERSONA;
+      const stateKey = getLocalConversationStateKey(persona);
       const streamingPlayer = createStreamingAssistantPlayer(
         assistantMessage,
         aiSettings.ttsEnabled && aiSettings.ttsAutoSpeak,
-        `${activePersona?.name ?? DEFAULT_PERSONA.name} reply`,
+        `${persona.name} reply`,
       );
       const requestRun = ++chatRequestRunRef.current;
 
@@ -2560,26 +2685,40 @@ function App() {
       setChatGenerating(true);
 
       try {
+        const semanticMemoryContext = await getSemanticMemoryContext(stateKey, message);
+        if (chatRequestRunRef.current !== requestRun) {
+          return;
+        }
         const response = await requestChatCompletion({
           model: selectedModel,
           messages: await buildChatCompletionMessages({
+            animationCatalogContext: buildAnimationCatalogInstruction(
+              sequencerSettingsRef.current.playlist,
+            ),
             history: nextHistory,
             includeHostContext: aiSettings.includeHostContext,
-            persona: activePersona ?? DEFAULT_PERSONA,
+            persona,
             relationshipMemory,
             runtimeContext,
+            semanticMemoryContext,
+            turnContext: {
+              source: 'local',
+              stateKey,
+              turnKind: 'manual-chat',
+            },
             ttsExpressionTagsEnabled: aiSettings.ttsExpressionTagsEnabled,
             ttsProvider: aiSettings.ttsProvider,
           }),
           maxTokens: aiSettings.maxTokens,
-          stateKey: getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA),
+          stateKey,
           stateScope: 'chat',
           onTextDelta: streamingPlayer.pushDelta,
           temperature: aiSettings.temperature,
           apiKey: aiSettings.localDevApiKey,
         });
 
-        const assistantContent = await streamingPlayer.finish(response.choices[0]?.message.content);
+        const assistantReply = await streamingPlayer.finish(response.choices[0]?.message.content);
+        const assistantContent = assistantReply.text;
         if (chatRequestRunRef.current !== requestRun) {
           return;
         }
@@ -2587,6 +2726,7 @@ function App() {
         if (!assistantContent) {
           throw new Error('RUN AI returned an empty response.');
         }
+        playAssistantMetadataAnimation(assistantReply.metadata);
 
         const completedAssistantMessage = {
           ...assistantMessage,
@@ -2602,6 +2742,7 @@ function App() {
         setRelationshipMemory(nextRelationshipMemory);
         setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory);
+        void rememberSemanticTurn(stateKey, message, assistantContent, persona);
         setChatGenerating(false);
       } catch (error) {
         if (chatRequestRunRef.current !== requestRun) {
@@ -2635,6 +2776,7 @@ function App() {
       chatHistory,
       chatInput,
       createStreamingAssistantPlayer,
+      playAssistantMetadataAnimation,
       relationshipMemory,
       runtimeContext,
       scheduleRelationshipMemoryRefresh,
@@ -2799,7 +2941,7 @@ function App() {
             const playlist = sequencerSettingsRef.current.playlist;
             const enabledIndexes = playlist
               .map((entry, index) => ({ entry, index }))
-              .filter(({ entry }) => entry.enabled)
+              .filter(({ entry }) => entry.enabled && entry.loopEligible !== false)
               .map(({ index }) => index);
             if (enabledIndexes.length === 0) {
               appendSystemMessage('Stream command failed: no enabled animations.');
@@ -2816,7 +2958,7 @@ function App() {
           if (command.command === 'random') {
             const enabledIndexes = sequencerSettingsRef.current.playlist
               .map((entry, index) => ({ entry, index }))
-              .filter(({ entry }) => entry.enabled)
+              .filter(({ entry }) => entry.enabled && entry.loopEligible !== false)
               .map(({ index }) => index);
             if (enabledIndexes.length === 0) {
               appendSystemMessage('Stream command failed: no enabled animations.');
@@ -2942,6 +3084,7 @@ function App() {
         if (['reset', 'clear', 'restart'].includes(subcommand)) {
           twitchAiQueueRef.current = [];
           twitchBatchRef.current = [];
+          twitchKnownUsersRef.current.clear();
           setRelationshipMemory(createDefaultRelationshipMemory());
           respond('Client AI queue and relationship state reset.');
           return true;
@@ -2958,6 +3101,7 @@ function App() {
       ) {
         twitchAiQueueRef.current = [];
         twitchBatchRef.current = [];
+        twitchKnownUsersRef.current.clear();
         setRelationshipMemory(createDefaultRelationshipMemory());
         respond('Client AI queue and relationship state reset.');
         return true;
@@ -3124,6 +3268,7 @@ function App() {
       const twitchUserContent = buildTwitchMemoryMessage(job);
       const twitchUserMessage = createChatMessage('user', twitchUserContent);
       const promptMessage = createChatMessage('user', prompt);
+      const stateKey = getTwitchConversationStateKey(channel, persona);
       const requestHistory = trimChatHistory([...chatHistoryRef.current, promptMessage]);
       const memoryHistory = trimChatHistory([...chatHistoryRef.current, twitchUserMessage]);
       const assistantMessage = createChatMessage('assistant', '');
@@ -3137,32 +3282,48 @@ function App() {
       );
 
       try {
+        const semanticMemoryContext = await getSemanticMemoryContext(stateKey, twitchUserContent);
         const response = await requestChatCompletion({
           activeChatters: job.activeChatterCount,
           mode: job.mode,
           model: selectedModel,
           messages: await buildChatCompletionMessages({
+            animationCatalogContext: buildAnimationCatalogInstruction(
+              sequencerSettingsRef.current.playlist,
+            ),
             history: requestHistory,
             includeHostContext: settings.includeHostContext,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
             persona,
             relationshipMemory: relationshipMemoryRef.current,
             runtimeContext,
+            semanticMemoryContext,
+            turnContext: {
+              activeChatters: job.activeChatterCount,
+              batchMessages: job.messages.length,
+              channel,
+              firstTimeChatter: job.firstTimeChatter ?? false,
+              source: 'twitch',
+              stateKey,
+              turnKind: job.mode,
+            },
             ttsExpressionTagsEnabled: settings.ttsExpressionTagsEnabled,
             ttsProvider: settings.ttsProvider,
           }),
           maxTokens: settings.maxTokens,
-          stateKey: getTwitchConversationStateKey(channel, persona),
+          stateKey,
           stateScope: 'chat',
           onTextDelta: speechPlayer.pushDelta,
           temperature: settings.temperature,
           apiKey: settings.localDevApiKey,
         });
 
-        const assistantContent = await speechPlayer.finish(response.choices[0]?.message.content);
+        const assistantReply = await speechPlayer.finish(response.choices[0]?.message.content);
+        const assistantContent = assistantReply.text;
         if (!assistantContent) {
           throw new Error('RUN AI returned an empty Twitch reply.');
         }
+        playAssistantMetadataAnimation(assistantReply.metadata);
         const completedAssistantMessage = {
           ...assistantMessage,
           content: assistantContent,
@@ -3183,6 +3344,7 @@ function App() {
         setRelationshipMemory(nextRelationshipMemory);
         setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory);
+        void rememberSemanticTurn(stateKey, twitchUserContent, assistantContent, persona);
       } catch (error) {
         const message = getRunAiErrorMessage(error, 'chat');
         appendSystemMessage(`[Twitch] AI reply failed: ${message}`);
@@ -3192,6 +3354,7 @@ function App() {
       activePersona,
       appendSystemMessage,
       createStreamingAssistantPlayer,
+      playAssistantMetadataAnimation,
       runtimeContext,
       scheduleRelationshipMemoryRefresh,
       twitchChannel,
@@ -3283,7 +3446,10 @@ function App() {
   const handleDirectTwitchAiMessage = useCallback(
     (message: DirectTwitchChatMessage) => {
       const now = Date.now();
-      twitchActiveChattersRef.current.set(message.user.toLowerCase(), now);
+      const normalizedUser = message.user.toLowerCase();
+      const firstTimeChatter = !twitchKnownUsersRef.current.has(normalizedUser);
+      twitchKnownUsersRef.current.add(normalizedUser);
+      twitchActiveChattersRef.current.set(normalizedUser, now);
       const activeChatterCount = pruneActiveTwitchChatters(twitchActiveChattersRef.current, now);
       setTwitchActiveChatterCount(activeChatterCount);
       twitchContextRef.current = [...twitchContextRef.current, message].slice(
@@ -3303,6 +3469,7 @@ function App() {
           mode: 'direct',
           activeChatterCount,
           context: twitchContextRef.current.slice(-TWITCH_CONTEXT_LIMIT),
+          firstTimeChatter,
           messages: [message],
         });
         return;
@@ -3459,9 +3626,13 @@ function App() {
           const stream = overlayAiStreamsRef.current.get(parsed.payload.jobId);
           if (stream) {
             overlayAiStreamsRef.current.delete(parsed.payload.jobId);
-            void stream.player.finish(parsed.payload.text);
+            void stream.player
+              .finish(parsed.payload.text)
+              .then((assistantReply) => playAssistantMetadataAnimation(assistantReply.metadata));
           } else {
-            const assistantMessage = createChatMessage('assistant', parsed.payload.text);
+            const assistantReply = stripAssistantReplyMetadata(parsed.payload.text);
+            playAssistantMetadataAnimation(assistantReply.metadata);
+            const assistantMessage = createChatMessage('assistant', assistantReply.text);
             void playAssistantResponse(
               assistantMessage,
               aiSettingsRef.current.ttsEnabled && aiSettingsRef.current.ttsAutoSpeak,
@@ -3522,6 +3693,7 @@ function App() {
     appendSystemMessage,
     createStreamingSpeechPlayer,
     handleOverlayCommand,
+    playAssistantMetadataAnimation,
     playAssistantResponse,
   ]);
 
@@ -3570,10 +3742,14 @@ function App() {
           <SettingsPanel
             activePersona={activePersona}
             activeTab={activeTab}
+            activeTwitchChatters={twitchActiveChatterCount}
             aiSettings={aiSettings}
             availableModels={availableModels}
+            batchPending={twitchBatchRef.current.length}
+            botMentionTag={activePersonaMentionTag}
             bundledModels={BUNDLED_VRM_MODELS}
             chatDraftLength={chatInput.length}
+            chatOverlayOpen={chatLogOpen}
             messageCount={chatHistory.length}
             currentBundledModelId={currentBundledModelId}
             onClearChat={handleClearChat}
@@ -3603,6 +3779,9 @@ function App() {
                     format,
                     enabled: true,
                     experimental: false,
+                    loopEligible: false,
+                    purpose: 'gesture',
+                    tags: ['custom'],
                   },
                 ],
               }));
@@ -3632,13 +3811,33 @@ function App() {
               void loadTtsVoices();
             }}
             onResetContext={handleResetContext}
+            onResetTwitchState={() => {
+              if (twitchBatchTimerRef.current !== null) {
+                window.clearTimeout(twitchBatchTimerRef.current);
+                twitchBatchTimerRef.current = null;
+              }
+              twitchAiQueueRef.current = [];
+              twitchBatchRef.current = [];
+              twitchKnownUsersRef.current.clear();
+              appendSystemMessage('Twitch AI queue reset.');
+            }}
             onRunMemoryAgent={handleRunMemoryAgentNow}
             onSavePersona={handleSavePersona}
             onSelectVoice={handleSelectTtsVoice}
+            onSetTwitchChannel={(channel) => {
+              const cleanChannel = channel.replace(/^#/, '').trim().toLowerCase();
+              if (!cleanChannel) {
+                return;
+              }
+              directTwitchClientRef.current?.switchChannel(cleanChannel);
+              setTwitchChannel(cleanChannel);
+              appendSystemMessage(`Twitch channel switched to #${cleanChannel}.`);
+            }}
             onSpeakLastReply={handleSpeakLastReply}
             onStopTts={handleStopTts}
             onTabChange={setActiveTab}
             onTestVoice={handleTestTtsVoice}
+            onToggleChatOverlay={setChatLogOpen}
             open={menuOpen}
             personas={personas}
             relationshipMemory={relationshipMemory}
@@ -3657,6 +3856,11 @@ function App() {
             remoteTtsVoices={activeRemoteTtsVoices}
             remoteVoicesError={remoteTtsVoicesError}
             remoteVoicesLoading={remoteTtsVoicesLoading}
+            twitchAiModeLabel={twitchModeLabel}
+            twitchChannel={twitchChannel}
+            twitchConnectionLabel={twitchConnectionLabel}
+            twitchDirectChatEnabled={DIRECT_TWITCH_CHAT_ENABLED}
+            twitchQueueLength={twitchAiQueueRef.current.length}
             visualSettings={visualSettings}
             voicesError={ttsVoicesError}
             voicesLoading={ttsVoicesLoading}

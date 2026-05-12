@@ -1,4 +1,4 @@
-export type SettingsTabId = 'vrm' | 'anim' | 'character' | 'ai' | 'context' | 'tts';
+export type SettingsTabId = 'vrm' | 'anim' | 'character' | 'ai' | 'twitch' | 'context' | 'tts';
 
 export type CameraViewMode = 'full-body' | 'half-body';
 
@@ -12,6 +12,8 @@ export type BundledVrmOption = {
 
 export type AnimationFormat = 'fbx' | 'glb' | 'gltf' | 'vrma' | 'bvh';
 
+export type AnimationPurpose = 'ambient' | 'gesture' | 'emotion' | 'movement' | 'pose';
+
 export type AnimationEntry = {
   id: string;
   name: string;
@@ -19,6 +21,10 @@ export type AnimationEntry = {
   format?: AnimationFormat;
   enabled: boolean;
   experimental: boolean;
+  weight?: number;
+  loopEligible?: boolean;
+  purpose?: AnimationPurpose;
+  tags?: string[];
 };
 
 export type VisualSettings = {

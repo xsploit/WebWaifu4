@@ -111,7 +111,7 @@ export function TtsTab({
           />
         </div>
         <div className="toggle-row">
-          <span>Simulate Streaming Replies</span>
+          <span>Chunk Text Into TTS</span>
           <Toggle
             checked={aiSettings.ttsSimulatedStreaming}
             onChange={(checked) =>
@@ -146,7 +146,7 @@ export function TtsTab({
           <option value="inworld">Inworld Realtime</option>
         </select>
         <div className="field-hint">
-          Remote engines stream through the local bot server so provider keys stay server-side.
+          Remote engines stream through the bot server so provider keys stay server-side.
         </div>
       </div>
 

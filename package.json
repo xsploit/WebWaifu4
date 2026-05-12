@@ -20,6 +20,7 @@
     "start:stream": "concurrently -k -n overlay,ai -c cyan,magenta \"npm run preview -- --host 0.0.0.0\" \"npm run start:bot\"",
     "stream:routelet": "bash scripts/stream-routelet.sh",
     "stream:routelet:build": "npm run build && bash scripts/stream-routelet.sh",
+    "sync:silly-tavern": "node scripts/sync-silly-tavern.mjs",
     "test": "vitest",
     "deploy": "npm run build && rundot deploy",
     "format": "prettier \"{src,public}/**/*.{ts,tsx,js,jsx,json,css,html}\" --write",

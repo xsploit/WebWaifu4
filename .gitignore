@@ -10,3 +10,4 @@ coverage/
 .rundot-docs
 .tmp/
 YourWifey_*.zip
+tmp-*-smoke.png

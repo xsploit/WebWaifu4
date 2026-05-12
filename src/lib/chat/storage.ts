@@ -17,7 +17,13 @@ import type {
   RelationshipMemory,
   UiState,
 } from './types';
-import type { AnimationEntry, AnimationFormat, SettingsTabId, VisualSettings } from '../menu/types';
+import type {
+  AnimationEntry,
+  AnimationFormat,
+  AnimationPurpose,
+  SettingsTabId,
+  VisualSettings,
+} from '../menu/types';
 import {
   appendDiaryHistory,
   clampRelationshipStat,
@@ -482,6 +488,34 @@ function normalizeAnimationFormat(value: unknown, url: string): AnimationFormat 
   }
 }
 
+function normalizeAnimationPurpose(value: unknown): AnimationPurpose {
+  switch (value) {
+    case 'ambient':
+    case 'gesture':
+    case 'emotion':
+    case 'movement':
+    case 'pose':
+      return value;
+    default:
+      return 'gesture';
+  }
+}
+
+function normalizeAnimationTags(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item).trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 20),
+    ),
+  );
+}
+
 function isRejectedGeneratedAnimation(id: string, url: string, format: AnimationFormat): boolean {
   const cleanUrl = url.split('?')[0]?.split('#')[0]?.toLowerCase() ?? '';
   const retiredDipBvh =
@@ -525,7 +559,18 @@ function normalizeAnimationEntry(value: unknown): AnimationEntry | null {
     format,
     enabled: typeof source.enabled === 'boolean' ? source.enabled : true,
     experimental: typeof source.experimental === 'boolean' ? source.experimental : false,
+    loopEligible:
+      typeof source.loopEligible === 'boolean'
+        ? source.loopEligible
+        : normalizeAnimationPurpose(source.purpose) === 'ambient',
+    weight: typeof source.weight === 'number' && Number.isFinite(source.weight) ? source.weight : undefined,
+    purpose: normalizeAnimationPurpose(source.purpose),
+    tags: normalizeAnimationTags(source.tags),
   };
+}
+
+function clampAnimationWeight(value: number) {
+  return Math.min(4, Math.max(0.05, value));
 }
 
 function normalizeSequencerSettings(value: unknown) {
@@ -542,13 +587,33 @@ function normalizeSequencerSettings(value: unknown) {
         .filter((entry): entry is AnimationEntry => Boolean(entry))
     : [];
 
+  const rawPlaylist = Array.isArray(source.playlist)
+    ? source.playlist
+        .map((entry) => entry as Partial<AnimationEntry> | null)
+        .filter(
+          (entry): entry is Partial<AnimationEntry> & { id: string } =>
+            entry !== null && typeof entry === 'object' && typeof entry.id === 'string',
+        )
+    : [];
+  const rawPersistedById = new Map(rawPlaylist.map((entry) => [String(entry.id), entry]));
   const persistedById = new Map(persistedPlaylist.map((entry) => [entry.id, entry]));
   const mergedDefaults = DEFAULT_ANIMATIONS.map((entry) => {
     const persisted = persistedById.get(entry.id);
+    const rawPersisted = rawPersistedById.get(entry.id);
     const merged = persisted
       ? {
           ...entry,
           enabled: persisted.enabled,
+          loopEligible:
+            typeof rawPersisted?.loopEligible === 'boolean'
+              ? persisted.loopEligible
+              : entry.loopEligible,
+          weight:
+            typeof rawPersisted?.weight === 'number' && Number.isFinite(rawPersisted.weight)
+              ? clampAnimationWeight(rawPersisted.weight)
+              : entry.weight,
+          purpose: typeof rawPersisted?.purpose === 'string' ? persisted.purpose : entry.purpose,
+          tags: Array.isArray(rawPersisted?.tags) ? persisted.tags : entry.tags,
         }
       : { ...entry };
     return entry.id === 'idle' && entry.url.endsWith('/Idle.fbx')

@@ -80,7 +80,9 @@ export function AiTab({
               ))}
             </optgroup>
           ) : null}
-          {selectedModel && !gptModelIds.has(selectedModel.id) && !customModels.includes(selectedModel.id) ? (
+          {selectedModel &&
+          !gptModelIds.has(selectedModel.id) &&
+          !customModels.includes(selectedModel.id) ? (
             <option key={selectedModel.id} value={selectedModel.id}>
               {selectedModel.label}
             </option>
@@ -104,7 +106,7 @@ export function AiTab({
           value={aiSettings.temperature}
         />
         <Slider
-          label="Max Tok"
+          label="Max Output"
           max={1000}
           min={80}
           onInput={(value) => updateAiSettings(setAiSettings, { maxTokens: value })}
@@ -114,7 +116,7 @@ export function AiTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Runtime Context</div>
+        <div className="control-label">Prompt Context</div>
         <div className="toggle-row">
           <span>Include Host Context</span>
           <Toggle
@@ -133,7 +135,7 @@ export function AiTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Local Dev Override</div>
+        <div className="control-label">Local Browser Override</div>
         <input
           autoComplete="off"
           className="input-tech"
@@ -147,7 +149,7 @@ export function AiTab({
           value={aiSettings.localDevApiKey}
         />
         <div className="field-hint">
-          `apiKey` is only used outside RUN.game. The host ignores it when deployed.
+          Used only for local static testing. Server-backed chat uses the backend environment key.
         </div>
       </div>
     </>

@@ -145,10 +145,13 @@ function createToolCallingFetcher(calls: FetchCall[]) {
       });
     }
 
-    return new Response(JSON.stringify(responses[Math.min(responseIndex++, responses.length - 1)]), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify(responses[Math.min(responseIndex++, responses.length - 1)]),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
   }) as typeof fetch;
 }
 
@@ -443,10 +446,10 @@ describe('OpenAiResponsesProvider', () => {
       store: true,
     });
     expect(calls[1]?.body).toMatchObject({
+      instructions: 'You are Riko. Keep replies short.',
       previous_response_id: 'resp_1',
       prompt_cache_key: 'yourwifey-stream-test',
     });
-    expect(calls[1]?.body).not.toHaveProperty('instructions');
     expect(provider.getState()['previousResponseId']).toBe('resp_2');
     expect(provider.getState()['cachedTokens']).toBe(128);
   });
@@ -503,7 +506,49 @@ describe('OpenAiResponsesProvider', () => {
     ]);
     expect(calls[1]?.body['conversation']).toBe('conv_test');
     expect(calls[2]?.body['conversation']).toBe('conv_test');
+    expect(calls[1]?.body['instructions']).toBe('You are Riko. Keep replies short.');
+    expect(calls[2]?.body['instructions']).toBe('You are Riko. Keep replies short.');
     expect(provider.getState()['conversationId']).toBe('conv_test');
+  });
+
+  it('keeps conversation ids when dynamic instructions change each turn', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      store: false,
+      useWebSocket: false,
+      fetcher: createFetcher(calls),
+    });
+
+    await provider.complete({
+      ...createRequest('first'),
+      messages: [
+        { role: 'system', content: 'Static persona.\nTurn Metadata: one' },
+        { role: 'user', content: 'first' },
+      ],
+    });
+    await provider.complete({
+      ...createRequest('second'),
+      messages: [
+        { role: 'system', content: 'Static persona.\nTurn Metadata: two' },
+        { role: 'user', content: 'second' },
+      ],
+    });
+
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://api.openai.com/v1/conversations',
+      'https://api.openai.com/v1/responses',
+      'https://api.openai.com/v1/responses',
+    ]);
+    expect(calls[1]?.body['conversation']).toBe('conv_test');
+    expect(calls[2]?.body['conversation']).toBe('conv_test');
+    expect(calls[1]?.body['instructions']).toContain('Turn Metadata: one');
+    expect(calls[2]?.body['instructions']).toContain('Turn Metadata: two');
   });
 
   it('keeps Conversations API ids isolated per state key', async () => {

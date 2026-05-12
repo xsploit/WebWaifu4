@@ -291,6 +291,18 @@ export function resolveAnimationIndexForReplyMetadata(
     return -1;
   }
 
+  const weights = candidates.map((candidate) => {
+    return {
+      ...candidate,
+      weight: resolveAnimationSelectionWeight(candidate.entry, metadata, candidate.score),
+    };
+  });
+
+  const selected = pickWeightedCandidate(weights);
+  if (selected) {
+    return selected.index;
+  }
+
   candidates.sort((a, b) => {
     const aEnabled = a.entry.enabled ? 1 : 0;
     const bEnabled = b.entry.enabled ? 1 : 0;
@@ -392,6 +404,37 @@ function inferPurposeForMotion(motion: AssistantMotion): AnimationPurpose {
     return 'gesture';
   }
   return 'emotion';
+}
+
+function resolveAnimationSelectionWeight(
+  entry: AnimationEntry,
+  metadata: AssistantReplyMetadata,
+  score: number,
+) {
+  const weight = typeof entry.weight === 'number' && Number.isFinite(entry.weight) ? entry.weight : 0.8;
+  const purposePenalty =
+    (entry.purpose === 'movement' || entry.purpose === 'pose') &&
+    metadata.purpose !== entry.purpose
+      ? 0.2
+      : 1;
+  return Math.max(0.001, weight * purposePenalty * Math.max(0.1, score));
+}
+
+function pickWeightedCandidate<T extends { index: number; weight: number }>(candidates: T[]) {
+  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
+  if (totalWeight <= 0) {
+    return undefined;
+  }
+
+  let cursor = Math.random() * totalWeight;
+  for (const candidate of candidates) {
+    cursor -= candidate.weight;
+    if (cursor <= 0) {
+      return candidate;
+    }
+  }
+
+  return candidates[0];
 }
 
 function normalizeSetValue<T extends string>(value: unknown, allowed: Set<T>, fallback: T) {

@@ -59,7 +59,8 @@ export function VrmTab({
           ))}
         </select>
         <div className="field-hint">
-          Bundled avatars ship with the game so players can switch instantly.
+          Pick a bundled character, then use Load Default Avatar or Load Model if the stage needs a
+          forced refresh.
         </div>
         <button
           className="file-drop-area"
@@ -92,7 +93,7 @@ export function VrmTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Rendering Protocols</div>
+        <div className="control-label">Avatar & Camera</div>
         <div className="control-label">Camera Framing</div>
         <select
           className="select-tech"
@@ -207,7 +208,9 @@ export function VrmTab({
           label="Camera Y"
           max={0.9}
           min={-0.9}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { cameraVerticalOffset: value })}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { cameraVerticalOffset: value })
+          }
           step={0.01}
           value={visualSettings.cameraVerticalOffset}
         />
@@ -372,7 +375,7 @@ export function VrmTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Post-Processing FX</div>
+        <div className="control-label">Visual FX</div>
         <div className="toggle-row">
           <span>Anime Outlines</span>
           <Toggle
@@ -489,7 +492,7 @@ export function VrmTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Film Look (Perry-Smith)</div>
+        <div className="control-label">Color Grade</div>
         <div className="toggle-row">
           <span>Bleach Bypass</span>
           <Toggle
@@ -539,7 +542,7 @@ export function VrmTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Shader Controls</div>
+        <div className="control-label">FX Tuning</div>
         <Slider
           label="Bloom Str"
           max={2}

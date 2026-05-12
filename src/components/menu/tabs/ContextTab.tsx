@@ -139,7 +139,7 @@ export function ContextTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Riko Diary</div>
+        <div className="control-label">Private Diary</div>
         <pre className="context-preview">
           {relationshipMemory.diaryEntry
             ? relationshipMemory.diaryEntry

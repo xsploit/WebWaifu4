@@ -22,15 +22,20 @@ import { AnimTab } from './tabs/AnimTab';
 import { CharacterTab } from './tabs/CharacterTab';
 import { ContextTab } from './tabs/ContextTab';
 import { TtsTab } from './tabs/TtsTab';
+import { TwitchTab } from './tabs/TwitchTab';
 import { VrmTab } from './tabs/VrmTab';
 
 type SettingsPanelProps = {
   activePersona: PersonaProfile | null;
   activeTab: SettingsTabId;
+  activeTwitchChatters: number;
   aiSettings: AiSettings;
   availableModels: string[];
+  batchPending: number;
+  botMentionTag: string;
   bundledModels: BundledVrmOption[];
   chatDraftLength: number;
+  chatOverlayOpen: boolean;
   messageCount: number;
   currentBundledModelId: string;
   onClose: () => void;
@@ -49,13 +54,16 @@ type SettingsPanelProps = {
   onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
   onResetContext: () => void;
+  onResetTwitchState: () => void;
   onRunMemoryAgent: () => void;
   onSavePersona: (draft: PersonaDraft, personaId?: string) => void;
   onSelectVoice: (voiceId: string) => void;
+  onSetTwitchChannel: (channel: string) => void;
   onSpeakLastReply: () => void;
   onStopTts: () => void;
   onTabChange: (tab: SettingsTabId) => void;
   onTestVoice: () => void;
+  onToggleChatOverlay: (open: boolean) => void;
   open: boolean;
   personas: PersonaProfile[];
   relationshipMemory: RelationshipMemory;
@@ -74,6 +82,11 @@ type SettingsPanelProps = {
   remoteTtsVoices: RemoteTtsVoice[];
   remoteVoicesError: string | null;
   remoteVoicesLoading: boolean;
+  twitchAiModeLabel: string;
+  twitchChannel: string;
+  twitchConnectionLabel: string;
+  twitchDirectChatEnabled: boolean;
+  twitchQueueLength: number;
   visualSettings: VisualSettings;
   modelsError: string | null;
   modelsLoading: boolean;
@@ -82,21 +95,26 @@ type SettingsPanelProps = {
 };
 
 const TABS: { id: SettingsTabId; label: string }[] = [
-  { id: 'vrm', label: 'VRM' },
-  { id: 'anim', label: 'Anim' },
-  { id: 'character', label: 'Char' },
+  { id: 'vrm', label: 'Avatar' },
+  { id: 'anim', label: 'Animation' },
+  { id: 'character', label: 'Character' },
   { id: 'ai', label: 'AI' },
-  { id: 'context', label: 'Ctx' },
+  { id: 'twitch', label: 'Twitch' },
+  { id: 'context', label: 'Memory' },
   { id: 'tts', label: 'TTS' },
 ];
 
 export function SettingsPanel({
   activePersona,
   activeTab,
+  activeTwitchChatters,
   aiSettings,
   availableModels,
+  batchPending,
+  botMentionTag,
   bundledModels,
   chatDraftLength,
+  chatOverlayOpen,
   messageCount,
   currentBundledModelId,
   onCacheVoice,
@@ -115,13 +133,16 @@ export function SettingsPanel({
   onRefreshRemoteVoices,
   onRefreshVoices,
   onResetContext,
+  onResetTwitchState,
   onRunMemoryAgent,
   onSavePersona,
   onSelectVoice,
+  onSetTwitchChannel,
   onSpeakLastReply,
   onStopTts,
   onTabChange,
   onTestVoice,
+  onToggleChatOverlay,
   open,
   personas,
   relationshipMemory,
@@ -140,6 +161,11 @@ export function SettingsPanel({
   remoteTtsVoices,
   remoteVoicesError,
   remoteVoicesLoading,
+  twitchAiModeLabel,
+  twitchChannel,
+  twitchConnectionLabel,
+  twitchDirectChatEnabled,
+  twitchQueueLength,
   visualSettings,
   modelsError,
   modelsLoading,
@@ -175,6 +201,21 @@ export function SettingsPanel({
         onRefreshModels={onRefreshModels}
         runtimeContext={runtimeContext}
         setAiSettings={setAiSettings}
+      />
+    ) : activeTab === 'twitch' ? (
+      <TwitchTab
+        activeChatterCount={activeTwitchChatters}
+        aiModeLabel={twitchAiModeLabel}
+        batchPending={batchPending}
+        botMentionTag={botMentionTag}
+        channel={twitchChannel}
+        chatOverlayOpen={chatOverlayOpen}
+        connectionLabel={twitchConnectionLabel}
+        directChatEnabled={twitchDirectChatEnabled}
+        onResetTwitchState={onResetTwitchState}
+        onSetChannel={onSetTwitchChannel}
+        onToggleChatOverlay={onToggleChatOverlay}
+        queueLength={twitchQueueLength}
       />
     ) : activeTab === 'context' ? (
       <ContextTab
@@ -275,7 +316,17 @@ export function SettingsPanel({
         <rect fill="var(--c-text-accent)" height="4" opacity="0.5" width="50" x="20" y="790" />
       </svg>
 
-      <div className="tabs-header">
+      <div className="settings-panel-header">
+        <div>
+          <div className="panel-kicker">Stream controls</div>
+          <div className="panel-title">Settings</div>
+        </div>
+        <button className="panel-close-btn" onClick={onClose} title="Close settings" type="button">
+          Close
+        </button>
+      </div>
+
+      <div className="tabs-header" aria-label="Settings sections">
         {TABS.map((tab) => (
           <button
             className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}

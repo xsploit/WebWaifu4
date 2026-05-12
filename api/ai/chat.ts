@@ -271,8 +271,8 @@ function writeSseEvent(response: ApiResponse, body: unknown) {
   response.write?.(`data: ${JSON.stringify(body)}\n\n`);
 }
 
-function createStateSignature(model: string, instructions: string, promptCacheKey: string) {
-  return JSON.stringify({ model, instructions, promptCacheKey });
+function createStateSignature(model: string, promptCacheKey: string) {
+  return JSON.stringify({ model, promptCacheKey });
 }
 
 function normalizeStateScope(value: unknown): 'chat' | 'memory' {
@@ -385,9 +385,10 @@ function getTavilyTools(): TavilyToolOptions | null {
 
   return {
     apiKey,
-    searchDepth: process.env['TAVILY_SEARCH_DEPTH']?.trim().toLowerCase() === 'advanced'
-      ? 'advanced'
-      : 'basic',
+    searchDepth:
+      process.env['TAVILY_SEARCH_DEPTH']?.trim().toLowerCase() === 'advanced'
+        ? 'advanced'
+        : 'basic',
     maxResults: numberFromEnv('TAVILY_MAX_RESULTS', 5),
     crawlLimit: numberFromEnv('TAVILY_CRAWL_LIMIT', 8),
     timeoutMs: numberFromEnv('TAVILY_TIMEOUT_MS', 10000),
@@ -580,10 +581,7 @@ async function readOpenAiStream(
       completed = event.response ?? completed;
       return;
     }
-    if (
-      event.type === 'response.failed' ||
-      event.type === 'error'
-    ) {
+    if (event.type === 'response.failed' || event.type === 'error') {
       throw new Error(event.error?.message ?? `OpenAI Responses stream event ${event.type}.`);
     }
   };
@@ -675,9 +673,13 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   const promptCacheKey = process.env['OPENAI_PROMPT_CACHE_KEY']?.trim() || '';
   const tavilyTools = getTavilyTools();
   const canUsePreviousResponse = !stateDisabled && stateMode === 'previous-response' && store;
-  const signature = createStateSignature(model, instructions, promptCacheKey);
+  const signature = createStateSignature(model, promptCacheKey);
   if (!stateDisabled) {
-    if (state.stateSignature && state.stateSignature !== signature) {
+    if (
+      stateMode !== 'conversation' &&
+      state.stateSignature &&
+      state.stateSignature !== signature
+    ) {
       state.previousResponseId = null;
       state.conversationId =
         stateKey === 'default' ? process.env['OPENAI_CONVERSATION_ID']?.trim() || null : null;
@@ -699,7 +701,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     payload.temperature = normalizeTemperature(body.temperature, 0.7);
   }
 
-  if (instructions && (stateDisabled || !canUsePreviousResponse || !state.previousResponseId)) {
+  if (instructions) {
     payload.instructions = instructions;
   }
   if (promptCacheKey) {
@@ -813,8 +815,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
           stateKey,
           stateMode: stateDisabled ? 'stateless' : stateMode,
           stateScope,
-          temperature:
-            typeof payload.temperature === 'number' ? payload.temperature : null,
+          temperature: typeof payload.temperature === 'number' ? payload.temperature : null,
           toolsAvailable: Boolean(tavilyTools),
           toolsUsed: toolResult.toolsUsed,
         },
@@ -869,8 +870,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       stateKey,
       stateMode: stateDisabled ? 'stateless' : stateMode,
       stateScope,
-      temperature:
-        typeof payload.temperature === 'number' ? payload.temperature : null,
+      temperature: typeof payload.temperature === 'number' ? payload.temperature : null,
       toolsAvailable: Boolean(tavilyTools),
       toolsUsed: toolResult.toolsUsed,
     },

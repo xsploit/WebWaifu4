@@ -260,12 +260,8 @@ function getFunctionCalls(payload: OpenAiResponsePayload) {
   return (payload.output ?? []).filter(isFunctionCallItem);
 }
 
-function createStateSignature(
-  model: string,
-  instructions: string,
-  promptCacheKey: string | undefined,
-) {
-  return JSON.stringify({ model, instructions, promptCacheKey });
+function createStateSignature(model: string, promptCacheKey: string | undefined) {
+  return JSON.stringify({ model, promptCacheKey });
 }
 
 function normalizeStateKey(value: string | undefined) {
@@ -465,10 +461,9 @@ export class OpenAiResponsesProvider implements ChatProvider {
       maxOutputTokens: normalizeMaxOutputTokens(request.maxTokens, this.options.maxOutputTokens),
       reasoningEffort,
       store: this.options.store,
-      temperature:
-        supportsTemperature(this.options.model, reasoningEffort)
-          ? normalizeTemperature(request.temperature, this.options.temperature)
-          : null,
+      temperature: supportsTemperature(this.options.model, reasoningEffort)
+        ? normalizeTemperature(request.temperature, this.options.temperature)
+        : null,
       toolsAvailable: Boolean(this.options.tavilyTools),
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
     };
@@ -479,13 +474,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
     const key = normalizeStateKey(request.stateKey);
     const state = this.getScopedState(key);
     const stateDisabled = request.disableState === true || request.stateScope === 'memory';
-    const signature = createStateSignature(
-      this.options.model,
-      instructions,
-      this.options.promptCacheKey,
-    );
+    const usesConversation = !stateDisabled && this.options.stateMode === 'conversation';
+    const signature = createStateSignature(this.options.model, this.options.promptCacheKey);
     if (!stateDisabled) {
-      if (state.stateSignature && state.stateSignature !== signature) {
+      if (!usesConversation && state.stateSignature && state.stateSignature !== signature) {
         state.previousResponseId = null;
         state.conversationId =
           key === 'default' ? this.options.conversationId?.trim() || null : null;
@@ -516,10 +508,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       payload.temperature = normalizeTemperature(request.temperature, this.options.temperature);
     }
 
-    if (
-      instructions &&
-      (stateDisabled || !this.canUsePreviousResponse || !state.previousResponseId)
-    ) {
+    if (instructions) {
       payload.instructions = instructions;
     }
 
@@ -542,7 +531,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       payload.tool_choice = 'auto';
     }
 
-    if (!stateDisabled && this.options.stateMode === 'conversation') {
+    if (usesConversation) {
       payload.conversation = await this.ensureConversationId(state);
       return payload;
     }
@@ -768,10 +757,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
         completed = event.response ?? completed;
         return;
       }
-      if (
-        event.type === 'response.failed' ||
-        event.type === 'error'
-      ) {
+      if (event.type === 'response.failed' || event.type === 'error') {
         throw new Error(event.error?.message ?? `OpenAI Responses stream event ${event.type}.`);
       }
     };
@@ -902,10 +888,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
           finish(event.response ?? {});
           return;
         }
-        if (
-          event.type === 'response.failed' ||
-          event.type === 'error'
-        ) {
+        if (event.type === 'response.failed' || event.type === 'error') {
           fail(
             new Error(event.error?.message ?? `OpenAI Responses WebSocket event ${event.type}.`),
           );
