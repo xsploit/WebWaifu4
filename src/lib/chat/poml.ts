@@ -1,0 +1,191 @@
+import yourWifeyPromptTemplate from './templates/yourwifey-responses.poml?raw';
+
+type PromptRole = 'system' | 'user' | 'assistant';
+
+export type PomlPromptMessage = {
+  role: PromptRole;
+  content: string;
+};
+
+export type ResponsesPromptInputMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type YourWifeyPomlPromptInput = {
+  animationCatalogContext?: string;
+  diaryContext?: string;
+  history: PomlPromptMessage[];
+  hostContext?: string;
+  personaContext?: string;
+  relationshipMemoryContext?: string;
+  replyMetadataInstruction: string;
+  semanticMemoryContext?: string;
+  turnMetadataContext?: string;
+  ttsContext?: string;
+};
+
+export type YourWifeyResponsesPromptPayload = {
+  input: ResponsesPromptInputMessage[];
+  instructions: string;
+};
+
+export type YourWifeyPomlVariables = Record<string, string>;
+
+type PomlRenderResponse = {
+  error?: string;
+  messages?: unknown;
+  ok?: boolean;
+};
+
+export const YOURWIFEY_POML_TEMPLATE = yourWifeyPromptTemplate;
+
+const EMPTY_PERSONA_CONTEXT =
+  'No active persona profile is configured. Reply as a concise, friendly stream assistant.';
+
+export async function buildYourWifeyPomlMessages(
+  input: YourWifeyPomlPromptInput,
+): Promise<PomlPromptMessage[]> {
+  const variables: YourWifeyPomlVariables = {
+    animation_catalog_context: cleanBlock(input.animationCatalogContext),
+    diary_context: cleanBlock(input.diaryContext),
+    host_context: cleanBlock(input.hostContext),
+    persona_context: withFallback(input.personaContext, EMPTY_PERSONA_CONTEXT),
+    relationship_memory_context: cleanBlock(input.relationshipMemoryContext),
+    reply_metadata_instruction: input.replyMetadataInstruction.trim(),
+    semantic_memory_context: cleanBlock(input.semanticMemoryContext),
+    turn_metadata_context: cleanBlock(input.turnMetadataContext),
+    tts_context: cleanBlock(input.ttsContext),
+  };
+  const renderedMessages = await renderPomlMessagesOnServer(variables);
+  const instructions = normalizeInstructionText(
+    renderedMessages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n\n'),
+  );
+
+  return [{ role: 'system', content: instructions }, ...input.history];
+}
+
+export function buildYourWifeyResponsesPromptPayload(
+  messages: PomlPromptMessage[],
+): YourWifeyResponsesPromptPayload {
+  return {
+    instructions: messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n\n')
+      .trim(),
+    input: messages.filter(isResponsesInputMessage),
+  };
+}
+
+function withFallback(value: string | undefined, fallback: string) {
+  const trimmed = value?.trim() ?? '';
+  return trimmed || fallback;
+}
+
+function cleanBlock(value: string | undefined) {
+  return value?.trim() ?? '';
+}
+
+async function renderPomlMessagesOnServer(
+  variables: YourWifeyPomlVariables,
+): Promise<PomlPromptMessage[]> {
+  const response = await fetch(getPomlRenderUrl(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ variables }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`POML render endpoint failed with HTTP ${response.status}.`);
+  }
+
+  const data = (await response.json()) as PomlRenderResponse;
+  if (!data.ok) {
+    throw new Error(data.error ?? 'POML render endpoint failed.');
+  }
+
+  const messages = normalizePromptMessages(data.messages);
+  if (!messages.some((message) => message.role === 'system' && message.content.trim())) {
+    throw new Error('POML render endpoint returned no system instructions.');
+  }
+
+  return messages;
+}
+
+function getPomlRenderUrl() {
+  const explicitUrl = (import.meta.env['VITE_POML_RENDER_URL'] || '').trim();
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  const aiProxyUrl = (import.meta.env['VITE_AI_PROXY_URL'] || '').trim();
+  if (aiProxyUrl) {
+    const url = new URL(aiProxyUrl);
+    url.pathname = url.pathname.replace(/\/chat\/?$/, '/poml/render');
+    if (!/\/poml\/render\/?$/.test(url.pathname)) {
+      url.pathname = `${url.pathname.replace(/\/+$/, '')}/poml/render`;
+    }
+    return url.toString();
+  }
+
+  if (typeof window === 'undefined') {
+    return 'http://127.0.0.1:8787/ai/poml/render';
+  }
+
+  const url = new URL('/ai/poml/render', window.location.href);
+  const isLocalDev =
+    ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname) ||
+    window.location.hostname.endsWith('.local');
+  if (isLocalDev && (url.port === '5173' || url.port === '4173')) {
+    url.port = '8787';
+  } else if (!isLocalDev) {
+    url.pathname = '/api/ai/poml/render';
+  }
+  return url.toString();
+}
+
+function normalizePromptMessages(value: unknown): PomlPromptMessage[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item): PomlPromptMessage | null => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+      const source = item as Partial<PomlPromptMessage>;
+      if (source.role !== 'system' && source.role !== 'user' && source.role !== 'assistant') {
+        return null;
+      }
+      if (typeof source.content !== 'string' || !source.content.trim()) {
+        return null;
+      }
+      return {
+        role: source.role,
+        content: normalizeInstructionText(source.content),
+      };
+    })
+    .filter((item): item is PomlPromptMessage => Boolean(item));
+}
+
+function normalizeInstructionText(text: string) {
+  return text
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function isResponsesInputMessage(
+  message: PomlPromptMessage,
+): message is ResponsesPromptInputMessage {
+  return message.role === 'user' || message.role === 'assistant';
+}

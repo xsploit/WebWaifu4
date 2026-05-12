@@ -4,6 +4,7 @@ import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
 import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
 import type { ChatProvider, ChatProviderMessage, ChatProviderRequest } from './ai/ChatProvider.js';
+import { normalizePomlRenderVariables, renderYourWifeyPomlMessages } from './ai/PomlRenderer.js';
 import { loadConfig, type StreamBotConfig } from './config.js';
 import { CommandRouter } from './commands/CommandRouter.js';
 import { MockTwitchChatSource, type MockChatInjection } from './mock/MockTwitchChatSource.js';
@@ -16,6 +17,12 @@ import {
 } from './tts/RemoteTtsProvider.js';
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
+
+type OpenAiEmbeddingPayload = {
+  data?: Array<{
+    embedding?: number[];
+  }>;
+};
 
 function createProvider(config: StreamBotConfig): ChatProvider {
   if (config.aiProvider === 'openai-responses' || config.aiProvider === 'openai-responses-ws') {
@@ -192,6 +199,47 @@ function normalizeTtsLatency(value: unknown) {
   return value === 'balanced' || value === 'normal' ? value : undefined;
 }
 
+function normalizeEmbeddingInput(value: unknown) {
+  return typeof value === 'string' ? value.trim().slice(0, 4000) : '';
+}
+
+function getOpenAiEmbeddingHeaders(config: StreamBotConfig) {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${config.aiApiKey}`,
+    'Content-Type': 'application/json',
+  };
+  if (config.openAiSafetyIdentifier) {
+    headers['OpenAI-Safety-Identifier'] = config.openAiSafetyIdentifier;
+  }
+  return headers;
+}
+
+async function createOpenAiEmbedding(config: StreamBotConfig, input: string, model: string) {
+  const openAiResponse = await fetch(`${config.aiApiBaseUrl.replace(/\/+$/, '')}/embeddings`, {
+    method: 'POST',
+    headers: getOpenAiEmbeddingHeaders(config),
+    body: JSON.stringify({
+      input,
+      model,
+    }),
+  });
+
+  if (!openAiResponse.ok) {
+    const errorText = await openAiResponse.text().catch(() => '');
+    throw new Error(
+      errorText || `OpenAI Embeddings API failed with HTTP ${openAiResponse.status}.`,
+    );
+  }
+
+  const data = (await openAiResponse.json()) as OpenAiEmbeddingPayload;
+  const embedding = data.data?.[0]?.embedding;
+  if (!Array.isArray(embedding)) {
+    throw new Error('OpenAI returned no embedding.');
+  }
+
+  return embedding;
+}
+
 const config = loadConfig();
 const provider = createProvider(config);
 
@@ -317,6 +365,58 @@ const httpServer = createServer(async (request, response) => {
       writeJson(response, 200, {
         ok: false,
         error: error instanceof Error ? error.message : 'Remote TTS failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/ai/embeddings') {
+    try {
+      if (!config.aiApiKey) {
+        writeJson(response, 200, { ok: false, error: 'OPENAI_API_KEY is not configured.' });
+        return;
+      }
+
+      const body = await readRequestJson<{ input?: unknown; model?: unknown }>(request);
+      const input = normalizeEmbeddingInput(body.input);
+      if (!input) {
+        writeJson(response, 200, { ok: false, error: 'input is required.' });
+        return;
+      }
+
+      const model =
+        typeof body.model === 'string' && body.model.trim()
+          ? body.model.trim()
+          : process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small';
+      const embedding = await createOpenAiEmbedding(config, input, model);
+      writeJson(response, 200, {
+        embedding,
+        model,
+        ok: true,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Embedding request failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/ai/poml/render') {
+    try {
+      const body = await readRequestJson<{ variables?: unknown }>(request);
+      const messages = await renderYourWifeyPomlMessages(
+        normalizePomlRenderVariables(body.variables),
+      );
+      writeJson(response, 200, {
+        messages,
+        ok: true,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'POML render failed.',
       });
     }
     return;

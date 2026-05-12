@@ -62,6 +62,7 @@
     "fish-audio": "^0.1.0",
     "onnxruntime-web": "^1.18.0",
     "phonemizer": "^1.2.1",
+    "pomljs": "file:vendor/pomljs-0.0.9.tgz",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "~0.170.0",

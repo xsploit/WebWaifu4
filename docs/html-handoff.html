@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YourWifey Stream Handoff</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #071016;
+        --panel: #101923;
+        --panel-2: #141f2c;
+        --text: #edf4f7;
+        --muted: #9fb0b8;
+        --line: #283744;
+        --ok: #69d58b;
+        --warn: #f3b35d;
+        --bad: #ff7474;
+        --accent: #71d9ff;
+        --violet: #c69dff;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(145deg, rgba(113, 217, 255, 0.13), transparent 28rem),
+          linear-gradient(210deg, rgba(198, 157, 255, 0.1), transparent 34rem), var(--bg);
+        color: var(--text);
+        padding: 22px;
+      }
+
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+        display: grid;
+        gap: 14px;
+      }
+
+      .panel,
+      .card {
+        border: 1px solid var(--line);
+        background: rgba(16, 25, 35, 0.92);
+      }
+
+      .panel {
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .card {
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 6px;
+        font-size: 30px;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin-bottom: 10px;
+        font-size: 19px;
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 15px;
+      }
+
+      p,
+      li {
+        line-height: 1.46;
+      }
+
+      .sub,
+      .small,
+      .muted {
+        color: var(--muted);
+      }
+
+      .sub {
+        margin-bottom: 14px;
+      }
+
+      .small {
+        font-size: 12px;
+      }
+
+      .row,
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .grid {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 700;
+        margin-bottom: 7px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .dot.ok {
+        background: var(--ok);
+      }
+
+      .dot.warn {
+        background: var(--warn);
+      }
+
+      .dot.bad {
+        background: var(--bad);
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      button {
+        border: 1px solid #334654;
+        background: #172431;
+        color: var(--text);
+        padding: 7px 11px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      button[aria-pressed='true'] {
+        border-color: var(--accent);
+        background: #183446;
+      }
+
+      code {
+        color: #d8f2ff;
+      }
+
+      pre {
+        margin: 0;
+        padding: 10px;
+        overflow: auto;
+        border-radius: 6px;
+        border: 1px solid #283744;
+        background: #09121b;
+        color: #d8f2ff;
+      }
+
+      ul,
+      ol {
+        margin: 8px 0 0;
+        padding-left: 18px;
+      }
+
+      li {
+        margin: 4px 0;
+      }
+
+      a {
+        color: #91dcff;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .chip {
+        display: inline-block;
+        margin: 0 5px 6px 0;
+        padding: 4px 8px;
+        border: 1px solid #334654;
+        border-radius: 6px;
+        color: #e9f8ff;
+        background: #152331;
+        font-size: 12px;
+      }
+
+      .lane {
+        display: grid;
+        gap: 8px;
+      }
+
+      .flow {
+        white-space: pre-wrap;
+      }
+
+      @media (max-width: 780px) {
+        body {
+          padding: 12px;
+        }
+
+        .row {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="panel">
+        <h1>YourWifey Stream Runtime Handoff</h1>
+        <p class="sub">
+          Browser-first Twitch character stream, OpenAI proxy state, client TTS, VRM animation, and
+          VPS routelet notes in one cold-start page.
+        </p>
+
+        <div class="row">
+          <div class="card">
+            <div class="status"><span class="dot ok"></span> Current verified state</div>
+            <div>
+              <strong>Build passes.</strong> POML prompt tests pass. Silly Tavern animation sync
+              writes 116 BVH files.
+            </div>
+            <div class="small">
+              Last local pass: <code>npm run sync:silly-tavern</code> + <code>npm run build</code>.
+            </div>
+          </div>
+          <div class="card">
+            <div class="status"><span class="dot ok"></span> Live chat path</div>
+            <div>
+              Browser direct IRC listens to Twitch as anonymous <code>justinfan#####</code>.
+            </div>
+            <div class="small">
+              No OAuth needed for read-only chat. Controller stays <code>subsect</code>.
+            </div>
+          </div>
+          <div class="card">
+            <div class="status"><span class="dot warn"></span> Next sharp edge</div>
+            <div>
+              Turn pacing, routelet smoke tests, and animation weighting need real stream checks.
+            </div>
+            <div class="small">
+              Keep public chat clean: no logs, paths, keys, IPs, or proxy errors in overlay chat.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Runtime Map</h2>
+        <div class="toolbar">
+          <button data-filter="all" aria-pressed="true">All</button>
+          <button data-filter="stream" aria-pressed="false">Stream</button>
+          <button data-filter="chat" aria-pressed="false">Chat</button>
+          <button data-filter="ai" aria-pressed="false">AI</button>
+          <button data-filter="tts" aria-pressed="false">TTS</button>
+          <button data-filter="motion" aria-pressed="false">Motion</button>
+          <button data-filter="poml" aria-pressed="false">POML</button>
+        </div>
+
+        <div class="grid" id="items">
+          <div class="card item" data-kind="stream">
+            <div class="status"><span class="dot ok"></span> VPS routelet</div>
+            <div class="small">
+              Controlled Chromium renders the overlay. Xvfb captures video. Pulse/PipeWire captures
+              browser audio. FFmpeg maps <code>0:v:0</code> and <code>1:a:0</code> into Twitch RTMP.
+            </div>
+          </div>
+          <div class="card item" data-kind="chat">
+            <div class="status"><span class="dot ok"></span> Twitch scaling</div>
+            <div class="small">
+              Under 10 active chatters: <code>@personality</code> messages queue with a roughly 3s
+              gap. Above 10: messages batch into room-level replies.
+            </div>
+          </div>
+          <div class="card item" data-kind="ai">
+            <div class="status"><span class="dot ok"></span> OpenAI state keys</div>
+            <div class="small">
+              Twitch state uses <code>twitch:&lt;channel&gt;:persona:&lt;name&gt;</code>. Local chat
+              uses <code>local:persona:&lt;name&gt;</code>. Memory refreshes run stateless.
+            </div>
+          </div>
+          <div class="card item" data-kind="poml">
+            <div class="status"><span class="dot ok"></span> POML prompt renderer</div>
+            <div class="small">
+              POML now sits between app state and OpenAI payloads. The browser calls the bot API
+              render endpoint, which uses the fixed <code>pomljs</code> tarball before chat
+              requests.
+            </div>
+          </div>
+          <div class="card item" data-kind="tts">
+            <div class="status"><span class="dot ok"></span> Client speech</div>
+            <div class="small">
+              Piper remains browser-side. LLM deltas accumulate into punctuation chunks, then TTS
+              starts on chunks while later text is still arriving.
+            </div>
+          </div>
+          <div class="card item" data-kind="motion">
+            <div class="status"><span class="dot warn"></span> Motion truth</div>
+            <div class="small">
+              Direct DiP BVH/VRMA exports are retired. Keep SMPL cache and use VMC/tracker streaming
+              or a real humanoid retarget before app-facing clips.
+            </div>
+          </div>
+          <div class="card item" data-kind="motion">
+            <div class="status"><span class="dot ok"></span> Current animation pack</div>
+            <div class="small">
+              Silly Tavern BVHs are imported into the sequencer with purpose/tag classification.
+              Tune weights before enabling chaotic clips in normal idle loops.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Smoke Runs</h2>
+        <div class="grid">
+          <div class="card lane">
+            <h3>Local app</h3>
+            <pre>
+cd C:\Users\SUBSECT\Documents\Codex\2026-05-04\https-github-com-prismml-eng-bonsai\yourwifey-stream
+npm run sync:silly-tavern
+npm run build
+npm run dev</pre
+            >
+          </div>
+          <div class="card lane">
+            <h3>Routelet audio/video file</h3>
+            <pre>
+STREAM_OUTPUT_URL=/tmp/yourwifey-smoke.flv \
+STREAM_TEST_SECONDS=45 \
+STREAM_FPS=60 \
+STREAM_LOOP=false \
+OVERLAY_URL='http://127.0.0.1:4173/?routelet=1&amp;routeletSay=Routelet%20audio%20smoke%20test.' \
+npm run stream:routelet
+
+ffprobe -hide_banner /tmp/yourwifey-smoke.flv</pre
+            >
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>POML Integration</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Role</h3>
+            <ul class="small">
+              <li>
+                Use <code>src/lib/chat/templates/yourwifey-responses.poml</code> as the
+                prompt/context renderer for OpenAI Responses API requests.
+              </li>
+              <li>
+                Bridge it through <code>src/lib/chat/poml.ts</code>, then call it from
+                <code>src/lib/chat/prompt.ts</code>.
+              </li>
+              <li>
+                Render with <code>server/src/ai/PomlRenderer.ts</code> via
+                <code>/ai/poml/render</code>; dependency is pinned to
+                <code>vendor/pomljs-0.0.9.tgz</code>.
+              </li>
+              <li>
+                Keep app code responsible for live state writes, memory commits, TTS, and animation
+                selection.
+              </li>
+              <li>
+                Render the same request shape for local chat and Twitch chat, with different state
+                keys.
+              </li>
+              <li>
+                Keep memory refresh/summarization prompts stateless so they cannot pollute live
+                conversation state.
+              </li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Implementation status</h3>
+            <ul class="small">
+              <li>
+                Current app integration is intentionally narrow: a checked-in POML-shaped template
+                plus <code>src/lib/chat/poml.ts</code>.
+              </li>
+              <li>
+                This avoids adding an unstable upstream parser dependency to the stream runtime
+                while keeping the prompt layer portable to real POML.
+              </li>
+              <li>
+                Tests live in <code>src/lib/chat/prompt.test.ts</code> and cover template discovery,
+                context insertion, metadata instruction insertion, and Responses
+                <code>instructions</code>/<code>input</code> splitting.
+              </li>
+              <li>
+                If the app later imports the upstream POML package directly, use the fork/PR that
+                fixes raw <code>&lt;</code>/<code>&amp;</code>, multiline expressions, fallback
+                variables, <code>&lt;if condition&gt;</code>, and <code>&lt;tool-policy&gt;</code>.
+              </li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Dynamic data and caching</h3>
+            <ul class="small">
+              <li>
+                Send <code>instructions</code> every turn. Responses
+                <code>previous_response_id</code> does not carry old instructions forward, and fresh
+                persona/memory/time data must be visible to the current turn.
+              </li>
+              <li>
+                Keep stable policy, reply metadata contract, and persona text at the top of the
+                rendered prompt so OpenAI prompt caching can hit the repeated prefix.
+              </li>
+              <li>
+                Put dynamic turn metadata, channel facts, active chatter counts, time, retrieved
+                memory, and host context after the stable prefix.
+              </li>
+              <li>
+                In Conversation mode, changing dynamic instructions must not create a new
+                conversation id. The state key still owns isolation:
+                <code>twitch:&lt;channel&gt;:persona:&lt;name&gt;</code>.
+              </li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Inputs</h3>
+            <ul class="small">
+              <li>
+                Active persona profile: name, aliases, voice, background, VRM, behavior rules.
+              </li>
+              <li>Conversation scope: Twitch channel/persona key or local persona key.</li>
+              <li>Relevant relationship memory and semantic memory snippets.</li>
+              <li>
+                Recent chat context, active chatter mode, controller/admin facts, and current turn.
+              </li>
+              <li>
+                Animation catalog with safe tags like <code>idle</code>, <code>talking</code>,
+                <code>laugh</code>, <code>thinking</code>, <code>greeting</code>, and
+                <code>react</code>.
+              </li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Outputs</h3>
+            <pre>
+{
+  "instructions": "persona, memory-use rules, tool policy, response contract",
+  "input": [
+    { "role": "user", "content": "current chat turn" }
+  ],
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "name": "yourwifey_reply",
+      "strict": true
+    }
+  }
+}</pre
+            >
+          </div>
+          <div class="card">
+            <h3>Reply contract</h3>
+            <ul class="small">
+              <li><code>speech</code>: short spoken reply for streaming TTS.</li>
+              <li>
+                <code>subtitle</code>: optional cleaned display text when different from speech.
+              </li>
+              <li>
+                <code>emotion</code>: stable mood label for expression and animation weighting.
+              </li>
+              <li><code>motion</code>: optional safe animation intent, not a raw file path.</li>
+              <li>
+                <code>memory</code>: optional candidate facts for the browser DB/memory worker to
+                validate.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Important Commands</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Overlay control</h3>
+            <div class="small">
+              <span class="chip">!yw status</span>
+              <span class="chip">!yw audio</span>
+              <span class="chip">!yw state</span>
+              <span class="chip">!yw refresh</span>
+              <span class="chip">!yw channel subsect</span>
+              <span class="chip">!yw say hello chat</span>
+              <span class="chip">!yw tts on</span>
+              <span class="chip">!yw autospeak on</span>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Model and motion</h3>
+            <div class="small">
+              <span class="chip">!yw llm gpt-4.1</span>
+              <span class="chip">!yw vrms</span>
+              <span class="chip">!yw vrm riko-final-fixed-v2</span>
+              <span class="chip">!yw anims</span>
+              <span class="chip">!yw anim random</span>
+              <span class="chip">!yw anim speed 1.25</span>
+              <span class="chip">!yw camera close</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Architecture Notes</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Stream flow</h3>
+            <pre class="flow">
+Twitch chat -> browser IRC -> OpenAI proxy -> browser Piper TTS
+                                            -> VRM lipsync/subtitles
+
+Chromium page video -> Xvfb display -> FFmpeg input 0
+Chromium/Piper audio -> Pulse/PipeWire sink -> FFmpeg input 1
+
+FFmpeg -map 0:v:0 -map 1:a:0 -> Twitch RTMP</pre
+            >
+          </div>
+          <div class="card">
+            <h3>Motion bridge</h3>
+            <pre class="flow">
+DiP / MDM motion
+-> SMPL params
+-> tracker transforms or humanoid retarget
+-> VMC/VMT live control or VRMA/FBX baked clip
+-> app sequencer only after visual validation</pre
+            >
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Open Quickly</h2>
+        <div class="small">
+          <a href="ORIGINAL_YOURWIFEY_STREAM_HANDOFF.md">Original handoff</a> ·
+          <a href="TWITCH_IRC_STREAM_BOT.md">Twitch IRC stream bot</a> ·
+          <a href="STREAM_ROUTELET.md">Stream routelet</a> ·
+          <a href="DIP_MOTION_PIPELINE.md">DiP motion pipeline</a> ·
+          <a href="VR_MOTION_BRIDGE.md">VR motion bridge</a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Decision Log</h2>
+        <div class="small">
+          <span class="chip">Browser IRC is default</span>
+          <span class="chip">Piper stays client-side</span>
+          <span class="chip">Server owns OpenAI key and state</span>
+          <span class="chip">POML renders prompts, app owns state</span>
+          <span class="chip">Routelet handles Chromium + FFmpeg</span>
+          <span class="chip">Direct DiP BVH path retired</span>
+          <span class="chip">Silly Tavern pack stays available</span>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const buttons = document.querySelectorAll('[data-filter]');
+      const cards = document.querySelectorAll('.item');
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const mode = button.getAttribute('data-filter');
+
+          buttons.forEach((btn) => {
+            btn.setAttribute('aria-pressed', String(btn === button));
+          });
+
+          cards.forEach((card) => {
+            const kind = card.getAttribute('data-kind');
+            card.style.display = mode === 'all' || kind === mode ? '' : 'none';
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

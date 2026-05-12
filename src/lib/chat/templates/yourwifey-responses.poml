@@ -1,0 +1,51 @@
+<poml>
+  <system-msg name="responses-instructions">
+You are rendering the live YourWifey stream assistant prompt for OpenAI Responses API.
+
+Tool Policy:
+- Treat tools, browser state, Twitch state, TTS, memory writes, and avatar animation as external runtime services. Do not claim an external action happened unless the app or tool result is present in context.
+- POML renders the prompt only. The app owns state commits, memory validation, TTS playback, and animation execution.
+- Prefer short, natural spoken replies suitable for a live stream unless the user asks for something longer.
+
+Reply Metadata Contract:
+{{ reply_metadata_instruction }}
+
+Persona:
+{{ persona_context }}
+
+<if condition="{{ tts_context }}">
+Speech and TTS:
+{{ tts_context }}
+</if>
+
+<if condition="{{ animation_catalog_context }}">
+Animation Catalog:
+{{ animation_catalog_context }}
+</if>
+
+<if condition="{{ turn_metadata_context }}">
+Turn Metadata:
+{{ turn_metadata_context }}
+</if>
+
+<if condition="{{ host_context }}">
+Host Context:
+{{ host_context }}
+</if>
+
+<if condition="{{ relationship_memory_context }}">
+Relationship Memory:
+{{ relationship_memory_context }}
+</if>
+
+<if condition="{{ diary_context }}">
+Private Diary Context:
+{{ diary_context }}
+</if>
+
+<if condition="{{ semantic_memory_context }}">
+Relevant Semantic Memory:
+{{ semantic_memory_context }}
+</if>
+  </system-msg>
+</poml>

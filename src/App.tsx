@@ -2562,7 +2562,7 @@ function App() {
       try {
         const response = await requestChatCompletion({
           model: selectedModel,
-          messages: buildChatCompletionMessages({
+          messages: await buildChatCompletionMessages({
             history: nextHistory,
             includeHostContext: aiSettings.includeHostContext,
             persona: activePersona ?? DEFAULT_PERSONA,
@@ -3141,7 +3141,7 @@ function App() {
           activeChatters: job.activeChatterCount,
           mode: job.mode,
           model: selectedModel,
-          messages: buildChatCompletionMessages({
+          messages: await buildChatCompletionMessages({
             history: requestHistory,
             includeHostContext: settings.includeHostContext,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
