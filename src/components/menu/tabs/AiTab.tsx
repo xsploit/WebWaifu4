@@ -1,15 +1,18 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { GPT_MODEL_OPTIONS } from '../../../lib/chat/defaults';
-import type { AiSettings, RuntimeContextSnapshot } from '../../../lib/chat/types';
+import type { AiProxyHealth, AiSettings, RuntimeContextSnapshot } from '../../../lib/chat/types';
 import { Slider } from '../ui/Slider';
 import { Toggle } from '../ui/Toggle';
 
 type AiTabProps = {
   activePersonaName: string;
+  aiProxyHealth: AiProxyHealth | null;
+  aiProxyHealthError: string | null;
   aiSettings: AiSettings;
   availableModels: string[];
   modelsError: string | null;
   modelsLoading: boolean;
+  onRefreshAiProxyHealth: () => void;
   onRefreshModels: () => void;
   runtimeContext: RuntimeContextSnapshot;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
@@ -27,10 +30,13 @@ function updateAiSettings(
 
 export function AiTab({
   activePersonaName,
+  aiProxyHealth,
+  aiProxyHealthError,
   aiSettings,
   availableModels,
   modelsError,
   modelsLoading,
+  onRefreshAiProxyHealth,
   onRefreshModels,
   runtimeContext,
   setAiSettings,
@@ -50,6 +56,7 @@ export function AiTab({
           description: 'Custom model from the current environment or chat command.',
         }
       : null);
+  const providerState = aiProxyHealth?.providerState ?? null;
 
   return (
     <>
@@ -93,6 +100,25 @@ export function AiTab({
           {modelsLoading ? 'Refreshing...' : 'Refresh Models'}
         </button>
         {modelsError ? <div className="status-copy">{modelsError}</div> : null}
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">Backend Transport</div>
+        <div className="status-copy">
+          Provider: <strong>{aiProxyHealth?.aiProvider ?? 'unknown'}</strong>
+        </div>
+        <div className="status-copy">
+          State: <strong>{providerState?.stateMode ?? 'unknown'}</strong> / WS:{' '}
+          <strong>{providerState?.websocketConnected ? 'connected' : 'not connected'}</strong>
+        </div>
+        <div className="status-copy">
+          Cache: <strong>{providerState?.promptCacheKey ?? 'none'}</strong> / cached tokens:{' '}
+          <strong>{providerState?.cachedTokens ?? 0}</strong>
+        </div>
+        <button className="btn-tech secondary" onClick={onRefreshAiProxyHealth} type="button">
+          Refresh Transport
+        </button>
+        {aiProxyHealthError ? <div className="status-copy">{aiProxyHealthError}</div> : null}
       </div>
 
       <div className="control-group">

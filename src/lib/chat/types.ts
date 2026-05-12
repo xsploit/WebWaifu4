@@ -103,6 +103,34 @@ export type RuntimeContextSnapshot = {
   notificationParams: Record<string, string>;
 };
 
+export type AiProxyHealth = {
+  aiProvider?: string;
+  model?: string;
+  providerState?: {
+    cachedTokens?: number;
+    previousResponseId?: string | null;
+    promptCacheKey?: string;
+    promptCacheRetention?: string;
+    stateMode?: string;
+    store?: boolean;
+    toolsAvailable?: boolean;
+    websocketConnected?: boolean;
+  } | null;
+  ttsProviders?: {
+    fishSpeech?: {
+      conditionOnPreviousChunks?: boolean;
+      configured?: boolean;
+      latency?: string;
+      model?: string;
+    };
+    inworld?: {
+      configured?: boolean;
+      deliveryMode?: string;
+      model?: string;
+    };
+  };
+};
+
 export type UiState = {
   menuOpen: boolean;
   chatLogOpen: boolean;

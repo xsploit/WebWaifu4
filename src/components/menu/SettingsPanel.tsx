@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type {
+  AiProxyHealth,
   AiSettings,
   PersonaDraft,
   PersonaProfile,
@@ -29,6 +30,8 @@ type SettingsPanelProps = {
   activePersona: PersonaProfile | null;
   activeTab: SettingsTabId;
   activeTwitchChatters: number;
+  aiProxyHealth: AiProxyHealth | null;
+  aiProxyHealthError: string | null;
   aiSettings: AiSettings;
   availableModels: string[];
   batchPending: number;
@@ -51,6 +54,7 @@ type SettingsPanelProps = {
   onLoadSample: () => void;
   onPlayAnimation: (request: ManualPlayRequest) => void;
   onRefreshModels: () => void;
+  onRefreshAiProxyHealth: () => void;
   onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
   onResetContext: () => void;
@@ -108,6 +112,8 @@ export function SettingsPanel({
   activePersona,
   activeTab,
   activeTwitchChatters,
+  aiProxyHealth,
+  aiProxyHealthError,
   aiSettings,
   availableModels,
   batchPending,
@@ -130,6 +136,7 @@ export function SettingsPanel({
   onLoadSample,
   onPlayAnimation,
   onRefreshModels,
+  onRefreshAiProxyHealth,
   onRefreshRemoteVoices,
   onRefreshVoices,
   onResetContext,
@@ -196,8 +203,11 @@ export function SettingsPanel({
         activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
         aiSettings={aiSettings}
         availableModels={availableModels}
+        aiProxyHealth={aiProxyHealth}
+        aiProxyHealthError={aiProxyHealthError}
         modelsError={modelsError}
         modelsLoading={modelsLoading}
+        onRefreshAiProxyHealth={onRefreshAiProxyHealth}
         onRefreshModels={onRefreshModels}
         runtimeContext={runtimeContext}
         setAiSettings={setAiSettings}

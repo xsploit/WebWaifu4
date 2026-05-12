@@ -43,6 +43,7 @@ import {
 import { loadPersistedChatState, savePersistedChatState } from './lib/chat/storage';
 import type {
   AiSettings,
+  AiProxyHealth,
   ChatMessage,
   PersonaDraft,
   PersonaProfile,
@@ -419,6 +420,15 @@ function getAiEmbeddingUrl() {
   url.pathname = url.pathname.replace(/\/chat\/?$/, '/embeddings');
   if (!/\/embeddings\/?$/.test(url.pathname)) {
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/embeddings`;
+  }
+  return url.toString();
+}
+
+function getAiHealthUrl() {
+  const url = new URL(getAiProxyUrl());
+  url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/health');
+  if (!/\/health\/?$/.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/health`;
   }
   return url.toString();
 }
@@ -1106,6 +1116,8 @@ function App() {
   const [availableModels, setAvailableModels] = useState<string[]>(() => [...COMMON_RUN_MODELS]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [aiProxyHealth, setAiProxyHealth] = useState<AiProxyHealth | null>(null);
+  const [aiProxyHealthError, setAiProxyHealthError] = useState<string | null>(null);
   const [memoryAgentBusy, setMemoryAgentBusy] = useState(false);
   const [memoryAgentStatus, setMemoryAgentStatus] = useState('Diary idle.');
   const [ttsVoices, setTtsVoices] = useState<PiperVoiceProfile[]>(() => [
@@ -1299,6 +1311,32 @@ function App() {
       setAiSettings((current) => sanitizeAiModels(current, fallbackModels));
     } finally {
       setModelsLoading(false);
+    }
+  }, []);
+
+  const refreshAiProxyHealth = useCallback(async () => {
+    if (!AI_PROXY_ENABLED) {
+      setAiProxyHealth(null);
+      setAiProxyHealthError(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(getAiHealthUrl(), {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) {
+        throw new Error(`AI proxy health failed with HTTP ${response.status}.`);
+      }
+      const data = (await response.json()) as AiProxyHealth & { ok?: boolean; error?: string };
+      if (data.ok === false) {
+        throw new Error(data.error || 'AI proxy health check failed.');
+      }
+      setAiProxyHealth(data);
+      setAiProxyHealthError(null);
+    } catch (error) {
+      setAiProxyHealthError(error instanceof Error ? error.message : 'AI proxy health check failed.');
     }
   }, []);
 
@@ -2210,6 +2248,7 @@ function App() {
 
       setHydrated(true);
       void loadAvailableModels();
+      void refreshAiProxyHealth();
       void loadTtsVoices();
     }
 
@@ -2218,7 +2257,22 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [loadAvailableModels, loadTtsVoices]);
+  }, [loadAvailableModels, loadTtsVoices, refreshAiProxyHealth]);
+
+  useEffect(() => {
+    if (!menuOpen || !AI_PROXY_ENABLED) {
+      return;
+    }
+
+    void refreshAiProxyHealth();
+    const interval = window.setInterval(() => {
+      void refreshAiProxyHealth();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [menuOpen, refreshAiProxyHealth]);
 
   useEffect(() => {
     if (!personas.some((persona) => persona.id === activePersonaId)) {
@@ -3770,6 +3824,8 @@ function App() {
             activePersona={activePersona}
             activeTab={activeTab}
             activeTwitchChatters={twitchActiveChatterCount}
+            aiProxyHealth={aiProxyHealth}
+            aiProxyHealthError={aiProxyHealthError}
             aiSettings={aiSettings}
             availableModels={availableModels}
             batchPending={twitchBatchRef.current.length}
@@ -3829,6 +3885,9 @@ function App() {
             }}
             onRefreshModels={() => {
               void loadAvailableModels();
+            }}
+            onRefreshAiProxyHealth={() => {
+              void refreshAiProxyHealth();
             }}
             onRefreshRemoteVoices={(provider) => {
               remoteTtsVoiceFetchAttemptedRef.current.delete(provider);

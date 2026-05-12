@@ -162,12 +162,12 @@ export function TtsTab({
             }
             value={aiSettings.remoteTtsMode}
           >
-            <option value="full-response">Full Response / Stable Voice</option>
+            <option value="full-response">Stable Stream / One TTS Request</option>
             <option value="sentence-chunks">Sentence Chunks / Lower Latency</option>
           </select>
           <div className="field-hint">
-            Full response sends one provider request per reply. Sentence chunks starts sooner, but
-            each chunk can shift voice, prosody, or playback edges.
+            Stable stream sends one provider request per reply and plays remote PCM as chunks arrive.
+            Sentence chunks starts text intake sooner, but each chunk can shift voice or prosody.
           </div>
         </div>
       ) : null}
