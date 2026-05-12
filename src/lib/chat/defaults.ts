@@ -100,8 +100,8 @@ export function createDefaultAiSettings(): AiSettings {
   return {
     model: DEFAULT_RUN_MODEL,
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
-    aiTransportMode: 'server-default',
-    openAiStateMode: 'server-default',
+    aiTransportMode: 'websocket',
+    openAiStateMode: 'conversation',
     temperature: 0.85,
     maxTokens: 300,
     includeHostContext: true,
