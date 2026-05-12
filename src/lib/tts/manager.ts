@@ -1,7 +1,7 @@
 import type { WLipSyncAudioNode, Profile as WLipSyncProfile } from 'wlipsync';
 import type { LipSyncData, WordBoundary } from './piper';
 import { synthesizePiperChunk } from './piper';
-import { createRemoteTtsStream, type RemoteTtsRequest } from './remote';
+import { createRemoteTtsStream, type RemoteTtsAudioChunk, type RemoteTtsRequest } from './remote';
 
 const LIP_SYNC_PROFILE_URL =
   typeof window === 'undefined'
@@ -235,7 +235,7 @@ export class TtsManager {
         }
         const abortController = new AbortController();
         this.remoteAbortControllers.add(abortController);
-        let playedChunk = false;
+        const audioChunks: RemoteTtsAudioChunk[] = [];
         try {
           const remoteStream = createRemoteTtsStream(
             {
@@ -248,42 +248,63 @@ export class TtsManager {
             if (generation !== this.queueGeneration || abortController.signal.aborted) {
               return;
             }
-            playedChunk = true;
-            const chunkData: ChunkData = {
-              audioBlob: chunk.audioBlob,
-              wordBoundaries: [],
-              phonemes: null,
-              text: cleaned,
-              sampleRate: chunk.sampleRate,
-            };
-            playbackTail = this.playbackQueue
-              .catch(() => {
-                // Keep later queued speech moving if an earlier audio chunk fails.
-              })
-              .then(async () => {
-                if (generation !== this.queueGeneration) {
-                  return;
-                }
-                if (!this.audioContext) {
-                  await this.initialize();
-                }
-                if (generation !== this.queueGeneration) {
-                  return;
-                }
-                await this.playAudioChunk(chunkData);
-              });
-            this.playbackQueue = playbackTail;
+            audioChunks.push(chunk);
           }
         } finally {
           this.remoteAbortControllers.delete(abortController);
         }
-        if (!playedChunk && generation === this.queueGeneration && !abortController.signal.aborted) {
+        if (
+          audioChunks.length === 0 &&
+          generation === this.queueGeneration &&
+          !abortController.signal.aborted
+        ) {
           throw new Error('Remote TTS returned no audio chunks.');
         }
+        if (generation !== this.queueGeneration || abortController.signal.aborted) {
+          return;
+        }
+
+        const chunkData = this.combineRemoteAudioChunks(audioChunks, cleaned);
+        playbackTail = this.playbackQueue
+          .catch(() => {
+            // Keep later queued speech moving if an earlier audio chunk fails.
+          })
+          .then(async () => {
+            if (generation !== this.queueGeneration) {
+              return;
+            }
+            if (!this.audioContext) {
+              await this.initialize();
+            }
+            if (generation !== this.queueGeneration) {
+              return;
+            }
+            await this.playAudioChunk(chunkData);
+          });
+        this.playbackQueue = playbackTail;
       });
 
     this.remoteSynthesisQueue = synthesisPromise;
     return synthesisPromise.then(() => playbackTail);
+  }
+
+  private combineRemoteAudioChunks(chunks: RemoteTtsAudioChunk[], text: string): ChunkData {
+    const firstChunk = chunks[0];
+    const mimeType = firstChunk?.mimeType || 'audio/mpeg';
+    const sampleRate = chunks.find((chunk) => typeof chunk.sampleRate === 'number')?.sampleRate;
+    return {
+      audioBlob:
+        chunks.length === 1
+          ? firstChunk!.audioBlob
+          : new Blob(
+              chunks.map((chunk) => chunk.audioBlob),
+              { type: mimeType },
+            ),
+      wordBoundaries: [],
+      phonemes: null,
+      text,
+      sampleRate,
+    };
   }
 
   resetSpeechQueue() {
@@ -484,7 +505,10 @@ export class TtsManager {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = () => {
-        const pcmData = new Uint8Array(reader.result as ArrayBuffer);
+        const pcmData = this.applyPcmEdgeFade(
+          new Uint8Array(reader.result as ArrayBuffer),
+          sampleRate,
+        );
         const wavHeader = new ArrayBuffer(44);
         const view = new DataView(wavHeader);
         view.setUint32(0, 0x52494646, false);
@@ -500,10 +524,36 @@ export class TtsManager {
         view.setUint16(34, 16, true);
         view.setUint32(36, 0x64617461, false);
         view.setUint32(40, pcmData.length, true);
-        resolve(new Blob([wavHeader, pcmData], { type: 'audio/wav' }));
+        const pcmPart = new ArrayBuffer(pcmData.byteLength);
+        new Uint8Array(pcmPart).set(pcmData);
+        resolve(new Blob([wavHeader, pcmPart], { type: 'audio/wav' }));
       };
       reader.readAsArrayBuffer(pcmBlob);
     });
+  }
+
+  private applyPcmEdgeFade(pcmData: Uint8Array, sampleRate: number) {
+    const sampleCount = Math.floor(pcmData.length / 2);
+    if (sampleCount < 16) {
+      return pcmData;
+    }
+
+    const faded = new Uint8Array(pcmData.length);
+    faded.set(pcmData);
+    const view = new DataView(faded.buffer, faded.byteOffset, faded.byteLength);
+    const fadeSamples = Math.min(Math.floor(sampleRate * 0.008), Math.floor(sampleCount / 4));
+
+    for (let index = 0; index < fadeSamples; index += 1) {
+      const fadeIn = index / fadeSamples;
+      const fadeOut = (fadeSamples - index) / fadeSamples;
+      const startSample = view.getInt16(index * 2, true);
+      const endOffset = (sampleCount - 1 - index) * 2;
+      const endSample = view.getInt16(endOffset, true);
+      view.setInt16(index * 2, Math.round(startSample * fadeIn), true);
+      view.setInt16(endOffset, Math.round(endSample * fadeOut), true);
+    }
+
+    return faded;
   }
 
   private cleanForSpeech(text: string) {
