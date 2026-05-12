@@ -843,23 +843,69 @@ export function retargetClip(clip: THREE.AnimationClip, vrm: VRM): THREE.Animati
 
 let currentAction: THREE.AnimationAction | null = null;
 let previousAction: THREE.AnimationAction | null = null;
+const fadeStopTimers = new Set<ReturnType<typeof setTimeout>>();
+
+type CrossfadeOptions = {
+  clampWhenFinished?: boolean;
+  loop?: boolean;
+};
+
+function stopActionAfterFade(action: THREE.AnimationAction, duration: number) {
+  const timeout = setTimeout(
+    () => {
+      fadeStopTimers.delete(timeout);
+      if (action !== currentAction) {
+        action.stop();
+      }
+      if (previousAction === action) {
+        previousAction = null;
+      }
+    },
+    Math.max(0, duration * 1000 + 120),
+  );
+  fadeStopTimers.add(timeout);
+}
 
 export function crossfadeToAction(
   newAction: THREE.AnimationAction,
   duration = 1.0,
   timeScale = 1.0,
+  options: CrossfadeOptions = {},
 ) {
-  if (previousAction) previousAction.fadeOut(duration);
+  const fadeDuration = Math.max(0, duration);
+  const loop = options.loop ?? true;
+
+  newAction.enabled = true;
+  newAction.clampWhenFinished = options.clampWhenFinished ?? !loop;
+  newAction.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+  newAction.setEffectiveTimeScale(Math.max(0.1, timeScale));
+  newAction.setEffectiveWeight(1);
+
+  if (currentAction === newAction) {
+    newAction.reset().fadeIn(fadeDuration).play();
+    return;
+  }
+
+  if (previousAction && previousAction !== currentAction) {
+    previousAction.stop();
+    previousAction = null;
+  }
+
   if (currentAction) {
-    currentAction.fadeOut(duration);
+    currentAction.fadeOut(fadeDuration);
+    stopActionAfterFade(currentAction, fadeDuration);
     previousAction = currentAction;
   }
 
-  newAction.reset().setEffectiveTimeScale(timeScale).setEffectiveWeight(1).fadeIn(duration).play();
+  newAction.reset().fadeIn(fadeDuration).play();
   currentAction = newAction;
 }
 
 export function resetCrossfadeState() {
+  for (const timeout of fadeStopTimers) {
+    clearTimeout(timeout);
+  }
+  fadeStopTimers.clear();
   currentAction?.stop();
   previousAction?.stop();
   currentAction = null;

@@ -1302,13 +1302,21 @@ export function VrmStage({
                   currentIndex: index,
                 },
           );
-          crossfadeToAction(nextMixer.clipAction(clip), visualSettings.crossfadeDuration, 1);
+          crossfadeToAction(
+            nextMixer.clipAction(clip),
+            visualSettings.crossfadeDuration,
+            sequencerSettings.speed,
+            {
+              clampWhenFinished: entry.loopEligible === false,
+              loop: entry.loopEligible !== false,
+            },
+          );
         })
         .catch((nextError) => {
           console.error('[VrmStage] Failed to load animation:', nextError);
         });
     },
-    [setSequencerSettings, visualSettings.crossfadeDuration],
+    [sequencerSettings.speed, setSequencerSettings, visualSettings.crossfadeDuration],
   );
 
   useEffect(() => {
