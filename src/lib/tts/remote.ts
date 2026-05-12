@@ -1,10 +1,12 @@
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
+export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
 
 export type RemoteTtsRequest = {
   provider: RemoteTtsProvider;
   text: string;
+  streamingMode?: RemoteTtsMode;
   voiceId?: string;
   modelId?: string;
   latency?: FishSpeechLatency;

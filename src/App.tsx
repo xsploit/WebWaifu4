@@ -444,11 +444,16 @@ function getActiveTtsLabel(settings: AiSettings, piperVoice?: PiperVoiceProfile 
     : getTtsProviderLabel(settings.ttsProvider);
 }
 
+function shouldChunkTtsRequests(settings: AiSettings) {
+  return settings.ttsProvider === 'piper' || settings.remoteTtsMode === 'sentence-chunks';
+}
+
 function createRemoteTtsRequest(text: string, settings: AiSettings): RemoteTtsRequest {
   if (settings.ttsProvider === 'inworld') {
     return {
       provider: 'inworld',
       text,
+      streamingMode: settings.remoteTtsMode,
       voiceId: settings.inworldVoiceId.trim() || undefined,
       modelId: settings.inworldModelId.trim() || undefined,
       deliveryMode: settings.inworldDeliveryMode,
@@ -459,6 +464,7 @@ function createRemoteTtsRequest(text: string, settings: AiSettings): RemoteTtsRe
   return {
     provider: 'fish-speech',
     text,
+    streamingMode: settings.remoteTtsMode,
     voiceId: settings.fishSpeechVoiceId.trim() || undefined,
     modelId: settings.fishSpeechModel.trim() || undefined,
     latency: settings.fishSpeechLatency,
@@ -1468,6 +1474,7 @@ function App() {
       const thisRun = ++assistantRenderRunRef.current;
       const voice = selectedTtsVoice;
       const ttsProvider = aiSettings.ttsProvider;
+      const chunkTtsRequests = shouldChunkTtsRequests(aiSettings);
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
       const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
@@ -1600,9 +1607,11 @@ function App() {
 
         sawDelta = true;
         fullText += visibleDelta;
-        pendingText += visibleDelta;
         queueDisplayText(visibleDelta);
-        consumeSpeakableChunks(false);
+        if (chunkTtsRequests) {
+          pendingText += visibleDelta;
+          consumeSpeakableChunks(false);
+        }
       };
 
       const finish = async (finalText?: string) => {
@@ -1635,7 +1644,14 @@ function App() {
           updateAssistantMessageContent(assistantMessage.id, fullText.trim());
         }
 
-        consumeSpeakableChunks(true);
+        if (chunkTtsRequests) {
+          consumeSpeakableChunks(true);
+        } else {
+          const finalSpeechText = (fullText.trim() || normalizedFinal).trim();
+          if (finalSpeechText) {
+            enqueueSpeech(finalSpeechText);
+          }
+        }
         finalDisplayPending = true;
         void waitForDisplaySettled().then(() => {
           if (!isStale() && displayText.trim() === fullText.trim()) {
@@ -1670,7 +1686,7 @@ function App() {
       return { finish, pushDelta };
     },
     [
-      aiSettings.ttsEnabled,
+      aiSettings,
       refreshStoredTtsVoices,
       selectedTtsVoice,
       ttsManager,
@@ -1684,6 +1700,7 @@ function App() {
       const thisRun = ++assistantRenderRunRef.current;
       const voice = selectedTtsVoice;
       const ttsProvider = aiSettings.ttsProvider;
+      const chunkTtsRequests = shouldChunkTtsRequests(aiSettings);
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
       const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
@@ -1744,8 +1761,10 @@ function App() {
 
         sawDelta = true;
         fullText += visibleDelta;
-        pendingText += visibleDelta;
-        consumeSpeakableChunks(false);
+        if (chunkTtsRequests) {
+          pendingText += visibleDelta;
+          consumeSpeakableChunks(false);
+        }
       };
 
       const finish = async (finalText?: string) => {
@@ -1765,7 +1784,14 @@ function App() {
           }
         }
 
-        consumeSpeakableChunks(true);
+        if (chunkTtsRequests) {
+          consumeSpeakableChunks(true);
+        } else {
+          const finalSpeechText = (fullText.trim() || normalizedFinal).trim();
+          if (finalSpeechText) {
+            enqueueSpeech(finalSpeechText);
+          }
+        }
 
         if (!isStale() && canSpeak) {
           if (speechPromises.length > 0) {
@@ -1975,8 +2001,9 @@ function App() {
       }
 
       const isStale = () => assistantRenderRunRef.current !== thisRun;
+      const chunkTtsRequests = shouldChunkTtsRequests(aiSettings);
 
-      if (!aiSettings.ttsSimulatedStreaming || revealChunks.length === 1) {
+      if (!aiSettings.ttsSimulatedStreaming || revealChunks.length === 1 || !chunkTtsRequests) {
         clearChatDisplayOverride(assistantMessage.id);
         if (shouldSpeak) {
           await speakWithSelectedTts(content, label);
@@ -2013,7 +2040,7 @@ function App() {
         clearChatDisplayOverride(assistantMessage.id);
       }
     },
-    [aiSettings.ttsSimulatedStreaming, clearChatDisplayOverride, speakWithSelectedTts],
+    [aiSettings, clearChatDisplayOverride, speakWithSelectedTts],
   );
 
   useEffect(() => {

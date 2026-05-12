@@ -9,6 +9,7 @@ import {
 import type { StreamBotConfig } from '../config.js';
 
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
+export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
 
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
@@ -16,6 +17,7 @@ export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
 export type RemoteTtsRequest = {
   provider: RemoteTtsProvider;
   text: string;
+  streamingMode?: RemoteTtsMode | string;
   voiceId?: string;
   modelId?: string;
   latency?: FishSpeechLatency;
@@ -116,6 +118,10 @@ function bufferFromAudioChunk(value: unknown) {
 
 function normalizeFishLatency(value: unknown): FishSpeechLatency {
   return value === 'normal' ? 'normal' : 'balanced';
+}
+
+function normalizeRemoteTtsMode(value: unknown): RemoteTtsMode {
+  return value === 'sentence-chunks' ? 'sentence-chunks' : 'full-response';
 }
 
 function normalizeInworldDeliveryMode(value: unknown): DeliveryMode | undefined {
@@ -415,7 +421,13 @@ async function streamInworld(
     ...(config.inworldBaseUrl ? { baseUrl: config.inworldBaseUrl } : {}),
   });
 
-  for (const textChunk of splitTextForStreaming(request.text, bufferCharThreshold)) {
+  const streamingMode = normalizeRemoteTtsMode(request.streamingMode);
+  const textChunks =
+    streamingMode === 'sentence-chunks'
+      ? splitTextForStreaming(request.text, bufferCharThreshold)
+      : [request.text];
+
+  for (const textChunk of textChunks) {
     const stream = client.stream({
       text: textChunk,
       voice: voiceId,

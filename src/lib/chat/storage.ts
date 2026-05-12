@@ -194,8 +194,12 @@ function normalizeAiSettings(value: unknown): AiSettings {
       : source.inworldDeliveryMode === 'EXPRESSIVE'
         ? 'CREATIVE'
         : source.inworldDeliveryMode === 'LOW_LATENCY'
-          ? 'STABLE'
-          : defaults.inworldDeliveryMode;
+        ? 'STABLE'
+        : defaults.inworldDeliveryMode;
+  const remoteTtsMode =
+    source.remoteTtsMode === 'sentence-chunks'
+      ? 'sentence-chunks'
+      : defaults.remoteTtsMode;
 
   return {
     model: normalizedModel,
@@ -219,6 +223,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
         ? source.ttsExpressionTagsEnabled
         : defaults.ttsExpressionTagsEnabled,
     ttsProvider,
+    remoteTtsMode,
     ttsVoice: String(source.ttsVoice ?? defaults.ttsVoice),
     fishSpeechVoiceId: String(source.fishSpeechVoiceId ?? defaults.fishSpeechVoiceId),
     fishSpeechModel,

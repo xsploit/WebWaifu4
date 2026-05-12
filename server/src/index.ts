@@ -307,6 +307,7 @@ const httpServer = createServer(async (request, response) => {
       const body = await readRequestJson<{
         provider?: unknown;
         text?: unknown;
+        streamingMode?: unknown;
         voiceId?: unknown;
         modelId?: unknown;
         latency?: unknown;
@@ -327,6 +328,7 @@ const httpServer = createServer(async (request, response) => {
         {
           provider: normalizeRemoteTtsProvider(body.provider),
           text,
+          streamingMode: typeof body.streamingMode === 'string' ? body.streamingMode : undefined,
           voiceId: typeof body.voiceId === 'string' ? body.voiceId : undefined,
           modelId: typeof body.modelId === 'string' ? body.modelId : undefined,
           latency: normalizeTtsLatency(body.latency),

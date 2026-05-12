@@ -20,6 +20,7 @@ export type PersonaProfile = {
 export type PersonaDraft = Omit<PersonaProfile, 'id'>;
 
 export type TtsProvider = 'piper' | 'fish-speech' | 'inworld';
+export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
 
@@ -35,6 +36,7 @@ export type AiSettings = {
   ttsSimulatedStreaming: boolean;
   ttsExpressionTagsEnabled: boolean;
   ttsProvider: TtsProvider;
+  remoteTtsMode: RemoteTtsMode;
   ttsVoice: string;
   fishSpeechVoiceId: string;
   fishSpeechModel: string;

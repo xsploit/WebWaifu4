@@ -150,6 +150,28 @@ export function TtsTab({
         </div>
       </div>
 
+      {remoteProviderSelected ? (
+        <div className="control-group">
+          <div className="control-label">Remote TTS Pacing</div>
+          <select
+            className="select-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, {
+                remoteTtsMode: event.target.value as AiSettings['remoteTtsMode'],
+              })
+            }
+            value={aiSettings.remoteTtsMode}
+          >
+            <option value="full-response">Full Response / Stable Voice</option>
+            <option value="sentence-chunks">Sentence Chunks / Lower Latency</option>
+          </select>
+          <div className="field-hint">
+            Full response sends one provider request per reply. Sentence chunks starts sooner, but
+            each chunk can shift voice, prosody, or playback edges.
+          </div>
+        </div>
+      ) : null}
+
       {aiSettings.ttsProvider === 'piper' ? (
         <div className="control-group">
           <div className="control-label">Piper Voice</div>
