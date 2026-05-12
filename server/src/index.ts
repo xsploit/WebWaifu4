@@ -256,6 +256,7 @@ async function createOpenAiEmbedding(config: StreamBotConfig, input: string, mod
 
 const config = loadConfig();
 const provider = createProvider(config);
+const serverTwitchMode = config.twitchMock ? 'client-direct' : 'server-irc';
 
 let mockSource: MockTwitchChatSource | null = null;
 let chatSource: TwitchChatSource;
@@ -272,7 +273,8 @@ const httpServer = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/health') {
     writeJson(response, 200, {
       ok: true,
-      twitchMode: config.twitchMock ? 'mock' : 'irc',
+      twitchMode: serverTwitchMode,
+      serverTwitchSource: config.twitchMock ? 'local-control' : 'irc',
       channel: chatSource.channel,
       overlayClients: overlaySocket.clientCount,
       aiProvider: config.aiProvider,
@@ -624,7 +626,7 @@ commandRouter = new CommandRouter({
   getStatus: () => ({
     activeChatters: scheduler.getActiveChatterCount(),
     overlayClients: overlaySocket.clientCount,
-    twitchMode: config.twitchMock ? 'mock' : 'irc',
+    twitchMode: serverTwitchMode,
   }),
   emit: emitBotEvent,
 });
@@ -646,6 +648,6 @@ process.on('SIGTERM', shutdown);
 httpServer.listen(config.botPort, () => {
   console.log(`YourWifey stream bot listening on http://127.0.0.1:${config.botPort}`);
   console.log(`Overlay WebSocket path: ws://127.0.0.1:${config.botPort}/ws`);
-  console.log(`Twitch chat mode: ${config.twitchMock ? 'mock' : 'irc'} (#${chatSource.channel})`);
+  console.log(`Twitch chat mode: ${serverTwitchMode} (#${chatSource.channel})`);
   chatSource.start();
 });
