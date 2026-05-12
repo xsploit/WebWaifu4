@@ -10,6 +10,7 @@ import type { StreamBotConfig } from '../config.js';
 
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
 export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
+export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
@@ -226,14 +227,15 @@ export async function streamRemoteTts(
 export async function listRemoteTtsVoices(
   config: StreamBotConfig,
   provider: RemoteTtsProvider,
+  options: { fishScope?: FishSpeechVoiceScope } = {},
 ): Promise<RemoteTtsVoice[]> {
   if (provider === 'fish-speech') {
-    return listFishSpeechVoices(config);
+    return listFishSpeechVoices(config, options.fishScope ?? 'all');
   }
   return listInworldVoices(config);
 }
 
-async function listFishSpeechVoices(config: StreamBotConfig) {
+async function listFishSpeechVoices(config: StreamBotConfig, scope: FishSpeechVoiceScope) {
   if (!config.fishSpeechApiKey) {
     throw new Error('FishSpeech voices require FISH_AUDIO_API_KEY or FISHSPEECH_API_KEY.');
   }
@@ -242,16 +244,38 @@ async function listFishSpeechVoices(config: StreamBotConfig) {
     apiKey: config.fishSpeechApiKey,
     ...(config.fishSpeechBaseUrl ? { baseUrl: config.fishSpeechBaseUrl } : {}),
   });
-  const response = await client.voices.search(
-    {
-      page_number: 1,
-      page_size: 100,
-      sort_by: 'created_at',
-    },
-    { timeoutInSeconds: 20 },
-  );
+  const searchFish = async (request: Record<string, unknown>) => {
+    const response = await client.voices.search(
+      {
+        page_number: 1,
+        page_size: 100,
+        sort_by: 'created_at',
+        ...request,
+      },
+      { timeoutInSeconds: 20 },
+    );
+    return response.items.map(mapFishVoice).filter((voice) => voice.id);
+  };
 
-  return response.items.map(mapFishVoice).filter((voice) => voice.id);
+  if (scope === 'mine') {
+    return searchFish({ self: true, visibility: 'private' }).catch(() =>
+      searchFish({ self: true }),
+    );
+  }
+
+  const publicVoices = scope === 'public' || scope === 'all' ? await searchFish({}) : [];
+  if (scope === 'public') {
+    return publicVoices;
+  }
+
+  const myVoices = await searchFish({ self: true, visibility: 'private' }).catch(() =>
+    searchFish({ self: true }).catch(() => []),
+  );
+  const byId = new Map<string, RemoteTtsVoice>();
+  for (const voice of [...myVoices, ...publicVoices]) {
+    byId.set(voice.id, voice);
+  }
+  return Array.from(byId.values());
 }
 
 async function listInworldVoices(config: StreamBotConfig) {

@@ -154,6 +154,16 @@ function normalizeAiSettings(value: unknown): AiSettings {
   const requestedMemoryAgentModel = String(
     source.memoryAgentModel ?? defaults.memoryAgentModel,
   ).trim();
+  const aiTransportMode =
+    source.aiTransportMode === 'http-stream' || source.aiTransportMode === 'websocket'
+      ? source.aiTransportMode
+      : defaults.aiTransportMode;
+  const openAiStateMode =
+    source.openAiStateMode === 'conversation' ||
+    source.openAiStateMode === 'previous-response' ||
+    source.openAiStateMode === 'stateless'
+      ? source.openAiStateMode
+      : defaults.openAiStateMode;
   const playbackRate =
     typeof source.ttsPlaybackRate === 'number' && Number.isFinite(source.ttsPlaybackRate)
       ? Math.max(0.7, Math.min(1.35, source.ttsPlaybackRate))
@@ -170,6 +180,10 @@ function normalizeAiSettings(value: unknown): AiSettings {
     source.fishSpeechLatency === 'balanced' || source.fishSpeechLatency === 'normal'
       ? source.fishSpeechLatency
       : defaults.fishSpeechLatency;
+  const fishSpeechVoiceScope =
+    source.fishSpeechVoiceScope === 'mine' || source.fishSpeechVoiceScope === 'public'
+      ? source.fishSpeechVoiceScope
+      : defaults.fishSpeechVoiceScope;
   const fishSpeechModel =
     typeof source.fishSpeechModel === 'string' && source.fishSpeechModel.trim()
       ? source.fishSpeechModel.trim() === 's2-pro'
@@ -194,16 +208,16 @@ function normalizeAiSettings(value: unknown): AiSettings {
       : source.inworldDeliveryMode === 'EXPRESSIVE'
         ? 'CREATIVE'
         : source.inworldDeliveryMode === 'LOW_LATENCY'
-        ? 'STABLE'
-        : defaults.inworldDeliveryMode;
+          ? 'STABLE'
+          : defaults.inworldDeliveryMode;
   const remoteTtsMode =
-    source.remoteTtsMode === 'sentence-chunks'
-      ? 'sentence-chunks'
-      : defaults.remoteTtsMode;
+    source.remoteTtsMode === 'sentence-chunks' ? 'sentence-chunks' : defaults.remoteTtsMode;
 
   return {
     model: normalizedModel,
     memoryAgentModel: requestedMemoryAgentModel || defaults.memoryAgentModel,
+    aiTransportMode,
+    openAiStateMode,
     temperature: typeof source.temperature === 'number' ? source.temperature : defaults.temperature,
     maxTokens: typeof source.maxTokens === 'number' ? source.maxTokens : defaults.maxTokens,
     includeHostContext:
@@ -226,6 +240,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
     remoteTtsMode,
     ttsVoice: String(source.ttsVoice ?? defaults.ttsVoice),
     fishSpeechVoiceId: String(source.fishSpeechVoiceId ?? defaults.fishSpeechVoiceId),
+    fishSpeechVoiceScope,
     fishSpeechModel,
     fishSpeechLatency,
     fishSpeechConditionOnPreviousChunks:
@@ -568,7 +583,10 @@ function normalizeAnimationEntry(value: unknown): AnimationEntry | null {
       typeof source.loopEligible === 'boolean'
         ? source.loopEligible
         : normalizeAnimationPurpose(source.purpose) === 'ambient',
-    weight: typeof source.weight === 'number' && Number.isFinite(source.weight) ? source.weight : undefined,
+    weight:
+      typeof source.weight === 'number' && Number.isFinite(source.weight)
+        ? source.weight
+        : undefined,
     purpose: normalizeAnimationPurpose(source.purpose),
     tags: normalizeAnimationTags(source.tags),
   };

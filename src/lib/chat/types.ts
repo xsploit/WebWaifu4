@@ -21,12 +21,17 @@ export type PersonaDraft = Omit<PersonaProfile, 'id'>;
 
 export type TtsProvider = 'piper' | 'fish-speech' | 'inworld';
 export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
+export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
+export type AiTransportMode = 'server-default' | 'http-stream' | 'websocket';
+export type OpenAiStateMode = 'server-default' | 'conversation' | 'previous-response' | 'stateless';
 
 export type AiSettings = {
   model: string;
   memoryAgentModel: string;
+  aiTransportMode: AiTransportMode;
+  openAiStateMode: OpenAiStateMode;
   temperature: number;
   maxTokens: number;
   includeHostContext: boolean;
@@ -39,6 +44,7 @@ export type AiSettings = {
   remoteTtsMode: RemoteTtsMode;
   ttsVoice: string;
   fishSpeechVoiceId: string;
+  fishSpeechVoiceScope: FishSpeechVoiceScope;
   fishSpeechModel: string;
   fishSpeechLatency: FishSpeechLatency;
   fishSpeechConditionOnPreviousChunks: boolean;

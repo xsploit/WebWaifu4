@@ -554,10 +554,12 @@ async function requestChatCompletion({
   mode = 'direct',
   model,
   onTextDelta,
+  openAiStateMode,
   responseFormat,
   stateKey,
   stateScope = 'chat',
   temperature,
+  transportMode,
 }: {
   activeChatters?: number;
   apiKey?: string;
@@ -567,10 +569,12 @@ async function requestChatCompletion({
   mode?: 'direct' | 'batch';
   model: string;
   onTextDelta?: (delta: string) => void;
+  openAiStateMode?: AiSettings['openAiStateMode'];
   responseFormat?: AppCompletionResponseFormat;
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
   temperature: number;
+  transportMode?: AiSettings['aiTransportMode'];
 }): Promise<AppCompletionResponse> {
   if (!AI_PROXY_ENABLED) {
     const runGameSdk = await getRunGameSdk();
@@ -597,11 +601,13 @@ async function requestChatCompletion({
       messages,
       mode,
       model,
+      openAiStateMode: openAiStateMode === 'server-default' ? undefined : openAiStateMode,
       responseFormat,
       stateKey,
       stateScope,
       stream: Boolean(onTextDelta),
       temperature,
+      transportMode: transportMode === 'server-default' ? undefined : transportMode,
     }),
   });
 
@@ -1143,7 +1149,7 @@ function App() {
   const bundledModelUrlCacheRef = useRef<Map<string, string>>(new Map());
   const didHydrateAvatarRef = useRef(false);
   const ttsWarmVoicesRef = useRef<Set<string>>(new Set());
-  const remoteTtsVoiceFetchAttemptedRef = useRef<Set<RemoteTtsProvider>>(new Set());
+  const remoteTtsVoiceFetchAttemptedRef = useRef<Set<string>>(new Set());
   const assistantRenderRunRef = useRef(0);
   const chatRequestRunRef = useRef(0);
   const chatHistoryRef = useRef<ChatMessage[]>([]);
@@ -1336,7 +1342,9 @@ function App() {
       setAiProxyHealth(data);
       setAiProxyHealthError(null);
     } catch (error) {
-      setAiProxyHealthError(error instanceof Error ? error.message : 'AI proxy health check failed.');
+      setAiProxyHealthError(
+        error instanceof Error ? error.message : 'AI proxy health check failed.',
+      );
     }
   }, []);
 
@@ -1408,15 +1416,17 @@ function App() {
   }, [refreshStoredTtsVoices]);
 
   const loadRemoteTtsVoices = useCallback(async (provider: RemoteTtsProvider, force = false) => {
-    if (!force && remoteTtsVoiceFetchAttemptedRef.current.has(provider)) {
+    const fishScope = aiSettingsRef.current.fishSpeechVoiceScope;
+    const fetchKey = provider === 'fish-speech' ? `${provider}:${fishScope}` : provider;
+    if (!force && remoteTtsVoiceFetchAttemptedRef.current.has(fetchKey)) {
       return;
     }
-    remoteTtsVoiceFetchAttemptedRef.current.add(provider);
+    remoteTtsVoiceFetchAttemptedRef.current.add(fetchKey);
     setRemoteTtsVoicesLoading(true);
     setRemoteTtsVoicesError(null);
 
     try {
-      const voices = await fetchRemoteTtsVoices(provider);
+      const voices = await fetchRemoteTtsVoices(provider, { fishScope });
       setRemoteTtsVoices((current) => ({
         ...current,
         [provider]: voices,
@@ -1427,7 +1437,7 @@ function App() {
       setRemoteTtsVoicesError(message);
       setTtsStatus(`Remote voice fetch failed: ${message}`);
       if (force) {
-        remoteTtsVoiceFetchAttemptedRef.current.delete(provider);
+        remoteTtsVoiceFetchAttemptedRef.current.delete(fetchKey);
       }
     } finally {
       setRemoteTtsVoicesLoading(false);
@@ -2622,6 +2632,7 @@ function App() {
               ),
               stateScope: 'memory',
               disableState: true,
+              transportMode: aiSettings.aiTransportMode,
               temperature: 0.35,
               apiKey: aiSettings.localDevApiKey,
             });
@@ -2791,10 +2802,12 @@ function App() {
             ttsProvider: aiSettings.ttsProvider,
           }),
           maxTokens: aiSettings.maxTokens,
+          openAiStateMode: aiSettings.openAiStateMode,
           stateKey,
           stateScope: 'chat',
           onTextDelta: streamingPlayer.pushDelta,
           temperature: aiSettings.temperature,
+          transportMode: aiSettings.aiTransportMode,
           apiKey: aiSettings.localDevApiKey,
         });
 
@@ -3392,10 +3405,12 @@ function App() {
             ttsProvider: settings.ttsProvider,
           }),
           maxTokens: settings.maxTokens,
+          openAiStateMode: settings.openAiStateMode,
           stateKey,
           stateScope: 'chat',
           onTextDelta: speechPlayer.pushDelta,
           temperature: settings.temperature,
+          transportMode: settings.aiTransportMode,
           apiKey: settings.localDevApiKey,
         });
 
@@ -3890,7 +3905,11 @@ function App() {
               void refreshAiProxyHealth();
             }}
             onRefreshRemoteVoices={(provider) => {
-              remoteTtsVoiceFetchAttemptedRef.current.delete(provider);
+              for (const key of Array.from(remoteTtsVoiceFetchAttemptedRef.current)) {
+                if (key === provider || key.startsWith(`${provider}:`)) {
+                  remoteTtsVoiceFetchAttemptedRef.current.delete(key);
+                }
+              }
               void loadRemoteTtsVoices(provider, true);
             }}
             onRefreshVoices={() => {

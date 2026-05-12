@@ -104,6 +104,33 @@ export function AiTab({
 
       <div className="control-group">
         <div className="control-label">Backend Transport</div>
+        <select
+          className="select-tech"
+          onChange={(event) =>
+            updateAiSettings(setAiSettings, {
+              aiTransportMode: event.target.value as AiSettings['aiTransportMode'],
+            })
+          }
+          value={aiSettings.aiTransportMode}
+        >
+          <option value="server-default">Server Default</option>
+          <option value="websocket">Responses WebSocket</option>
+          <option value="http-stream">Responses HTTP Stream</option>
+        </select>
+        <select
+          className="select-tech"
+          onChange={(event) =>
+            updateAiSettings(setAiSettings, {
+              openAiStateMode: event.target.value as AiSettings['openAiStateMode'],
+            })
+          }
+          value={aiSettings.openAiStateMode}
+        >
+          <option value="server-default">Server Default State</option>
+          <option value="conversation">Conversations API</option>
+          <option value="previous-response">Previous Response ID</option>
+          <option value="stateless">Stateless</option>
+        </select>
         <div className="status-copy">
           Provider: <strong>{aiProxyHealth?.aiProvider ?? 'unknown'}</strong>
         </div>
@@ -114,6 +141,11 @@ export function AiTab({
         <div className="status-copy">
           Cache: <strong>{providerState?.promptCacheKey ?? 'none'}</strong> / cached tokens:{' '}
           <strong>{providerState?.cachedTokens ?? 0}</strong>
+        </div>
+        <div className="field-hint">
+          Previous Response keeps the latest response id per channel. Conversation mode uses the
+          OpenAI conversation object when the backend supports it. Stateless still receives memory
+          and diary context from the app.
         </div>
         <button className="btn-tech secondary" onClick={onRefreshAiProxyHealth} type="button">
           Refresh Transport

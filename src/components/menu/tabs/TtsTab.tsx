@@ -166,8 +166,9 @@ export function TtsTab({
             <option value="sentence-chunks">Sentence Chunks / Lower Latency</option>
           </select>
           <div className="field-hint">
-            Stable stream sends one provider request per reply and plays remote PCM as chunks arrive.
-            Sentence chunks starts text intake sooner, but each chunk can shift voice or prosody.
+            Stable stream sends one provider request per reply and plays remote PCM as chunks
+            arrive. Sentence chunks starts text intake sooner, but each chunk can shift voice or
+            prosody.
           </div>
         </div>
       ) : null}
@@ -227,6 +228,19 @@ export function TtsTab({
       {aiSettings.ttsProvider === 'fish-speech' ? (
         <div className="control-group">
           <div className="control-label">FishSpeech Live</div>
+          <select
+            className="select-tech"
+            onChange={(event) =>
+              updateAiSettings(setAiSettings, {
+                fishSpeechVoiceScope: event.target.value as AiSettings['fishSpeechVoiceScope'],
+              })
+            }
+            value={aiSettings.fishSpeechVoiceScope}
+          >
+            <option value="all">My Models + Public</option>
+            <option value="mine">My Fish Models</option>
+            <option value="public">Public Models</option>
+          </select>
           <select
             className="select-tech"
             disabled={remoteVoicesLoading}

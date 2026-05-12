@@ -16,6 +16,8 @@ export type ChatProviderRequest = {
   };
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
+  transportMode?: 'http-stream' | 'websocket';
+  openAiStateMode?: 'conversation' | 'previous-response' | 'stateless';
   target?: TwitchChatMessage;
   maxTokens?: number;
   temperature?: number;

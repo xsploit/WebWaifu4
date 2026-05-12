@@ -101,6 +101,11 @@ type OpenAiScopedState = {
   cachedTokens: number;
 };
 
+type OpenAiRequestRuntime = {
+  stateMode: OpenAiResponsesStateMode;
+  useWebSocket: boolean;
+};
+
 const MAX_TOOL_ROUNDS = 5;
 
 function splitMessages(messages: readonly ChatProviderMessage[]) {
@@ -351,10 +356,20 @@ export class OpenAiResponsesProvider implements ChatProvider {
     };
   }
 
-  private get canUsePreviousResponse() {
+  private getRequestRuntime(request: ChatProviderRequest): OpenAiRequestRuntime {
+    const stateMode = request.openAiStateMode ?? this.options.stateMode;
+    const useWebSocket =
+      request.transportMode === 'websocket'
+        ? true
+        : request.transportMode === 'http-stream'
+          ? false
+          : this.options.useWebSocket;
+    return { stateMode, useWebSocket };
+  }
+
+  private canUsePreviousResponseFor(runtime: OpenAiRequestRuntime) {
     return (
-      this.options.stateMode === 'previous-response' &&
-      (this.options.store || this.options.useWebSocket)
+      runtime.stateMode === 'previous-response' && (this.options.store || runtime.useWebSocket)
     );
   }
 
@@ -364,19 +379,20 @@ export class OpenAiResponsesProvider implements ChatProvider {
   }
 
   async complete(request: ChatProviderRequest): Promise<ChatProviderResponse> {
-    const payload = await this.createResponsesPayload(request);
-    const result = await this.completeResponsesWithTools(payload, false);
+    const runtime = this.getRequestRuntime(request);
+    const payload = await this.createResponsesPayload(request, runtime);
+    const result = await this.completeResponsesWithTools(payload, false, undefined, runtime);
     const text = extractResponseText(result.response);
 
     if (!text) {
       throw new Error('OpenAI Responses API returned an empty response.');
     }
 
-    this.recordResponseState(result.response, request);
+    this.recordResponseState(result.response, request, runtime);
     return {
       text,
       meta: {
-        ...this.getRequestState(request),
+        ...this.getRequestState(request, runtime),
         toolsUsed: result.toolsUsed,
       },
     };
@@ -386,19 +402,25 @@ export class OpenAiResponsesProvider implements ChatProvider {
     request: ChatProviderRequest,
     handlers: ChatProviderStreamHandlers = {},
   ): Promise<ChatProviderResponse> {
-    const payload = await this.createResponsesPayload(request);
-    const result = await this.completeResponsesWithTools(payload, true, handlers.onTextDelta);
+    const runtime = this.getRequestRuntime(request);
+    const payload = await this.createResponsesPayload(request, runtime);
+    const result = await this.completeResponsesWithTools(
+      payload,
+      true,
+      handlers.onTextDelta,
+      runtime,
+    );
     const text = extractResponseText(result.response);
 
     if (!text) {
       throw new Error('OpenAI Responses API returned an empty response.');
     }
 
-    this.recordResponseState(result.response, request);
+    this.recordResponseState(result.response, request, runtime);
     return {
       text,
       meta: {
-        ...this.getRequestState(request),
+        ...this.getRequestState(request, runtime),
         toolsUsed: result.toolsUsed,
       },
     };
@@ -443,21 +465,29 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return state;
   }
 
-  private getRequestState(request: ChatProviderRequest) {
+  private getRequestState(
+    request: ChatProviderRequest,
+    runtime: OpenAiRequestRuntime = this.getRequestRuntime(request),
+  ) {
     const key = normalizeStateKey(request.stateKey);
     const state = this.getScopedState(key);
-    const stateDisabled = request.disableState === true || request.stateScope === 'memory';
+    const stateDisabled =
+      request.disableState === true ||
+      request.stateScope === 'memory' ||
+      runtime.stateMode === 'stateless';
     const reasoningEffort =
       isReasoningStyleModel(this.options.model) && this.options.reasoningEffort
         ? normalizeReasoningEffortForModel(this.options.model, this.options.reasoningEffort)
         : null;
     return {
-      provider: this.options.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
+      provider: runtime.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
       stateKey: key,
-      stateMode: stateDisabled ? 'stateless' : this.options.stateMode,
+      stateMode: stateDisabled ? 'stateless' : runtime.stateMode,
       stateScope: request.stateScope ?? 'chat',
       conversationId: stateDisabled ? null : state.conversationId,
       previousResponseId: stateDisabled ? null : state.previousResponseId,
+      requestedTransport: request.transportMode ?? 'server-default',
+      transport: runtime.useWebSocket ? 'websocket' : 'http-stream',
       promptCacheKey: this.options.promptCacheKey,
       promptCacheRetention: this.options.promptCacheRetention ?? 'in_memory',
       cachedTokens: stateDisabled ? 0 : state.cachedTokens,
@@ -472,14 +502,22 @@ export class OpenAiResponsesProvider implements ChatProvider {
     };
   }
 
-  private async createResponsesPayload(request: ChatProviderRequest) {
+  private async createResponsesPayload(
+    request: ChatProviderRequest,
+    runtime: OpenAiRequestRuntime,
+  ) {
     const { instructions, input } = splitMessages(request.messages);
     const key = normalizeStateKey(request.stateKey);
     const state = this.getScopedState(key);
-    const stateDisabled = request.disableState === true || request.stateScope === 'memory';
-    const usesConversation = !stateDisabled && this.options.stateMode === 'conversation';
+    const stateDisabled =
+      request.disableState === true ||
+      request.stateScope === 'memory' ||
+      runtime.stateMode === 'stateless';
+    const usesConversation = !stateDisabled && runtime.stateMode === 'conversation';
     const canContinuePreviousResponse =
-      !stateDisabled && this.canUsePreviousResponse && Boolean(state.previousResponseId);
+      !stateDisabled &&
+      this.canUsePreviousResponseFor(runtime) &&
+      Boolean(state.previousResponseId);
     const signature = createStateSignature(this.options.model, this.options.promptCacheKey);
     if (!stateDisabled) {
       if (!usesConversation && state.stateSignature && state.stateSignature !== signature) {
@@ -541,7 +579,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       return payload;
     }
 
-    if (!stateDisabled && this.canUsePreviousResponse && state.previousResponseId) {
+    if (!stateDisabled && this.canUsePreviousResponseFor(runtime) && state.previousResponseId) {
       payload.previous_response_id = state.previousResponseId;
     }
 
@@ -552,9 +590,13 @@ export class OpenAiResponsesProvider implements ChatProvider {
     initialPayload: Record<string, unknown>,
     stream: boolean,
     onTextDelta?: (delta: string) => void,
+    runtime: OpenAiRequestRuntime = {
+      stateMode: this.options.stateMode,
+      useWebSocket: this.options.useWebSocket,
+    },
   ) {
     let payload = initialPayload;
-    let response = await this.sendResponsesPayload(payload, stream, onTextDelta);
+    let response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime);
     const toolsUsed: string[] = [];
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -580,8 +622,14 @@ export class OpenAiResponsesProvider implements ChatProvider {
         return { response, toolsUsed };
       }
 
-      payload = this.createToolFollowupPayload(payload, response, functionCalls, toolOutputs);
-      response = await this.sendResponsesPayload(payload, stream, onTextDelta);
+      payload = this.createToolFollowupPayload(
+        payload,
+        response,
+        functionCalls,
+        toolOutputs,
+        runtime,
+      );
+      response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime);
     }
 
     return { response, toolsUsed };
@@ -591,8 +639,12 @@ export class OpenAiResponsesProvider implements ChatProvider {
     payload: Record<string, unknown>,
     stream: boolean,
     onTextDelta?: (delta: string) => void,
+    runtime: OpenAiRequestRuntime = {
+      stateMode: this.options.stateMode,
+      useWebSocket: this.options.useWebSocket,
+    },
   ) {
-    if (this.options.useWebSocket) {
+    if (runtime.useWebSocket) {
       return this.completeWithWebSocket(payload, stream ? onTextDelta : undefined);
     }
 
@@ -606,11 +658,12 @@ export class OpenAiResponsesProvider implements ChatProvider {
     response: OpenAiResponsePayload,
     functionCalls: OpenAiFunctionCall[],
     toolOutputs: ResponsesFunctionCallOutput[],
+    runtime: OpenAiRequestRuntime,
   ) {
     const nextPayload = { ...payload };
     const usesConversation = Boolean(nextPayload['conversation']);
     const canUsePreviousResponseState =
-      this.canUsePreviousResponse && Boolean(response.id) && !usesConversation;
+      this.canUsePreviousResponseFor(runtime) && Boolean(response.id) && !usesConversation;
     if (canUsePreviousResponseState) {
       nextPayload.previous_response_id = response.id;
       nextPayload.input = toolOutputs;
@@ -958,13 +1011,20 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return this.wsReady;
   }
 
-  private recordResponseState(response: OpenAiResponsePayload, request: ChatProviderRequest) {
+  private recordResponseState(
+    response: OpenAiResponsePayload,
+    request: ChatProviderRequest,
+    runtime: OpenAiRequestRuntime,
+  ) {
     const state = this.getScopedState(normalizeStateKey(request.stateKey));
-    const stateDisabled = request.disableState === true || request.stateScope === 'memory';
+    const stateDisabled =
+      request.disableState === true ||
+      request.stateScope === 'memory' ||
+      runtime.stateMode === 'stateless';
     if (stateDisabled) {
       return;
     }
-    if (!stateDisabled && this.canUsePreviousResponse && response.id) {
+    if (!stateDisabled && this.canUsePreviousResponseFor(runtime) && response.id) {
       state.previousResponseId = response.id;
     }
     state.cachedTokens = getCachedTokenCount(response);

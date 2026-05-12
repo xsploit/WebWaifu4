@@ -100,6 +100,8 @@ export function createDefaultAiSettings(): AiSettings {
   return {
     model: DEFAULT_RUN_MODEL,
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
+    aiTransportMode: 'server-default',
+    openAiStateMode: 'server-default',
     temperature: 0.85,
     maxTokens: 300,
     includeHostContext: true,
@@ -112,6 +114,7 @@ export function createDefaultAiSettings(): AiSettings {
     remoteTtsMode: 'full-response',
     ttsVoice: NEURO_PIPER_VOICE_KEY,
     fishSpeechVoiceId: '',
+    fishSpeechVoiceScope: 'all',
     fishSpeechModel: 's2',
     fishSpeechLatency: 'balanced',
     fishSpeechConditionOnPreviousChunks: true,

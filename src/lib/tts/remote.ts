@@ -1,5 +1,6 @@
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
 export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
+export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
 
@@ -206,9 +207,15 @@ export function createRemoteTtsStream(
   };
 }
 
-export async function fetchRemoteTtsVoices(provider: RemoteTtsProvider) {
+export async function fetchRemoteTtsVoices(
+  provider: RemoteTtsProvider,
+  options: { fishScope?: FishSpeechVoiceScope } = {},
+) {
   const url = new URL(getTtsProxyUrl('/tts/voices'));
   url.searchParams.set('provider', provider);
+  if (provider === 'fish-speech' && options.fishScope) {
+    url.searchParams.set('scope', options.fishScope);
+  }
   const response = await fetch(url.toString(), {
     method: 'GET',
     headers: { Accept: 'application/json' },

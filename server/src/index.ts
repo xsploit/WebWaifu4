@@ -199,6 +199,20 @@ function normalizeTtsLatency(value: unknown) {
   return value === 'balanced' || value === 'normal' ? value : undefined;
 }
 
+function normalizeFishVoiceScope(value: unknown) {
+  return value === 'mine' || value === 'public' ? value : 'all';
+}
+
+function normalizeAiTransportMode(value: unknown): ChatProviderRequest['transportMode'] {
+  return value === 'websocket' || value === 'http-stream' ? value : undefined;
+}
+
+function normalizeOpenAiStateMode(value: unknown): ChatProviderRequest['openAiStateMode'] {
+  return value === 'conversation' || value === 'previous-response' || value === 'stateless'
+    ? value
+    : undefined;
+}
+
 function normalizeEmbeddingInput(value: unknown) {
   return typeof value === 'string' ? value.trim().slice(0, 4000) : '';
 }
@@ -286,7 +300,9 @@ const httpServer = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/tts/voices') {
     try {
       const providerName = normalizeRemoteTtsProvider(url.searchParams.get('provider'));
-      const voices = await listRemoteTtsVoices(config, providerName);
+      const voices = await listRemoteTtsVoices(config, providerName, {
+        fishScope: normalizeFishVoiceScope(url.searchParams.get('scope')),
+      });
       writeJson(response, 200, {
         ok: true,
         provider: providerName,
@@ -438,6 +454,8 @@ const httpServer = createServer(async (request, response) => {
         stateScope?: 'chat' | 'memory';
         stream?: boolean;
         temperature?: number;
+        transportMode?: unknown;
+        openAiStateMode?: unknown;
       }>(request);
       const messages = normalizeProviderMessages(body.messages);
       if (messages.length === 0) {
@@ -460,6 +478,8 @@ const httpServer = createServer(async (request, response) => {
         stateKey: normalizeStateKey(body.stateKey, `twitch:${config.twitchChannel}:persona:riko`),
         stateScope: normalizeStateScope(body.stateScope),
         temperature: body.temperature,
+        transportMode: normalizeAiTransportMode(body.transportMode),
+        openAiStateMode: normalizeOpenAiStateMode(body.openAiStateMode),
       };
 
       if (body.stream === true) {
