@@ -34,6 +34,9 @@ describe('POML-backed chat prompt', () => {
     expect(YOURWIFEY_POML_TEMPLATE).toContain(
       '<system-msg name="responses-instructions" syntax="markdown" whiteSpace="pre">',
     );
+    expect(YOURWIFEY_POML_TEMPLATE).toContain('<let');
+    expect(YOURWIFEY_POML_TEMPLATE).toContain('name="response_priorities"');
+    expect(YOURWIFEY_POML_TEMPLATE).toContain('caption="Relationship Dynamics"');
     expect(YOURWIFEY_POML_TEMPLATE).toContain('<human-msg name="current-turn"');
   });
 
@@ -99,6 +102,16 @@ describe('POML-backed chat prompt', () => {
 
     expect(systemMessage.role).toBe('system');
     expect(systemMessage.content).toContain('OpenAI Responses API');
+    expect(systemMessage.content).toContain('# Prompt State');
+    expect(systemMessage.content).toContain('relationship_mood: teasing');
+    expect(systemMessage.content).toContain('# Response Priority Stack');
+    expect(systemMessage.content).toContain('# Style Controls');
+    expect(systemMessage.content).toContain('# Conditional Conversation Mode');
+    expect(systemMessage.content).toContain('Twitch mode is active');
+    expect(systemMessage.content).toContain('Batch mode is active');
+    expect(systemMessage.content).toContain('# Relationship Dynamics');
+    expect(systemMessage.content).toContain('Familiar relationship');
+    expect(systemMessage.content).toContain('Guarded state');
     expect(systemMessage.content).toContain('# Tool Policy');
     expect(systemMessage.content).toContain('You are Hikari');
     expect(systemMessage.content).toContain('Subsect');
@@ -111,11 +124,13 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('direct tagged reply or a balanced batch response');
     expect(systemMessage.content).toContain('<yw-meta>');
     expect(systemMessage.content).toContain('Available animation: little-wave [wave-01]');
+    expect(systemMessage.content).toContain('# Animation Selection Policy');
     expect(systemMessage.content).toContain('launchParams: {"room":"stream"}');
     expect(systemMessage.content).toContain('Known user facts: ["likes POML"]');
     expect(systemMessage.content).toContain(
       'Prior note: use OpenAI Responses state keys carefully.',
     );
+    expect(systemMessage.content).toContain('# Semantic Memory Usage');
     expect(systemMessage.content).not.toContain('{{');
     expect(messages.slice(1)).toEqual([
       {
@@ -189,6 +204,9 @@ describe('POML-backed chat prompt', () => {
     }
 
     expect(systemMessage.content).toContain('# Tool Policy');
+    expect(systemMessage.content).toContain('# Prompt State');
+    expect(systemMessage.content).toContain('# Relationship Dynamics');
+    expect(systemMessage.content).toContain('New relationship');
     expect(systemMessage.content).toContain('# Turn Metadata');
     expect(systemMessage.content).not.toContain('# Speech and TTS');
     expect(systemMessage.content).not.toContain('# Avatar Animation Catalog');
