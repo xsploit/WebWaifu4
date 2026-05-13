@@ -22,4 +22,24 @@ describe('PomlRenderer', () => {
     expect(messages[0]?.content).toContain('<yw-meta>');
     expect(messages[0]?.content).not.toContain('{{');
   });
+
+  it('supports patched POML condition expressions and tool policy blocks', async () => {
+    const messages = await renderYourWifeyPomlMessages(
+      {
+        mood_points: '4',
+      },
+      `<poml>
+        <system-msg>
+          <tool-policy>Use web_search only when fresh data would help.</tool-policy>
+          <if condition="{{ mood_points < 8 && mood_points > 2 }}">
+            Conditional Twitch context is enabled.
+          </if>
+        </system-msg>
+      </poml>`,
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.content).toContain('Use web_search only when fresh data would help.');
+    expect(messages[0]?.content).toContain('Conditional Twitch context is enabled.');
+  });
 });
