@@ -105,3 +105,10 @@ export type ManualPlayRequest = {
   index: number;
   nonce: number;
 };
+
+export type FacialExpressionRequest = {
+  durationMs: number;
+  expression: string;
+  intensity: number;
+  nonce: number;
+};

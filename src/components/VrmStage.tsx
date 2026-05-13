@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import type {
   AnimationEntry,
+  FacialExpressionRequest,
   ManualPlayRequest,
   SequencerSettings,
   VisualSettings,
@@ -26,6 +27,7 @@ import { getTtsManager, type TtsManager } from '../lib/tts/manager';
 
 type VrmStageProps = {
   active: boolean;
+  facialExpressionRequest: FacialExpressionRequest | null;
   manualPlayRequest: ManualPlayRequest | null;
   modelUrl: string | null;
   sequencerSettings: SequencerSettings;
@@ -60,6 +62,12 @@ type BlinkRuntimeState = {
   elapsed: number;
   nextAt: number;
   value: number;
+};
+
+type FacialExpressionRuntimeState = {
+  animationFrame: number | null;
+  names: string[];
+  nonce: number | null;
 };
 
 type GazeOverlayPart = 'head' | 'neck' | 'leftEye' | 'rightEye';
@@ -165,6 +173,35 @@ const BLINK_HOLD_SECONDS = 0.028;
 const BLINK_OPEN_SECONDS = 0.105;
 const BLINK_TOTAL_SECONDS = BLINK_CLOSE_SECONDS + BLINK_HOLD_SECONDS + BLINK_OPEN_SECONDS;
 const BLINK_EXPRESSION_CACHE = new WeakMap<VrmExpressionManager, readonly string[]>();
+const FACIAL_EXPRESSION_ATTACK_MS = 140;
+const FACIAL_EXPRESSION_MIN_DURATION_MS = 500;
+const FACIAL_EXPRESSION_MAX_DURATION_MS = 6000;
+const FACIAL_EXPRESSION_CANDIDATES: Record<string, string[]> = {
+  angry: ['angry', 'annoyed', 'anger'],
+  caring: ['caring', 'kind', 'happy', 'relaxed'],
+  confused: ['confused', 'doubt', 'surprised', 'relaxed'],
+  embarrassed: ['embarrassed', 'shy', 'blush', 'happy', 'relaxed'],
+  happy: ['happy', 'joy', 'fun', 'smile'],
+  neutral: [],
+  relaxed: ['relaxed', 'calm', 'soft'],
+  sad: ['sad', 'sorrow', 'troubled'],
+  surprised: ['surprised', 'surprise'],
+  thinking: ['thinking', 'curious', 'relaxed'],
+};
+const RESERVED_EXPRESSION_KEYS = new Set([
+  'aa',
+  'blink',
+  'blinkleft',
+  'blinkright',
+  'ee',
+  'ih',
+  'lookdown',
+  'lookleft',
+  'lookright',
+  'lookup',
+  'oh',
+  'ou',
+]);
 const GAZE_CENTER_Y = 1.42;
 const GAZE_CENTER_Z = 2.2;
 const GAZE_HEAD_MAX_HORIZONTAL = 0.24;
@@ -532,6 +569,133 @@ function setBlinkExpression(vrm: VRM | null, value: number) {
   for (const expressionName of expressionNames) {
     manager.setValue(expressionName, nextValue);
   }
+}
+
+function createFacialExpressionRuntimeState(): FacialExpressionRuntimeState {
+  return {
+    animationFrame: null,
+    names: [],
+    nonce: null,
+  };
+}
+
+function normalizeFacialExpressionKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/^vrmexpression/i, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function getExpressionNames(manager: VrmExpressionManager) {
+  return Object.keys(manager.expressionMap).filter(
+    (name) => !RESERVED_EXPRESSION_KEYS.has(normalizeFacialExpressionKey(name)),
+  );
+}
+
+function resolveFacialExpressionNames(manager: VrmExpressionManager, expression: string) {
+  const normalizedExpression = normalizeFacialExpressionKey(expression);
+  const candidates = [
+    ...(FACIAL_EXPRESSION_CANDIDATES[normalizedExpression] ?? []),
+    expression,
+  ].map(normalizeFacialExpressionKey);
+  const available = getExpressionNames(manager);
+  const byNormalizedName = new Map(
+    available.map((name) => [normalizeFacialExpressionKey(name), name] as const),
+  );
+
+  for (const candidate of candidates) {
+    const exact = byNormalizedName.get(candidate);
+    if (exact) {
+      return [exact];
+    }
+  }
+
+  for (const candidate of candidates) {
+    const fuzzy = available.find((name) => normalizeFacialExpressionKey(name).includes(candidate));
+    if (fuzzy) {
+      return [fuzzy];
+    }
+  }
+
+  return [];
+}
+
+function setFacialExpressionValues(
+  manager: VrmExpressionManager,
+  names: readonly string[],
+  value: number,
+) {
+  const nextValue = THREE.MathUtils.clamp(value, 0, 1);
+  for (const name of names) {
+    manager.setValue(name, nextValue);
+  }
+}
+
+function clearFacialExpressionRuntime(
+  vrm: VRM | null,
+  state: FacialExpressionRuntimeState,
+) {
+  if (state.animationFrame !== null) {
+    window.cancelAnimationFrame(state.animationFrame);
+    state.animationFrame = null;
+  }
+  const manager = vrm?.expressionManager;
+  if (manager && state.names.length > 0) {
+    setFacialExpressionValues(manager, state.names, 0);
+  }
+  state.names = [];
+}
+
+function playFacialExpressionRequest(
+  vrm: VRM,
+  request: FacialExpressionRequest,
+  state: FacialExpressionRuntimeState,
+) {
+  const manager = vrm.expressionManager;
+  if (!manager || state.nonce === request.nonce) {
+    return;
+  }
+
+  clearFacialExpressionRuntime(vrm, state);
+  state.nonce = request.nonce;
+
+  const names = resolveFacialExpressionNames(manager, request.expression);
+  const peak = THREE.MathUtils.clamp(request.intensity, 0, 1);
+  if (names.length === 0 || peak <= 0) {
+    return;
+  }
+
+  state.names = names;
+  const durationMs = THREE.MathUtils.clamp(
+    request.durationMs,
+    FACIAL_EXPRESSION_MIN_DURATION_MS,
+    FACIAL_EXPRESSION_MAX_DURATION_MS,
+  );
+  const releaseMs = Math.min(900, Math.max(180, durationMs * 0.34));
+  const holdEndMs = Math.max(FACIAL_EXPRESSION_ATTACK_MS, durationMs - releaseMs);
+  const startedAt = performance.now();
+
+  const tick = (now: number) => {
+    const elapsed = now - startedAt;
+    let value = peak;
+    if (elapsed < FACIAL_EXPRESSION_ATTACK_MS) {
+      value = peak * (elapsed / FACIAL_EXPRESSION_ATTACK_MS);
+    } else if (elapsed > holdEndMs) {
+      value = peak * Math.max(0, 1 - (elapsed - holdEndMs) / releaseMs);
+    }
+
+    setFacialExpressionValues(manager, names, value);
+    if (elapsed < durationMs) {
+      state.animationFrame = window.requestAnimationFrame(tick);
+      return;
+    }
+
+    setFacialExpressionValues(manager, names, 0);
+    state.animationFrame = null;
+    state.names = [];
+  };
+
+  state.animationFrame = window.requestAnimationFrame(tick);
 }
 
 function updateAutoBlink(
@@ -1178,6 +1342,7 @@ function Avatar({
 
 export function VrmStage({
   active,
+  facialExpressionRequest,
   manualPlayRequest,
   modelUrl,
   sequencerSettings,
@@ -1209,6 +1374,7 @@ export function VrmStage({
   const autoStartTimerRef = useRef<number | null>(null);
   const vrmRef = useRef<VRM | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const facialExpressionRuntimeRef = useRef(createFacialExpressionRuntimeState());
 
   const keyLightRef = useRef<THREE.DirectionalLight | null>(null);
   const fillLightRef = useRef<THREE.DirectionalLight | null>(null);
@@ -1414,6 +1580,7 @@ export function VrmStage({
       vrmRef.current = null;
 
       if (loadedVrm) {
+        clearFacialExpressionRuntime(loadedVrm, facialExpressionRuntimeRef.current);
         resetLipSync(loadedVrm);
         disposeVrm(loadedVrm);
       }
@@ -1469,6 +1636,14 @@ export function VrmStage({
     lastManualPlayNonceRef.current = manualPlayRequest.nonce;
     playAnimation(entry, manualPlayRequest.index);
   }, [manualPlayRequest, playAnimation, sequencerSettings.playlist, vrm]);
+
+  useEffect(() => {
+    if (!vrm || !facialExpressionRequest) {
+      return;
+    }
+
+    playFacialExpressionRequest(vrm, facialExpressionRequest, facialExpressionRuntimeRef.current);
+  }, [facialExpressionRequest, vrm]);
 
   useEffect(() => {
     if (!vrm) {

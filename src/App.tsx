@@ -30,6 +30,9 @@ import {
   buildAnimationCatalogInstruction,
   createAssistantMetadataStreamFilter,
   resolveAnimationIndexForReplyMetadata,
+  resolveFacialExpressionDurationMsForReplyMetadata,
+  resolveFacialExpressionForReplyMetadata,
+  resolveFacialExpressionIntensityForReplyMetadata,
   stripAssistantReplyMetadata,
   type AssistantReplyMetadata,
   type AssistantReplyParseResult,
@@ -54,6 +57,7 @@ import { createDefaultSequencerSettings, createDefaultVisualSettings } from './l
 import type {
   AnimationFormat,
   BundledVrmOption,
+  FacialExpressionRequest,
   ManualPlayRequest,
   SettingsTabId,
   VisualSettings,
@@ -1012,16 +1016,35 @@ function formatTwitchMessages(messages: DirectTwitchChatMessage[], limit: number
     .join('\n');
 }
 
-function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null) {
+function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, channel: string) {
   const personaName = persona?.name ?? DEFAULT_PERSONA.name;
+  const channelName = normalizeStateKeyPart(channel, DIRECT_TWITCH_CHANNEL || 'subsect');
+  const mentionTags = getPersonaMentionTags(persona)
+    .map((tag) => `@${tag}`)
+    .join(', ');
+  const localControllerNickname = persona?.userNickname.trim();
   const recentContext = formatTwitchMessages(job.context, 18);
+  const twitchIdentityContext = [
+    `Current Twitch channel: #${channelName}.`,
+    `You are ${personaName}, the stream avatar/bot. Twitch chatters mention you as ${mentionTags}.`,
+    localControllerNickname
+      ? `The local controller/stream owner nickname is "${localControllerNickname}", but Twitch chat can contain many different viewers.`
+      : null,
+    'Do not assume a Twitch chatter is the local controller unless the message metadata says they are the broadcaster/channel owner.',
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join('\n');
 
   if (job.mode === 'direct') {
     const [target] = job.messages;
     return [
       `Live Twitch chat mode: tagged queue for ${personaName}.`,
+      twitchIdentityContext,
       `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
       `Viewer ${target?.displayName ?? 'chat'} tagged you: "${target?.text ?? ''}"`,
+      target?.isBroadcaster
+        ? 'The tagged viewer is the broadcaster/channel owner.'
+        : 'The tagged viewer is a Twitch chatter; reply to that display name, not the local controller nickname.',
       job.firstTimeChatter
         ? 'This is the first message seen from this viewer in this browser session; greet them naturally.'
         : null,
@@ -1035,6 +1058,7 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null) {
 
   return [
     `Live Twitch chat mode: balanced batch for ${personaName}.`,
+    twitchIdentityContext,
     `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
     'The chat is busy, so answer the overall energy or strongest shared topic instead of replying to every line.',
     'Keep it stream-safe and concise: one or two spoken sentences.',
@@ -1151,6 +1175,8 @@ function App() {
   const [currentBundledModelId, setCurrentBundledModelId] =
     useState<string>(DEFAULT_BUNDLED_MODEL_ID);
   const [manualPlayRequest, setManualPlayRequest] = useState<ManualPlayRequest | null>(null);
+  const [facialExpressionRequest, setFacialExpressionRequest] =
+    useState<FacialExpressionRequest | null>(null);
   const [visualSettings, setVisualSettings] = useState(createDefaultVisualSettings);
   const [sequencerSettings, setSequencerSettings] = useState(createDefaultSequencerSettings);
   const [personas, setPersonas] = useState<PersonaProfile[]>(createDefaultPersonas);
@@ -2867,6 +2893,14 @@ function App() {
   }, [chatHistory, runRelationshipMemoryRefresh]);
 
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
+    const expression = resolveFacialExpressionForReplyMetadata(metadata);
+    setFacialExpressionRequest({
+      durationMs: resolveFacialExpressionDurationMsForReplyMetadata(metadata),
+      expression,
+      intensity: resolveFacialExpressionIntensityForReplyMetadata(metadata),
+      nonce: Date.now(),
+    });
+
     const index = resolveAnimationIndexForReplyMetadata(
       metadata,
       sequencerSettingsRef.current.playlist,
@@ -2936,6 +2970,12 @@ function App() {
             runtimeContext,
             semanticMemoryContext,
             turnContext: {
+              botMentionTags: getPersonaMentionTags(persona)
+                .map((tag) => `@${tag}`)
+                .join(', '),
+              conversationScope: 'local-manual',
+              localControllerNickname: persona.userNickname.trim() || 'not configured',
+              speaker: persona.userNickname.trim() || 'local user',
               source: 'local',
               stateKey,
               turnKind: 'manual-chat',
@@ -3502,7 +3542,8 @@ function App() {
         availableModelsRef.current,
         DEFAULT_RUN_MODEL,
       );
-      const prompt = buildTwitchAiPrompt(job, persona);
+      const targetMessage = job.messages[0];
+      const prompt = buildTwitchAiPrompt(job, persona, channel);
       const twitchUserContent = buildTwitchMemoryMessage(job);
       const twitchUserMessage = createChatMessage('user', twitchUserContent);
       const promptMessage = createChatMessage('user', prompt);
@@ -3546,10 +3587,18 @@ function App() {
             turnContext: {
               activeChatters: job.activeChatterCount,
               batchMessages: job.messages.length,
+              botMentionTags: getPersonaMentionTags(persona)
+                .map((tag) => `@${tag}`)
+                .join(', '),
               channel,
+              conversationScope: 'twitch-chat',
               firstTimeChatter: job.firstTimeChatter ?? false,
+              localControllerNickname: persona.userNickname.trim() || 'not configured',
               source: 'twitch',
               stateKey,
+              targetIsBroadcaster: targetMessage?.isBroadcaster ?? false,
+              targetTwitchDisplayName: targetMessage?.displayName ?? '',
+              targetTwitchLogin: targetMessage?.user ?? '',
               turnKind: job.mode,
             },
             ttsExpressionTagsEnabled: settings.ttsExpressionTagsEnabled,
@@ -3958,6 +4007,7 @@ function App() {
     >
       <VrmStage
         active={sceneActive}
+        facialExpressionRequest={facialExpressionRequest}
         manualPlayRequest={manualPlayRequest}
         modelUrl={modelUrl}
         sequencerSettings={sequencerSettings}

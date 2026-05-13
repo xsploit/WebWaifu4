@@ -21,6 +21,18 @@ export type AssistantEmotion =
   | 'sad'
   | 'caring';
 
+export type AssistantFacialExpression =
+  | 'neutral'
+  | 'happy'
+  | 'relaxed'
+  | 'surprised'
+  | 'angry'
+  | 'sad'
+  | 'embarrassed'
+  | 'confused'
+  | 'thinking'
+  | 'caring';
+
 export type AssistantMotion =
   | 'idle'
   | 'talk'
@@ -42,6 +54,7 @@ export type AssistantMotionIntensity = 'low' | 'medium' | 'high';
 export type AssistantReplyMetadata = {
   animation?: string;
   emotion: AssistantEmotion;
+  expression: AssistantFacialExpression;
   intensity: AssistantMotionIntensity;
   motion: AssistantMotion;
   purpose: AnimationPurpose;
@@ -90,6 +103,37 @@ const MOTIONS = new Set<AssistantMotion>([
 
 const INTENSITIES = new Set<AssistantMotionIntensity>(['low', 'medium', 'high']);
 const PURPOSES = new Set<AnimationPurpose>(['ambient', 'gesture', 'emotion', 'movement', 'pose']);
+const EXPRESSIONS = new Set<AssistantFacialExpression>([
+  'neutral',
+  'happy',
+  'relaxed',
+  'surprised',
+  'angry',
+  'sad',
+  'embarrassed',
+  'confused',
+  'thinking',
+  'caring',
+]);
+
+const EMOTION_EXPRESSION_MAP: Record<AssistantEmotion, AssistantFacialExpression> = {
+  neutral: 'neutral',
+  amused: 'happy',
+  happy: 'happy',
+  excited: 'happy',
+  curious: 'thinking',
+  confused: 'confused',
+  thinking: 'thinking',
+  surprised: 'surprised',
+  annoyed: 'angry',
+  embarrassed: 'embarrassed',
+  grateful: 'caring',
+  optimistic: 'happy',
+  proud: 'happy',
+  nervous: 'embarrassed',
+  sad: 'sad',
+  caring: 'caring',
+};
 
 const MOTION_ANIMATION_KEYWORDS: Record<AssistantMotion, string[]> = {
   idle: ['idle', 'stand', 'waiting', 'hima'],
@@ -130,9 +174,10 @@ const EMOTION_ANIMATION_KEYWORDS: Record<AssistantEmotion, string[]> = {
 export function buildReplyMetadataInstruction() {
   return [
     'At the very end of every assistant reply, append exactly one hidden control block using this shape:',
-    `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral","motion":"talk","purpose":"ambient","intensity":"low","animation":""}${ASSISTANT_REPLY_META_CLOSE}`,
+    `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral","expression":"neutral","motion":"talk","purpose":"ambient","intensity":"low","animation":""}${ASSISTANT_REPLY_META_CLOSE}`,
     'The block must be valid compact JSON and must not be explained.',
     `emotion must be one of: ${Array.from(EMOTIONS).join(', ')}.`,
+    `expression must be one of: ${Array.from(EXPRESSIONS).join(', ')} and controls VRM facial expression only.`,
     `motion must be one of: ${Array.from(MOTIONS).join(', ')}.`,
     `purpose must be one of: ${Array.from(PURPOSES).join(', ')}.`,
     `intensity must be one of: ${Array.from(INTENSITIES).join(', ')}.`,
@@ -328,14 +373,56 @@ function normalizeReplyMetadata(rawJson: string): AssistantReplyMetadata | null 
   try {
     const parsed = JSON.parse(rawJson) as Record<string, unknown>;
     const emotion = normalizeSetValue(parsed['emotion'], EMOTIONS, 'neutral');
+    const expression = normalizeSetValue(
+      parsed['expression'],
+      EXPRESSIONS,
+      inferExpressionForEmotion(emotion),
+    );
     const motion = normalizeSetValue(parsed['motion'], MOTIONS, 'talk');
     const purpose = normalizeSetValue(parsed['purpose'], PURPOSES, inferPurposeForMotion(motion));
     const intensity = normalizeSetValue(parsed['intensity'], INTENSITIES, 'low');
     const animation = typeof parsed['animation'] === 'string' ? parsed['animation'].trim() : '';
-    return { animation, emotion, intensity, motion, purpose };
+    return { animation, emotion, expression, intensity, motion, purpose };
   } catch {
     return null;
   }
+}
+
+export function resolveFacialExpressionForReplyMetadata(metadata: AssistantReplyMetadata | null) {
+  if (!metadata) {
+    return 'neutral';
+  }
+  return metadata.expression || inferExpressionForEmotion(metadata.emotion);
+}
+
+export function resolveFacialExpressionIntensityForReplyMetadata(
+  metadata: AssistantReplyMetadata | null,
+) {
+  if (!metadata || resolveFacialExpressionForReplyMetadata(metadata) === 'neutral') {
+    return 0;
+  }
+  if (metadata.intensity === 'high') {
+    return 0.78;
+  }
+  if (metadata.intensity === 'medium') {
+    return 0.58;
+  }
+  return 0.38;
+}
+
+export function resolveFacialExpressionDurationMsForReplyMetadata(
+  metadata: AssistantReplyMetadata | null,
+) {
+  if (!metadata) {
+    return 800;
+  }
+  if (metadata.intensity === 'high') {
+    return 4200;
+  }
+  if (metadata.intensity === 'medium') {
+    return 3200;
+  }
+  return 2200;
 }
 
 function getPurposeScore(entry: AnimationEntry, metadata: AssistantReplyMetadata) {
@@ -404,6 +491,10 @@ function inferPurposeForMotion(motion: AssistantMotion): AnimationPurpose {
     return 'gesture';
   }
   return 'emotion';
+}
+
+function inferExpressionForEmotion(emotion: AssistantEmotion): AssistantFacialExpression {
+  return EMOTION_EXPRESSION_MAP[emotion] ?? 'neutral';
 }
 
 function resolveAnimationSelectionWeight(
