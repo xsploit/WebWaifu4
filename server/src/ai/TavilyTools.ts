@@ -184,6 +184,26 @@ export const TAVILY_OPENAI_TOOLS: OpenAiFunctionTool[] = [
   },
 ];
 
+export function buildTavilyToolInstruction() {
+  const toolList = TAVILY_OPENAI_TOOLS.map(
+    (tool) => `- ${tool.name}: ${tool.description}`,
+  ).join('\n');
+
+  return [
+    'Available Runtime Tools:',
+    toolList,
+    '',
+    'Tool Use Rules:',
+    '- You may call these tools directly when the user asks for current, external, source-backed, or URL-specific information.',
+    '- Use web_search for current facts, news, pricing, streamer/profile context, and anything likely to have changed.',
+    '- Use open_url when the chat gives a specific page or a search result needs inspection.',
+    '- Use crawl_site for a small docs/site section when one page is not enough.',
+    '- Do not say you searched, opened, crawled, verified, or learned something from the web unless a tool result is present.',
+    '- If a tool result fails or is thin, say that briefly and answer from available context instead of inventing.',
+    '- Skip tools for normal banter, emotional replies, roleplay, known memory, and simple stream chatter.',
+  ].join('\n');
+}
+
 function clampInteger(value: unknown, fallback: number, min: number, max: number) {
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
   if (!Number.isFinite(parsed)) {

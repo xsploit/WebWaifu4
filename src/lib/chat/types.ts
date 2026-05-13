@@ -119,6 +119,7 @@ export type AiProxyHealth = {
     promptCacheRetention?: string;
     stateMode?: string;
     store?: boolean;
+    toolNames?: string[];
     toolsAvailable?: boolean;
     websocketConnected?: boolean;
   } | null;

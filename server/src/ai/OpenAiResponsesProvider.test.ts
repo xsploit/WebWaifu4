@@ -275,9 +275,13 @@ describe('OpenAiResponsesProvider', () => {
     });
     expect(calls).toHaveLength(2);
     expect(calls[0]?.body).toMatchObject({
+      instructions: expect.stringContaining('Available Runtime Tools:'),
       tool_choice: 'auto',
       tools: expect.arrayContaining([expect.objectContaining({ name: 'web_search' })]),
     });
+    expect(calls[0]?.body['instructions']).toEqual(
+      expect.stringContaining('You may call these tools directly'),
+    );
     expect(calls[1]?.body['input']).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -294,6 +298,10 @@ describe('OpenAiResponsesProvider', () => {
       max_results: 2,
       query: 'latest vtuber AI news',
       search_depth: 'basic',
+    });
+    expect(provider.getState()).toMatchObject({
+      toolNames: ['web_search', 'crawl_site', 'open_url'],
+      toolsAvailable: true,
     });
   });
 

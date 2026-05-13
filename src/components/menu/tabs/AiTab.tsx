@@ -142,6 +142,14 @@ export function AiTab({
           Cache: <strong>{providerState?.promptCacheKey ?? 'none'}</strong> / cached tokens:{' '}
           <strong>{providerState?.cachedTokens ?? 0}</strong>
         </div>
+        <div className="status-copy">
+          Tools:{' '}
+          <strong>
+            {providerState?.toolsAvailable
+              ? providerState.toolNames?.join(', ') || 'available'
+              : 'not configured'}
+          </strong>
+        </div>
         <div className="field-hint">
           Previous Response keeps the latest response id per channel. Conversation mode uses the
           OpenAI conversation object when the backend supports it. Stateless still receives memory

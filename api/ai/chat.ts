@@ -1,5 +1,6 @@
 import {
   TAVILY_OPENAI_TOOLS,
+  buildTavilyToolInstruction,
   runTavilyToolCall,
   type OpenAiFunctionCall,
   type TavilyToolOptions,
@@ -701,8 +702,10 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     payload.temperature = normalizeTemperature(body.temperature, 0.7);
   }
 
-  if (instructions) {
-    payload.instructions = instructions;
+  const runtimeInstructions = tavilyTools ? buildTavilyToolInstruction() : '';
+  const finalInstructions = [instructions, runtimeInstructions].filter(Boolean).join('\n\n');
+  if (finalInstructions) {
+    payload.instructions = finalInstructions;
   }
   if (promptCacheKey) {
     payload.prompt_cache_key = promptCacheKey;

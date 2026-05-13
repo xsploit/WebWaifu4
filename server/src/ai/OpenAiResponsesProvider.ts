@@ -9,6 +9,7 @@ import type {
 } from './ChatProvider.js';
 import {
   TAVILY_OPENAI_TOOLS,
+  buildTavilyToolInstruction,
   runTavilyToolCall,
   type OpenAiFunctionCall,
   type TavilyToolOptions,
@@ -351,6 +352,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       cachedTokens: defaultState.cachedTokens,
       stateKeys: Array.from(this.states.keys()).sort(),
       store: this.options.store,
+      toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
       toolsAvailable: Boolean(this.options.tavilyTools),
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
     };
@@ -497,6 +499,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       temperature: supportsTemperature(this.options.model, reasoningEffort)
         ? normalizeTemperature(request.temperature, this.options.temperature)
         : null,
+      toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
       toolsAvailable: Boolean(this.options.tavilyTools),
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
     };
@@ -551,8 +554,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
       payload.temperature = normalizeTemperature(request.temperature, this.options.temperature);
     }
 
-    if (instructions) {
-      payload.instructions = instructions;
+    const runtimeInstructions = this.options.tavilyTools ? buildTavilyToolInstruction() : '';
+    const finalInstructions = [instructions, runtimeInstructions].filter(Boolean).join('\n\n');
+    if (finalInstructions) {
+      payload.instructions = finalInstructions;
     }
 
     if (this.options.promptCacheKey) {
