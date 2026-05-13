@@ -276,6 +276,9 @@ function getRouteletVisualSettings(settings: VisualSettings): VisualSettings {
 const PIPER_TIMING_TICKS_PER_SECOND = 10000000;
 const SUBTITLE_WORD_WINDOW = 14;
 const SUBTITLE_CLEAR_DELAY_MS = 1200;
+const LIVE_BRIDGE_SUBTITLE_TICK_MS = 85;
+const LIVE_BRIDGE_SUBTITLE_CHARS_PER_TICK = 3;
+const LIVE_BRIDGE_SUBTITLE_PUNCTUATION_PAUSE_MS = 160;
 const STREAM_DISPLAY_TICK_MS = 22;
 const STREAM_DISPLAY_CHARS_PER_TICK = 4;
 const STREAM_DISPLAY_PUNCTUATION_PAUSE_MS = 70;
@@ -1580,6 +1583,9 @@ function App() {
       let displayText = '';
       let queuedDisplayText = '';
       let displayPumpTimer: number | null = null;
+      let liveSubtitleText = '';
+      let queuedLiveSubtitleText = '';
+      let liveSubtitlePumpTimer: number | null = null;
       let finalDisplayPending = false;
       let pendingText = '';
       let sawDelta = false;
@@ -1672,6 +1678,37 @@ function App() {
         }
       };
 
+      const pumpLiveSubtitle = () => {
+        liveSubtitlePumpTimer = null;
+        if (isStale() || !liveBridgeTts) {
+          return;
+        }
+        if (!queuedLiveSubtitleText) {
+          return;
+        }
+        const nextText = queuedLiveSubtitleText.slice(0, LIVE_BRIDGE_SUBTITLE_CHARS_PER_TICK);
+        queuedLiveSubtitleText = queuedLiveSubtitleText.slice(nextText.length);
+        liveSubtitleText += nextText;
+        setSubtitleText(getLiveBridgeSubtitleLine(liveSubtitleText));
+        const pause =
+          /[.!?]["')\]]?\s*$/.test(liveSubtitleText) && queuedLiveSubtitleText
+            ? LIVE_BRIDGE_SUBTITLE_PUNCTUATION_PAUSE_MS
+            : LIVE_BRIDGE_SUBTITLE_TICK_MS;
+        if (queuedLiveSubtitleText) {
+          liveSubtitlePumpTimer = window.setTimeout(pumpLiveSubtitle, pause);
+        }
+      };
+
+      const queueLiveSubtitleText = (text: string) => {
+        if (!text || isStale() || !liveBridgeTts) {
+          return;
+        }
+        queuedLiveSubtitleText += text;
+        if (liveSubtitlePumpTimer === null) {
+          liveSubtitlePumpTimer = window.setTimeout(pumpLiveSubtitle, 0);
+        }
+      };
+
       const enqueueSpeech = (chunk: string) => {
         if (!canSpeak || isStale()) {
           return;
@@ -1730,7 +1767,7 @@ function App() {
         fullText += visibleDelta;
         queueDisplayText(visibleDelta);
         if (liveBridgeTts) {
-          setSubtitleText(getLiveBridgeSubtitleLine(fullText));
+          queueLiveSubtitleText(visibleDelta);
         }
         if (chunkTtsRequests && !liveBridgeTts) {
           pendingText += visibleDelta;
@@ -1746,21 +1783,28 @@ function App() {
             fullText = normalizedFinal;
             pendingText = normalizedFinal;
             queueDisplayText(normalizedFinal);
+            queueLiveSubtitleText(normalizedFinal);
           } else if (normalizedFinal.startsWith(fullText)) {
             const suffix = normalizedFinal.slice(fullText.length);
             fullText = normalizedFinal;
             pendingText += suffix;
             queueDisplayText(suffix);
+            queueLiveSubtitleText(suffix);
           } else {
             const visiblePrefix = displayText + queuedDisplayText;
             fullText = normalizedFinal;
             pendingText = normalizedFinal;
             if (normalizedFinal.startsWith(visiblePrefix)) {
-              queueDisplayText(normalizedFinal.slice(visiblePrefix.length));
+              const suffix = normalizedFinal.slice(visiblePrefix.length);
+              queueDisplayText(suffix);
+              queueLiveSubtitleText(suffix);
             } else {
               displayText = '';
               queuedDisplayText = '';
               queueDisplayText(normalizedFinal);
+              liveSubtitleText = '';
+              queuedLiveSubtitleText = '';
+              queueLiveSubtitleText(normalizedFinal);
             }
           }
         }
@@ -1769,6 +1813,13 @@ function App() {
         }
 
         if (liveBridgeTts) {
+          if (liveSubtitlePumpTimer !== null && queuedLiveSubtitleText.length > 0) {
+            window.clearTimeout(liveSubtitlePumpTimer);
+            liveSubtitlePumpTimer = null;
+            while (queuedLiveSubtitleText.length > 0 && !isStale()) {
+              pumpLiveSubtitle();
+            }
+          }
           if (liveBridgeSink) {
             speechPromises.push(liveBridgeSink.close());
           }
