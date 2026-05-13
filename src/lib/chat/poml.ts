@@ -1,6 +1,7 @@
 import yourWifeyPromptTemplate from './templates/yourwifey-responses.poml?raw';
 
 type PromptRole = 'system' | 'user' | 'assistant';
+type PomlDynamicStateValue = string | number | boolean | null | undefined;
 
 export type PomlPromptMessage = {
   role: PromptRole;
@@ -16,6 +17,7 @@ export type YourWifeyPomlPromptInput = {
   animationCatalogContext?: string;
   currentTurnContext?: string;
   diaryContext?: string;
+  dynamicState?: Record<string, PomlDynamicStateValue>;
   history: PomlPromptMessage[];
   hostContext?: string;
   personaContext?: string;
@@ -48,6 +50,7 @@ export async function buildYourWifeyPomlMessages(
   input: YourWifeyPomlPromptInput,
 ): Promise<PomlPromptMessage[]> {
   const variables: YourWifeyPomlVariables = {
+    ...normalizeDynamicState(input.dynamicState),
     animation_catalog_context: cleanBlock(input.animationCatalogContext),
     current_turn_context: cleanBlock(input.currentTurnContext),
     diary_context: cleanBlock(input.diaryContext),
@@ -92,6 +95,32 @@ function withFallback(value: string | undefined, fallback: string) {
 
 function cleanBlock(value: string | undefined) {
   return value?.trim() ?? '';
+}
+
+function normalizeDynamicState(
+  state: Record<string, PomlDynamicStateValue> | undefined,
+): YourWifeyPomlVariables {
+  if (!state) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(state)
+      .filter(([key]) => /^[a-zA-Z0-9_]+$/.test(key))
+      .flatMap(([key, value]) =>
+        value === undefined || value === null ? [] : [[key, toPomlVariableValue(value)]],
+      ),
+  );
+}
+
+function toPomlVariableValue(value: PomlDynamicStateValue) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : '';
+  }
+  return String(value).trim().slice(0, 16000);
 }
 
 async function renderPomlMessagesOnServer(

@@ -97,6 +97,93 @@ function serializeTurnMetadataContext({
   return `Turn metadata: ${JSON.stringify(cleanMetadata)}`;
 }
 
+function readTurnContextValue(
+  turnContext: Record<string, PromptTurnContextValue> | undefined,
+  key: string,
+) {
+  const value = turnContext?.[key];
+  return value === undefined || value === null ? '' : String(value).trim();
+}
+
+function buildDynamicPromptState({
+  animationCatalogContext,
+  diaryContext,
+  hostContext,
+  persona,
+  relationshipMemory,
+  semanticMemoryContext,
+  turnContext,
+  ttsExpressionTagsEnabled,
+  ttsProvider,
+}: {
+  animationCatalogContext: string;
+  diaryContext: string;
+  hostContext: string;
+  persona: PersonaProfile | null;
+  relationshipMemory: RelationshipMemory;
+  semanticMemoryContext: string;
+  turnContext?: Record<string, PromptTurnContextValue>;
+  ttsExpressionTagsEnabled: boolean;
+  ttsProvider: string;
+}) {
+  const turnSource = readTurnContextValue(turnContext, 'source');
+  const turnKind = readTurnContextValue(turnContext, 'turnKind');
+  const conversationScope = readTurnContextValue(turnContext, 'conversationScope');
+  const currentSpeaker =
+    readTurnContextValue(turnContext, 'displayName') ||
+    readTurnContextValue(turnContext, 'speaker') ||
+    readTurnContextValue(turnContext, 'login') ||
+    readTurnContextValue(turnContext, 'user') ||
+    persona?.userNickname.trim() ||
+    'current user';
+  const relationshipMood = relationshipMemory.mood;
+  const relationshipStage = relationshipMemory.relationshipStage;
+
+  return {
+    affectionate_state:
+      relationshipMood === 'soft' ||
+      relationshipMood === 'affectionate' ||
+      relationshipMemory.attraction >= 12,
+    animation_catalog_present: Boolean(animationCatalogContext.trim()),
+    attraction_score: relationshipMemory.attraction,
+    close_relationship: relationshipStage === 'close',
+    conversation_scope: conversationScope || 'chat',
+    current_speaker: currentSpeaker,
+    familiar_relationship: relationshipStage === 'familiar',
+    guard_score: relationshipMemory.guard,
+    guarded_state:
+      relationshipMood === 'guarded' ||
+      relationshipMood === 'cold' ||
+      relationshipMemory.guard >= 12,
+    has_animation_catalog: Boolean(animationCatalogContext.trim()),
+    has_host_context: Boolean(hostContext.trim()),
+    has_private_diary: Boolean(diaryContext.trim()),
+    has_semantic_memory: Boolean(semanticMemoryContext.trim()),
+    high_trust: relationshipMemory.trust >= 12,
+    irritation_score: relationshipMemory.irritation,
+    irritated_state: relationshipMood === 'annoyed' || relationshipMemory.irritation >= 10,
+    is_batch_turn: turnKind === 'batch',
+    is_local_turn: turnSource === 'local',
+    is_twitch_turn: turnSource === 'twitch',
+    jealous_state: relationshipMemory.jealousy >= 8,
+    jealousy_score: relationshipMemory.jealousy,
+    last_action_tag: relationshipMemory.lastActionTag,
+    low_trust: relationshipMemory.trust < 7,
+    medium_trust: relationshipMemory.trust >= 7 && relationshipMemory.trust < 12,
+    new_relationship: relationshipStage === 'new',
+    persona_name: persona?.name.trim() || 'YourWifey',
+    relationship_mood: relationshipMood,
+    relationship_stage: relationshipStage,
+    relationship_turn_count: relationshipMemory.turnCount,
+    respect_score: relationshipMemory.respect,
+    trust_score: relationshipMemory.trust,
+    tts_tags_enabled: ttsExpressionTagsEnabled && ttsProvider !== 'piper',
+    turn_kind: turnKind || 'unknown',
+    turn_source: turnSource || 'unknown',
+    user_nickname: persona?.userNickname.trim() || '',
+  };
+}
+
 function serializeDiaryContext(
   history: ChatMessage[],
   relationshipMemory: RelationshipMemory,
@@ -301,6 +388,17 @@ export async function buildChatCompletionMessages({
     animationCatalogContext,
     currentTurnContext,
     diaryContext,
+    dynamicState: buildDynamicPromptState({
+      animationCatalogContext,
+      diaryContext,
+      hostContext,
+      persona,
+      relationshipMemory,
+      semanticMemoryContext,
+      turnContext,
+      ttsExpressionTagsEnabled,
+      ttsProvider,
+    }),
     history: contextualHistory,
     hostContext,
     personaContext: personaBlocks.join('\n\n'),
