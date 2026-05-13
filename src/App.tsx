@@ -994,6 +994,11 @@ function getSubtitleLine(text: string, wordBoundaries: WordBoundary[], elapsedSe
   return visibleWords.join(' ').trim() || cleaned;
 }
 
+function getLiveBridgeSubtitleLine(text: string) {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  return words.slice(-SUBTITLE_WORD_WINDOW).join(' ');
+}
+
 function formatTwitchMessages(messages: DirectTwitchChatMessage[], limit: number) {
   return messages
     .slice(-limit)
@@ -1217,6 +1222,7 @@ function App() {
   const subtitleDataRef = useRef<{ text: string; wordBoundaries: WordBoundary[] } | null>(null);
   const subtitleIntervalRef = useRef<number | null>(null);
   const subtitleClearTimeoutRef = useRef<number | null>(null);
+  const liveBridgeSubtitleActiveRef = useRef(false);
   const startupStatusSentRef = useRef(false);
   const routeletSaySpokenRef = useRef(false);
   const appliedPersonaSceneKeyRef = useRef<string | null>(null);
@@ -1582,13 +1588,15 @@ function App() {
       const speechPromises: Promise<void>[] = [];
       const displaySettledResolvers: Array<() => void> = [];
 
-      if (canSpeak) {
-        ttsManager.enableTts = aiSettings.ttsEnabled;
-        ttsManager.resetSpeechQueue();
-        if (liveBridgeTts) {
-          liveBridgeSink = ttsManager.startRemotePcmPushStream(`${label} live bridge`);
-          queuedSpeech = true;
-        }
+        if (canSpeak) {
+          ttsManager.enableTts = aiSettings.ttsEnabled;
+          ttsManager.resetSpeechQueue();
+          if (liveBridgeTts) {
+            liveBridgeSubtitleActiveRef.current = true;
+            stopSubtitleTracking(true);
+            liveBridgeSink = ttsManager.startRemotePcmPushStream(`${label} live bridge`);
+            queuedSpeech = true;
+          }
         setTtsBusy(true);
         setTtsVoicesError(null);
         setTtsActiveVoiceKey(ttsProvider === 'piper' ? voice!.key : null);
@@ -1721,6 +1729,9 @@ function App() {
         sawDelta = true;
         fullText += visibleDelta;
         queueDisplayText(visibleDelta);
+        if (liveBridgeTts) {
+          setSubtitleText(getLiveBridgeSubtitleLine(fullText));
+        }
         if (chunkTtsRequests && !liveBridgeTts) {
           pendingText += visibleDelta;
           consumeSpeakableChunks(false);
@@ -1761,6 +1772,7 @@ function App() {
           if (liveBridgeSink) {
             speechPromises.push(liveBridgeSink.close());
           }
+          liveBridgeSubtitleActiveRef.current = false;
         } else if (chunkTtsRequests) {
           consumeSpeakableChunks(true);
         } else {
@@ -2209,6 +2221,9 @@ function App() {
       setTtsStatus('Speech finished.');
     };
     ttsManager.onLipSyncData = (data) => {
+      if (liveBridgeSubtitleActiveRef.current && data.wordBoundaries.length === 0) {
+        return;
+      }
       startSubtitleTracking(data);
     };
     ttsManager.onError = (error) => {
