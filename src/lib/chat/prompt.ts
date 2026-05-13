@@ -17,6 +17,7 @@ const DIARY_CONTEXT_HISTORY_LIMIT = 3;
 const LOW_SIGNAL_RELATIONSHIP_MOODS = new Set(['curious', 'guarded']);
 
 type BuildChatCompletionMessagesOptions = {
+  currentTurnContext?: string;
   history: ChatMessage[];
   animationCatalogContext?: string;
   includeHostContext: boolean;
@@ -209,6 +210,7 @@ export function trimChatHistory(history: ChatMessage[], limit = 36) {
 
 export async function buildChatCompletionMessages({
   animationCatalogContext = '',
+  currentTurnContext = '',
   history,
   includeHostContext,
   maxHistoryMessages = 12,
@@ -297,6 +299,7 @@ export async function buildChatCompletionMessages({
 
   return await buildYourWifeyPomlMessages({
     animationCatalogContext,
+    currentTurnContext,
     diaryContext,
     history: contextualHistory,
     hostContext,

@@ -3570,9 +3570,8 @@ function App() {
       const prompt = buildTwitchAiPrompt(job, persona, channel);
       const twitchUserContent = buildTwitchMemoryMessage(job);
       const twitchUserMessage = createChatMessage('user', twitchUserContent);
-      const promptMessage = createChatMessage('user', prompt);
       const stateKey = getTwitchConversationStateKey(channel, persona);
-      const requestHistory = trimChatHistory([...chatHistoryRef.current, promptMessage]);
+      const requestHistory = trimChatHistory([...chatHistoryRef.current]);
       const memoryHistory = trimChatHistory([...chatHistoryRef.current, twitchUserMessage]);
       const assistantMessage = createChatMessage('assistant', '');
       const speechPlayer = createStreamingAssistantPlayer(
@@ -3601,6 +3600,7 @@ function App() {
             animationCatalogContext: buildAnimationCatalogInstruction(
               sequencerSettingsRef.current.playlist,
             ),
+            currentTurnContext: prompt,
             history: requestHistory,
             includeHostContext: settings.includeHostContext,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,

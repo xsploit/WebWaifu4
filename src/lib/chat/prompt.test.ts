@@ -31,7 +31,10 @@ describe('POML-backed chat prompt', () => {
   });
 
   it('keeps the checked-in Responses instructions template discoverable', () => {
-    expect(YOURWIFEY_POML_TEMPLATE).toContain('<system-msg name="responses-instructions">');
+    expect(YOURWIFEY_POML_TEMPLATE).toContain(
+      '<system-msg name="responses-instructions" syntax="markdown" whiteSpace="pre">',
+    );
+    expect(YOURWIFEY_POML_TEMPLATE).toContain('<human-msg name="current-turn"');
   });
 
   it('renders persona, memory, context, metadata, and history through POML', async () => {
@@ -96,10 +99,11 @@ describe('POML-backed chat prompt', () => {
 
     expect(systemMessage.role).toBe('system');
     expect(systemMessage.content).toContain('OpenAI Responses API');
+    expect(systemMessage.content).toContain('# Tool Policy');
     expect(systemMessage.content).toContain('You are Hikari');
     expect(systemMessage.content).toContain('Subsect');
     expect(systemMessage.content).toContain('Speech expression tags are enabled');
-    expect(systemMessage.content).toContain('Turn Metadata:');
+    expect(systemMessage.content).toContain('# Turn Metadata');
     expect(systemMessage.content).toContain('"source":"twitch"');
     expect(systemMessage.content).toContain('"channel":"subsect"');
     expect(systemMessage.content).toContain('"turnKind":"batch"');
@@ -125,6 +129,45 @@ describe('POML-backed chat prompt', () => {
     ]);
   });
 
+  it('renders the current Twitch turn as a POML human message', async () => {
+    const messages = await buildChatCompletionMessages({
+      currentTurnContext: [
+        'Live Twitch chat mode: balanced batch for Hikari.',
+        'Current batch:',
+        '- Subsect: @Hikari test the batch',
+        '  metadata: login=subsect display=SUBSECT broadcaster=true mod=false badges=broadcaster/1 sentAt=2026-05-13T09:00:00.000Z',
+      ].join('\n'),
+      history: [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'I am listening.',
+          createdAt: 1,
+        },
+      ],
+      includeHostContext: false,
+      persona: DEFAULT_PERSONA,
+      relationshipMemory: createDefaultRelationshipMemory(),
+      runtimeContext: createEmptyRuntimeContext(),
+      turnContext: {
+        source: 'twitch',
+        turnKind: 'batch',
+      },
+    });
+
+    expect(messages.slice(1)).toEqual([
+      {
+        role: 'assistant',
+        content: 'I am listening.',
+      },
+      {
+        role: 'user',
+        content: expect.stringContaining('Live Twitch chat mode: balanced batch for Hikari.'),
+      },
+    ]);
+    expect(messages[2]?.content).toContain('metadata: login=subsect');
+  });
+
   it('omits optional POML sections when they have no useful context', async () => {
     const messages = await buildChatCompletionMessages({
       history: [
@@ -145,13 +188,13 @@ describe('POML-backed chat prompt', () => {
       throw new Error('Expected a POML-rendered system message.');
     }
 
-    expect(systemMessage.content).toContain('Tool Policy:');
-    expect(systemMessage.content).toContain('Turn Metadata:');
-    expect(systemMessage.content).not.toContain('Speech and TTS:');
-    expect(systemMessage.content).not.toContain('Animation Catalog:');
-    expect(systemMessage.content).not.toContain('Host Context:');
-    expect(systemMessage.content).not.toContain('Relationship Memory:');
-    expect(systemMessage.content).not.toContain('Relevant Semantic Memory:');
+    expect(systemMessage.content).toContain('# Tool Policy');
+    expect(systemMessage.content).toContain('# Turn Metadata');
+    expect(systemMessage.content).not.toContain('# Speech and TTS');
+    expect(systemMessage.content).not.toContain('# Avatar Animation Catalog');
+    expect(systemMessage.content).not.toContain('# Host Context');
+    expect(systemMessage.content).not.toContain('# Relationship Memory');
+    expect(systemMessage.content).not.toContain('# Relevant Semantic Memory');
   });
 
   it('splits the rendered prompt into Responses instructions and input', async () => {

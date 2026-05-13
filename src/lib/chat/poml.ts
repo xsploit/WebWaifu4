@@ -14,6 +14,7 @@ export type ResponsesPromptInputMessage = {
 
 export type YourWifeyPomlPromptInput = {
   animationCatalogContext?: string;
+  currentTurnContext?: string;
   diaryContext?: string;
   history: PomlPromptMessage[];
   hostContext?: string;
@@ -48,6 +49,7 @@ export async function buildYourWifeyPomlMessages(
 ): Promise<PomlPromptMessage[]> {
   const variables: YourWifeyPomlVariables = {
     animation_catalog_context: cleanBlock(input.animationCatalogContext),
+    current_turn_context: cleanBlock(input.currentTurnContext),
     diary_context: cleanBlock(input.diaryContext),
     host_context: cleanBlock(input.hostContext),
     persona_context: withFallback(input.personaContext, EMPTY_PERSONA_CONTEXT),
@@ -65,7 +67,9 @@ export async function buildYourWifeyPomlMessages(
       .join('\n\n'),
   );
 
-  return [{ role: 'system', content: instructions }, ...input.history];
+  const renderedInputMessages = renderedMessages.filter(isResponsesInputMessage);
+
+  return [{ role: 'system', content: instructions }, ...input.history, ...renderedInputMessages];
 }
 
 export function buildYourWifeyResponsesPromptPayload(
