@@ -23,6 +23,11 @@ interface ChunkData {
   sampleRate?: number | null;
 }
 
+export type RemotePcmPushStream = {
+  close: () => Promise<void>;
+  push: (chunk: RemoteTtsAudioChunk) => Promise<void>;
+};
+
 function canAttemptAudioResume() {
   return AUTO_RESUME_AUDIO || navigator.userActivation?.isActive === true;
 }
@@ -189,6 +194,59 @@ export class TtsManager {
   async speakRemoteText(options: RemoteTtsRequest) {
     this.resetSpeechQueue();
     await this.queueRemoteText(options);
+  }
+
+  startRemotePcmPushStream(text: string): RemotePcmPushStream {
+    this.resetSpeechQueue();
+    const cleaned = this.cleanForSpeech(text || 'Live speech stream');
+    const generation = this.queueGeneration;
+    const abortController = new AbortController();
+    this.remoteAbortControllers.add(abortController);
+    let started = false;
+    let tail = Promise.resolve();
+    const ready = (async () => {
+      if (!this.audioContext) {
+        await this.initialize();
+      }
+      if (this.audioContext?.state === 'suspended' && canAttemptAudioResume()) {
+        await this.audioContext.resume().catch(() => {});
+      }
+    })();
+
+    return {
+      push: (chunk: RemoteTtsAudioChunk) => {
+        if (!this.enableTts || generation !== this.queueGeneration || abortController.signal.aborted) {
+          return Promise.resolve();
+        }
+        if (chunk.mimeType !== 'audio/pcm') {
+          return Promise.reject(new Error(`Live bridge expected audio/pcm, got ${chunk.mimeType}.`));
+        }
+        tail = tail.then(async () => {
+          await ready;
+          if (
+            generation !== this.queueGeneration ||
+            abortController.signal.aborted ||
+            !this.audioContext
+          ) {
+            return;
+          }
+          if (!started) {
+            started = true;
+            this.beginRemotePcmStream(cleaned);
+          }
+          await this.scheduleRemotePcmChunk(chunk, generation, abortController.signal, cleaned);
+        });
+        return tail;
+      },
+      close: async () => {
+        await tail.catch(() => {});
+        this.remoteAbortControllers.delete(abortController);
+        if (generation === this.queueGeneration && !abortController.signal.aborted) {
+          this.onSpeechFinished?.();
+          this.clearPlaybackState();
+        }
+      },
+    };
   }
 
   queuePiperText(text: string, voiceId: string) {

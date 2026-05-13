@@ -162,13 +162,14 @@ export function TtsTab({
             }
             value={aiSettings.remoteTtsMode}
           >
+            <option value="live-bridge">Live Bridge / Streams Into Streams</option>
             <option value="full-response">Stable Stream / One TTS Request</option>
             <option value="sentence-chunks">Sentence Chunks / Lower Latency</option>
           </select>
           <div className="field-hint">
-            Stable stream sends one provider request per reply and plays remote PCM as chunks
-            arrive. Sentence chunks starts text intake sooner, but each chunk can shift voice or
-            prosody.
+            Live Bridge feeds Responses text deltas into one Fish realtime stream. Stable stream
+            waits for a full reply, then sends one provider request. Sentence chunks starts sooner,
+            but each chunk can shift voice or prosody.
           </div>
         </div>
       ) : null}

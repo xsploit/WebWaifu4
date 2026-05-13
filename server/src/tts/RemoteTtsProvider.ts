@@ -9,7 +9,7 @@ import {
 import type { StreamBotConfig } from '../config.js';
 
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
-export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
+export type RemoteTtsMode = 'live-bridge' | 'full-response' | 'sentence-chunks';
 export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 
 export type FishSpeechLatency = 'balanced' | 'normal';
@@ -57,6 +57,8 @@ type FishRealtimeConnection = {
   close: () => void;
   on: (event: RealtimeEvents, listener: (...args: unknown[]) => void) => void;
 };
+
+export type RemoteTextStream = AsyncIterable<string>;
 
 const REMOTE_TTS_TIMEOUT_MS = 45000;
 
@@ -122,7 +124,10 @@ function normalizeFishLatency(value: unknown): FishSpeechLatency {
 }
 
 function normalizeRemoteTtsMode(value: unknown): RemoteTtsMode {
-  return value === 'sentence-chunks' ? 'sentence-chunks' : 'full-response';
+  if (value === 'live-bridge' || value === 'sentence-chunks') {
+    return value;
+  }
+  return 'full-response';
 }
 
 function normalizeInworldDeliveryMode(value: unknown): DeliveryMode | undefined {
@@ -224,6 +229,18 @@ export async function streamRemoteTts(
   await streamInworld(config, { ...request, text }, handlers);
 }
 
+export async function streamFishSpeechTextStream(
+  config: StreamBotConfig,
+  request: Omit<RemoteTtsRequest, 'provider' | 'text'>,
+  textStream: RemoteTextStream,
+  handlers: StreamHandlers,
+) {
+  await streamFishSpeech(config, { ...request, provider: 'fish-speech', text: '' }, handlers, {
+    forcePcm: true,
+    textStream,
+  });
+}
+
 export async function listRemoteTtsVoices(
   config: StreamBotConfig,
   provider: RemoteTtsProvider,
@@ -320,6 +337,10 @@ async function streamFishSpeech(
   config: StreamBotConfig,
   request: RemoteTtsRequest & { text: string },
   handlers: StreamHandlers,
+  options: {
+    forcePcm?: boolean;
+    textStream?: RemoteTextStream;
+  } = {},
 ) {
   if (!config.fishSpeechApiKey) {
     throw new Error('FishSpeech TTS requires FISH_AUDIO_API_KEY or FISHSPEECH_API_KEY.');
@@ -330,7 +351,7 @@ async function streamFishSpeech(
     throw new Error('FishSpeech TTS requires a voice/reference id.');
   }
 
-  const format = config.fishSpeechFormat || 'mp3';
+  const format = options.forcePcm ? 'pcm' : config.fishSpeechFormat || 'mp3';
   const mimeType = getFishMimeType(format);
   const modelId = request.modelId?.trim() || config.fishSpeechModel || 's1';
   const latency = normalizeFishLatency(request.latency ?? config.fishSpeechLatency);
@@ -385,7 +406,7 @@ async function streamFishSpeech(
       try {
         connection = await client.textToSpeech.convertRealtime(
           requestBody,
-          createSingleTextStream(request.text),
+          options.textStream ?? createSingleTextStream(request.text),
           modelId as Backends,
         );
         connection.on(RealtimeEvents.AUDIO_CHUNK, (audio: unknown) => {

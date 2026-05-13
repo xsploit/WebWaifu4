@@ -211,7 +211,11 @@ function normalizeAiSettings(value: unknown): AiSettings {
           ? 'STABLE'
           : defaults.inworldDeliveryMode;
   const remoteTtsMode =
-    source.remoteTtsMode === 'sentence-chunks' ? 'sentence-chunks' : defaults.remoteTtsMode;
+    source.remoteTtsMode === 'live-bridge' ||
+    source.remoteTtsMode === 'full-response' ||
+    source.remoteTtsMode === 'sentence-chunks'
+      ? source.remoteTtsMode
+      : defaults.remoteTtsMode;
 
   return {
     model: normalizedModel,

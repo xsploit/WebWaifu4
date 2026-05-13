@@ -1,5 +1,5 @@
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
-export type RemoteTtsMode = 'full-response' | 'sentence-chunks';
+export type RemoteTtsMode = 'live-bridge' | 'full-response' | 'sentence-chunks';
 export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';

@@ -3,7 +3,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
 import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
-import type { ChatProvider, ChatProviderMessage, ChatProviderRequest } from './ai/ChatProvider.js';
+import type {
+  ChatProvider,
+  ChatProviderMessage,
+  ChatProviderRequest,
+  ChatProviderResponse,
+} from './ai/ChatProvider.js';
 import { normalizePomlRenderVariables, renderYourWifeyPomlMessages } from './ai/PomlRenderer.js';
 import { loadConfig, type StreamBotConfig } from './config.js';
 import { CommandRouter } from './commands/CommandRouter.js';
@@ -12,8 +17,10 @@ import { OverlaySocket, type OverlayClientEvent } from './overlay/OverlaySocket.
 import { ChatScheduler } from './scheduler/ChatScheduler.js';
 import {
   listRemoteTtsVoices,
+  streamFishSpeechTextStream,
   streamRemoteTts,
   type RemoteTtsProvider,
+  type RemoteTtsRequest,
 } from './tts/RemoteTtsProvider.js';
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
@@ -197,6 +204,189 @@ function normalizeRemoteTtsProvider(value: unknown): RemoteTtsProvider {
 
 function normalizeTtsLatency(value: unknown) {
   return value === 'balanced' || value === 'normal' ? value : undefined;
+}
+
+function normalizeLiveTtsBridge(value: unknown): Omit<RemoteTtsRequest, 'provider' | 'text'> | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const source = value as Partial<RemoteTtsRequest>;
+  if (source.provider !== 'fish-speech' || source.streamingMode !== 'live-bridge') {
+    return null;
+  }
+  return {
+    streamingMode: 'live-bridge',
+    voiceId: typeof source.voiceId === 'string' ? source.voiceId : undefined,
+    modelId: typeof source.modelId === 'string' ? source.modelId : undefined,
+    latency: normalizeTtsLatency(source.latency),
+    conditionOnPreviousChunks:
+      typeof source.conditionOnPreviousChunks === 'boolean'
+        ? source.conditionOnPreviousChunks
+        : undefined,
+    chunkLength: typeof source.chunkLength === 'number' ? source.chunkLength : undefined,
+  };
+}
+
+function createAsyncTextQueue() {
+  const chunks: string[] = [];
+  const waiters: Array<() => void> = [];
+  let closed = false;
+  let failure: Error | null = null;
+
+  const wake = () => {
+    while (waiters.length > 0) {
+      waiters.shift()?.();
+    }
+  };
+
+  return {
+    push(chunk: string) {
+      if (closed || failure) {
+        return;
+      }
+      const text = chunk.trim();
+      if (!text) {
+        return;
+      }
+      chunks.push(text.endsWith(' ') ? text : `${text} `);
+      wake();
+    },
+    close() {
+      closed = true;
+      wake();
+    },
+    fail(error: Error) {
+      failure = error;
+      closed = true;
+      wake();
+    },
+    async *stream() {
+      while (true) {
+        if (failure) {
+          throw failure;
+        }
+        const next = chunks.shift();
+        if (next) {
+          yield next;
+          continue;
+        }
+        if (closed) {
+          return;
+        }
+        await new Promise<void>((resolve) => waiters.push(resolve));
+      }
+    },
+  };
+}
+
+function createMetadataSpeechFilter() {
+  const open = '<yw-meta>';
+  const close = '</yw-meta>';
+  let buffer = '';
+  let suppressing = false;
+
+  const safeLength = (value: string) => {
+    for (let tail = Math.min(open.length - 1, value.length); tail > 0; tail -= 1) {
+      if (open.startsWith(value.slice(value.length - tail))) {
+        return value.length - tail;
+      }
+    }
+    return value.length;
+  };
+
+  return {
+    push(delta: string) {
+      buffer += delta;
+      let visible = '';
+      while (buffer) {
+        if (suppressing) {
+          const closeIndex = buffer.indexOf(close);
+          if (closeIndex === -1) {
+            buffer = '';
+            break;
+          }
+          buffer = buffer.slice(closeIndex + close.length);
+          suppressing = false;
+          continue;
+        }
+        const openIndex = buffer.indexOf(open);
+        if (openIndex !== -1) {
+          visible += buffer.slice(0, openIndex);
+          buffer = buffer.slice(openIndex + open.length);
+          suppressing = true;
+          continue;
+        }
+        const length = safeLength(buffer);
+        if (length <= 0) {
+          break;
+        }
+        visible += buffer.slice(0, length);
+        buffer = buffer.slice(length);
+      }
+      return visible;
+    },
+    finish() {
+      if (suppressing) {
+        buffer = '';
+        return '';
+      }
+      const visible = buffer;
+      buffer = '';
+      return visible;
+    },
+  };
+}
+
+function createLiveSpeechTextBridge() {
+  const queue = createAsyncTextQueue();
+  const filter = createMetadataSpeechFilter();
+  let pending = '';
+
+  const flush = (force = false) => {
+    while (pending.trim()) {
+      const maxLength = 180;
+      const minLength = 28;
+      if (!force && pending.length < minLength) {
+        return;
+      }
+      const windowText = pending.slice(0, maxLength);
+      const matches = Array.from(windowText.matchAll(/[.!?]["')\]]?\s+|[,;:]\s+|\n+/g));
+      const boundary = [...matches].reverse().find((match) => (match.index ?? 0) >= minLength);
+      let splitAt = boundary ? (boundary.index ?? 0) + boundary[0].length : -1;
+      if (splitAt === -1 && pending.length >= maxLength) {
+        splitAt = Math.max(windowText.lastIndexOf(' '), minLength);
+      }
+      if (splitAt === -1) {
+        if (!force) {
+          return;
+        }
+        splitAt = pending.length;
+      }
+      const chunk = pending.slice(0, splitAt).trim();
+      pending = pending.slice(splitAt).trimStart();
+      queue.push(chunk);
+    }
+  };
+
+  return {
+    push(delta: string) {
+      const visible = filter.push(delta);
+      if (!visible) {
+        return;
+      }
+      pending += visible;
+      flush(false);
+    },
+    close() {
+      pending += filter.finish();
+      flush(true);
+      queue.close();
+    },
+    fail(error: Error) {
+      queue.fail(error);
+    },
+    stream: queue.stream(),
+  };
 }
 
 function normalizeFishVoiceScope(value: unknown) {
@@ -458,6 +648,7 @@ const httpServer = createServer(async (request, response) => {
         temperature?: number;
         transportMode?: unknown;
         openAiStateMode?: unknown;
+        ttsBridge?: unknown;
       }>(request);
       const messages = normalizeProviderMessages(body.messages);
       if (messages.length === 0) {
@@ -486,12 +677,46 @@ const httpServer = createServer(async (request, response) => {
 
       if (body.stream === true) {
         writeSseHead(response);
-        const providerResponse =
-          (await provider.completeStream?.(providerRequest, {
-            onTextDelta: (delta) => {
-              writeSseEvent(response, { type: 'delta', delta });
-            },
-          })) ?? (await provider.complete(providerRequest));
+        const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
+        const bridge = bridgeRequest ? createLiveSpeechTextBridge() : null;
+        const bridgeDone = bridge
+          ? streamFishSpeechTextStream(config, bridgeRequest!, bridge.stream, {
+              onAudioChunk: (chunk) => {
+                writeSseEvent(response, {
+                  type: 'audio',
+                  audio: chunk.audio.toString('base64'),
+                  mimeType: chunk.mimeType,
+                  sampleRate: chunk.sampleRate,
+                });
+              },
+            }).catch((error) => {
+              writeSseEvent(response, {
+                type: 'tts-error',
+                ok: false,
+                error: error instanceof Error ? error.message : 'Live TTS bridge failed.',
+              });
+            })
+          : null;
+        let providerResponse: ChatProviderResponse;
+        try {
+          providerResponse =
+            (await provider.completeStream?.(providerRequest, {
+              onTextDelta: (delta) => {
+                writeSseEvent(response, { type: 'delta', delta });
+                bridge?.push(delta);
+              },
+            })) ?? (await provider.complete(providerRequest));
+          bridge?.close();
+          if (bridgeDone) {
+            await bridgeDone;
+          }
+        } catch (error) {
+          bridge?.fail(error instanceof Error ? error : new Error(String(error)));
+          if (bridgeDone) {
+            await bridgeDone.catch(() => {});
+          }
+          throw error;
+        }
 
         writeSseEvent(response, {
           type: 'done',

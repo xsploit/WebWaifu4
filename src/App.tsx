@@ -70,9 +70,14 @@ import {
   NEURO_PIPER_VOICE_KEY,
 } from './lib/tts/piper';
 import type { PiperVoiceProfile, WordBoundary } from './lib/tts/piper';
-import { getTtsManager } from './lib/tts/manager';
+import { getTtsManager, type RemotePcmPushStream } from './lib/tts/manager';
 import { fetchRemoteTtsVoices } from './lib/tts/remote';
-import type { RemoteTtsProvider, RemoteTtsRequest, RemoteTtsVoice } from './lib/tts/remote';
+import type {
+  RemoteTtsAudioChunk,
+  RemoteTtsProvider,
+  RemoteTtsRequest,
+  RemoteTtsVoice,
+} from './lib/tts/remote';
 import {
   getOverlaySocketUrl,
   parseOverlayServerEvent,
@@ -307,10 +312,13 @@ type AppCompletionResponse = {
 };
 
 type AiProxyStreamEvent = {
-  type?: 'delta' | 'done' | 'error';
+  type?: 'delta' | 'done' | 'error' | 'audio' | 'tts-error';
+  audio?: string;
   delta?: string;
   error?: string;
+  mimeType?: string;
   ok?: boolean;
+  sampleRate?: number;
   text?: string;
 };
 
@@ -322,6 +330,7 @@ type AppEmbeddingResponse = {
 
 type StreamingSpeechPlayer = {
   finish: (finalText?: string) => Promise<AssistantReplyParseResult>;
+  pushAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
   pushDelta: (delta: string) => void;
 };
 
@@ -437,6 +446,23 @@ function getClientAiRouteLabel() {
   return AI_PROXY_ENABLED ? `local AI proxy ${getAiProxyUrl()}` : 'RUN.game host AI';
 }
 
+function decodeAiProxyAudioEvent(event: AiProxyStreamEvent): RemoteTtsAudioChunk | null {
+  if (!event.audio) {
+    return null;
+  }
+  const binary = window.atob(event.audio);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const mimeType = event.mimeType || 'audio/pcm';
+  return {
+    audioBlob: new Blob([bytes], { type: mimeType }),
+    mimeType,
+    sampleRate: typeof event.sampleRate === 'number' ? event.sampleRate : undefined,
+  };
+}
+
 function getTtsProviderLabel(provider: AiSettings['ttsProvider']) {
   switch (provider) {
     case 'fish-speech':
@@ -486,6 +512,7 @@ function createRemoteTtsRequest(text: string, settings: AiSettings): RemoteTtsRe
 async function readAiProxyStream(
   response: Response,
   onTextDelta?: (delta: string) => void,
+  onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void,
 ): Promise<string> {
   if (!response.body) {
     throw new Error('Stream bot AI proxy did not return a readable stream.');
@@ -512,6 +539,17 @@ async function readAiProxyStream(
     const event = JSON.parse(data) as AiProxyStreamEvent;
     if (event.type === 'error' || event.ok === false) {
       throw new Error(event.error ?? 'Stream bot AI proxy stream failed.');
+    }
+    if (event.type === 'tts-error') {
+      console.warn('[TTS] Live bridge failed:', event.error);
+      return;
+    }
+    if (event.type === 'audio') {
+      const chunk = decodeAiProxyAudioEvent(event);
+      if (chunk) {
+        onAudioChunk?.(chunk);
+      }
+      return;
     }
     if (event.type === 'delta' && event.delta) {
       streamedText += event.delta;
@@ -553,6 +591,7 @@ async function requestChatCompletion({
   messages,
   mode = 'direct',
   model,
+  onAudioChunk,
   onTextDelta,
   openAiStateMode,
   responseFormat,
@@ -560,6 +599,7 @@ async function requestChatCompletion({
   stateScope = 'chat',
   temperature,
   transportMode,
+  ttsBridge,
 }: {
   activeChatters?: number;
   apiKey?: string;
@@ -568,6 +608,7 @@ async function requestChatCompletion({
   messages: AppCompletionMessage[];
   mode?: 'direct' | 'batch';
   model: string;
+  onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
   onTextDelta?: (delta: string) => void;
   openAiStateMode?: AiSettings['openAiStateMode'];
   responseFormat?: AppCompletionResponseFormat;
@@ -575,6 +616,7 @@ async function requestChatCompletion({
   stateScope?: 'chat' | 'memory';
   temperature: number;
   transportMode?: AiSettings['aiTransportMode'];
+  ttsBridge?: RemoteTtsRequest;
 }): Promise<AppCompletionResponse> {
   if (!AI_PROXY_ENABLED) {
     const runGameSdk = await getRunGameSdk();
@@ -608,6 +650,7 @@ async function requestChatCompletion({
       stream: Boolean(onTextDelta),
       temperature,
       transportMode: transportMode === 'server-default' ? undefined : transportMode,
+      ttsBridge,
     }),
   });
 
@@ -616,7 +659,7 @@ async function requestChatCompletion({
   }
 
   if (onTextDelta && response.headers.get('content-type')?.includes('text/event-stream')) {
-    const text = await readAiProxyStream(response, onTextDelta);
+    const text = await readAiProxyStream(response, onTextDelta, onAudioChunk);
     if (!text.trim()) {
       throw new Error('Stream bot AI proxy returned an empty response.');
     }
@@ -1524,6 +1567,8 @@ function App() {
       const ttsProvider = aiSettings.ttsProvider;
       const chunkTtsRequests = shouldChunkTtsRequests(aiSettings);
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
+      const liveBridgeTts =
+        canSpeak && ttsProvider === 'fish-speech' && aiSettings.remoteTtsMode === 'live-bridge';
       const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
       let displayText = '';
@@ -1533,12 +1578,17 @@ function App() {
       let pendingText = '';
       let sawDelta = false;
       let queuedSpeech = false;
+      let liveBridgeSink: RemotePcmPushStream | null = null;
       const speechPromises: Promise<void>[] = [];
       const displaySettledResolvers: Array<() => void> = [];
 
       if (canSpeak) {
         ttsManager.enableTts = aiSettings.ttsEnabled;
         ttsManager.resetSpeechQueue();
+        if (liveBridgeTts) {
+          liveBridgeSink = ttsManager.startRemotePcmPushStream(`${label} live bridge`);
+          queuedSpeech = true;
+        }
         setTtsBusy(true);
         setTtsVoicesError(null);
         setTtsActiveVoiceKey(ttsProvider === 'piper' ? voice!.key : null);
@@ -1643,6 +1693,21 @@ function App() {
         }
       };
 
+      const pushAudioChunk = (chunk: RemoteTtsAudioChunk) => {
+        if (!liveBridgeSink || isStale()) {
+          return;
+        }
+        speechPromises.push(
+          liveBridgeSink.push(chunk).catch((error) => {
+            const message =
+              error instanceof Error ? error.message : 'Unknown live bridge playback failure.';
+            setTtsVoicesError(message);
+            setTtsStatus(`TTS failed: ${message}`);
+            console.error('[TTS] Live bridge playback failed:', error);
+          }),
+        );
+      };
+
       const pushDelta = (delta: string) => {
         if (!delta || isStale()) {
           return;
@@ -1656,7 +1721,7 @@ function App() {
         sawDelta = true;
         fullText += visibleDelta;
         queueDisplayText(visibleDelta);
-        if (chunkTtsRequests) {
+        if (chunkTtsRequests && !liveBridgeTts) {
           pendingText += visibleDelta;
           consumeSpeakableChunks(false);
         }
@@ -1692,7 +1757,11 @@ function App() {
           updateAssistantMessageContent(assistantMessage.id, fullText.trim());
         }
 
-        if (chunkTtsRequests) {
+        if (liveBridgeTts) {
+          if (liveBridgeSink) {
+            speechPromises.push(liveBridgeSink.close());
+          }
+        } else if (chunkTtsRequests) {
           consumeSpeakableChunks(true);
         } else {
           const finalSpeechText = (fullText.trim() || normalizedFinal).trim();
@@ -1731,7 +1800,7 @@ function App() {
         };
       };
 
-      return { finish, pushDelta };
+      return { finish, pushAudioChunk, pushDelta };
     },
     [
       aiSettings,
@@ -2770,6 +2839,13 @@ function App() {
         aiSettings.ttsEnabled && aiSettings.ttsAutoSpeak,
         `${persona.name} reply`,
       );
+      const ttsBridge =
+        aiSettings.ttsEnabled &&
+        aiSettings.ttsAutoSpeak &&
+        aiSettings.ttsProvider === 'fish-speech' &&
+        aiSettings.remoteTtsMode === 'live-bridge'
+          ? createRemoteTtsRequest('', aiSettings)
+          : undefined;
       const requestRun = ++chatRequestRunRef.current;
 
       setChatInput('');
@@ -2805,9 +2881,11 @@ function App() {
           openAiStateMode: aiSettings.openAiStateMode,
           stateKey,
           stateScope: 'chat',
+          onAudioChunk: streamingPlayer.pushAudioChunk,
           onTextDelta: streamingPlayer.pushDelta,
           temperature: aiSettings.temperature,
           transportMode: aiSettings.aiTransportMode,
+          ttsBridge,
           apiKey: aiSettings.localDevApiKey,
         });
 
@@ -3371,6 +3449,13 @@ function App() {
         settings.ttsEnabled && settings.ttsAutoSpeak,
         `${persona.name} Twitch reply`,
       );
+      const ttsBridge =
+        settings.ttsEnabled &&
+        settings.ttsAutoSpeak &&
+        settings.ttsProvider === 'fish-speech' &&
+        settings.remoteTtsMode === 'live-bridge'
+          ? createRemoteTtsRequest('', settings)
+          : undefined;
       setChatHistory((current) =>
         trimChatHistory([...current, twitchUserMessage, assistantMessage]),
       );
@@ -3408,9 +3493,11 @@ function App() {
           openAiStateMode: settings.openAiStateMode,
           stateKey,
           stateScope: 'chat',
+          onAudioChunk: speechPlayer.pushAudioChunk,
           onTextDelta: speechPlayer.pushDelta,
           temperature: settings.temperature,
           transportMode: settings.aiTransportMode,
+          ttsBridge,
           apiKey: settings.localDevApiKey,
         });
 
