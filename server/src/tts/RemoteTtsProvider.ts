@@ -123,7 +123,10 @@ function normalizeFishLatency(value: unknown): FishSpeechLatency {
   return value === 'normal' ? 'normal' : 'balanced';
 }
 
-function normalizeRemoteTtsMode(value: unknown): RemoteTtsMode {
+function normalizeRemoteTtsMode(value: unknown, provider: RemoteTtsProvider): RemoteTtsMode {
+  if (provider === 'inworld' && value === 'live-bridge') {
+    return 'full-response';
+  }
   if (value === 'live-bridge' || value === 'sentence-chunks') {
     return value;
   }
@@ -466,7 +469,7 @@ async function streamInworld(
     ...(config.inworldBaseUrl ? { baseUrl: config.inworldBaseUrl } : {}),
   });
 
-  const streamingMode = normalizeRemoteTtsMode(request.streamingMode);
+  const streamingMode = normalizeRemoteTtsMode(request.streamingMode, 'inworld');
   const textChunks =
     streamingMode === 'sentence-chunks'
       ? splitTextForStreaming(request.text, bufferCharThreshold)
@@ -500,5 +503,8 @@ export function normalizeFishSpeechBaseUrl(value: string) {
 }
 
 export function normalizeInworldBaseUrl(value: string) {
-  return normalizeBaseUrl(value, '/tts/v1/voice:streamBidirectional');
+  return normalizeBaseUrl(
+    normalizeBaseUrl(value, '/tts/v1/voice:stream') ?? value,
+    '/tts/v1/voice:streamBidirectional',
+  );
 }

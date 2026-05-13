@@ -195,8 +195,9 @@ function serializeDiaryContext(
   }
 
   const latestUserMessage = [...history].reverse().find((message) => message.role === 'user');
+  const currentTurnText = readTurnContextValue(turnContext, 'currentTurnText');
   const score = scoreDiaryContext(
-    latestUserMessage?.content ?? '',
+    currentTurnText || latestUserMessage?.content || '',
     relationshipMemory,
     turnContext,
   );

@@ -219,13 +219,14 @@ select {
   top: var(--safe-top, 0px);
   right: var(--safe-right, 0px);
   bottom: var(--safe-bottom, 0px);
-  width: min(560px, calc(100vw - var(--safe-left, 0px) - 16px));
-  min-width: min(440px, calc(100vw - var(--safe-left, 0px) - 16px));
+  width: min(680px, calc(100vw - var(--safe-left, 0px) - 16px));
+  min-width: min(520px, calc(100vw - var(--safe-left, 0px) - 16px));
+  min-height: calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px));
   pointer-events: auto;
   display: flex;
   flex-direction: column;
   transform-origin: center right;
-  transform: translateX(28px);
+  transform: translateX(104%);
   opacity: 0;
   visibility: hidden;
   transition:

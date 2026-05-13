@@ -37,6 +37,12 @@ function updateAiSettings(
   }));
 }
 
+function normalizeRemoteModeForProvider(settings: AiSettings) {
+  return settings.ttsProvider === 'inworld' && settings.remoteTtsMode === 'live-bridge'
+    ? 'full-response'
+    : settings.remoteTtsMode;
+}
+
 export function TtsTab({
   aiSettings,
   onCacheVoice,
@@ -142,8 +148,8 @@ export function TtsTab({
           value={aiSettings.ttsProvider}
         >
           <option value="piper">Piper Web</option>
-          <option value="fish-speech">FishSpeech Live</option>
-          <option value="inworld">Inworld Realtime</option>
+          <option value="fish-speech">FishSpeech Live Bridge</option>
+          <option value="inworld">Inworld Stream</option>
         </select>
         <div className="field-hint">
           Remote engines stream through the bot server so provider keys stay server-side.
@@ -160,16 +166,18 @@ export function TtsTab({
                 remoteTtsMode: event.target.value as AiSettings['remoteTtsMode'],
               })
             }
-            value={aiSettings.remoteTtsMode}
+            value={normalizeRemoteModeForProvider(aiSettings)}
           >
-            <option value="live-bridge">Live Bridge / Streams Into Streams</option>
+            {aiSettings.ttsProvider === 'fish-speech' ? (
+              <option value="live-bridge">Fish Live Bridge / Streams Into Streams</option>
+            ) : null}
             <option value="full-response">Stable Stream / One TTS Request</option>
             <option value="sentence-chunks">Sentence Chunks / Lower Latency</option>
           </select>
           <div className="field-hint">
-            Live Bridge feeds Responses text deltas into one Fish realtime stream. Stable stream
-            waits for a full reply, then sends one provider request. Sentence chunks starts sooner,
-            but each chunk can shift voice or prosody.
+            Fish Live Bridge feeds Responses text deltas into one realtime Fish stream. Inworld uses
+            its SDK stream endpoint per request. Sentence chunks starts sooner, but each chunk can
+            shift voice or prosody.
           </div>
         </div>
       ) : null}

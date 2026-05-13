@@ -38,6 +38,15 @@ import {
   type AssistantReplyParseResult,
 } from './lib/chat/reply-metadata';
 import {
+  buildChatTurnMemoryMessage,
+  chatTurnToChatMessage,
+  createLocalChatTurn,
+  createTwitchChatTurn,
+  formatChatTurnMetadata,
+  formatChatTurns,
+  type ChatTurn,
+} from './lib/chat/chat-turn';
+import {
   addSemanticMemoryTurn,
   buildSemanticMemoryContext,
   findSemanticMemoryMatches,
@@ -292,13 +301,18 @@ const TWITCH_REPLY_GAP_MS = 2000;
 const TWITCH_CONTEXT_LIMIT = 80;
 const TWITCH_BATCH_DEFAULT_MAX_WAIT_MS = 30000;
 
-type TwitchAiJob = {
+type ChatAiJob = {
   id: string;
   mode: 'direct' | 'batch';
   activeChatterCount: number;
-  context: DirectTwitchChatMessage[];
+  context: ChatTurn[];
   firstTimeChatter?: boolean;
-  messages: DirectTwitchChatMessage[];
+  messages: ChatTurn[];
+};
+
+type CommandChatMessage = DirectTwitchChatMessage & {
+  isLocal?: boolean;
+  isTrustedController?: boolean;
 };
 
 type AppCompletionMessage = {
@@ -496,7 +510,8 @@ function createRemoteTtsRequest(text: string, settings: AiSettings): RemoteTtsRe
     return {
       provider: 'inworld',
       text,
-      streamingMode: settings.remoteTtsMode,
+      streamingMode:
+        settings.remoteTtsMode === 'live-bridge' ? 'full-response' : settings.remoteTtsMode,
       voiceId: settings.inworldVoiceId.trim() || undefined,
       modelId: settings.inworldModelId.trim() || undefined,
       deliveryMode: settings.inworldDeliveryMode,
@@ -1006,62 +1021,43 @@ function getLiveBridgeSubtitleLine(text: string) {
   return words.slice(-SUBTITLE_WORD_WINDOW).join(' ');
 }
 
-function formatTwitchMessages(messages: DirectTwitchChatMessage[], limit: number) {
-  return messages
-    .slice(-limit)
-    .map((message) => {
-      const text = message.text.replace(/\s+/g, ' ').trim();
-      return `- ${message.displayName}: ${text}\n  metadata: ${formatTwitchMessageMetadata(message)}`;
-    })
-    .join('\n');
-}
-
-function formatTwitchMessageMetadata(message: DirectTwitchChatMessage) {
-  const sentAtIso = new Date(message.timestamp).toISOString();
-  const badges = message.badges.length > 0 ? message.badges.join('/') : 'none';
-  return [
-    `login=${message.user || 'unknown'}`,
-    `display=${message.displayName || 'unknown'}`,
-    `broadcaster=${message.isBroadcaster}`,
-    `mod=${message.isMod}`,
-    `badges=${badges}`,
-    `sentAt=${sentAtIso}`,
-  ].join(' ');
-}
-
-function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, channel: string) {
+function buildChatAiPrompt(job: ChatAiJob, persona: PersonaProfile | null, channel: string) {
   const personaName = persona?.name ?? DEFAULT_PERSONA.name;
   const channelName = normalizeStateKeyPart(channel, DIRECT_TWITCH_CHANNEL || 'subsect');
   const mentionTags = getPersonaMentionTags(persona)
     .map((tag) => `@${tag}`)
     .join(', ');
   const localControllerNickname = persona?.userNickname.trim();
-  const recentContext = formatTwitchMessages(job.context, 18);
+  const recentContext = formatChatTurns(job.context, 18);
   const batchSize = getTwitchBatchSize(job.activeChatterCount);
   const batchWaitSeconds = Math.round(getTwitchBatchWaitMs(job.activeChatterCount) / 1000);
-  const twitchIdentityContext = [
-    `Current Twitch channel: #${channelName}.`,
-    `You are ${personaName}, the stream avatar/bot. Twitch chatters mention you as ${mentionTags}.`,
+  const isTwitchTurn = job.messages.some((turn) => turn.source === 'twitch');
+  const identityContext = [
+    `Current chat room: ${isTwitchTurn ? `#${channelName}` : 'local chat box'}.`,
+    `You are ${personaName}, the stream avatar/bot. Viewers mention you as ${mentionTags}.`,
     localControllerNickname
-      ? `The local controller/stream owner nickname is "${localControllerNickname}", but Twitch chat can contain many different viewers.`
+      ? `The local controller/stream owner nickname is "${localControllerNickname}", but local and Twitch messages both arrive as participant transcript turns.`
       : null,
-    'Do not assume a Twitch chatter is the local controller unless the message metadata says they are the broadcaster/channel owner.',
+    'Do not assume the current speaker is the local controller unless metadata says trustedController=true, local=true, broadcaster=true, or mod=true.',
   ]
     .filter((value): value is string => Boolean(value))
     .join('\n');
 
   if (job.mode === 'direct') {
     const [target] = job.messages;
+    const sourceLabel = target?.source === 'local' ? 'Local chat' : 'Live Twitch chat';
     return [
-      `Live Twitch chat mode: tagged queue for ${personaName}.`,
-      twitchIdentityContext,
+      `${sourceLabel} mode: direct queue for ${personaName}.`,
+      identityContext,
       `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
-      `Intake policy: active chatters are at or below ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mentions are enabled and each tagged message is queued for a direct reply.`,
-      `Current tagged message:\n${formatTwitchMessages(job.messages, 1)}`,
-      target ? `Target message metadata: ${formatTwitchMessageMetadata(target)}` : null,
+      `Intake policy: active chatters are at or below ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mentions and local trusted turns are queued for a direct reply.`,
+      `Current queued message:\n${formatChatTurns(job.messages, 1)}`,
+      target ? `Target message metadata: ${formatChatTurnMetadata(target)}` : null,
       target?.isBroadcaster
         ? 'The tagged viewer is the broadcaster/channel owner.'
-        : 'The tagged viewer is a Twitch chatter; reply to that display name, not the local controller nickname.',
+        : target?.isLocal
+          ? 'The target is the local chat box participant. Treat them like a viewer, but metadata marks them as trusted for controls.'
+          : 'The tagged viewer is a Twitch chatter; reply to that display name, not the local controller nickname.',
       job.firstTimeChatter
         ? 'This is the first message seen from this viewer in this browser session; greet them naturally.'
         : null,
@@ -1074,32 +1070,32 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, c
   }
 
   return [
-    `Live Twitch chat mode: balanced batch for ${personaName}.`,
-    twitchIdentityContext,
+    `Live chat mode: balanced batch for ${personaName}.`,
+    identityContext,
     `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
     `Intake policy: active chatters are above ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mention gating is disabled; summarize every ${batchSize} messages or after about ${batchWaitSeconds} seconds, whichever fires first.`,
     'The chat is busy, so answer the overall energy or strongest shared topic instead of replying to every line.',
     'Keep it stream-safe and concise: one or two spoken sentences.',
-    `Current batch:\n${formatTwitchMessages(job.messages, 30)}`,
+    `Current batch:\n${formatChatTurns(job.messages, 30)}`,
     recentContext ? `Recent chat context:\n${recentContext}` : null,
   ]
     .filter((value): value is string => Boolean(value))
     .join('\n\n');
 }
 
-function buildTwitchMemoryMessage(job: TwitchAiJob) {
-  if (job.mode === 'direct') {
-    const [target] = job.messages;
-    if (!target) {
-      return 'Twitch viewer chat:';
-    }
-    return [
-      `Twitch viewer ${target.displayName}: ${target.text}`.trim(),
-      `metadata: ${formatTwitchMessageMetadata(target)}`,
-    ].join('\n');
-  }
-
-  return `Twitch batch:\n${formatTwitchMessages(job.messages, 30)}`;
+function chatTurnToCommandMessage(turn: ChatTurn): CommandChatMessage {
+  return {
+    id: turn.id,
+    user: turn.login,
+    displayName: turn.displayName,
+    text: turn.text,
+    timestamp: turn.timestamp,
+    badges: turn.badges,
+    isMod: turn.isMod,
+    isBroadcaster: turn.isBroadcaster,
+    isLocal: turn.isLocal,
+    isTrustedController: turn.isTrustedController,
+  };
 }
 
 function getMemoryProgressStatus(memory: RelationshipMemory) {
@@ -1220,6 +1216,9 @@ function App() {
   const [relationshipMemory, setRelationshipMemory] = useState<RelationshipMemory>(
     createDefaultRelationshipMemory,
   );
+  const [relationshipMemories, setRelationshipMemories] = useState<
+    Record<string, RelationshipMemory>
+  >({});
   const [availableModels, setAvailableModels] = useState<string[]>(() => [...COMMON_RUN_MODELS]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -1255,19 +1254,21 @@ function App() {
   const chatRequestRunRef = useRef(0);
   const chatHistoryRef = useRef<ChatMessage[]>([]);
   const relationshipMemoryRef = useRef<RelationshipMemory>(createDefaultRelationshipMemory());
+  const relationshipMemoriesRef = useRef<Record<string, RelationshipMemory>>({});
   const aiSettingsRef = useRef<AiSettings>(createDefaultAiSettings());
   const availableModelsRef = useRef<string[]>([...COMMON_RUN_MODELS]);
   const sequencerSettingsRef = useRef(createDefaultSequencerSettings());
   const directTwitchClientRef = useRef<DirectTwitchIrcClient | null>(null);
-  const directTwitchCommandHandlerRef = useRef<(message: DirectTwitchChatMessage) => boolean>(
+  const directTwitchCommandHandlerRef = useRef<(message: CommandChatMessage) => boolean>(
     () => false,
   );
   const directTwitchAiHandlerRef = useRef<(message: DirectTwitchChatMessage) => void>(() => {});
   const twitchActiveChattersRef = useRef<Map<string, number>>(new Map());
   const twitchKnownUsersRef = useRef<Set<string>>(new Set());
-  const twitchContextRef = useRef<DirectTwitchChatMessage[]>([]);
-  const twitchBatchRef = useRef<DirectTwitchChatMessage[]>([]);
-  const twitchAiQueueRef = useRef<TwitchAiJob[]>([]);
+  const twitchContextRef = useRef<ChatTurn[]>([]);
+  const twitchBatchRef = useRef<ChatTurn[]>([]);
+  const twitchAiQueueRef = useRef<ChatAiJob[]>([]);
+  const enqueueChatAiJobRef = useRef<(job: ChatAiJob) => void>(() => {});
   const twitchAiProcessingRef = useRef(false);
   const twitchLastReplyAtRef = useRef(0);
   const twitchBatchTimerRef = useRef<number | null>(null);
@@ -1320,6 +1321,26 @@ function App() {
   );
   const activeRemoteTtsVoices =
     aiSettings.ttsProvider === 'piper' ? [] : remoteTtsVoices[aiSettings.ttsProvider];
+  const activeRelationshipStateKey = useMemo(
+    () => getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA),
+    [activePersona],
+  );
+
+  const getScopedRelationshipMemory = useCallback((stateKey: string) => {
+    return relationshipMemoriesRef.current[stateKey] ?? createDefaultRelationshipMemory();
+  }, []);
+
+  const commitScopedRelationshipMemory = useCallback(
+    (stateKey: string, memory: RelationshipMemory) => {
+      setRelationshipMemories((current) => ({
+        ...current,
+        [stateKey]: memory,
+      }));
+      setRelationshipMemory(memory);
+      relationshipMemoryRef.current = memory;
+    },
+    [],
+  );
 
   useEffect(() => {
     chatHistoryRef.current = chatHistory;
@@ -1328,6 +1349,17 @@ function App() {
   useEffect(() => {
     relationshipMemoryRef.current = relationshipMemory;
   }, [relationshipMemory]);
+
+  useEffect(() => {
+    relationshipMemoriesRef.current = relationshipMemories;
+  }, [relationshipMemories]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    setRelationshipMemory(getScopedRelationshipMemory(activeRelationshipStateKey));
+  }, [activeRelationshipStateKey, getScopedRelationshipMemory, hydrated]);
 
   useEffect(() => {
     aiSettingsRef.current = aiSettings;
@@ -1644,15 +1676,15 @@ function App() {
       const speechPromises: Promise<void>[] = [];
       const displaySettledResolvers: Array<() => void> = [];
 
-        if (canSpeak) {
-          ttsManager.enableTts = aiSettings.ttsEnabled;
-          ttsManager.resetSpeechQueue();
-          if (liveBridgeTts) {
-            liveBridgeSubtitleActiveRef.current = true;
-            stopSubtitleTracking(true);
-            liveBridgeSink = ttsManager.startRemotePcmPushStream(`${label} live bridge`);
-            queuedSpeech = true;
-          }
+      if (canSpeak) {
+        ttsManager.enableTts = aiSettings.ttsEnabled;
+        ttsManager.resetSpeechQueue();
+        if (liveBridgeTts) {
+          liveBridgeSubtitleActiveRef.current = true;
+          stopSubtitleTracking(true);
+          liveBridgeSink = ttsManager.startRemotePcmPushStream(`${label} live bridge`);
+          queuedSpeech = true;
+        }
         setTtsBusy(true);
         setTtsVoicesError(null);
         setTtsActiveVoiceKey(ttsProvider === 'piper' ? voice!.key : null);
@@ -2402,6 +2434,18 @@ function App() {
         return;
       }
 
+      const hydratedActivePersona =
+        persistedState.personas.find((persona) => persona.id === persistedState.activePersonaId) ??
+        persistedState.personas[0] ??
+        DEFAULT_PERSONA;
+      const hydratedLocalStateKey = getLocalConversationStateKey(hydratedActivePersona);
+      const hydratedRelationshipMemories =
+        Object.keys(persistedState.relationshipMemories).length > 0
+          ? persistedState.relationshipMemories
+          : {
+              [hydratedLocalStateKey]: persistedState.relationshipMemory,
+            };
+
       setPersonas(persistedState.personas);
       setActivePersonaId(persistedState.activePersonaId);
       setAiSettings(
@@ -2414,7 +2458,10 @@ function App() {
           : persistedState.aiSettings,
       );
       setChatHistory(trimChatHistory(persistedState.chatHistory));
-      setRelationshipMemory(persistedState.relationshipMemory);
+      setRelationshipMemory(
+        hydratedRelationshipMemories[hydratedLocalStateKey] ?? persistedState.relationshipMemory,
+      );
+      setRelationshipMemories(hydratedRelationshipMemories);
       setMenuOpen(false);
       setChatLogOpen(true);
       setChatInput(persistedState.uiState.chatDraft);
@@ -2494,6 +2541,7 @@ function App() {
           aiSettings,
           chatHistory,
           relationshipMemory,
+          relationshipMemories,
           uiState: {
             menuOpen: false,
             chatLogOpen,
@@ -2540,6 +2588,7 @@ function App() {
     menuOpen,
     personas,
     relationshipMemory,
+    relationshipMemories,
     sequencerSettings,
     visualSettings,
   ]);
@@ -2761,21 +2810,22 @@ function App() {
   }, []);
 
   const handleClearMemory = useCallback(() => {
-    setRelationshipMemory(createDefaultRelationshipMemory());
-  }, []);
+    commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
+  }, [activeRelationshipStateKey, commitScopedRelationshipMemory]);
 
   const handleResetContext = useCallback(() => {
     cancelAssistantPresentation(true);
     setChatGenerating(false);
     setChatInput('');
     setChatHistory([]);
-    setRelationshipMemory(createDefaultRelationshipMemory());
-  }, [cancelAssistantPresentation]);
+    commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
+  }, [activeRelationshipStateKey, cancelAssistantPresentation, commitScopedRelationshipMemory]);
 
   const runRelationshipMemoryRefresh = useCallback(
     async (
       historySnapshot: ChatMessage[],
       memorySnapshot: RelationshipMemory,
+      stateKey: string,
       scheduledRun: number,
       reason: 'scheduled' | 'manual',
     ) => {
@@ -2812,9 +2862,7 @@ function App() {
               ),
               maxTokens: 260,
               responseFormat: MEMORY_AGENT_JSON_FORMAT,
-              stateKey: getMemoryStateKey(
-                getTwitchConversationStateKey(twitchChannel, activePersona ?? DEFAULT_PERSONA),
-              ),
+              stateKey: getMemoryStateKey(stateKey),
               stateScope: 'memory',
               disableState: true,
               transportMode: aiSettings.aiTransportMode,
@@ -2851,7 +2899,7 @@ function App() {
 
         const mergedMemory = await mergeRelationshipMemoryInWorker(
           worker,
-          relationshipMemoryRef.current,
+          getScopedRelationshipMemory(stateKey),
           rawContent,
           memorySnapshot.turnCount,
         );
@@ -2860,7 +2908,7 @@ function App() {
           return;
         }
 
-        setRelationshipMemory(mergedMemory);
+        commitScopedRelationshipMemory(stateKey, mergedMemory);
         setMemoryAgentStatus('Diary updated.');
       } catch (error) {
         setMemoryAgentStatus('Diary pass failed.');
@@ -2876,12 +2924,14 @@ function App() {
       aiSettings.memoryAgentModel,
       aiSettings.model,
       availableModels,
+      commitScopedRelationshipMemory,
+      getScopedRelationshipMemory,
       twitchChannel,
     ],
   );
 
   const scheduleRelationshipMemoryRefresh = useCallback(
-    (historySnapshot: ChatMessage[], memorySnapshot: RelationshipMemory) => {
+    (historySnapshot: ChatMessage[], memorySnapshot: RelationshipMemory, stateKey: string) => {
       if (!shouldRunMemoryAgent(memorySnapshot)) {
         return;
       }
@@ -2896,6 +2946,7 @@ function App() {
         void runRelationshipMemoryRefresh(
           historySnapshot,
           memorySnapshot,
+          stateKey,
           scheduledRun,
           'scheduled',
         );
@@ -2912,9 +2963,16 @@ function App() {
 
     const historySnapshot = [...chatHistory];
     const memorySnapshot = relationshipMemoryRef.current;
+    const stateKey = activeRelationshipStateKey;
     const scheduledRun = ++memoryAgentRunRef.current;
-    void runRelationshipMemoryRefresh(historySnapshot, memorySnapshot, scheduledRun, 'manual');
-  }, [chatHistory, runRelationshipMemoryRefresh]);
+    void runRelationshipMemoryRefresh(
+      historySnapshot,
+      memorySnapshot,
+      stateKey,
+      scheduledRun,
+      'manual',
+    );
+  }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
     const expression = resolveFacialExpressionForReplyMetadata(metadata);
@@ -2942,147 +3000,33 @@ function App() {
   const handleSendMessage = useCallback(
     async (overrideInput?: string) => {
       const message = (overrideInput ?? chatInput).trim();
-      if (!message || chatGenerating) {
+      if (!message) {
         return;
       }
 
-      cancelAssistantPresentation(true);
-
-      const selectedModel = pickAvailableModel(
-        aiSettings.model,
-        availableModels,
-        DEFAULT_RUN_MODEL,
-      );
-      const userMessage = createChatMessage('user', message);
-      const nextHistory = trimChatHistory([...chatHistory, userMessage]);
-      const assistantMessage = createChatMessage('assistant', '');
       const persona = activePersona ?? DEFAULT_PERSONA;
-      const stateKey = getLocalConversationStateKey(persona);
-      const streamingPlayer = createStreamingAssistantPlayer(
-        assistantMessage,
-        aiSettings.ttsEnabled && aiSettings.ttsAutoSpeak,
-        `${persona.name} reply`,
-      );
-      const ttsBridge =
-        aiSettings.ttsEnabled &&
-        aiSettings.ttsAutoSpeak &&
-        aiSettings.ttsProvider === 'fish-speech' &&
-        aiSettings.remoteTtsMode === 'live-bridge'
-          ? createRemoteTtsRequest('', aiSettings)
-          : undefined;
-      const requestRun = ++chatRequestRunRef.current;
-
+      const turn = createLocalChatTurn({ persona, text: message });
       setChatInput('');
-      setChatHistory(trimChatHistory([...nextHistory, assistantMessage]));
-      setChatGenerating(true);
 
-      try {
-        const semanticMemoryContext = await getSemanticMemoryContext(stateKey, message);
-        if (chatRequestRunRef.current !== requestRun) {
-          return;
-        }
-        const response = await requestChatCompletion({
-          model: selectedModel,
-          messages: await buildChatCompletionMessages({
-            animationCatalogContext: buildAnimationCatalogInstruction(
-              sequencerSettingsRef.current.playlist,
-            ),
-            history: nextHistory,
-            includeHostContext: aiSettings.includeHostContext,
-            persona,
-            relationshipMemory,
-            runtimeContext,
-            semanticMemoryContext,
-            turnContext: {
-              botMentionTags: getPersonaMentionTags(persona)
-                .map((tag) => `@${tag}`)
-                .join(', '),
-              conversationScope: 'local-manual',
-              localControllerNickname: persona.userNickname.trim() || 'not configured',
-              speaker: persona.userNickname.trim() || 'local user',
-              source: 'local',
-              stateKey,
-              turnKind: 'manual-chat',
-            },
-            ttsExpressionTagsEnabled: aiSettings.ttsExpressionTagsEnabled,
-            ttsProvider: aiSettings.ttsProvider,
-          }),
-          maxTokens: aiSettings.maxTokens,
-          openAiStateMode: aiSettings.openAiStateMode,
-          stateKey,
-          stateScope: 'chat',
-          onAudioChunk: streamingPlayer.pushAudioChunk,
-          onTextDelta: streamingPlayer.pushDelta,
-          temperature: aiSettings.temperature,
-          transportMode: aiSettings.aiTransportMode,
-          ttsBridge,
-          apiKey: aiSettings.localDevApiKey,
-        });
-
-        const assistantReply = await streamingPlayer.finish(response.choices[0]?.message.content);
-        const assistantContent = assistantReply.text;
-        if (chatRequestRunRef.current !== requestRun) {
-          return;
-        }
-
-        if (!assistantContent) {
-          throw new Error('RUN AI returned an empty response.');
-        }
-        playAssistantMetadataAnimation(assistantReply.metadata);
-
-        const completedAssistantMessage = {
-          ...assistantMessage,
-          content: assistantContent,
-        };
-        const updatedHistory = trimChatHistory([...nextHistory, completedAssistantMessage]);
-        const nextRelationshipMemory = updateRelationshipMemory(
-          relationshipMemory,
-          updatedHistory,
-          message,
-        );
-        setChatHistory(updatedHistory);
-        setRelationshipMemory(nextRelationshipMemory);
-        setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
-        scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory);
-        void rememberSemanticTurn(stateKey, message, assistantContent, persona);
-        setChatGenerating(false);
-      } catch (error) {
-        if (chatRequestRunRef.current !== requestRun) {
-          return;
-        }
-
-        const errorMessage = getRunAiErrorMessage(error, 'chat');
-
-        setChatHistory((current) =>
-          trimChatHistory(
-            current.map((messageEntry) =>
-              messageEntry.id === assistantMessage.id
-                ? {
-                    ...messageEntry,
-                    content: `Request failed: ${errorMessage}`,
-                  }
-                : messageEntry,
-            ),
-          ),
-        );
-      } finally {
-        setChatGenerating(false);
+      const handledCommand = directTwitchCommandHandlerRef.current(chatTurnToCommandMessage(turn));
+      if (handledCommand) {
+        return;
       }
+
+      const activeChatterCount = Math.max(
+        1,
+        pruneActiveTwitchChatters(twitchActiveChattersRef.current, Date.now()),
+      );
+      twitchContextRef.current = [...twitchContextRef.current, turn].slice(-TWITCH_CONTEXT_LIMIT);
+      enqueueChatAiJobRef.current({
+        id: `local-direct-${turn.id}`,
+        mode: 'direct',
+        activeChatterCount,
+        context: twitchContextRef.current.slice(-TWITCH_CONTEXT_LIMIT),
+        messages: [turn],
+      });
     },
-    [
-      activePersona,
-      aiSettings,
-      availableModels,
-      cancelAssistantPresentation,
-      chatGenerating,
-      chatHistory,
-      chatInput,
-      createStreamingAssistantPlayer,
-      playAssistantMetadataAnimation,
-      relationshipMemory,
-      runtimeContext,
-      scheduleRelationshipMemoryRefresh,
-    ],
+    [activePersona, chatInput],
   );
 
   const appendSystemMessage = useCallback((content: string) => {
@@ -3132,6 +3076,23 @@ function App() {
     hydrated,
     stopTtsPlayback,
   ]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    if (!ttsVoices.some((voice) => voice.key === activePersonaScenePreset.ttsVoice)) {
+      return;
+    }
+    setAiSettings((current) =>
+      current.ttsProvider === 'piper' && current.ttsVoice !== activePersonaScenePreset.ttsVoice
+        ? {
+            ...current,
+            ttsVoice: activePersonaScenePreset.ttsVoice,
+          }
+        : current,
+    );
+  }, [activePersonaScenePreset.ttsVoice, hydrated, ttsVoices]);
 
   const playAnimationByIndex = useCallback(
     (index: number) => {
@@ -3317,7 +3278,7 @@ function App() {
   );
 
   const handleDirectTwitchCommand = useCallback(
-    (message: DirectTwitchChatMessage) => {
+    (message: CommandChatMessage) => {
       const text = message.text.trim();
       const lowerText = text.toLowerCase();
       const prefix = DIRECT_COMMAND_PREFIXES.find(
@@ -3328,7 +3289,10 @@ function App() {
       }
 
       const isController =
-        message.user.toLowerCase() === 'subsect' || message.isBroadcaster || message.isMod;
+        message.isTrustedController ||
+        message.user.toLowerCase() === 'subsect' ||
+        message.isBroadcaster ||
+        message.isMod;
       if (!isController) {
         console.info(`[DirectTwitch] Ignored command from ${message.displayName}.`);
         return true;
@@ -3341,6 +3305,10 @@ function App() {
       const respond = (response: string) => {
         appendSystemMessage(`[Command] ${response}`);
       };
+      const getCommandStateKey = () =>
+        message.isLocal
+          ? getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA)
+          : getTwitchConversationStateKey(twitchChannel, activePersona ?? DEFAULT_PERSONA);
       const runOverlayCommand = (
         command: Extract<OverlayServerEvent, { type: 'overlay:command' }>['payload'],
         response: string,
@@ -3363,10 +3331,9 @@ function App() {
           Date.now(),
         );
         const currentChannel = directTwitchClientRef.current?.channel ?? twitchChannel;
-        const chatStateKey = getTwitchConversationStateKey(
-          currentChannel,
-          activePersona ?? DEFAULT_PERSONA,
-        );
+        const chatStateKey = message.isLocal
+          ? getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA)
+          : getTwitchConversationStateKey(currentChannel, activePersona ?? DEFAULT_PERSONA);
         respond(
           `Direct Twitch IRC: #${currentChannel}, controller=subsect, activeChatters=${activeChatters}, aiQueue=${twitchAiQueueRef.current.length}, batchPending=${twitchBatchRef.current.length}, state=${chatStateKey}.`,
         );
@@ -3387,7 +3354,7 @@ function App() {
           twitchAiQueueRef.current = [];
           twitchBatchRef.current = [];
           twitchKnownUsersRef.current.clear();
-          setRelationshipMemory(createDefaultRelationshipMemory());
+          commitScopedRelationshipMemory(getCommandStateKey(), createDefaultRelationshipMemory());
           respond('Client AI queue and relationship state reset.');
           return true;
         }
@@ -3404,7 +3371,7 @@ function App() {
         twitchAiQueueRef.current = [];
         twitchBatchRef.current = [];
         twitchKnownUsersRef.current.clear();
-        setRelationshipMemory(createDefaultRelationshipMemory());
+        commitScopedRelationshipMemory(getCommandStateKey(), createDefaultRelationshipMemory());
         respond('Client AI queue and relationship state reset.');
         return true;
       }
@@ -3553,11 +3520,19 @@ function App() {
       respond('Unknown command. Use !yw help.');
       return true;
     },
-    [activePersona, appendSystemMessage, handleOverlayCommand, personas, ttsManager, twitchChannel],
+    [
+      activePersona,
+      appendSystemMessage,
+      commitScopedRelationshipMemory,
+      handleOverlayCommand,
+      personas,
+      ttsManager,
+      twitchChannel,
+    ],
   );
 
-  const runTwitchAiJob = useCallback(
-    async (job: TwitchAiJob) => {
+  const runChatAiJob = useCallback(
+    async (job: ChatAiJob) => {
       const settings = aiSettingsRef.current;
       const persona = activePersona ?? DEFAULT_PERSONA;
       const channel = directTwitchClientRef.current?.channel ?? twitchChannel;
@@ -3567,17 +3542,23 @@ function App() {
         DEFAULT_RUN_MODEL,
       );
       const targetMessage = job.messages[0];
-      const prompt = buildTwitchAiPrompt(job, persona, channel);
-      const twitchUserContent = buildTwitchMemoryMessage(job);
-      const twitchUserMessage = createChatMessage('user', twitchUserContent);
-      const stateKey = getTwitchConversationStateKey(channel, persona);
+      const prompt = buildChatAiPrompt(job, persona, channel);
+      const userContent = buildChatTurnMemoryMessage(job.mode, job.messages);
+      const userMessage = targetMessage
+        ? chatTurnToChatMessage(targetMessage)
+        : createChatMessage('user', userContent);
+      const stateKey =
+        targetMessage?.source === 'local'
+          ? getLocalConversationStateKey(persona)
+          : getTwitchConversationStateKey(channel, persona);
+      const memorySnapshot = getScopedRelationshipMemory(stateKey);
       const requestHistory = trimChatHistory([...chatHistoryRef.current]);
-      const memoryHistory = trimChatHistory([...chatHistoryRef.current, twitchUserMessage]);
+      const memoryHistory = trimChatHistory([...chatHistoryRef.current, userMessage]);
       const assistantMessage = createChatMessage('assistant', '');
       const speechPlayer = createStreamingAssistantPlayer(
         assistantMessage,
         settings.ttsEnabled && settings.ttsAutoSpeak,
-        `${persona.name} Twitch reply`,
+        `${persona.name} ${targetMessage?.source === 'local' ? 'local chat' : 'Twitch'} reply`,
       );
       const ttsBridge =
         settings.ttsEnabled &&
@@ -3586,12 +3567,18 @@ function App() {
         settings.remoteTtsMode === 'live-bridge'
           ? createRemoteTtsRequest('', settings)
           : undefined;
-      setChatHistory((current) =>
-        trimChatHistory([...current, twitchUserMessage, assistantMessage]),
-      );
+      setChatHistory((current) => {
+        const hasUserMessage = current.some((message) => message.id === userMessage.id);
+        return trimChatHistory([
+          ...current,
+          ...(hasUserMessage ? [] : [userMessage]),
+          assistantMessage,
+        ]);
+      });
 
       try {
-        const semanticMemoryContext = await getSemanticMemoryContext(stateKey, twitchUserContent);
+        setChatGenerating(true);
+        const semanticMemoryContext = await getSemanticMemoryContext(stateKey, userContent);
         const response = await requestChatCompletion({
           activeChatters: job.activeChatterCount,
           mode: job.mode,
@@ -3605,7 +3592,7 @@ function App() {
             includeHostContext: settings.includeHostContext,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
             persona,
-            relationshipMemory: relationshipMemoryRef.current,
+            relationshipMemory: memorySnapshot,
             runtimeContext,
             semanticMemoryContext,
             turnContext: {
@@ -3617,22 +3604,27 @@ function App() {
                 .join(', '),
               chatterThreshold: TWITCH_DIRECT_CHATTER_LIMIT,
               channel,
-              conversationScope: 'twitch-chat',
+              conversationScope: targetMessage?.source === 'local' ? 'local-chat' : 'twitch-chat',
+              currentTurnText: userContent,
+              displayName: targetMessage?.displayName ?? '',
               firstTimeChatter: job.firstTimeChatter ?? false,
               intakePolicy:
                 job.mode === 'direct'
-                  ? `activeChatters <= ${TWITCH_DIRECT_CHATTER_LIMIT}; @mentions enabled; direct queued reply`
+                  ? `activeChatters <= ${TWITCH_DIRECT_CHATTER_LIMIT}; @mentions and local trusted turns enabled; direct queued reply`
                   : `activeChatters > ${TWITCH_DIRECT_CHATTER_LIMIT}; @mentions disabled; batch every ${getTwitchBatchSize(job.activeChatterCount)} messages or ${Math.round(
                       getTwitchBatchWaitMs(job.activeChatterCount) / 1000,
                     )} seconds`,
+              isLocal: targetMessage?.isLocal ?? false,
+              isTrustedController: targetMessage?.isTrustedController ?? false,
+              login: targetMessage?.login ?? '',
               localControllerNickname: persona.userNickname.trim() || 'not configured',
-              source: 'twitch',
+              source: targetMessage?.source ?? 'twitch',
               stateKey,
               targetBadges: targetMessage?.badges.join('/') ?? '',
               targetIsBroadcaster: targetMessage?.isBroadcaster ?? false,
               targetIsMod: targetMessage?.isMod ?? false,
               targetTwitchDisplayName: targetMessage?.displayName ?? '',
-              targetTwitchLogin: targetMessage?.user ?? '',
+              targetTwitchLogin: targetMessage?.login ?? '',
               turnKind: job.mode,
             },
             ttsExpressionTagsEnabled: settings.ttsExpressionTagsEnabled,
@@ -3653,7 +3645,7 @@ function App() {
         const assistantReply = await speechPlayer.finish(response.choices[0]?.message.content);
         const assistantContent = assistantReply.text;
         if (!assistantContent) {
-          throw new Error('RUN AI returned an empty Twitch reply.');
+          throw new Error('RUN AI returned an empty chat reply.');
         }
         playAssistantMetadataAnimation(assistantReply.metadata);
         const completedAssistantMessage = {
@@ -3669,23 +3661,39 @@ function App() {
           ),
         );
         const nextRelationshipMemory = updateRelationshipMemory(
-          relationshipMemoryRef.current,
+          memorySnapshot,
           updatedHistory,
-          twitchUserContent,
+          userContent,
         );
-        setRelationshipMemory(nextRelationshipMemory);
+        commitScopedRelationshipMemory(stateKey, nextRelationshipMemory);
         setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
-        scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory);
-        void rememberSemanticTurn(stateKey, twitchUserContent, assistantContent, persona);
+        scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
+        void rememberSemanticTurn(stateKey, userContent, assistantContent, persona);
       } catch (error) {
         const message = getRunAiErrorMessage(error, 'chat');
-        appendSystemMessage(`[Twitch] AI reply failed: ${message}`);
+        setChatHistory((current) =>
+          trimChatHistory(
+            current.map((entry) =>
+              entry.id === assistantMessage.id
+                ? {
+                    ...entry,
+                    content: `Request failed: ${message}`,
+                  }
+                : entry,
+            ),
+          ),
+        );
+        appendSystemMessage(`[Chat] AI reply failed: ${message}`);
+      } finally {
+        setChatGenerating(false);
       }
     },
     [
       activePersona,
       appendSystemMessage,
+      commitScopedRelationshipMemory,
       createStreamingAssistantPlayer,
+      getScopedRelationshipMemory,
       playAssistantMetadataAnimation,
       runtimeContext,
       scheduleRelationshipMemoryRefresh,
@@ -3712,7 +3720,7 @@ function App() {
           continue;
         }
 
-        await runTwitchAiJob(job);
+        await runChatAiJob(job);
         twitchLastReplyAtRef.current = Date.now();
       }
     } finally {
@@ -3721,15 +3729,19 @@ function App() {
         void processTwitchAiQueue();
       }
     }
-  }, [runTwitchAiJob]);
+  }, [runChatAiJob]);
 
   const enqueueTwitchAiJob = useCallback(
-    (job: TwitchAiJob) => {
+    (job: ChatAiJob) => {
       twitchAiQueueRef.current.push(job);
       void processTwitchAiQueue();
     },
     [processTwitchAiQueue],
   );
+
+  useEffect(() => {
+    enqueueChatAiJobRef.current = enqueueTwitchAiJob;
+  }, [enqueueTwitchAiJob]);
 
   const flushTwitchBatch = useCallback(
     (reason: 'count' | 'timer') => {
@@ -3780,13 +3792,13 @@ function App() {
       const now = Date.now();
       const normalizedUser = message.user.toLowerCase();
       const firstTimeChatter = !twitchKnownUsersRef.current.has(normalizedUser);
+      const currentChannel = directTwitchClientRef.current?.channel ?? twitchChannel;
+      const turn = createTwitchChatTurn(message, currentChannel, firstTimeChatter);
       twitchKnownUsersRef.current.add(normalizedUser);
       twitchActiveChattersRef.current.set(normalizedUser, now);
       const activeChatterCount = pruneActiveTwitchChatters(twitchActiveChattersRef.current, now);
       setTwitchActiveChatterCount(activeChatterCount);
-      twitchContextRef.current = [...twitchContextRef.current, message].slice(
-        -TWITCH_CONTEXT_LIMIT,
-      );
+      twitchContextRef.current = [...twitchContextRef.current, turn].slice(-TWITCH_CONTEXT_LIMIT);
 
       if (activeChatterCount <= TWITCH_DIRECT_CHATTER_LIMIT) {
         if (!twitchMessageMentionsPersona(message.text, activePersona ?? DEFAULT_PERSONA)) {
@@ -3802,12 +3814,12 @@ function App() {
           activeChatterCount,
           context: twitchContextRef.current.slice(-TWITCH_CONTEXT_LIMIT),
           firstTimeChatter,
-          messages: [message],
+          messages: [turn],
         });
         return;
       }
 
-      twitchBatchRef.current.push(message);
+      twitchBatchRef.current.push(turn);
       const batchSize = getTwitchBatchSize(activeChatterCount);
       if (twitchBatchRef.current.length >= batchSize) {
         flushTwitchBatch('count');
@@ -3821,6 +3833,7 @@ function App() {
       enqueueTwitchAiJob,
       flushTwitchBatch,
       scheduleTwitchBatchFlush,
+      twitchChannel,
     ],
   );
 
@@ -3850,11 +3863,9 @@ function App() {
 
     const client = new DirectTwitchIrcClient(DIRECT_TWITCH_CHANNEL, {
       onMessage: (message) => {
+        const displayTurn = createTwitchChatTurn(message, client.channel, false);
         setChatHistory((current) =>
-          trimChatHistory([
-            ...current,
-            createChatMessage('user', `[Twitch] ${message.displayName}: ${message.text}`),
-          ]),
+          trimChatHistory([...current, chatTurnToChatMessage(displayTurn)]),
         );
         const handledCommand = directTwitchCommandHandlerRef.current(message);
         if (!handledCommand) {

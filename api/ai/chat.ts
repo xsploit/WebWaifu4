@@ -691,8 +691,20 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     ? normalizeReasoningEffortForModel(model, parseReasoningEffort())
     : null;
   const maxOutputTokens = normalizeMaxOutputTokens(body.maxTokens, 220);
+  const conversationAlreadySeeded =
+    !stateDisabled &&
+    stateMode === 'conversation' &&
+    Boolean(
+      state.conversationId ||
+      (stateKey === 'default' && process.env['OPENAI_CONVERSATION_ID']?.trim()),
+    );
   const payload: Record<string, unknown> = {
-    input,
+    input:
+      conversationAlreadySeeded && input.length > 0
+        ? input.slice(-1)
+        : canUsePreviousResponse && state.previousResponseId && input.length > 0
+          ? input.slice(-1)
+          : input,
     max_output_tokens: maxOutputTokens,
     model,
     store,

@@ -150,6 +150,7 @@ export type PersistedChatState = {
   aiSettings: AiSettings;
   chatHistory: ChatMessage[];
   relationshipMemory: RelationshipMemory;
+  relationshipMemories: Record<string, RelationshipMemory>;
   uiState: UiState;
   activeTab: SettingsTabId;
   currentBundledModelId: string;

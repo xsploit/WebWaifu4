@@ -183,6 +183,41 @@ describe('POML-backed chat prompt', () => {
     expect(messages[2]?.content).toContain('metadata: login=subsect');
   });
 
+  it('renders local chat as a participant transcript turn instead of legacy sole user', async () => {
+    const messages = await buildChatCompletionMessages({
+      currentTurnContext: [
+        'Local chat mode: direct queue for Hikari.',
+        'Current queued message:',
+        '- Subby: @Hikari hello from the local box',
+        '  metadata: source=local channel=local login=subby display=Subby local=true trustedController=true',
+      ].join('\n'),
+      history: [],
+      includeHostContext: false,
+      persona: {
+        ...DEFAULT_PERSONA,
+        name: 'Hikari',
+        userNickname: 'Subby',
+      },
+      relationshipMemory: createDefaultRelationshipMemory(),
+      runtimeContext: createEmptyRuntimeContext(),
+      turnContext: {
+        conversationScope: 'local-chat',
+        currentTurnText: 'Local viewer Subby: @Hikari hello from the local box',
+        displayName: 'Subby',
+        isLocal: true,
+        isTrustedController: true,
+        source: 'local',
+        turnKind: 'direct',
+      },
+    });
+
+    expect(messages[0]?.content).toContain('source: local');
+    expect(messages[0]?.content).toContain('speaker: Subby');
+    expect(messages[1]?.role).toBe('user');
+    expect(messages[1]?.content).toContain('Local chat mode: direct queue for Hikari.');
+    expect(messages[1]?.content).toContain('trustedController=true');
+  });
+
   it('omits optional POML sections when they have no useful context', async () => {
     const messages = await buildChatCompletionMessages({
       history: [

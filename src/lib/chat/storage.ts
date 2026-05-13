@@ -338,6 +338,22 @@ function normalizeRelationshipMemory(value: unknown): RelationshipMemory {
   return next;
 }
 
+function normalizeRelationshipMemories(value: unknown): Record<string, RelationshipMemory> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const entries: Array<[string, RelationshipMemory]> = [];
+  for (const [rawKey, rawMemory] of Object.entries(value as Record<string, unknown>)) {
+    const key = rawKey.trim().slice(0, 180);
+    if (!key) {
+      continue;
+    }
+    entries.push([key, normalizeRelationshipMemory(rawMemory)]);
+  }
+  return Object.fromEntries(entries);
+}
+
 function normalizeUiState(value: unknown): UiState {
   const defaults = createDefaultUiState();
 
@@ -361,6 +377,7 @@ function normalizeSettingsTab(value: string | null): SettingsTabId {
     case 'anim':
     case 'character':
     case 'ai':
+    case 'twitch':
     case 'context':
     case 'tts':
     case 'vrm':
@@ -735,6 +752,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     aiSettings: createDefaultAiSettings(),
     chatHistory: [],
     relationshipMemory: createDefaultRelationshipMemory(),
+    relationshipMemories: {},
     uiState: createDefaultUiState(),
     activeTab: 'vrm',
     currentBundledModelId: 'neuro-sama',
@@ -749,6 +767,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       aiSettingsRaw,
       chatHistoryRaw,
       relationshipMemoryRaw,
+      relationshipMemoriesRaw,
       uiStateRaw,
       activeTabRaw,
       currentBundledModelIdRaw,
@@ -760,6 +779,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       getPersistedItem(STORAGE_KEYS.aiSettings),
       getPersistedItem(STORAGE_KEYS.chatHistory),
       getPersistedItem(STORAGE_KEYS.relationshipMemory),
+      getPersistedItem(STORAGE_KEYS.relationshipMemories),
       getPersistedItem(STORAGE_KEYS.uiState),
       getPersistedItem(STORAGE_KEYS.activeTab),
       getPersistedItem(STORAGE_KEYS.currentBundledModelId),
@@ -777,6 +797,9 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       .map(normalizeChatMessage)
       .filter((value): value is ChatMessage => Boolean(value));
     const relationshipMemory = normalizeRelationshipMemory(safeParse(relationshipMemoryRaw, null));
+    const relationshipMemories = normalizeRelationshipMemories(
+      safeParse(relationshipMemoriesRaw, null),
+    );
     const uiState = normalizeUiState(safeParse(uiStateRaw, null));
     const activeTab = normalizeSettingsTab(activeTabRaw);
     const currentBundledModelId =
@@ -802,6 +825,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       aiSettings,
       chatHistory,
       relationshipMemory,
+      relationshipMemories,
       uiState,
       activeTab,
       currentBundledModelId,
@@ -826,6 +850,7 @@ export async function savePersistedChatState(state: PersistedChatState) {
     [STORAGE_KEYS.aiSettings, JSON.stringify(state.aiSettings)],
     [STORAGE_KEYS.chatHistory, JSON.stringify(state.chatHistory)],
     [STORAGE_KEYS.relationshipMemory, JSON.stringify(state.relationshipMemory)],
+    [STORAGE_KEYS.relationshipMemories, JSON.stringify(state.relationshipMemories)],
     [STORAGE_KEYS.uiState, JSON.stringify(state.uiState)],
     [STORAGE_KEYS.activeTab, state.activeTab],
     [STORAGE_KEYS.currentBundledModelId, state.currentBundledModelId],

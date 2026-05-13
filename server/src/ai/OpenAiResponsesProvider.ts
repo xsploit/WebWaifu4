@@ -535,9 +535,19 @@ export class OpenAiResponsesProvider implements ChatProvider {
       isReasoningStyleModel(this.options.model) && this.options.reasoningEffort
         ? normalizeReasoningEffortForModel(this.options.model, this.options.reasoningEffort)
         : null;
+    const conversationAlreadySeeded =
+      usesConversation &&
+      Boolean(state.conversationId || (key === 'default' && this.options.conversationId?.trim()));
+    const requestInput =
+      canContinuePreviousResponse && input.length > 0
+        ? input.slice(-1)
+        : usesConversation && conversationAlreadySeeded && input.length > 0
+          ? input.slice(-1)
+          : input;
+
     const payload: Record<string, unknown> = {
       model: this.options.model,
-      input: canContinuePreviousResponse && input.length > 0 ? input.slice(-1) : input,
+      input: requestInput,
       max_output_tokens: normalizeMaxOutputTokens(request.maxTokens, this.options.maxOutputTokens),
       store: this.options.store,
     };
@@ -861,7 +871,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
     payload: Record<string, unknown>,
     onTextDelta?: (delta: string) => void,
   ): Promise<OpenAiResponsePayload> {
-    const socket = await this.ensureWebSocket();
+    const socket = await this.createRequestWebSocket();
 
     return new Promise<OpenAiResponsePayload>((resolve, reject) => {
       let text = '';
@@ -878,6 +888,13 @@ export class OpenAiResponsesProvider implements ChatProvider {
         socket.off('message', onMessage);
         socket.off('close', onClose);
         socket.off('error', onError);
+        if (this.ws === socket) {
+          this.ws = null;
+          this.wsReady = null;
+        }
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
       };
 
       const finish = (response: OpenAiResponsePayload) => {
@@ -981,16 +998,8 @@ export class OpenAiResponsesProvider implements ChatProvider {
     });
   }
 
-  private async ensureWebSocket() {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      return this.ws;
-    }
-
-    if (this.wsReady) {
-      return this.wsReady;
-    }
-
-    this.wsReady = new Promise<WebSocket>((resolve, reject) => {
+  private async createRequestWebSocket() {
+    return new Promise<WebSocket>((resolve, reject) => {
       const url =
         this.options.webSocketUrl?.trim() || this.baseUrl.replace(/^http/, 'ws') + '/responses';
       const socket = new WebSocket(url, {
@@ -1002,7 +1011,6 @@ export class OpenAiResponsesProvider implements ChatProvider {
         resolve(socket);
       });
       socket.once('error', (error) => {
-        this.wsReady = null;
         reject(error);
       });
       socket.once('close', () => {
@@ -1012,8 +1020,6 @@ export class OpenAiResponsesProvider implements ChatProvider {
         }
       });
     });
-
-    return this.wsReady;
   }
 
   private recordResponseState(

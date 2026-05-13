@@ -519,6 +519,66 @@ describe('OpenAiResponsesProvider', () => {
     expect(provider.getState()['conversationId']).toBe('conv_test');
   });
 
+  it('seeds a conversation once and then sends only the newest input turn', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      store: false,
+      useWebSocket: false,
+      fetcher: createFetcher(calls),
+    });
+
+    await provider.complete({
+      ...createRequest('first'),
+      messages: [
+        { role: 'system', content: 'Persona.' },
+        { role: 'user', content: 'first user' },
+        { role: 'assistant', content: 'first assistant' },
+        { role: 'user', content: 'second user' },
+      ],
+    });
+    await provider.complete({
+      ...createRequest('next'),
+      messages: [
+        { role: 'system', content: 'Persona updated.' },
+        { role: 'user', content: 'first user' },
+        { role: 'assistant', content: 'first assistant' },
+        { role: 'user', content: 'newest user' },
+      ],
+    });
+
+    expect(calls[1]?.body['input']).toEqual([
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'first user' }],
+      },
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'first assistant' }],
+      },
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'second user' }],
+      },
+    ]);
+    expect(calls[2]?.body['input']).toEqual([
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'newest user' }],
+      },
+    ]);
+    expect(calls[2]?.body['instructions']).toBe('Persona updated.');
+  });
+
   it('keeps conversation ids when dynamic instructions change each turn', async () => {
     const calls: FetchCall[] = [];
     const provider = new OpenAiResponsesProvider({

@@ -72,9 +72,8 @@ export function ChatBar({
           <div className="chat-actions">
             <button
               className={`icon-btn primary ${isGenerating ? 'active' : ''}`}
-              disabled={isGenerating}
               onClick={onSend}
-              title={isGenerating ? 'Waiting for reply' : 'Send'}
+              title={isGenerating ? 'Queue message' : 'Send'}
               type="button"
             >
               {isGenerating ? (

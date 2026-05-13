@@ -13,6 +13,7 @@ export const STORAGE_KEYS = {
   aiSettings: 'yourwifey.aiSettings.v1',
   chatHistory: 'yourwifey.chatHistory.v1',
   relationshipMemory: 'yourwifey.relationshipMemory.v1',
+  relationshipMemories: 'yourwifey.relationshipMemories.v1',
   uiState: 'yourwifey.uiState.v1',
   activeTab: 'yourwifey.activeTab.v1',
   currentBundledModelId: 'yourwifey.currentBundledModelId.v1',

@@ -85,8 +85,8 @@ export function TwitchTab({
           </button>
         </div>
         <div className="field-hint">
-          Browser IRC listens read-only as anonymous Twitch chat. Switching room keeps Subsect as
-          the controller.
+          Browser IRC listens read-only as anonymous Twitch chat. The local chat box is also routed
+          as a trusted participant turn.
         </div>
       </div>
 
@@ -107,8 +107,8 @@ export function TwitchTab({
           </div>
         </div>
         <div className="field-hint">
-          Under 10 active chatters, tagged messages queue. Above 10, chat batches into room-level
-          replies.
+          Under 10 active chatters, tagged Twitch messages and local participant messages queue.
+          Above 10, Twitch batches into room-level replies while local trusted controls still work.
         </div>
         <button className="btn-tech danger" onClick={onResetTwitchState} type="button">
           Reset Twitch AI Queue

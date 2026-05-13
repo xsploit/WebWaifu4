@@ -268,7 +268,10 @@ export function loadConfig(): StreamBotConfig {
     inworldApiKey: process.env.INWORLD_API_KEY?.trim() ?? '',
     inworldBaseUrl:
       process.env.INWORLD_TTS_BASE_URL?.trim() ||
-      normalizeBaseUrl(process.env.INWORLD_TTS_WS_URL, '/tts/v1/voice:streamBidirectional'),
+      normalizeBaseUrl(
+        normalizeBaseUrl(process.env.INWORLD_TTS_WS_URL, '/tts/v1/voice:stream'),
+        '/tts/v1/voice:streamBidirectional',
+      ),
     inworldVoiceId: process.env.INWORLD_TTS_VOICE_ID?.trim() || '',
     inworldModelId: process.env.INWORLD_TTS_MODEL_ID?.trim() || 'inworld-tts-2',
     inworldDeliveryMode: parseInworldDeliveryMode(),
