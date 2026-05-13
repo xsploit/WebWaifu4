@@ -188,7 +188,7 @@ export function buildReplyMetadataInstruction() {
 }
 
 export function buildAnimationCatalogInstruction(playlist: AnimationEntry[]) {
-  const available = playlist.filter((entry) => !entry.experimental || entry.enabled);
+  const available = playlist.filter((entry) => entry.enabled);
   if (available.length === 0) {
     return '';
   }
@@ -216,6 +216,7 @@ export function buildAnimationCatalogInstruction(playlist: AnimationEntry[]) {
     'Available avatar animation catalog for the hidden control block.',
     'Use animation id/name only when a listed animation clearly fits; otherwise leave animation empty and rely on motion/emotion mapping.',
     'Ambient is safe for idle/talk/listen. Gesture/emotion are for reactions. Movement and pose are trigger-only and should be used only if the user explicitly asks.',
+    'For emotional reactions, prefer purpose=emotion and the closest emotion tag/name; expression handles the face separately.',
     ...lines,
   ].join('\n');
 }
@@ -308,8 +309,12 @@ export function resolveAnimationIndexForReplyMetadata(
     return explicitIndex;
   }
 
-  const keywords = [
+  const motionKeywords = [
+    metadata.motion,
     ...MOTION_ANIMATION_KEYWORDS[metadata.motion],
+  ].map(normalizeAnimationSearchText);
+  const emotionKeywords = [
+    metadata.emotion,
     ...EMOTION_ANIMATION_KEYWORDS[metadata.emotion],
   ].map(normalizeAnimationSearchText);
 
@@ -321,14 +326,17 @@ export function resolveAnimationIndexForReplyMetadata(
         `${entry.name} ${entry.id} ${entry.purpose ?? ''} ${(entry.tags ?? []).join(' ')}`,
       ),
     }))
+    .filter((candidate) => candidate.entry.enabled)
     .map((candidate) => ({
       ...candidate,
-      score: keywords.reduce((score, keyword, keywordIndex) => {
-        if (!keyword || !candidate.haystack.includes(keyword)) {
-          return score;
-        }
-        return score + Math.max(1, keywords.length - keywordIndex);
-      }, getPurposeScore(candidate.entry, metadata)),
+      score:
+        getPurposeScore(candidate.entry, metadata) +
+        scoreAnimationKeywords(candidate.haystack, motionKeywords, 1) +
+        scoreAnimationKeywords(candidate.haystack, emotionKeywords, 2) +
+        (candidate.entry.purpose === 'emotion' &&
+        emotionKeywords.some((keyword) => keyword && candidate.haystack.includes(keyword))
+          ? 8
+          : 0),
     }))
     .filter((candidate) => candidate.score > 0);
 
@@ -432,6 +440,12 @@ function getPurposeScore(entry: AnimationEntry, metadata: AssistantReplyMetadata
   ) {
     return -8;
   }
+  if (entry.purpose === 'emotion' && metadata.purpose === 'emotion') {
+    return 8;
+  }
+  if (entry.purpose === 'emotion' && metadata.emotion !== 'neutral') {
+    return 5;
+  }
   if (entry.purpose && entry.purpose === metadata.purpose) {
     return 4;
   }
@@ -461,6 +475,7 @@ function resolveExplicitAnimationIndex(metadata: AssistantReplyMetadata, playlis
       name: normalizeAnimationSearchText(entry.name),
       tags: normalizeAnimationSearchText((entry.tags ?? []).join(' ')),
     }))
+    .filter((candidate) => candidate.entry.enabled)
     .map((candidate) => {
       let score = getPurposeScore(candidate.entry, metadata);
       if (candidate.id === requested || candidate.name === requested) {
@@ -481,6 +496,15 @@ function resolveExplicitAnimationIndex(metadata: AssistantReplyMetadata, playlis
 
   candidates.sort((a, b) => b.score - a.score || a.index - b.index);
   return candidates[0]?.index ?? -1;
+}
+
+function scoreAnimationKeywords(haystack: string, keywords: string[], multiplier: number) {
+  return keywords.reduce((score, keyword, keywordIndex) => {
+    if (!keyword || !haystack.includes(keyword)) {
+      return score;
+    }
+    return score + Math.max(1, keywords.length - keywordIndex) * multiplier;
+  }, 0);
 }
 
 function inferPurposeForMotion(motion: AssistantMotion): AnimationPurpose {

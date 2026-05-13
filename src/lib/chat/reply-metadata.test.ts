@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { AnimationEntry } from '../menu/types';
 import {
   ASSISTANT_REPLY_META_CLOSE,
   ASSISTANT_REPLY_META_OPEN,
+  buildAnimationCatalogInstruction,
+  resolveAnimationIndexForReplyMetadata,
   resolveFacialExpressionForReplyMetadata,
   resolveFacialExpressionIntensityForReplyMetadata,
   stripAssistantReplyMetadata,
@@ -32,5 +35,83 @@ describe('assistant reply metadata', () => {
 
     expect(parsed.metadata?.expression).toBe('angry');
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('angry');
+  });
+
+  it('maps emotional metadata to enabled emotion animations', () => {
+    const playlist: AnimationEntry[] = [
+      {
+        enabled: true,
+        experimental: false,
+        format: 'vrma',
+        id: 'ambient-idle',
+        name: 'Ambient idle',
+        purpose: 'ambient',
+        url: '/idle.vrma',
+      },
+      {
+        enabled: true,
+        experimental: false,
+        format: 'vrma',
+        id: 'sachi-gratitude',
+        name: 'Sachi gratitude',
+        purpose: 'emotion',
+        tags: ['gratitude', 'caring'],
+        url: '/gratitude.vrma',
+      },
+    ];
+
+    expect(
+      resolveAnimationIndexForReplyMetadata(
+        {
+          animation: '',
+          emotion: 'grateful',
+          expression: 'caring',
+          intensity: 'medium',
+          motion: 'react',
+          purpose: 'emotion',
+        },
+        playlist,
+      ),
+    ).toBe(1);
+  });
+
+  it('does not advertise or select disabled animation entries', () => {
+    const playlist: AnimationEntry[] = [
+      {
+        enabled: false,
+        experimental: false,
+        format: 'vrma',
+        id: 'disabled-gratitude',
+        name: 'Disabled gratitude',
+        purpose: 'emotion',
+        tags: ['gratitude'],
+        url: '/disabled.vrma',
+      },
+      {
+        enabled: true,
+        experimental: false,
+        format: 'vrma',
+        id: 'enabled-caring',
+        name: 'Enabled caring reaction',
+        purpose: 'emotion',
+        tags: ['caring', 'gratitude'],
+        url: '/enabled.vrma',
+      },
+    ];
+
+    expect(buildAnimationCatalogInstruction(playlist)).not.toContain('disabled-gratitude');
+    expect(
+      resolveAnimationIndexForReplyMetadata(
+        {
+          animation: 'disabled-gratitude',
+          emotion: 'grateful',
+          expression: 'caring',
+          intensity: 'low',
+          motion: 'react',
+          purpose: 'emotion',
+        },
+        playlist,
+      ),
+    ).toBe(1);
   });
 });

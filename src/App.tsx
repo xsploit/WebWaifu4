@@ -1011,9 +1011,22 @@ function formatTwitchMessages(messages: DirectTwitchChatMessage[], limit: number
     .slice(-limit)
     .map((message) => {
       const text = message.text.replace(/\s+/g, ' ').trim();
-      return `${message.displayName}: ${text}`;
+      return `- ${message.displayName}: ${text}\n  metadata: ${formatTwitchMessageMetadata(message)}`;
     })
     .join('\n');
+}
+
+function formatTwitchMessageMetadata(message: DirectTwitchChatMessage) {
+  const sentAtIso = new Date(message.timestamp).toISOString();
+  const badges = message.badges.length > 0 ? message.badges.join('/') : 'none';
+  return [
+    `login=${message.user || 'unknown'}`,
+    `display=${message.displayName || 'unknown'}`,
+    `broadcaster=${message.isBroadcaster}`,
+    `mod=${message.isMod}`,
+    `badges=${badges}`,
+    `sentAt=${sentAtIso}`,
+  ].join(' ');
 }
 
 function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, channel: string) {
@@ -1024,6 +1037,8 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, c
     .join(', ');
   const localControllerNickname = persona?.userNickname.trim();
   const recentContext = formatTwitchMessages(job.context, 18);
+  const batchSize = getTwitchBatchSize(job.activeChatterCount);
+  const batchWaitSeconds = Math.round(getTwitchBatchWaitMs(job.activeChatterCount) / 1000);
   const twitchIdentityContext = [
     `Current Twitch channel: #${channelName}.`,
     `You are ${personaName}, the stream avatar/bot. Twitch chatters mention you as ${mentionTags}.`,
@@ -1041,7 +1056,9 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, c
       `Live Twitch chat mode: tagged queue for ${personaName}.`,
       twitchIdentityContext,
       `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
-      `Viewer ${target?.displayName ?? 'chat'} tagged you: "${target?.text ?? ''}"`,
+      `Intake policy: active chatters are at or below ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mentions are enabled and each tagged message is queued for a direct reply.`,
+      `Current tagged message:\n${formatTwitchMessages(job.messages, 1)}`,
+      target ? `Target message metadata: ${formatTwitchMessageMetadata(target)}` : null,
       target?.isBroadcaster
         ? 'The tagged viewer is the broadcaster/channel owner.'
         : 'The tagged viewer is a Twitch chatter; reply to that display name, not the local controller nickname.',
@@ -1060,6 +1077,7 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, c
     `Live Twitch chat mode: balanced batch for ${personaName}.`,
     twitchIdentityContext,
     `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
+    `Intake policy: active chatters are above ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mention gating is disabled; summarize every ${batchSize} messages or after about ${batchWaitSeconds} seconds, whichever fires first.`,
     'The chat is busy, so answer the overall energy or strongest shared topic instead of replying to every line.',
     'Keep it stream-safe and concise: one or two spoken sentences.',
     `Current batch:\n${formatTwitchMessages(job.messages, 30)}`,
@@ -1072,7 +1090,13 @@ function buildTwitchAiPrompt(job: TwitchAiJob, persona: PersonaProfile | null, c
 function buildTwitchMemoryMessage(job: TwitchAiJob) {
   if (job.mode === 'direct') {
     const [target] = job.messages;
-    return `Twitch viewer ${target?.displayName ?? 'chat'}: ${target?.text ?? ''}`.trim();
+    if (!target) {
+      return 'Twitch viewer chat:';
+    }
+    return [
+      `Twitch viewer ${target.displayName}: ${target.text}`.trim(),
+      `metadata: ${formatTwitchMessageMetadata(target)}`,
+    ].join('\n');
   }
 
   return `Twitch batch:\n${formatTwitchMessages(job.messages, 30)}`;
@@ -3587,16 +3611,26 @@ function App() {
             turnContext: {
               activeChatters: job.activeChatterCount,
               batchMessages: job.messages.length,
+              batchSize: getTwitchBatchSize(job.activeChatterCount),
               botMentionTags: getPersonaMentionTags(persona)
                 .map((tag) => `@${tag}`)
                 .join(', '),
+              chatterThreshold: TWITCH_DIRECT_CHATTER_LIMIT,
               channel,
               conversationScope: 'twitch-chat',
               firstTimeChatter: job.firstTimeChatter ?? false,
+              intakePolicy:
+                job.mode === 'direct'
+                  ? `activeChatters <= ${TWITCH_DIRECT_CHATTER_LIMIT}; @mentions enabled; direct queued reply`
+                  : `activeChatters > ${TWITCH_DIRECT_CHATTER_LIMIT}; @mentions disabled; batch every ${getTwitchBatchSize(job.activeChatterCount)} messages or ${Math.round(
+                      getTwitchBatchWaitMs(job.activeChatterCount) / 1000,
+                    )} seconds`,
               localControllerNickname: persona.userNickname.trim() || 'not configured',
               source: 'twitch',
               stateKey,
+              targetBadges: targetMessage?.badges.join('/') ?? '',
               targetIsBroadcaster: targetMessage?.isBroadcaster ?? false,
+              targetIsMod: targetMessage?.isMod ?? false,
               targetTwitchDisplayName: targetMessage?.displayName ?? '',
               targetTwitchLogin: targetMessage?.user ?? '',
               turnKind: job.mode,

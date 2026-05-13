@@ -81,8 +81,9 @@ describe('POML-backed chat prompt', () => {
       semanticMemoryContext: 'Prior note: use OpenAI Responses state keys carefully.',
       turnContext: {
         channel: 'subsect',
+        intakePolicy: 'activeChatters > 10; @mentions disabled; batch every 10 messages',
         source: 'twitch',
-        turnKind: 'direct',
+        turnKind: 'batch',
       },
       ttsExpressionTagsEnabled: true,
       ttsProvider: 'fish-speech',
@@ -101,7 +102,9 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('Turn Metadata:');
     expect(systemMessage.content).toContain('"source":"twitch"');
     expect(systemMessage.content).toContain('"channel":"subsect"');
-    expect(systemMessage.content).toContain('"turnKind":"direct"');
+    expect(systemMessage.content).toContain('"turnKind":"batch"');
+    expect(systemMessage.content).toContain('"intakePolicy"');
+    expect(systemMessage.content).toContain('direct tagged reply or a balanced batch response');
     expect(systemMessage.content).toContain('<yw-meta>');
     expect(systemMessage.content).toContain('Available animation: little-wave [wave-01]');
     expect(systemMessage.content).toContain('launchParams: {"room":"stream"}');

@@ -27,6 +27,8 @@ Animation Catalog:
 <if condition="{{ turn_metadata_context }}">
 Turn Metadata:
 {{ turn_metadata_context }}
+
+When source is Twitch, use the intake policy and transcript metadata to decide whether this is a direct tagged reply or a balanced batch response. Do not treat every Twitch chatter as the local controller; use display/login/broadcaster/mod/badge metadata from the transcript.
 </if>
 
 <if condition="{{ host_context }}">
