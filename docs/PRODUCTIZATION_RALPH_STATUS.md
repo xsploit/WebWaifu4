@@ -218,14 +218,45 @@ Swap the prompt and completion promise for the other lanes.
   and was fixed before rerun. `git diff --check` -> passed with line-ending
   warnings only. `npm run build` -> passed with existing `onnxruntime-web` eval
   and large chunk warnings.
+- 2026-05-14: Code-review iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
+  `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and
+  `git log -3 --oneline` (`9b6bdd1`, `66c9267`, `e29ff0c`) before editing.
+  Required-area review covered ChatTurn intake/scheduler in `src\App.tsx`,
+  `src\lib\chat\chat-turn.ts`, and `server\src\scheduler\ChatScheduler.ts`;
+  OpenAI Responses state/tool calls in `server\src\ai\OpenAiResponsesProvider.ts`
+  and `api\ai\chat.ts`; POML rendering in `src\lib\chat\prompt.ts`,
+  `src\lib\chat\poml.ts`, `api\ai\poml\render.ts`, and `server\src\index.ts`;
+  TTS streaming in `src\lib\tts\manager.ts`,
+  `server\src\tts\RemoteTtsProvider.ts`, and `server\src\index.ts`;
+  memory/diary scoping in `src\App.tsx` and
+  `src\lib\chat\grillo-memory-loop.ts`; settings persistence in
+  `src\lib\chat\storage.ts`; command permissions in `src\App.tsx` and
+  `server\src\commands\CommandRouter.ts`; and VPS assumptions in
+  `scripts\stream-routelet.sh` plus `docs\STREAM_ROUTELET.md`.
+- 2026-05-14: Finding fixed, Medium: the serverless `/api/ai/chat` streaming
+  path could lose Responses tool-call arguments when
+  `response.output_item.added` arrived before the final `call_id`, so Tavily
+  tool follow-up could run with empty args or skip the intended query. Evidence
+  before the patch was the route's stricter `isFunctionCallItem` gate and
+  output-index map in `api\ai\chat.ts`, while the long-running provider already
+  had late-`call_id` tracking in `server\src\ai\OpenAiResponsesProvider.ts`.
+  Current fix adds serverless streamed function-call state and merges completed
+  calls in `api\ai\chat.ts`; regression coverage in `api\ai\chat.test.ts`
+  simulates `call_search_b` receiving arguments before its `call_id` and asserts
+  both `alpha` and `beta` Tavily queries plus both function outputs.
+- 2026-05-14: `npx vitest run api/ai/chat.test.ts
+  server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 2 files, 19 tests.
+  `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
+  warnings. `git diff --check` -> passed with line-ending warnings only.
 
 ## Current Blocker Or Next Patch
 
-Next code-review read: inspect serverless route parity in `api\ai\chat.ts` and
-`api\ai\poml\render.ts` against the long-running server path, then re-check
-routelet env/build assumptions. The code-review lane is not complete yet because
-this iteration fixed one medium scoped-memory bug and left the next release
-parity pass queued.
+Next code-review read: inspect serverless `/api/ai/embeddings.ts` parity against
+the long-running `/ai/embeddings` route, then re-check command reply routing and
+routelet smoke-test failure handling. The code-review lane is not complete yet
+because this iteration fixed one medium serverless streaming-tool parity bug and
+left the next release parity pass queued.
 
 ## Completion Bar
 

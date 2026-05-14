@@ -93,6 +93,12 @@ type RouteState = {
   cachedTokens: number;
 };
 
+type StreamingFunctionCallState = {
+  callsById: Map<string, OpenAiFunctionCall>;
+  callsByOutputIndex: Map<number, OpenAiFunctionCall>;
+  outputIndexToCallId: Map<number, string>;
+};
+
 const MAX_TOOL_ROUNDS = 5;
 
 const routeStates = new Map<string, RouteState>();
@@ -275,8 +281,74 @@ function isFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
   return record['type'] === 'function_call' && typeof record['call_id'] === 'string';
 }
 
+function isStreamingFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      (value as Record<string, unknown>)['type'] === 'function_call',
+  );
+}
+
 function getFunctionCalls(payload: OpenAiResponsePayload) {
   return (payload.output ?? []).filter(isFunctionCallItem);
+}
+
+function createStreamingFunctionCallState(): StreamingFunctionCallState {
+  return {
+    callsById: new Map<string, OpenAiFunctionCall>(),
+    callsByOutputIndex: new Map<number, OpenAiFunctionCall>(),
+    outputIndexToCallId: new Map<number, string>(),
+  };
+}
+
+function rememberStreamingFunctionCall(
+  state: StreamingFunctionCallState,
+  event: OpenAiStreamEvent,
+  item: OpenAiFunctionCall,
+) {
+  const callId = item.call_id;
+  const outputIndex = event.output_index;
+  const pendingByIndex =
+    typeof outputIndex === 'number' ? state.callsByOutputIndex.get(outputIndex) : undefined;
+
+  if (!callId) {
+    if (typeof outputIndex === 'number') {
+      state.callsByOutputIndex.set(outputIndex, { ...pendingByIndex, ...item });
+    }
+    return;
+  }
+
+  const current = state.callsById.get(callId) ?? {};
+  state.callsById.set(callId, { ...pendingByIndex, ...current, ...item });
+  if (typeof outputIndex === 'number') {
+    state.outputIndexToCallId.set(outputIndex, callId);
+    state.callsByOutputIndex.delete(outputIndex);
+  }
+}
+
+function getStreamingFunctionCallForEvent(
+  state: StreamingFunctionCallState,
+  event: OpenAiStreamEvent,
+) {
+  if (typeof event.output_index !== 'number') {
+    return null;
+  }
+  const callId = state.outputIndexToCallId.get(event.output_index);
+  return callId
+    ? (state.callsById.get(callId) ?? null)
+    : (state.callsByOutputIndex.get(event.output_index) ?? null);
+}
+
+function mergeStreamingFunctionCalls(
+  output: NonNullable<OpenAiResponsePayload['output']>,
+  state: StreamingFunctionCallState,
+) {
+  const knownCallIds = new Set(output.map((item) => item.call_id).filter(Boolean));
+  for (const call of state.callsById.values()) {
+    if (!knownCallIds.has(call.call_id)) {
+      output.push(call);
+    }
+  }
 }
 
 function writeSseEvent(response: ApiResponse, body: unknown) {
@@ -563,7 +635,7 @@ async function readOpenAiStream(
   let buffer = '';
   let text = '';
   let completed: OpenAiResponsePayload | null = null;
-  const functionCalls = new Map<number, OpenAiFunctionCall>();
+  const functionCalls = createStreamingFunctionCallState();
 
   const handleBlock = (block: string) => {
     const data = block
@@ -578,28 +650,26 @@ async function readOpenAiStream(
     }
 
     const event = JSON.parse(data) as OpenAiStreamEvent;
-    if (event.type === 'response.output_item.added' && isFunctionCallItem(event.item)) {
-      functionCalls.set(event.output_index ?? functionCalls.size, { ...event.item });
+    if (event.type === 'response.output_item.added' && isStreamingFunctionCallItem(event.item)) {
+      rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
       return;
     }
     if (event.type === 'response.function_call_arguments.delta') {
-      const index = event.output_index ?? 0;
-      const current = functionCalls.get(index);
+      const current = getStreamingFunctionCallForEvent(functionCalls, event);
       if (current) {
         current.arguments = `${current.arguments ?? ''}${event.delta ?? ''}`;
       }
       return;
     }
     if (event.type === 'response.function_call_arguments.done') {
-      const index = event.output_index ?? 0;
-      const current = functionCalls.get(index);
+      const current = getStreamingFunctionCallForEvent(functionCalls, event);
       if (current && typeof event.arguments === 'string') {
         current.arguments = event.arguments;
       }
       return;
     }
-    if (event.type === 'response.output_item.done' && isFunctionCallItem(event.item)) {
-      functionCalls.set(event.output_index ?? functionCalls.size, { ...event.item });
+    if (event.type === 'response.output_item.done' && isStreamingFunctionCallItem(event.item)) {
+      rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
       return;
     }
 
@@ -651,12 +721,7 @@ async function readOpenAiStream(
 
   const completedPayload = (completed ?? {}) as OpenAiResponsePayload;
   const output = [...(completedPayload.output ?? [])];
-  const knownCallIds = new Set(output.map((item) => item.call_id).filter(Boolean));
-  for (const call of functionCalls.values()) {
-    if (!knownCallIds.has(call.call_id)) {
-      output.push(call);
-    }
-  }
+  mergeStreamingFunctionCalls(output, functionCalls);
 
   const payload = text ? { ...completedPayload, output_text: text } : completedPayload;
   return output.length > 0 ? { ...payload, output } : payload;
