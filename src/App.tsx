@@ -63,6 +63,10 @@ import {
   findSemanticMemoryMatchesInRecords,
   loadSemanticMemory,
 } from './lib/chat/semantic-memory';
+import {
+  commitScopedRelationshipMemoryState,
+  shouldExposeScopedRelationshipMemory,
+} from './lib/chat/scoped-relationship-memory';
 import { loadPersistedChatState, savePersistedChatState } from './lib/chat/storage';
 import type {
   AiSettings,
@@ -1287,6 +1291,7 @@ function App() {
     () => getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA),
     [activePersona],
   );
+  const activeRelationshipStateKeyRef = useRef(activeRelationshipStateKey);
 
   const refreshGrilloMemoryState = useCallback((stateKey: string) => {
     setGrilloMemoryState(loadGrilloMemoryState(stateKey));
@@ -1298,12 +1303,15 @@ function App() {
 
   const commitScopedRelationshipMemory = useCallback(
     (stateKey: string, memory: RelationshipMemory) => {
-      setRelationshipMemories((current) => ({
-        ...current,
-        [stateKey]: memory,
-      }));
-      setRelationshipMemory(memory);
-      relationshipMemoryRef.current = memory;
+      setRelationshipMemories((current) => {
+        const next = commitScopedRelationshipMemoryState(current, stateKey, memory);
+        relationshipMemoriesRef.current = next;
+        return next;
+      });
+      if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
+        setRelationshipMemory(memory);
+        relationshipMemoryRef.current = memory;
+      }
     },
     [],
   );
@@ -1321,6 +1329,7 @@ function App() {
   }, [relationshipMemories]);
 
   useEffect(() => {
+    activeRelationshipStateKeyRef.current = activeRelationshipStateKey;
     if (!hydrated) {
       return;
     }

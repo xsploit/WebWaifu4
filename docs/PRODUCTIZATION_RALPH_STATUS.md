@@ -189,13 +189,43 @@ Swap the prompt and completion promise for the other lanes.
   file, 4 tests. `npm run build` -> passed with existing `onnxruntime-web` eval
   and large chunk warnings. `git diff --check` -> passed with line-ending
   warnings only.
+- 2026-05-14: Code-review iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
+  `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and
+  `git log -3 --oneline` (`66c9267`, `e29ff0c`, `ed02ad4`) before editing.
+  Required-area review covered ChatTurn intake/scheduler in `src\App.tsx`,
+  `src\lib\chat\chat-turn.ts`, and `server\src\scheduler\ChatScheduler.ts`;
+  OpenAI Responses state/tool calls in `server\src\ai\OpenAiResponsesProvider.ts`
+  and `api\ai\chat.ts`; POML rendering in `src\lib\chat\prompt.ts`,
+  `src\lib\chat\poml.ts`, and the POML template; TTS streaming in
+  `src\lib\tts\manager.ts`, `server\src\tts\RemoteTtsProvider.ts`, and
+  `server\src\index.ts`; memory/diary scoping in `src\App.tsx` and
+  `src\lib\chat\grillo-memory-loop.ts`; settings persistence in
+  `src\lib\chat\storage.ts`; command permissions in `src\App.tsx` and
+  `server\src\commands\CommandRouter.ts`; and VPS assumptions in
+  `scripts\stream-routelet.sh` plus `docs\STREAM_ROUTELET.md`.
+- 2026-05-14: Finding fixed, Medium: scoped relationship memory commits could
+  overwrite the currently displayed/ref relationship memory even when the commit
+  belonged to another state key, such as a Twitch reply or stale background diary
+  pass finishing while the operator was viewing local persona memory. Evidence
+  before the patch was the unconditional display update in `src\App.tsx`'s
+  `commitScopedRelationshipMemory`; current fix keeps all writes in
+  `relationshipMemories` while only exposing the memory when the committed key
+  matches the active key (`src\App.tsx`, `src\lib\chat\scoped-relationship-memory.ts`).
+- 2026-05-14: `npx vitest run src/lib/chat/scoped-relationship-memory.test.ts
+  src/lib/chat/storage.test.ts src/lib/chat/grillo-memory-loop.test.ts` ->
+  passed, 3 files, 7 tests. First run failed on a missing test-file close paren
+  and was fixed before rerun. `git diff --check` -> passed with line-ending
+  warnings only. `npm run build` -> passed with existing `onnxruntime-web` eval
+  and large chunk warnings.
 
 ## Current Blocker Or Next Patch
 
-Next polish read: inspect `src\components\menu\tabs\ContextTab.tsx` and
-`src\components\menu\tabs\AiTab.tsx` for Memory/Diary/tools wording. The lane is
-not complete yet because the settings surface still exposes internal
-Grillo/legacy/tool-loop language that needs a demo-oriented operator pass.
+Next code-review read: inspect serverless route parity in `api\ai\chat.ts` and
+`api\ai\poml\render.ts` against the long-running server path, then re-check
+routelet env/build assumptions. The code-review lane is not complete yet because
+this iteration fixed one medium scoped-memory bug and left the next release
+parity pass queued.
 
 ## Completion Bar
 
