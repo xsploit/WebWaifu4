@@ -194,7 +194,7 @@ export class ChatScheduler {
     }
   }
 
-  private async flushBatch(reason: 'size' | 'timer', now: number) {
+  private async flushBatch(reason: 'size' | 'timer' | 'drain', now: number) {
     if (this.busy || this.batchQueue.length === 0) {
       return;
     }
@@ -205,11 +205,12 @@ export class ChatScheduler {
     this.lastBatchAt = now;
 
     if (messages.length === 0) {
+      const reasonLabel = reason === 'drain' ? 'drain-triggered' : reason;
       this.emit({
         type: 'system:status',
         payload: {
           level: 'info',
-          message: `Skipped ${reason} batch; no meaningful chat messages.`,
+          message: `Skipped ${reasonLabel} batch; no meaningful chat messages.`,
         },
       });
       return;
@@ -311,7 +312,7 @@ export class ChatScheduler {
     } finally {
       this.busy = false;
       if (this.batchQueue.length > 0) {
-        await this.flushBatch('size', Date.now());
+        await this.flushBatch('drain', Date.now());
       }
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderYourWifeyPomlMessages } from './PomlRenderer';
+import { renderYourWifeyPomlMessages, stringifyPomlContent } from './PomlRenderer';
 
 describe('PomlRenderer', () => {
   it('renders the YourWifey template with the fixed pomljs parser', async () => {
@@ -81,5 +81,26 @@ describe('PomlRenderer', () => {
     expect(messages[0]?.content).toContain('- persona: Hikari');
     expect(messages[0]?.content).toContain('- turn_source: twitch');
     expect(messages[0]?.content).not.toContain('[{');
+  });
+
+  it('does not flatten unknown rich-node metadata as loose prompt lines', () => {
+    const output = stringifyPomlContent({
+      attrs: {
+        id: 'private-node-id',
+      },
+      score: 7,
+      type: 'custom-widget',
+    } as never);
+
+    expect(output).toBe(
+      JSON.stringify({
+        attrs: {
+          id: 'private-node-id',
+        },
+        score: 7,
+        type: 'custom-widget',
+      }),
+    );
+    expect(output).not.toContain('\nprivate-node-id\n');
   });
 });

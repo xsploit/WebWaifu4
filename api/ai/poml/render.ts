@@ -26,16 +26,26 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
+  let body: { variables?: unknown };
   try {
-    const body =
+    body =
       typeof request.body === 'string'
         ? (JSON.parse(request.body || '{}') as { variables?: unknown })
         : ((request.body ?? {}) as { variables?: unknown });
-    response.status(200).json(await renderYourWifeyPomlResponse(body.variables));
-  } catch (error) {
-    response.status(200).json({
+  } catch {
+    response.status(400).json({
       ok: false,
-      error: error instanceof Error ? error.message : 'POML render failed.',
+      error: 'Invalid JSON body.',
+    });
+    return;
+  }
+
+  try {
+    response.status(200).json(await renderYourWifeyPomlResponse(body.variables));
+  } catch {
+    response.status(500).json({
+      ok: false,
+      error: 'POML render failed.',
     });
   }
 }

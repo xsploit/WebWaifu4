@@ -188,7 +188,6 @@ function createStreamingToolCallingFetcher(calls: FetchCall[]) {
           output_index: 1,
           item: {
             type: 'function_call',
-            call_id: 'call_search_b',
             name: 'web_search',
             arguments: '',
           },
@@ -202,6 +201,15 @@ function createStreamingToolCallingFetcher(calls: FetchCall[]) {
           type: 'response.function_call_arguments.done',
           output_index: 1,
           arguments: JSON.stringify({ query: 'beta', max_results: 1 }),
+        },
+        {
+          type: 'response.output_item.done',
+          output_index: 1,
+          item: {
+            type: 'function_call',
+            call_id: 'call_search_b',
+            name: 'web_search',
+          },
         },
         {
           type: 'response.function_call_arguments.done',

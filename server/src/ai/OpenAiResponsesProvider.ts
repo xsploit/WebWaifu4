@@ -109,6 +109,7 @@ type OpenAiRequestRuntime = {
 
 type StreamingFunctionCallState = {
   callsById: Map<string, OpenAiFunctionCall>;
+  callsByOutputIndex: Map<number, OpenAiFunctionCall>;
   outputIndexToCallId: Map<number, string>;
 };
 
@@ -267,6 +268,15 @@ function isFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
   return record['type'] === 'function_call' && typeof record['call_id'] === 'string';
 }
 
+function isStreamingFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
+  // Stream deltas can arrive before the final item supplies call_id.
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    (value as Record<string, unknown>)['type'] === 'function_call',
+  );
+}
+
 function getFunctionCalls(payload: OpenAiResponsePayload) {
   return (payload.output ?? []).filter(isFunctionCallItem);
 }
@@ -274,6 +284,7 @@ function getFunctionCalls(payload: OpenAiResponsePayload) {
 function createStreamingFunctionCallState(): StreamingFunctionCallState {
   return {
     callsById: new Map<string, OpenAiFunctionCall>(),
+    callsByOutputIndex: new Map<number, OpenAiFunctionCall>(),
     outputIndexToCallId: new Map<number, string>(),
   };
 }
@@ -284,14 +295,22 @@ function rememberStreamingFunctionCall(
   item: OpenAiFunctionCall,
 ) {
   const callId = item.call_id;
+  const outputIndex = event.output_index;
+  const pendingByIndex =
+    typeof outputIndex === 'number' ? state.callsByOutputIndex.get(outputIndex) : undefined;
+
   if (!callId) {
+    if (typeof outputIndex === 'number') {
+      state.callsByOutputIndex.set(outputIndex, { ...pendingByIndex, ...item });
+    }
     return;
   }
 
   const current = state.callsById.get(callId) ?? {};
-  state.callsById.set(callId, { ...current, ...item });
-  if (typeof event.output_index === 'number') {
-    state.outputIndexToCallId.set(event.output_index, callId);
+  state.callsById.set(callId, { ...pendingByIndex, ...current, ...item });
+  if (typeof outputIndex === 'number') {
+    state.outputIndexToCallId.set(outputIndex, callId);
+    state.callsByOutputIndex.delete(outputIndex);
   }
 }
 
@@ -303,7 +322,9 @@ function getStreamingFunctionCallForEvent(
     return null;
   }
   const callId = state.outputIndexToCallId.get(event.output_index);
-  return callId ? (state.callsById.get(callId) ?? null) : null;
+  return callId
+    ? (state.callsById.get(callId) ?? null)
+    : (state.callsByOutputIndex.get(event.output_index) ?? null);
 }
 
 function mergeStreamingFunctionCalls(
@@ -315,6 +336,12 @@ function mergeStreamingFunctionCalls(
     if (!knownCallIds.has(call.call_id)) {
       output.push(call);
     }
+  }
+  if (state.callsByOutputIndex.size > 0) {
+    console.warn(
+      `[OpenAiResponsesProvider] Dropped ${state.callsByOutputIndex.size} streamed function call item(s) without call_id.`,
+    );
+    state.callsByOutputIndex.clear();
   }
 }
 
@@ -843,7 +870,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       }
 
       const event = JSON.parse(data) as OpenAiWebSocketEvent;
-      if (event.type === 'response.output_item.added' && isFunctionCallItem(event.item)) {
+      if (event.type === 'response.output_item.added' && isStreamingFunctionCallItem(event.item)) {
         rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
         return;
       }
@@ -861,7 +888,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
         }
         return;
       }
-      if (event.type === 'response.output_item.done' && isFunctionCallItem(event.item)) {
+      if (event.type === 'response.output_item.done' && isStreamingFunctionCallItem(event.item)) {
         rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
         return;
       }
@@ -969,7 +996,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
         }
 
         const event = JSON.parse(raw.toString()) as OpenAiWebSocketEvent;
-        if (event.type === 'response.output_item.added' && isFunctionCallItem(event.item)) {
+        if (
+          event.type === 'response.output_item.added' &&
+          isStreamingFunctionCallItem(event.item)
+        ) {
           rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
           return;
         }
@@ -987,7 +1017,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
           }
           return;
         }
-        if (event.type === 'response.output_item.done' && isFunctionCallItem(event.item)) {
+        if (event.type === 'response.output_item.done' && isStreamingFunctionCallItem(event.item)) {
           rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
           return;
         }

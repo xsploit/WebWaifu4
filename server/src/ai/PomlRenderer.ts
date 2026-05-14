@@ -84,7 +84,7 @@ function toPromptRole(speaker: string): PromptRole {
   return 'system';
 }
 
-function stringifyPomlContent(content: RichContent): string {
+export function stringifyPomlContent(content: RichContent): string {
   if (typeof content === 'string') {
     return content;
   }
@@ -134,11 +134,8 @@ function stringifyRichContentPart(content: unknown): string {
     return text;
   }
 
-  const values = Object.entries(record)
-    .filter(([key]) => !['type', 'speaker', 'role'].includes(key))
-    .map(([, value]) => stringifyRichContentPart(value).trim())
-    .filter(Boolean);
-  return values.join('\n');
+  // Unknown rich nodes stay inert as JSON instead of becoming loose prompt lines.
+  return JSON.stringify(record);
 }
 
 function normalizePromptText(text: string) {
