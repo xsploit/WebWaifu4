@@ -6,6 +6,7 @@ import {
   getGrilloParticipantKey,
   loadGrilloMemoryState,
   recordGrilloMemoryTurn,
+  saveGrilloMemoryState,
 } from './grillo-memory';
 import type { ChatTurn } from './chat-turn';
 
@@ -149,5 +150,42 @@ describe('Grillo memory store', () => {
     expect(cleared.scopeKey).toBe(scopeKey);
     expect(loadGrilloMemoryState(scopeKey).candidates).toEqual([]);
     expect(loadGrilloMemoryState(scopeKey).diaryEntries).toEqual([]);
+  });
+
+  it('merges stale Grillo saves with newer stored turns', () => {
+    const scopeKey = 'twitch:subsect:persona:hikari';
+    const staleBase = loadGrilloMemoryState(scopeKey);
+    const newerState = recordGrilloMemoryTurn({
+      assistantText: 'Filed newer.',
+      now: Date.parse('2026-05-13T09:02:00.000Z'),
+      persona: DEFAULT_PERSONA,
+      scopeKey,
+      turns: [createTurn({ id: 'newer-turn', text: 'remember I like newer memory' })],
+    });
+
+    saveGrilloMemoryState({
+      ...staleBase,
+      candidates: [
+        ...staleBase.candidates,
+        {
+          candidateId: 'stale-candidate',
+          confidence: 0.8,
+          content: 'Subsect likes stale-safe memory.',
+          createdAt: Date.parse('2026-05-13T09:01:00.000Z'),
+          participantKey: 'twitch:subsect:subsect',
+          scopeKey,
+          source: 'twitch',
+          sourceTurnIds: ['stale-turn'],
+          summary: 'Subsect likes stale-safe memory',
+          type: 'preference',
+        },
+      ],
+      updatedAt: Date.parse('2026-05-13T09:01:00.000Z'),
+    });
+
+    const merged = loadGrilloMemoryState(scopeKey);
+    expect(merged.candidates.map((candidate) => candidate.candidateId)).toEqual(
+      expect.arrayContaining(['stale-candidate', newerState.candidates[0]!.candidateId]),
+    );
   });
 });

@@ -142,7 +142,24 @@ export function saveGrilloMemoryState(state: GrilloMemoryState) {
     return;
   }
 
-  storage.setItem(storageKey(state.scopeKey), JSON.stringify(compactState(state)));
+  let current = createDefaultGrilloMemoryState(state.scopeKey);
+  try {
+    current = normalizeGrilloMemoryState(
+      state.scopeKey,
+      JSON.parse(storage.getItem(storageKey(state.scopeKey)) ?? 'null'),
+    );
+  } catch {
+    current = createDefaultGrilloMemoryState(state.scopeKey);
+  }
+  const nextState =
+    current.blocks.length > 0 ||
+    current.candidates.length > 0 ||
+    current.diaryEntries.length > 0 ||
+    current.promotedCandidateIds.length > 0
+      ? mergeGrilloMemoryStates(current, state)
+      : compactState(state);
+
+  storage.setItem(storageKey(state.scopeKey), JSON.stringify(nextState));
 }
 
 export function clearGrilloMemoryState(scopeKey: string) {
@@ -465,6 +482,62 @@ function compactState(state: GrilloMemoryState): GrilloMemoryState {
     diaryEntries: state.diaryEntries.slice(-MAX_DIARY),
     promotedCandidateIds: state.promotedCandidateIds.slice(-MAX_CANDIDATES),
   };
+}
+
+function mergeGrilloMemoryStates(
+  current: GrilloMemoryState,
+  incoming: GrilloMemoryState,
+): GrilloMemoryState {
+  const blocksById = new Map<string, GrilloMemoryBlock>();
+  [...current.blocks, ...incoming.blocks].forEach((block) => {
+    const existing = blocksById.get(block.blockId);
+    if (!existing) {
+      blocksById.set(block.blockId, {
+        ...block,
+        items: [...block.items],
+        sourceCandidateIds: [...block.sourceCandidateIds],
+      });
+      return;
+    }
+    blocksById.set(block.blockId, {
+      ...existing,
+      ...block,
+      createdAt: Math.min(existing.createdAt, block.createdAt),
+      items: dedupe([...existing.items, ...block.items]),
+      sourceCandidateIds: dedupe([...existing.sourceCandidateIds, ...block.sourceCandidateIds]),
+      updatedAt: Math.max(existing.updatedAt, block.updatedAt),
+    });
+  });
+
+  return compactState({
+    blocks: [...blocksById.values()].sort((left, right) => left.updatedAt - right.updatedAt),
+    candidates: dedupeById(
+      [...current.candidates, ...incoming.candidates],
+      (candidate) => candidate.candidateId,
+    ),
+    diaryEntries: dedupeById(
+      [...current.diaryEntries, ...incoming.diaryEntries],
+      (entry) => entry.diaryId,
+    ),
+    promotedCandidateIds: dedupe([
+      ...current.promotedCandidateIds,
+      ...incoming.promotedCandidateIds,
+    ]),
+    scopeKey: incoming.scopeKey,
+    updatedAt: Math.max(current.updatedAt, incoming.updatedAt),
+    version: 1,
+  });
+}
+
+function dedupeById<T>(items: T[], getId: (item: T) => string) {
+  const byId = new Map<string, T>();
+  items.forEach((item) => {
+    const id = getId(item);
+    if (id) {
+      byId.set(id, item);
+    }
+  });
+  return [...byId.values()];
 }
 
 function normalizeGrilloMemoryState(scopeKey: string, value: unknown): GrilloMemoryState {

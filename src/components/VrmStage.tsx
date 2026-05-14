@@ -1311,6 +1311,32 @@ export function VrmStage({
   const hemiLightRef = useRef<THREE.HemisphereLight | null>(null);
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
 
+  const materialVisualSettings = useMemo(
+    () => visualSettings,
+    [
+      visualSettings.mtoonGiEqualization,
+      visualSettings.mtoonRimColor,
+      visualSettings.mtoonRimFresnel,
+      visualSettings.mtoonRimLift,
+      visualSettings.mtoonRimLightingMix,
+      visualSettings.mtoonShadeColor,
+      visualSettings.mtoonShadeShift,
+      visualSettings.mtoonToony,
+      visualSettings.mtoonTuning,
+      visualSettings.outline,
+      visualSettings.outlineAlpha,
+      visualSettings.outlineColor,
+      visualSettings.outlineThickness,
+      visualSettings.pbrClearcoat,
+      visualSettings.pbrClearcoatRoughness,
+      visualSettings.pbrEnvMapIntensity,
+      visualSettings.pbrMetalness,
+      visualSettings.pbrRoughness,
+      visualSettings.pbrSpecularIntensity,
+      visualSettings.realisticMode,
+    ],
+  );
+
   const cancelScaleAnimation = useCallback(() => {
     if (scaleAnimationFrameRef.current !== null) {
       window.cancelAnimationFrame(scaleAnimationFrameRef.current);
@@ -1521,31 +1547,9 @@ export function VrmStage({
       return;
     }
 
-    setRealisticMode(vrm.scene, null, visualSettings.realisticMode, visualSettings);
-    applyMaterialSettings(vrm.scene, visualSettings);
-  }, [
-    visualSettings.mtoonGiEqualization,
-    visualSettings.mtoonRimColor,
-    visualSettings.mtoonRimFresnel,
-    visualSettings.mtoonRimLift,
-    visualSettings.mtoonRimLightingMix,
-    visualSettings.mtoonShadeColor,
-    visualSettings.mtoonShadeShift,
-    visualSettings.mtoonToony,
-    visualSettings.mtoonTuning,
-    visualSettings.outline,
-    visualSettings.outlineAlpha,
-    visualSettings.outlineColor,
-    visualSettings.outlineThickness,
-    visualSettings.pbrClearcoat,
-    visualSettings.pbrClearcoatRoughness,
-    visualSettings.pbrEnvMapIntensity,
-    visualSettings.pbrMetalness,
-    visualSettings.pbrRoughness,
-    visualSettings.pbrSpecularIntensity,
-    visualSettings.realisticMode,
-    vrm,
-  ]);
+    setRealisticMode(vrm.scene, null, materialVisualSettings.realisticMode, materialVisualSettings);
+    applyMaterialSettings(vrm.scene, materialVisualSettings);
+  }, [materialVisualSettings, vrm]);
 
   useEffect(() => {
     if (keyLightRef.current) {

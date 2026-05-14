@@ -64,12 +64,13 @@ function assignMeshMaterials(mesh: THREE.Mesh, materials: THREE.Material[]) {
   mesh.material = materials.length === 1 ? materials[0]! : materials;
 }
 
-function getHexColor(value: string): THREE.Color {
-  return new THREE.Color(value);
+function getHexColor(value: string, fallback = '#ffffff'): THREE.Color {
+  const normalized = /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+  return new THREE.Color(normalized);
 }
 
 function applyOutlineSettings(material: THREE.Material, visualSettings: VisualSettings) {
-  const color = getHexColor(visualSettings.outlineColor);
+  const color = getHexColor(visualSettings.outlineColor, '#000000');
   material.userData['outlineParameters'] = {
     thickness: visualSettings.outlineThickness,
     color: color.toArray(),
@@ -150,7 +151,7 @@ function applyMToonSettings(material: MutableMaterial, visualSettings: VisualSet
   material['parametricRimFresnelPowerFactor'] = visualSettings.mtoonRimFresnel;
   material['parametricRimLiftFactor'] = visualSettings.mtoonRimLift;
   material['rimLightingMixFactor'] = visualSettings.mtoonRimLightingMix;
-  material['shadeColorFactor'] = getHexColor(visualSettings.mtoonShadeColor);
+  material['shadeColorFactor'] = getHexColor(visualSettings.mtoonShadeColor, '#8a8a8a');
   material['shadingShiftFactor'] = visualSettings.mtoonShadeShift;
   material['shadingToonyFactor'] = visualSettings.mtoonToony;
   material.needsUpdate = true;
@@ -264,7 +265,14 @@ export function makePhysicalFrom(
   return new THREE.MeshPhysicalMaterial(parameters);
 }
 
-export function applyMaterialSettings(root: THREE.Object3D, visualSettings: VisualSettings) {
+export function applyMaterialSettings(
+  root: THREE.Object3D | null | undefined,
+  visualSettings: VisualSettings,
+) {
+  if (!root) {
+    return;
+  }
+
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) {
@@ -280,11 +288,15 @@ export function applyMaterialSettings(root: THREE.Object3D, visualSettings: Visu
 }
 
 export function setRealisticMode(
-  root: THREE.Object3D,
+  root: THREE.Object3D | null | undefined,
   envMap: THREE.Texture | null,
   enable: boolean,
   visualSettings: VisualSettings,
 ) {
+  if (!root) {
+    return;
+  }
+
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) {
@@ -310,9 +322,6 @@ export function setRealisticMode(
         );
       }
 
-      meshState.realisticMaterials.forEach((material) =>
-        applyPbrSettings(material as MutableMaterial, visualSettings),
-      );
       assignMeshMaterials(mesh, meshState.realisticMaterials);
       return;
     }

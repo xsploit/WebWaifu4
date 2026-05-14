@@ -42,10 +42,10 @@ export type StreamBotEvent =
       payload:
         | { action: 'reload' }
         | { action: 'set-ai-model'; model: string }
-          | { action: 'list-vrms' }
-          | { action: 'load-vrm'; model: string }
-          | { action: 'set-camera-view'; viewMode: 'full-body' | 'half-body' }
-          | { action: 'list-animations' }
+        | { action: 'list-vrms' }
+        | { action: 'load-vrm'; model: string }
+        | { action: 'set-camera-view'; viewMode: 'full-body' | 'half-body' }
+        | { action: 'list-animations' }
         | { action: 'play-animation'; selector: string }
         | { action: 'sequencer'; command: 'start' | 'stop' | 'next' | 'random' }
         | { action: 'set-animation-speed'; speed: number }
@@ -64,11 +64,15 @@ export type ChatSchedulerOptions = {
   activeChattersWindowMs?: number;
   contextWindowMessages?: number;
   maxContextChars?: number;
+  maxBatchQueueMessages?: number;
   globalReplyCooldownMs?: number;
   perUserCooldownMs?: number;
   batchTimerMs?: number;
   onEvent?: (event: StreamBotEvent) => void;
-  onReply?: (text: string, event: Extract<StreamBotEvent, { type: 'ai:reply' }>) => void | Promise<void>;
+  onReply?: (
+    text: string,
+    event: Extract<StreamBotEvent, { type: 'ai:reply' }>,
+  ) => void | Promise<void>;
 };
 
 const STREAM_SYSTEM_PROMPT = [
@@ -85,11 +89,15 @@ export class ChatScheduler {
   private readonly activeChattersWindowMs: number;
   private readonly contextWindowMessages: number;
   private readonly maxContextChars: number;
+  private readonly maxBatchQueueMessages: number;
   private readonly globalReplyCooldownMs: number;
   private readonly perUserCooldownMs: number;
   private readonly batchTimerMs: number;
   private readonly onEvent?: (event: StreamBotEvent) => void;
-  private readonly onReply?: (text: string, event: Extract<StreamBotEvent, { type: 'ai:reply' }>) => void | Promise<void>;
+  private readonly onReply?: (
+    text: string,
+    event: Extract<StreamBotEvent, { type: 'ai:reply' }>,
+  ) => void | Promise<void>;
   private readonly activeChatters = new Map<string, number>();
   private readonly userCooldowns = new Map<string, number>();
   private rollingContext: TwitchChatMessage[] = [];
@@ -105,6 +113,7 @@ export class ChatScheduler {
     this.activeChattersWindowMs = options.activeChattersWindowMs ?? 120000;
     this.contextWindowMessages = options.contextWindowMessages ?? 80;
     this.maxContextChars = options.maxContextChars ?? 8000;
+    this.maxBatchQueueMessages = options.maxBatchQueueMessages ?? 500;
     this.globalReplyCooldownMs = options.globalReplyCooldownMs ?? 8000;
     this.perUserCooldownMs = options.perUserCooldownMs ?? 30000;
     this.batchTimerMs = options.batchTimerMs ?? 30000;
@@ -151,18 +160,26 @@ export class ChatScheduler {
 
     const activeChatters = this.activeChatters.size;
     if (this.shouldDirectReply(message, activeChatters, now)) {
+      if (this.busy) {
+        this.enqueueBatchMessage(message);
+        return;
+      }
       this.lastGlobalReplyAt = now;
       this.userCooldowns.set(message.user, now);
       await this.runAiJob('direct', [message], activeChatters, message);
       return;
     }
 
-    if (this.ambientChatEnabled || activeChatters > 10 || mentionsBot(message.text, this.botAliases)) {
-      this.batchQueue.push(message);
+    if (
+      this.ambientChatEnabled ||
+      activeChatters > 10 ||
+      mentionsBot(message.text, this.botAliases)
+    ) {
+      this.enqueueBatchMessage(message);
     }
 
     const batchSize = this.getBatchSize(activeChatters);
-    if (activeChatters > 10 && this.batchQueue.length >= batchSize) {
+    if (!this.busy && activeChatters > 10 && this.batchQueue.length >= batchSize) {
       await this.flushBatch('size', now);
     }
   }
@@ -190,7 +207,10 @@ export class ChatScheduler {
     if (messages.length === 0) {
       this.emit({
         type: 'system:status',
-        payload: { level: 'info', message: `Skipped ${reason} batch; no meaningful chat messages.` },
+        payload: {
+          level: 'info',
+          message: `Skipped ${reason} batch; no meaningful chat messages.`,
+        },
       });
       return;
     }
@@ -204,6 +224,22 @@ export class ChatScheduler {
       },
     });
     await this.runAiJob('batch', messages, activeChatters);
+  }
+
+  private enqueueBatchMessage(message: TwitchChatMessage) {
+    this.batchQueue.push(message);
+    if (this.batchQueue.length <= this.maxBatchQueueMessages) {
+      return;
+    }
+
+    const dropped = this.batchQueue.splice(0, this.batchQueue.length - this.maxBatchQueueMessages);
+    this.emit({
+      type: 'system:status',
+      payload: {
+        level: 'warning',
+        message: `Dropped ${dropped.length} stale queued chat message${dropped.length === 1 ? '' : 's'}.`,
+      },
+    });
   }
 
   private async runAiJob(
@@ -274,6 +310,9 @@ export class ChatScheduler {
       });
     } finally {
       this.busy = false;
+      if (this.batchQueue.length > 0) {
+        await this.flushBatch('size', Date.now());
+      }
     }
   }
 
@@ -282,7 +321,9 @@ export class ChatScheduler {
     messages: readonly TwitchChatMessage[],
     target?: TwitchChatMessage,
   ): ChatProviderMessage[] {
-    const contextLines = this.buildContextLines(mode === 'direct' ? 40 : this.contextWindowMessages);
+    const contextLines = this.buildContextLines(
+      mode === 'direct' ? 40 : this.contextWindowMessages,
+    );
     const focusLines = messages.map((message) => `${message.displayName}: ${message.text}`);
     const prompt =
       mode === 'direct' && target

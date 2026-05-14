@@ -185,9 +185,9 @@ export const TAVILY_OPENAI_TOOLS: OpenAiFunctionTool[] = [
 ];
 
 export function buildTavilyToolInstruction() {
-  const toolList = TAVILY_OPENAI_TOOLS.map(
-    (tool) => `- ${tool.name}: ${tool.description}`,
-  ).join('\n');
+  const toolList = TAVILY_OPENAI_TOOLS.map((tool) => `- ${tool.name}: ${tool.description}`).join(
+    '\n',
+  );
 
   return [
     'Available Runtime Tools:',
@@ -268,7 +268,58 @@ function truncateText(value: string, limit: number) {
 }
 
 function stringifyToolResult(value: unknown) {
-  return truncateText(JSON.stringify(value), MAX_TOOL_OUTPUT_CHARS);
+  const json = JSON.stringify(value);
+  if (json.length <= MAX_TOOL_OUTPUT_CHARS) {
+    return json;
+  }
+
+  const truncated = truncateToolValue(value);
+  const truncatedJson = JSON.stringify({
+    ok: readOkFlag(value),
+    truncated: true,
+    data: truncated,
+  });
+  if (truncatedJson.length <= MAX_TOOL_OUTPUT_CHARS) {
+    return truncatedJson;
+  }
+
+  return JSON.stringify({
+    ok: readOkFlag(value),
+    truncated: true,
+    summary: truncateText(truncatedJson, MAX_TOOL_OUTPUT_CHARS - 128),
+  });
+}
+
+function readOkFlag(value: unknown) {
+  return value && typeof value === 'object' && 'ok' in value
+    ? Boolean((value as Record<string, unknown>)['ok'])
+    : true;
+}
+
+function truncateToolValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return truncateText(value, 1200);
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 5).map(truncateToolValue);
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (key === 'raw_content' || key === 'content' || key === 'answer') {
+      next[key] = typeof item === 'string' ? truncateText(item, 1200) : truncateToolValue(item);
+    } else if (key === 'results' || key === 'failed_results' || key === 'images') {
+      next[key] = Array.isArray(item)
+        ? item.slice(0, 5).map(truncateToolValue)
+        : truncateToolValue(item);
+    } else {
+      next[key] = truncateToolValue(item);
+    }
+  }
+  return next;
 }
 
 async function postTavilyJson(
@@ -424,7 +475,12 @@ async function runCrawlSite(options: TavilyToolOptions, args: Record<string, unk
     url: url.toString(),
     max_depth: clampInteger(args['max_depth'], 1, 1, 2),
     max_breadth: 20,
-    limit: clampInteger(args['limit'], options.crawlLimit ?? 8, 1, Math.min(options.crawlLimit ?? 8, 10)),
+    limit: clampInteger(
+      args['limit'],
+      options.crawlLimit ?? 8,
+      1,
+      Math.min(options.crawlLimit ?? 8, 10),
+    ),
     allow_external: args['allow_external'] === true,
     include_images: false,
     extract_depth: 'basic',

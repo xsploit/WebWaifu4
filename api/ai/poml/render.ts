@@ -1,7 +1,4 @@
-import {
-  normalizePomlRenderVariables,
-  renderYourWifeyPomlMessages,
-} from '../../../server/src/ai/PomlRenderer.js';
+import { renderYourWifeyPomlResponse } from '../../../server/src/ai/PomlRenderer.js';
 
 type ApiRequest = {
   method?: string;
@@ -25,19 +22,16 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   }
 
   if (request.method !== 'POST') {
-    response.status(200).json({ ok: false, error: 'POST required.' });
+    response.status(405).json({ ok: false, error: 'POST required.' });
     return;
   }
 
   try {
-    const body = (request.body ?? {}) as { variables?: unknown };
-    const messages = await renderYourWifeyPomlMessages(
-      normalizePomlRenderVariables(body.variables),
-    );
-    response.status(200).json({
-      messages,
-      ok: true,
-    });
+    const body =
+      typeof request.body === 'string'
+        ? (JSON.parse(request.body || '{}') as { variables?: unknown })
+        : ((request.body ?? {}) as { variables?: unknown });
+    response.status(200).json(await renderYourWifeyPomlResponse(body.variables));
   } catch (error) {
     response.status(200).json({
       ok: false,

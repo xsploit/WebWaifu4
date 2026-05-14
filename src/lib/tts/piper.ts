@@ -30,37 +30,39 @@ class PiperWorkerClient {
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
 
+  private readonly handleWorkerMessage = (event: MessageEvent<PiperWorkerMessage>) => {
+    const message = event.data;
+
+    if (message.type === 'asset-request') {
+      void this.handleAssetRequest(message.assetRequestId, message.assetPath);
+      return;
+    }
+
+    const pending = this.pendingRequests.get(message.requestId);
+    if (!pending) {
+      return;
+    }
+
+    if (message.type === 'progress') {
+      pending.callback?.(message.progress);
+      return;
+    }
+
+    this.pendingRequests.delete(message.requestId);
+    if (message.ok) {
+      pending.resolve(message.result);
+    } else {
+      pending.reject(new Error(message.error));
+    }
+  };
+
   private ensureWorker() {
     if (this.worker) {
       return this.worker;
     }
 
     this.worker = new Worker(new URL('./tts-worker.ts', import.meta.url), { type: 'module' });
-    this.worker.addEventListener('message', (event: MessageEvent<PiperWorkerMessage>) => {
-      const message = event.data;
-
-      if (message.type === 'asset-request') {
-        void this.handleAssetRequest(message.assetRequestId, message.assetPath);
-        return;
-      }
-
-      const pending = this.pendingRequests.get(message.requestId);
-      if (!pending) {
-        return;
-      }
-
-      if (message.type === 'progress') {
-        pending.callback?.(message.progress);
-        return;
-      }
-
-      this.pendingRequests.delete(message.requestId);
-      if (message.ok) {
-        pending.resolve(message.result);
-      } else {
-        pending.reject(new Error(message.error));
-      }
-    });
+    this.worker.addEventListener('message', this.handleWorkerMessage);
 
     return this.worker;
   }
@@ -127,11 +129,34 @@ class PiperWorkerClient {
   synthesize(text: string, voiceId: string) {
     return this.request<SynthesizedPiperChunkPayload>({ type: 'synthesize', text, voiceId });
   }
+
+  dispose() {
+    if (this.worker) {
+      this.worker.removeEventListener('message', this.handleWorkerMessage);
+      this.worker.terminate();
+      this.worker = null;
+    }
+    for (const pending of this.pendingRequests.values()) {
+      pending.reject(new Error('Piper worker disposed.'));
+    }
+    this.pendingRequests.clear();
+  }
 }
 
 const workerClient = new PiperWorkerClient();
 
-export type { LipSyncData, PiperVoiceProfile, SynthesizedPiperChunkPayload, WordBoundary } from './piper-shared';
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    workerClient.dispose();
+  });
+}
+
+export type {
+  LipSyncData,
+  PiperVoiceProfile,
+  SynthesizedPiperChunkPayload,
+  WordBoundary,
+} from './piper-shared';
 export {
   CUSTOM_RIKO_PIPER_VOICE,
   CUSTOM_RIKO_PIPER_VOICES,
@@ -148,10 +173,7 @@ export async function getStoredPiperVoiceKeys(): Promise<string[]> {
   return workerClient.storedVoiceKeys();
 }
 
-export async function cachePiperVoice(
-  voiceId: string,
-  callback?: ProgressCallback,
-): Promise<void> {
+export async function cachePiperVoice(voiceId: string, callback?: ProgressCallback): Promise<void> {
   await workerClient.cacheVoice(voiceId, callback);
 }
 
@@ -182,9 +204,6 @@ export async function synthesizePiperChunk(
   };
 }
 
-export async function synthesizePiperText(
-  text: string,
-  voiceId: string,
-): Promise<Blob> {
+export async function synthesizePiperText(text: string, voiceId: string): Promise<Blob> {
   return (await synthesizePiperChunk(text, voiceId)).audioBlob;
 }

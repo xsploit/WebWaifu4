@@ -155,6 +155,92 @@ function createToolCallingFetcher(calls: FetchCall[]) {
   }) as typeof fetch;
 }
 
+function createStreamingToolCallingFetcher(calls: FetchCall[]) {
+  let responseIndex = 0;
+
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+    });
+
+    if (String(input).endsWith('/conversations')) {
+      return new Response(JSON.stringify({ id: 'conv_tool_stream' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (responseIndex++ === 0) {
+      const body = [
+        {
+          type: 'response.output_item.added',
+          output_index: 3,
+          item: {
+            type: 'function_call',
+            call_id: 'call_search_a',
+            name: 'web_search',
+            arguments: '',
+          },
+        },
+        {
+          type: 'response.output_item.added',
+          output_index: 1,
+          item: {
+            type: 'function_call',
+            call_id: 'call_search_b',
+            name: 'web_search',
+            arguments: '',
+          },
+        },
+        {
+          type: 'response.function_call_arguments.delta',
+          output_index: 3,
+          delta: '{"query":"alpha',
+        },
+        {
+          type: 'response.function_call_arguments.done',
+          output_index: 1,
+          arguments: JSON.stringify({ query: 'beta', max_results: 1 }),
+        },
+        {
+          type: 'response.function_call_arguments.done',
+          output_index: 3,
+          arguments: JSON.stringify({ query: 'alpha', max_results: 1 }),
+        },
+        {
+          type: 'response.completed',
+          response: { id: 'resp_stream_tool' },
+        },
+      ]
+        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+        .join('');
+
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }
+
+    return new Response(
+      [
+        `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'done' })}\n\n`,
+        `data: ${JSON.stringify({
+          type: 'response.completed',
+          response: {
+            id: 'resp_final',
+            usage: { input_tokens_details: { cached_tokens: 1 } },
+          },
+        })}\n\n`,
+      ].join(''),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      },
+    );
+  }) as typeof fetch;
+}
+
 describe('OpenAiResponsesProvider', () => {
   it('passes request generation settings into Responses API payloads', async () => {
     const calls: FetchCall[] = [];
@@ -406,6 +492,61 @@ describe('OpenAiResponsesProvider', () => {
     ]);
   });
 
+  it('maps streamed function-call argument events by stable call id', async () => {
+    const calls: FetchCall[] = [];
+    const tavilyCalls: FetchCall[] = [];
+    const tavilyFetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      tavilyCalls.push({
+        url: String(input),
+        body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+      });
+      return new Response(
+        JSON.stringify({
+          answer: 'ok',
+          results: [],
+          usage: { credits: 1 },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    }) as typeof fetch;
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 300,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createStreamingToolCallingFetcher(calls),
+      tavilyTools: {
+        apiKey: 'test-tavily',
+        searchDepth: 'basic',
+        maxResults: 5,
+        timeoutMs: 10000,
+        fetcher: tavilyFetcher,
+      },
+    });
+
+    const response = await provider.completeStream(createRequest('stream tools'));
+
+    expect(response.text).toBe('done');
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.body['input']).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ call_id: 'call_search_a', type: 'function_call' }),
+        expect.objectContaining({ call_id: 'call_search_b', type: 'function_call' }),
+        expect.objectContaining({ call_id: 'call_search_a', type: 'function_call_output' }),
+        expect.objectContaining({ call_id: 'call_search_b', type: 'function_call_output' }),
+      ]),
+    );
+    expect(tavilyCalls.map((call) => call.body['query']).sort()).toEqual(['alpha', 'beta']);
+  });
+
   it('builds capped Tavily crawl requests', async () => {
     const tavilyCalls: FetchCall[] = [];
     const tavilyFetcher = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -471,6 +612,45 @@ describe('OpenAiResponsesProvider', () => {
       ok: true,
       base_url: 'docs.example.com',
     });
+  });
+
+  it('keeps oversized Tavily tool output valid JSON after truncation', async () => {
+    const output = await runTavilyToolCall(
+      {
+        apiKey: 'test-tavily',
+        searchDepth: 'basic',
+        maxResults: 5,
+        timeoutMs: 10000,
+        fetcher: (async () =>
+          new Response(
+            JSON.stringify({
+              answer: 'a'.repeat(12000),
+              results: [
+                {
+                  title: 'Huge',
+                  url: 'https://example.com/huge',
+                  content: 'b'.repeat(12000),
+                },
+              ],
+              usage: { credits: 1 },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          )) as typeof fetch,
+      },
+      {
+        name: 'web_search',
+        arguments: JSON.stringify({
+          query: 'huge output',
+        }),
+      },
+    );
+
+    const parsed = JSON.parse(output) as { truncated?: boolean };
+    expect(output.length).toBeLessThanOrEqual(8000);
+    expect(parsed.truncated).toBe(true);
   });
 
   it('chains state with previous_response_id and prompt cache options', async () => {
@@ -707,6 +887,59 @@ describe('OpenAiResponsesProvider', () => {
       'twitch:other:persona:riko',
       'twitch:subsect:persona:riko',
     ]);
+  });
+
+  it('keeps conversation state when switching models', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      store: false,
+      useWebSocket: false,
+      fetcher: createFetcher(calls),
+    });
+
+    await provider.complete(createRequest('first'));
+    provider.setModel('gpt-5.4');
+    await provider.complete(createRequest('after model switch'));
+
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://api.openai.com/v1/conversations',
+      'https://api.openai.com/v1/responses',
+      'https://api.openai.com/v1/responses',
+    ]);
+    expect(calls[2]?.body).toMatchObject({
+      conversation: 'conv_test',
+      model: 'gpt-5.4',
+    });
+  });
+
+  it('does not reuse previous_response_id across model switches', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'previous-response',
+      store: true,
+      useWebSocket: false,
+      fetcher: createFetcher(calls),
+    });
+
+    await provider.complete(createRequest('first'));
+    provider.setModel('gpt-5.4');
+    await provider.complete(createRequest('after model switch'));
+
+    expect(calls[1]?.body).toMatchObject({
+      model: 'gpt-5.4',
+    });
+    expect(calls[1]?.body).not.toHaveProperty('previous_response_id');
   });
 
   it('keeps memory refresh requests stateless even when conversation mode is enabled', async () => {

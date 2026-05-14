@@ -9,7 +9,7 @@ import type {
   ChatProviderRequest,
   ChatProviderResponse,
 } from './ai/ChatProvider.js';
-import { normalizePomlRenderVariables, renderYourWifeyPomlMessages } from './ai/PomlRenderer.js';
+import { renderYourWifeyPomlResponse } from './ai/PomlRenderer.js';
 import { loadConfig, type StreamBotConfig } from './config.js';
 import { CommandRouter } from './commands/CommandRouter.js';
 import { MockTwitchChatSource, type MockChatInjection } from './mock/MockTwitchChatSource.js';
@@ -641,13 +641,7 @@ const httpServer = createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/ai/poml/render') {
     try {
       const body = await readRequestJson<{ variables?: unknown }>(request);
-      const messages = await renderYourWifeyPomlMessages(
-        normalizePomlRenderVariables(body.variables),
-      );
-      writeJson(response, 200, {
-        messages,
-        ok: true,
-      });
+      writeJson(response, 200, await renderYourWifeyPomlResponse(body.variables));
     } catch (error) {
       writeJson(response, 200, {
         ok: false,

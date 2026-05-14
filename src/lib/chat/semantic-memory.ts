@@ -17,7 +17,7 @@ export type SemanticMemoryMatch = SemanticMemoryRecord & {
 
 const LEGACY_MEMORY_KEY_PREFIX = 'yourwifey:semantic-memory:v1:';
 const DB_NAME = 'yourwifey-memory';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SEMANTIC_STORE = 'semanticRecords';
 const SCOPE_INDEX = 'scopeKey';
 const MAX_RECORDS_PER_SCOPE = 160;
@@ -52,7 +52,16 @@ export async function loadSemanticMemory(scopeKey: string): Promise<SemanticMemo
     return loadLegacySemanticMemory(scopeKey);
   }
 
-  const records = await loadSemanticMemoryFromIndexedDb(db, scopeKey);
+  let records: SemanticMemoryRecord[];
+  try {
+    records = await loadSemanticMemoryFromIndexedDb(db, scopeKey);
+  } catch (error) {
+    warnSemanticMemoryFailure(
+      'IndexedDB semantic memory load failed; using fallback store.',
+      error,
+    );
+    return loadLegacySemanticMemory(scopeKey);
+  }
   if (records.length > 0) {
     return records;
   }
@@ -71,7 +80,15 @@ export async function saveSemanticMemory(scopeKey: string, records: SemanticMemo
     return;
   }
 
-  await saveSemanticMemoryToIndexedDb(db, scopeKey, records);
+  try {
+    await saveSemanticMemoryToIndexedDb(db, scopeKey, records);
+  } catch (error) {
+    warnSemanticMemoryFailure(
+      'IndexedDB semantic memory save failed; writing fallback store.',
+      error,
+    );
+    saveLegacySemanticMemory(scopeKey, records);
+  }
 }
 
 export async function addSemanticMemoryTurn({
@@ -258,14 +275,25 @@ async function openSemanticMemoryDb(): Promise<IDBDatabase | null> {
 
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(SEMANTIC_STORE)) {
-        const store = db.createObjectStore(SEMANTIC_STORE, { keyPath: 'id' });
+      const store = db.objectStoreNames.contains(SEMANTIC_STORE)
+        ? request.transaction?.objectStore(SEMANTIC_STORE)
+        : db.createObjectStore(SEMANTIC_STORE, { keyPath: 'id' });
+      if (store && !store.indexNames.contains(SCOPE_INDEX)) {
         store.createIndex(SCOPE_INDEX, 'scopeKey', { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
-    request.onblocked = () => resolve(null);
+    request.onerror = () => {
+      warnSemanticMemoryFailure(
+        'IndexedDB semantic memory open failed; using fallback store.',
+        request.error,
+      );
+      resolve(null);
+    };
+    request.onblocked = () => {
+      warnSemanticMemoryFailure('IndexedDB semantic memory open is blocked by another tab.');
+      resolve(null);
+    };
   });
 }
 
@@ -280,7 +308,7 @@ function getIndexedDb() {
 }
 
 function loadSemanticMemoryFromIndexedDb(db: IDBDatabase, scopeKey: string) {
-  return new Promise<SemanticMemoryRecord[]>((resolve) => {
+  return new Promise<SemanticMemoryRecord[]>((resolve, reject) => {
     const tx = db.transaction(SEMANTIC_STORE, 'readonly');
     const store = tx.objectStore(SEMANTIC_STORE);
     const index = store.index(SCOPE_INDEX);
@@ -301,8 +329,8 @@ function loadSemanticMemoryFromIndexedDb(db: IDBDatabase, scopeKey: string) {
     tx.oncomplete = () => {
       resolve(sortSemanticMemoryRecords(records).slice(0, MAX_RECORDS_PER_SCOPE));
     };
-    tx.onerror = () => resolve([]);
-    tx.onabort = () => resolve([]);
+    tx.onerror = () => reject(tx.error ?? new Error('Semantic memory IndexedDB load failed.'));
+    tx.onabort = () => reject(tx.error ?? new Error('Semantic memory IndexedDB load aborted.'));
   });
 }
 
@@ -312,7 +340,7 @@ function saveSemanticMemoryToIndexedDb(
   records: SemanticMemoryRecord[],
 ) {
   const normalized = normalizeSemanticMemoryRecords(records, MAX_RECORDS_PER_SCOPE);
-  return new Promise<void>((resolve) => {
+  return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(SEMANTIC_STORE, 'readwrite');
     const store = tx.objectStore(SEMANTIC_STORE);
     const index = store.index(SCOPE_INDEX);
@@ -331,9 +359,20 @@ function saveSemanticMemoryToIndexedDb(
       }
     };
     tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
-    tx.onabort = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('Semantic memory IndexedDB save failed.'));
+    tx.onabort = () => reject(tx.error ?? new Error('Semantic memory IndexedDB save aborted.'));
   });
+}
+
+function warnSemanticMemoryFailure(message: string, error?: unknown) {
+  if (typeof console === 'undefined') {
+    return;
+  }
+  if (error) {
+    console.warn(`[semantic-memory] ${message}`, error);
+  } else {
+    console.warn(`[semantic-memory] ${message}`);
+  }
 }
 
 function loadLegacySemanticMemory(scopeKey: string): SemanticMemoryRecord[] {

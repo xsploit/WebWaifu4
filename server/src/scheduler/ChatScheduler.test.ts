@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatProvider, ChatProviderRequest } from '../ai/ChatProvider.js';
-import { ChatScheduler, type StreamBotEvent } from './ChatScheduler.js';
+import { ChatScheduler, type ChatSchedulerOptions, type StreamBotEvent } from './ChatScheduler.js';
 import type { TwitchChatMessage } from '../twitch/TwitchChatSource.js';
 
 class CapturingProvider implements ChatProvider {
@@ -12,7 +12,36 @@ class CapturingProvider implements ChatProvider {
   }
 }
 
-function message(user: string, text: string, timestamp: number, overrides: Partial<TwitchChatMessage> = {}): TwitchChatMessage {
+class BusyOnceProvider implements ChatProvider {
+  requests: ChatProviderRequest[] = [];
+  private releaseFirst?: () => void;
+  firstRequestStarted: Promise<void>;
+  releaseFirstRequest: () => void = () => {};
+
+  constructor() {
+    this.firstRequestStarted = new Promise<void>((resolve) => {
+      this.releaseFirst = resolve;
+    });
+  }
+
+  async complete(request: ChatProviderRequest) {
+    this.requests.push(request);
+    if (this.requests.length === 1) {
+      this.releaseFirst?.();
+      await new Promise<void>((resolve) => {
+        this.releaseFirstRequest = resolve;
+      });
+    }
+    return { text: request.mode === 'direct' ? 'direct reply' : 'batch reply' };
+  }
+}
+
+function message(
+  user: string,
+  text: string,
+  timestamp: number,
+  overrides: Partial<TwitchChatMessage> = {},
+): TwitchChatMessage {
   return {
     id: `${user}-${timestamp}`,
     user,
@@ -36,6 +65,22 @@ function createScheduler(provider = new CapturingProvider()) {
     onEvent: (event) => events.push(event),
   });
   return { scheduler, provider, events };
+}
+
+function createSchedulerWithOptions(
+  provider: ChatProvider,
+  options: Partial<ChatSchedulerOptions>,
+) {
+  const events: StreamBotEvent[] = [];
+  const scheduler = new ChatScheduler({
+    provider,
+    botAliases: ['yourwifey', 'ai'],
+    globalReplyCooldownMs: 8000,
+    perUserCooldownMs: 30000,
+    onEvent: (event) => events.push(event),
+    ...options,
+  });
+  return { scheduler, events };
 }
 
 describe('ChatScheduler', () => {
@@ -97,5 +142,50 @@ describe('ChatScheduler', () => {
     await scheduler.handleMessage(message('viewer1', 'again @ai', 105000));
 
     expect(provider.requests).toHaveLength(1);
+  });
+
+  it('queues a direct mention while busy and drains it after the current reply', async () => {
+    const provider = new BusyOnceProvider();
+    const { scheduler } = createSchedulerWithOptions(provider, {});
+
+    const first = scheduler.handleMessage(message('viewer1', 'hello @ai', 100000));
+    await provider.firstRequestStarted;
+
+    await scheduler.handleMessage(message('viewer2', 'second @ai', 101000));
+    expect(scheduler.getPendingBatchCount()).toBe(1);
+
+    provider.releaseFirstRequest();
+    await first;
+
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[0]?.mode).toBe('direct');
+    expect(provider.requests[1]?.mode).toBe('batch');
+    expect(provider.requests[1]?.sourceMessages[0]?.user).toBe('viewer2');
+    expect(scheduler.getPendingBatchCount()).toBe(0);
+  });
+
+  it('caps queued chat while the AI is busy', async () => {
+    const provider = new BusyOnceProvider();
+    const { scheduler, events } = createSchedulerWithOptions(provider, {
+      ambientChatEnabled: true,
+      maxBatchQueueMessages: 3,
+    });
+
+    const first = scheduler.handleMessage(message('viewer0', 'hello @ai', 100000));
+    await provider.firstRequestStarted;
+
+    for (let index = 1; index <= 8; index += 1) {
+      await scheduler.handleMessage(message(`viewer${index}`, `queued ${index}`, 100000 + index));
+    }
+
+    expect(scheduler.getPendingBatchCount()).toBe(3);
+    expect(
+      events.some(
+        (event) => event.type === 'system:status' && event.payload.message.includes('Dropped'),
+      ),
+    ).toBe(true);
+
+    provider.releaseFirstRequest();
+    await first;
   });
 });
