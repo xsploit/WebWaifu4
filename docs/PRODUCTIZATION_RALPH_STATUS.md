@@ -166,14 +166,36 @@ Swap the prompt and completion promise for the other lanes.
   2 tests. `npm run build` -> passed with existing `onnxruntime-web` eval and
   large chunk warnings. `git diff --check` -> passed with line-ending warnings
   only.
+- 2026-05-14: Polish iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
+  `src\components\chat\ChatLog.tsx`, `src\components\chat\ChatBar.tsx`,
+  `src\components\menu\SettingsPanel.tsx`,
+  `src\components\menu\tabs\ContextTab.tsx`,
+  `src\components\menu\tabs\TwitchTab.tsx`,
+  `src\components\menu\tabs\AiTab.tsx`, and `src\style.css`;
+  `git status --short` was clean and `git log -3 --oneline` showed `e29ff0c`,
+  `ed02ad4`, and `e0665b3`. Finding: the overlay chat still said
+  `Waiting for Twitch chat.` even though the same overlay renders local test
+  messages, and the first-reply state could show stale waiting copy while the
+  assistant was already generating. Patch changed the overlay header to
+  `Live Chat`, added state-aware empty copy for expanded, collapsed, and
+  generating states, and covered the copy in
+  `src\components\chat\ChatLog.test.ts`.
+- 2026-05-14: Focused sanitizer test initially exposed an overlay safety edge:
+  local URLs such as `http://localhost:8787/path` were reduced to generic
+  `[link]` instead of `[local]`. Patch now preserves local endpoint redaction as
+  `[local]` before the generic URL scrub.
+- 2026-05-14: `npx vitest run src/components/chat/ChatLog.test.ts` -> passed, 1
+  file, 4 tests. `npm run build` -> passed with existing `onnxruntime-web` eval
+  and large chunk warnings. `git diff --check` -> passed with line-ending
+  warnings only.
 
 ## Current Blocker Or Next Patch
 
-Next polish read: inspect `src\components\menu\tabs\ContextTab.tsx`,
-`src\components\menu\tabs\TwitchTab.tsx`, and the overlay chat components for
-Memory/Diary/tools wording plus Twitch/local chat empty states. The lane is not
-complete yet because the settings surface still needs a visual/demo pass for
-Memory/Diary/tools wording and operator-facing chat empty states.
+Next polish read: inspect `src\components\menu\tabs\ContextTab.tsx` and
+`src\components\menu\tabs\AiTab.tsx` for Memory/Diary/tools wording. The lane is
+not complete yet because the settings surface still exposes internal
+Grillo/legacy/tool-loop language that needs a demo-oriented operator pass.
 
 ## Completion Bar
 

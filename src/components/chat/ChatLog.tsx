@@ -36,11 +36,15 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function sanitizeOverlayText(value: string) {
+export function sanitizeOverlayText(value: string) {
   return value
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, '[key]')
     .replace(/\boauth:[A-Za-z0-9_-]+\b/gi, '[token]')
+    .replace(
+      /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/\S*)?/gi,
+      '[local]',
+    )
     .replace(/\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/\S*)?\b/gi, '[local]')
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, '[ip]')
     .replace(/[A-Za-z]:\\[^\s"'<>]+/g, '[path]')
@@ -49,7 +53,7 @@ function sanitizeOverlayText(value: string) {
     .trim();
 }
 
-function sanitizeOverlayLabel(value: string) {
+export function sanitizeOverlayLabel(value: string) {
   const cleaned = sanitizeOverlayText(value)
     .replace(/[^a-z0-9_.-]+/gi, '')
     .slice(0, 24);
@@ -79,6 +83,27 @@ function getOverlayMessage(message: ChatMessage, content: string, assistantLabel
   }
 
   return { label: 'LOCAL', text: sanitizeOverlayText(content), tone: 'local' };
+}
+
+export function getOverlayEmptyState({
+  channelName,
+  isGenerating,
+  open,
+}: {
+  channelName: string;
+  isGenerating: boolean;
+  open: boolean;
+}) {
+  if (isGenerating) {
+    return 'Preparing the next reply...';
+  }
+
+  if (!open) {
+    return 'No live messages yet.';
+  }
+
+  const channelLabel = `#${sanitizeOverlayLabel(channelName || 'subsect')}`;
+  return `No live messages yet. Twitch ${channelLabel} and local test messages will appear here.`;
 }
 
 export function ChatLog({
@@ -151,7 +176,7 @@ export function ChatLog({
           type="button"
         >
           <span className="log-live-dot" />
-          <span className="log-title">Twitch Chat</span>
+          <span className="log-title">Live Chat</span>
           <span className="log-channel">#{sanitizeOverlayLabel(channelName)}</span>
           <span className="log-tag">{botMentionTag}</span>
           <span className="log-state">{modeLabel}</span>
@@ -167,7 +192,9 @@ export function ChatLog({
 
       <div className="log-messages" ref={scrollRef}>
         {visibleHistory.length === 0 ? (
-          <div className="log-empty">Waiting for Twitch chat.</div>
+          <div className="log-empty">
+            {getOverlayEmptyState({ channelName, isGenerating, open })}
+          </div>
         ) : null}
 
         {visibleHistory.map(({ displayContent, message }) => {
