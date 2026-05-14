@@ -326,9 +326,16 @@ type AppCompletionMessage = {
   content: string;
 };
 
-type AppCompletionResponseFormat = {
-  type: 'json_object';
-};
+type AppCompletionResponseFormat =
+  | {
+      type: 'json_object';
+    }
+  | {
+      name: string;
+      schema: Record<string, unknown>;
+      strict?: boolean;
+      type: 'json_schema';
+    };
 
 type AppCompletionResponse = {
   choices: Array<{

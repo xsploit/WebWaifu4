@@ -5,15 +5,24 @@ export type ChatProviderMessage = {
   content: string;
 };
 
+export type ChatProviderResponseFormat =
+  | {
+      type: 'json_object';
+    }
+  | {
+      name: string;
+      schema: Record<string, unknown>;
+      strict?: boolean;
+      type: 'json_schema';
+    };
+
 export type ChatProviderRequest = {
   mode: 'direct' | 'batch';
   activeChatters: number;
   messages: ChatProviderMessage[];
   sourceMessages: TwitchChatMessage[];
   disableState?: boolean;
-  responseFormat?: {
-    type: 'json_object';
-  };
+  responseFormat?: ChatProviderResponseFormat;
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
   transportMode?: 'http-stream' | 'websocket';

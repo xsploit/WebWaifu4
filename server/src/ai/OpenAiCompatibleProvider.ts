@@ -16,6 +16,23 @@ type ChatCompletionResponse = {
   }>;
 };
 
+function toChatCompletionResponseFormat(request: ChatProviderRequest) {
+  if (request.responseFormat?.type === 'json_object') {
+    return { type: 'json_object' };
+  }
+  if (request.responseFormat?.type === 'json_schema') {
+    return {
+      json_schema: {
+        name: request.responseFormat.name,
+        schema: request.responseFormat.schema,
+        strict: request.responseFormat.strict ?? false,
+      },
+      type: 'json_schema',
+    };
+  }
+  return null;
+}
+
 export class OpenAiCompatibleProvider implements ChatProvider {
   constructor(private readonly options: OpenAiCompatibleProviderOptions) {}
 
@@ -32,6 +49,7 @@ export class OpenAiCompatibleProvider implements ChatProvider {
 
   async complete(request: ChatProviderRequest): Promise<ChatProviderResponse> {
     const baseUrl = this.options.apiBaseUrl.replace(/\/+$/, '');
+    const responseFormat = toChatCompletionResponseFormat(request);
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -43,9 +61,7 @@ export class OpenAiCompatibleProvider implements ChatProvider {
         messages: request.messages,
         max_tokens: request.maxTokens ?? this.options.maxTokens,
         temperature: request.temperature ?? this.options.temperature,
-        ...(request.responseFormat?.type === 'json_object'
-          ? { response_format: { type: 'json_object' } }
-          : {}),
+        ...(responseFormat ? { response_format: responseFormat } : {}),
       }),
     });
 

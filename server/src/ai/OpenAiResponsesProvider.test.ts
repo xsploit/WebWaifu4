@@ -219,6 +219,53 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('passes json_schema structured output into Responses text.format', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createFetcher(calls),
+    });
+
+    await provider.complete({
+      ...createRequest('structured worker'),
+      responseFormat: {
+        name: 'grillo_worker_loop',
+        schema: {
+          properties: {
+            done: { type: 'boolean' },
+          },
+          type: 'object',
+        },
+        strict: false,
+        type: 'json_schema',
+      },
+    });
+
+    expect(calls[0]?.body).toMatchObject({
+      text: {
+        format: {
+          name: 'grillo_worker_loop',
+          schema: {
+            properties: {
+              done: { type: 'boolean' },
+            },
+            type: 'object',
+          },
+          strict: false,
+          type: 'json_schema',
+        },
+      },
+    });
+  });
+
   it('executes Tavily tool calls and sends function outputs back to Responses', async () => {
     const calls: FetchCall[] = [];
     const tavilyCalls: FetchCall[] = [];

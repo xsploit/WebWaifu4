@@ -20,6 +20,7 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - Recent local/Twitch transcript context now feeds the packet as `channel_history` instead of being duplicated into the current turn prompt.
 - Completed local/Twitch replies now write scoped Grillo candidates and diary entries, then promote repeated high-confidence candidates into memory blocks.
 - Scheduled/manual memory passes now run a tool loop before the legacy relationship merge. The loop can read/search/list memory, write candidates, write diary entries, write consolidated memory blocks, insert archival thread memory, and recover candidate/diary objects that were returned without an explicit tool call.
+- The worker loop now requests a `json_schema` structured output contract named `grillo_worker_loop`, and the runtime accepts both `{toolCalls:[...]}` JSON and OpenAI-style `tool_calls` / function-call shaped JSON with stringified arguments.
 - Grillo memory is scoped by conversation state key and participant key. It currently persists in browser localStorage. Server JSONL/SQLite backing is still the next implementation step.
 
 ## Verification Log
@@ -33,12 +34,15 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-13 22:34: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 - 2026-05-13 22:50: `npx vitest run src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 30 tests.
 - 2026-05-13 22:50: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-13 23:06: `npx vitest run src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 32 tests.
+- 2026-05-13 23:06: `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-13 23:06: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 
 ## Next Patch
 
 Implement the durable memory repository:
 
-- Make the worker loop use native OpenAI tool calls when the server provider exposes app-local tools, while keeping the JSON loop fallback.
+- Make the worker loop use native OpenAI app-local tool definitions when the server provider exposes them; the structured JSON tool loop remains the browser-safe fallback.
 - Add a visible memory/debug panel or command output for recent worker rounds, side effects, and tool errors.
 - Move the localStorage repository behind server JSONL or SQLite only if we need multi-browser/session durability.
 

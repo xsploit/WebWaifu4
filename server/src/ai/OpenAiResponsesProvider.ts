@@ -558,6 +558,15 @@ export class OpenAiResponsesProvider implements ChatProvider {
           type: 'json_object',
         },
       };
+    } else if (request.responseFormat?.type === 'json_schema') {
+      payload.text = {
+        format: {
+          name: request.responseFormat.name,
+          schema: request.responseFormat.schema,
+          strict: request.responseFormat.strict ?? false,
+          type: 'json_schema',
+        },
+      };
     }
 
     if (supportsTemperature(this.options.model, reasoningEffort)) {

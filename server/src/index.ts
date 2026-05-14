@@ -183,8 +183,31 @@ function normalizeResponseFormat(value: unknown): ChatProviderRequest['responseF
     return undefined;
   }
 
-  const source = value as { type?: unknown };
-  return source.type === 'json_object' ? { type: 'json_object' } : undefined;
+  const source = value as {
+    name?: unknown;
+    schema?: unknown;
+    strict?: unknown;
+    type?: unknown;
+  };
+  if (source.type === 'json_object') {
+    return { type: 'json_object' };
+  }
+  if (
+    source.type === 'json_schema' &&
+    typeof source.name === 'string' &&
+    source.name.trim() &&
+    source.schema &&
+    typeof source.schema === 'object' &&
+    !Array.isArray(source.schema)
+  ) {
+    return {
+      name: source.name.trim(),
+      schema: source.schema as Record<string, unknown>,
+      strict: typeof source.strict === 'boolean' ? source.strict : false,
+      type: 'json_schema',
+    };
+  }
+  return undefined;
 }
 
 function normalizeStateKey(value: unknown, fallback: string) {
@@ -206,7 +229,9 @@ function normalizeTtsLatency(value: unknown) {
   return value === 'balanced' || value === 'normal' ? value : undefined;
 }
 
-function normalizeLiveTtsBridge(value: unknown): Omit<RemoteTtsRequest, 'provider' | 'text'> | null {
+function normalizeLiveTtsBridge(
+  value: unknown,
+): Omit<RemoteTtsRequest, 'provider' | 'text'> | null {
   if (!value || typeof value !== 'object') {
     return null;
   }

@@ -3,6 +3,7 @@ import type { ChatTurn } from './chat-turn';
 import { DEFAULT_PERSONA, createDefaultRelationshipMemory } from './defaults';
 import { loadGrilloMemoryState } from './grillo-memory';
 import {
+  GRILLO_WORKER_LOOP_RESPONSE_FORMAT,
   extractGrilloWorkerRelationshipJson,
   runGrilloMemoryWorkerLoop,
   type GrilloWorkerLoopCompletionRequest,
@@ -84,6 +85,7 @@ describe('Grillo memory worker loop', () => {
     });
 
     expect(result.rounds).toBe(2);
+    expect(requests[0]?.responseFormat).toEqual(GRILLO_WORKER_LOOP_RESPONSE_FORMAT);
     expect(result.toolCalls[0]?.name).toBe('core.worker_memory_read');
     const secondRequestMessages = requests[1]?.messages ?? [];
     expect(secondRequestMessages[secondRequestMessages.length - 2]?.content).toContain(
@@ -169,5 +171,48 @@ describe('Grillo memory worker loop', () => {
     expect(result.sideEffects.slotWrites).toBe(1);
     expect(state.blocks[0]?.blockName).toBe('ongoing_topics');
     expect(state.blocks[0]?.items).toContain('Implement Grillo background worker loop');
+  });
+
+  it('accepts OpenAI-style function tool calls with JSON string arguments', async () => {
+    const scopeKey = 'twitch:subsect:persona:hikari';
+    const result = await runGrilloMemoryWorkerLoop({
+      complete: async () =>
+        JSON.stringify({
+          candidate: null,
+          diary: null,
+          done: false,
+          memory: null,
+          notes: 'writing candidate through function style tool_calls',
+          relationship: null,
+          toolCalls: [],
+          tool_calls: [
+            {
+              function: {
+                arguments: JSON.stringify({
+                  confidence: 0.91,
+                  content: 'Subsect wants an agentic JSON tool loop for memory.',
+                  summary: 'Subsect wants agentic memory tools',
+                  tags: ['grillo', 'tool-loop'],
+                  type: 'goal',
+                }),
+                name: 'core.worker_candidate_write',
+              },
+              type: 'function',
+            },
+          ],
+        }),
+      history: [],
+      maxRounds: 1,
+      model: 'gpt-test',
+      persona: DEFAULT_PERSONA,
+      relationshipMemory: createDefaultRelationshipMemory(),
+      scopeKey,
+      turns: [createTurn()],
+    });
+
+    const state = loadGrilloMemoryState(scopeKey);
+    expect(result.sideEffects.candidateIds).toHaveLength(1);
+    expect(result.toolCalls[0]?.name).toBe('core.worker_candidate_write');
+    expect(state.candidates[0]?.summary).toBe('Subsect wants agentic memory tools');
   });
 });

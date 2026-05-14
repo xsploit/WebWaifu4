@@ -18,11 +18,22 @@ export type GrilloWorkerLoopMessage = {
   content: string;
 };
 
+export type GrilloWorkerLoopResponseFormat =
+  | {
+      type: 'json_object';
+    }
+  | {
+      name: string;
+      schema: Record<string, unknown>;
+      strict?: boolean;
+      type: 'json_schema';
+    };
+
 export type GrilloWorkerLoopCompletionRequest = {
   maxTokens: number;
   messages: GrilloWorkerLoopMessage[];
   model: string;
-  responseFormat: { type: 'json_object' };
+  responseFormat: GrilloWorkerLoopResponseFormat;
   stateKey: string;
   stateScope: 'memory';
   temperature: number;
@@ -37,14 +48,17 @@ export type GrilloWorkerToolCall = {
   name: GrilloWorkerToolName;
 };
 
-export type GrilloWorkerToolName =
-  | 'core.worker_memory_read'
-  | 'core.worker_memory_search'
-  | 'core.worker_candidate_list'
-  | 'core.worker_candidate_write'
-  | 'core.worker_diary_write'
-  | 'core.worker_memory_write'
-  | 'core.worker_memory_insert_archival';
+const GRILLO_WORKER_TOOL_NAMES = [
+  'core.worker_memory_read',
+  'core.worker_memory_search',
+  'core.worker_candidate_list',
+  'core.worker_candidate_write',
+  'core.worker_diary_write',
+  'core.worker_memory_write',
+  'core.worker_memory_insert_archival',
+] as const;
+
+export type GrilloWorkerToolName = (typeof GRILLO_WORKER_TOOL_NAMES)[number];
 
 export type GrilloWorkerLoopResult = {
   finalJsonText: string;
@@ -85,15 +99,74 @@ type ParsedWorkerResponse = {
   tool_calls?: unknown;
 };
 
-const TOOL_NAMES = new Set<GrilloWorkerToolName>([
-  'core.worker_memory_read',
-  'core.worker_memory_search',
-  'core.worker_candidate_list',
-  'core.worker_candidate_write',
-  'core.worker_diary_write',
-  'core.worker_memory_write',
-  'core.worker_memory_insert_archival',
-]);
+export const GRILLO_WORKER_LOOP_RESPONSE_FORMAT: GrilloWorkerLoopResponseFormat = {
+  name: 'grillo_worker_loop',
+  schema: {
+    additionalProperties: false,
+    properties: {
+      candidate: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description:
+          'Optional durable memory candidate args. Prefer toolCalls unless recovering a direct object.',
+      },
+      diary: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description:
+          'Optional private diary args. Prefer toolCalls unless recovering a direct object.',
+      },
+      done: {
+        description: 'True when the worker has no more tools to call.',
+        type: 'boolean',
+      },
+      memory: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description: 'Optional legacy relationship-memory merge object.',
+      },
+      notes: {
+        description: 'Short worker status note for logs.',
+        type: 'string',
+      },
+      relationship: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description: 'Optional legacy relationship-memory merge object.',
+      },
+      toolCalls: {
+        description: 'Runtime tool calls to execute before the next worker round.',
+        items: {
+          additionalProperties: false,
+          properties: {
+            args: {
+              additionalProperties: true,
+              type: 'object',
+            },
+            name: {
+              enum: [...GRILLO_WORKER_TOOL_NAMES],
+              type: 'string',
+            },
+          },
+          required: ['name', 'args'],
+          type: 'object',
+        },
+        type: 'array',
+      },
+      tool_calls: {
+        description:
+          'OpenAI-style tool call compatibility; function.arguments may be a JSON string.',
+        items: {
+          additionalProperties: true,
+          type: 'object',
+        },
+        type: 'array',
+      },
+    },
+    required: ['done', 'toolCalls', 'candidate', 'diary', 'relationship', 'memory', 'notes'],
+    type: 'object',
+  },
+  strict: false,
+  type: 'json_schema',
+};
+
+const TOOL_NAMES = new Set<GrilloWorkerToolName>(GRILLO_WORKER_TOOL_NAMES);
 
 const CANDIDATE_TYPES = new Set<GrilloCandidateType>([
   'preference',
@@ -147,7 +220,7 @@ export async function runGrilloMemoryWorkerLoop({
       maxTokens: 700,
       messages,
       model,
-      responseFormat: { type: 'json_object' },
+      responseFormat: GRILLO_WORKER_LOOP_RESPONSE_FORMAT,
       stateKey: `memory:${scopeKey}`,
       stateScope: 'memory',
       temperature: 0.25,
@@ -273,6 +346,8 @@ function buildInitialWorkerMessages({
         '- core.worker_memory_insert_archival args: {"text": string, "metadata"?: object}',
         '',
         'To call tools, return JSON: {"toolCalls":[{"name":"core.worker_memory_read","args":{}}]}',
+        'OpenAI-style compatibility is also accepted: {"tool_calls":[{"type":"function","function":{"name":"core.worker_memory_read","arguments":"{}"}}]}.',
+        'When you are done, return every schema field: {"done":true,"toolCalls":[],"candidate":null,"diary":null,"relationship":{...},"memory":null,"notes":"short status"}.',
         'You may also include candidate or diary objects; the runtime will recover them into tool calls if you forgot the write tool.',
       ].join('\n'),
     },
@@ -611,26 +686,63 @@ function toolArchivalWrite(
   });
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> {
+  const record = asRecord(value);
+  if (record) {
+    return record;
+  }
+  if (typeof value === 'string') {
+    return parseJsonLoose(value) ?? {};
+  }
+  return {};
+}
+
+function readToolCallName(source: Record<string, unknown>) {
+  const functionRecord = asRecord(source['function']) ?? asRecord(source['function_call']);
+  return String(
+    source['name'] ?? source['toolName'] ?? source['tool'] ?? functionRecord?.['name'] ?? '',
+  ).trim();
+}
+
+function readToolCallArgs(source: Record<string, unknown>) {
+  const functionRecord = asRecord(source['function']) ?? asRecord(source['function_call']);
+  return parseToolArguments(
+    source['args'] ??
+      source['arguments'] ??
+      source['input'] ??
+      functionRecord?.['arguments'] ??
+      functionRecord?.['args'] ??
+      functionRecord?.['input'],
+  );
+}
+
 function normalizeToolCalls(parsed: ParsedWorkerResponse | null): GrilloWorkerToolCall[] {
   if (!parsed || typeof parsed !== 'object') {
     return [];
   }
 
-  const rawCalls = parsed.toolCalls ?? parsed.tool_calls;
-  const candidates = Array.isArray(rawCalls) ? rawCalls : [];
+  const candidates = [
+    ...(Array.isArray(parsed.toolCalls) ? parsed.toolCalls : []),
+    ...(Array.isArray(parsed.tool_calls) ? parsed.tool_calls : []),
+  ];
   return candidates
     .map((raw): GrilloWorkerToolCall | null => {
       if (!raw || typeof raw !== 'object') {
         return null;
       }
       const source = raw as Record<string, unknown>;
-      const name = String(source['name'] ?? source['toolName'] ?? source['tool'] ?? '').trim();
+      const name = readToolCallName(source);
       if (!TOOL_NAMES.has(name as GrilloWorkerToolName)) {
         return null;
       }
-      const args = source['args'] && typeof source['args'] === 'object' ? source['args'] : {};
       return {
-        args: args as Record<string, unknown>,
+        args: readToolCallArgs(source),
         name: name as GrilloWorkerToolName,
       };
     })

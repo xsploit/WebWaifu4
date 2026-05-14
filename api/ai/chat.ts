@@ -24,6 +24,17 @@ type ChatMessage = {
   content: string;
 };
 
+type ResponseFormat =
+  | {
+      type: 'json_object';
+    }
+  | {
+      name: string;
+      schema: Record<string, unknown>;
+      strict?: boolean;
+      type: 'json_schema';
+    };
+
 type OpenAiResponsePayload = {
   id?: string;
   output_text?: string;
@@ -278,6 +289,38 @@ function createStateSignature(model: string, promptCacheKey: string) {
 
 function normalizeStateScope(value: unknown): 'chat' | 'memory' {
   return value === 'memory' ? 'memory' : 'chat';
+}
+
+function normalizeResponseFormat(value: unknown): ResponseFormat | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const source = value as {
+    name?: unknown;
+    schema?: unknown;
+    strict?: unknown;
+    type?: unknown;
+  };
+  if (source.type === 'json_object') {
+    return { type: 'json_object' };
+  }
+  if (
+    source.type === 'json_schema' &&
+    typeof source.name === 'string' &&
+    source.name.trim() &&
+    source.schema &&
+    typeof source.schema === 'object' &&
+    !Array.isArray(source.schema)
+  ) {
+    return {
+      name: source.name.trim(),
+      schema: source.schema as Record<string, unknown>,
+      strict: typeof source.strict === 'boolean' ? source.strict : false,
+      type: 'json_schema',
+    };
+  }
+  return null;
 }
 
 function normalizeStateKey(value: unknown) {
@@ -645,6 +688,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     messages?: unknown;
     model?: string;
     maxTokens?: number;
+    responseFormat?: unknown;
     stateKey?: string;
     stateScope?: 'chat' | 'memory';
     stream?: boolean;
@@ -670,6 +714,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   const stateScope = normalizeStateScope(body.stateScope);
   const stateDisabled = body.disableState === true || stateScope === 'memory';
   const shouldStream = body.stream === true;
+  const responseFormat = normalizeResponseFormat(body.responseFormat);
   const state = getRouteState(stateKey);
   const promptCacheKey = process.env['OPENAI_PROMPT_CACHE_KEY']?.trim() || '';
   const tavilyTools = getTavilyTools();
@@ -709,6 +754,23 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     model,
     store,
   };
+
+  if (responseFormat?.type === 'json_object') {
+    payload.text = {
+      format: {
+        type: 'json_object',
+      },
+    };
+  } else if (responseFormat?.type === 'json_schema') {
+    payload.text = {
+      format: {
+        name: responseFormat.name,
+        schema: responseFormat.schema,
+        strict: responseFormat.strict ?? false,
+        type: 'json_schema',
+      },
+    };
+  }
 
   if (supportsTemperature(model, reasoningEffort)) {
     payload.temperature = normalizeTemperature(body.temperature, 0.7);
