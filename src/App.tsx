@@ -282,16 +282,7 @@ const ROUTELET_SAY_DELAY_MS = ROUTELET_MODE
 function getRouteletVisualSettings(settings: VisualSettings): VisualSettings {
   return {
     ...settings,
-    postProcessingEnabled: false,
     outline: false,
-    bloom: false,
-    chroma: false,
-    grain: false,
-    glitch: false,
-    fxaa: false,
-    smaa: false,
-    taa: false,
-    bleach: false,
     colorCorr: false,
   };
 }

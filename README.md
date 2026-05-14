@@ -345,7 +345,7 @@ unless the AI or user explicitly asks for them.
 
 Visual settings include locked/custom camera, model position/rotation/scale,
 auto blink, auto gaze, pointer-follow option, arm clip guard, crossfade duration,
-lighting, and post-processing toggles.
+anime outline, exposure, RGB color correction, and lighting controls.
 
 ## Settings UI
 

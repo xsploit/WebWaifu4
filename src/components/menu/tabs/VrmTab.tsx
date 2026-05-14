@@ -375,7 +375,7 @@ export function VrmTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Visual FX</div>
+        <div className="control-label">Model Shading</div>
         <div className="toggle-row">
           <span>Anime Outlines</span>
           <Toggle
@@ -383,48 +383,14 @@ export function VrmTab({
             onChange={(checked) => updateVisualSettings(setVisualSettings, { outline: checked })}
           />
         </div>
-        <div className="toggle-row">
-          <span>Bloom</span>
-          <Toggle
-            checked={visualSettings.bloom}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { bloom: checked })}
-          />
-        </div>
-        <div className="toggle-row">
-          <span>Chromatic Aberration</span>
-          <Toggle
-            checked={visualSettings.chroma}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { chroma: checked })}
-          />
-        </div>
-        <div className="toggle-row">
-          <span>Film Grain</span>
-          <Toggle
-            checked={visualSettings.grain}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { grain: checked })}
-          />
-        </div>
-        <div className="toggle-row">
-          <span>Glitch Effect</span>
-          <Toggle
-            checked={visualSettings.glitch}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { glitch: checked })}
-          />
-        </div>
-        <div className="toggle-row">
-          <span>Anti-Aliasing (FXAA)</span>
-          <Toggle
-            checked={visualSettings.fxaa}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { fxaa: checked })}
-          />
-        </div>
-        <div className="toggle-row">
-          <span>SMAA (Better Quality)</span>
-          <Toggle
-            checked={visualSettings.smaa}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { smaa: checked })}
-          />
-        </div>
+        <Slider
+          label="Exposure"
+          max={1.8}
+          min={0.35}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { sceneExposure: value })}
+          step={0.05}
+          value={visualSettings.sceneExposure}
+        />
       </div>
 
       <div className="control-group">
@@ -494,21 +460,6 @@ export function VrmTab({
       <div className="control-group">
         <div className="control-label">Color Grade</div>
         <div className="toggle-row">
-          <span>Bleach Bypass</span>
-          <Toggle
-            checked={visualSettings.bleach}
-            onChange={(checked) => updateVisualSettings(setVisualSettings, { bleach: checked })}
-          />
-        </div>
-        <Slider
-          label="Intensity"
-          max={1}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { bleachOpacity: value })}
-          step={0.05}
-          value={visualSettings.bleachOpacity}
-        />
-        <div className="toggle-row">
           <span>Color Correction</span>
           <Toggle
             checked={visualSettings.colorCorr}
@@ -538,74 +489,6 @@ export function VrmTab({
           onInput={(value) => updateVisualSettings(setVisualSettings, { colorPowB: value })}
           step={0.05}
           value={visualSettings.colorPowB}
-        />
-      </div>
-
-      <div className="control-group">
-        <div className="control-label">FX Tuning</div>
-        <Slider
-          label="Bloom Str"
-          max={2}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { bloomStrength: value })}
-          step={0.1}
-          value={visualSettings.bloomStrength}
-        />
-        <Slider
-          label="Bloom Rad"
-          max={1}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { bloomRadius: value })}
-          step={0.1}
-          value={visualSettings.bloomRadius}
-        />
-        <Slider
-          label="Bloom Th"
-          max={1}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { bloomThreshold: value })}
-          step={0.05}
-          value={visualSettings.bloomThreshold}
-        />
-        <Slider
-          label="Chroma Amt"
-          max={0.01}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { chromaAmount: value })}
-          step={0.0001}
-          value={visualSettings.chromaAmount}
-        />
-        <Slider
-          label="Chroma Ang"
-          max={6.28}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { chromaAngle: value })}
-          step={0.1}
-          value={visualSettings.chromaAngle}
-        />
-        <Slider
-          label="Grain Amt"
-          max={0.2}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { grainAmount: value })}
-          step={0.01}
-          value={visualSettings.grainAmount}
-        />
-        <Slider
-          label="Vignette"
-          max={1}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { vignetteAmount: value })}
-          step={0.05}
-          value={visualSettings.vignetteAmount}
-        />
-        <Slider
-          label="Vig Hard"
-          max={2}
-          min={0}
-          onInput={(value) => updateVisualSettings(setVisualSettings, { vignetteHardness: value })}
-          step={0.1}
-          value={visualSettings.vignetteHardness}
         />
       </div>
 

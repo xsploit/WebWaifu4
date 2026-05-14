@@ -383,19 +383,10 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'armClipGuardStrength',
     'armClipTorsoRadius',
     'crossfadeDuration',
-    'bloomStrength',
-    'bloomRadius',
-    'bloomThreshold',
-    'chromaAmount',
-    'chromaAngle',
-    'grainAmount',
-    'vignetteAmount',
-    'vignetteHardness',
-    'bleachOpacity',
+    'sceneExposure',
     'colorPowR',
     'colorPowG',
     'colorPowB',
-    'taaSampleLevel',
     'keyLight',
     'fillLight',
     'rimLight',
@@ -408,16 +399,7 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'autoGaze',
     'gazePointerFollow',
     'armClipGuard',
-    'postProcessingEnabled',
     'outline',
-    'bloom',
-    'chroma',
-    'grain',
-    'glitch',
-    'fxaa',
-    'smaa',
-    'taa',
-    'bleach',
     'colorCorr',
   ];
 
@@ -465,6 +447,10 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   next.gazeAudienceYOffset = Math.max(-0.25, Math.min(0.15, next.gazeAudienceYOffset));
   next.armClipGuardStrength = Math.max(0, Math.min(1, next.armClipGuardStrength));
   next.armClipTorsoRadius = Math.max(0.08, Math.min(0.55, next.armClipTorsoRadius));
+  next.sceneExposure = Math.max(0.35, Math.min(1.8, next.sceneExposure));
+  next.colorPowR = Math.max(0.6, Math.min(2.4, next.colorPowR));
+  next.colorPowG = Math.max(0.6, Math.min(2.4, next.colorPowG));
+  next.colorPowB = Math.max(0.6, Math.min(2.4, next.colorPowB));
 
   return next;
 }

@@ -304,65 +304,10 @@ function getBaseVrmRotation(scene: THREE.Object3D) {
 }
 
 function hasActivePass(refs: PostProcessingRefs | null) {
-  if (!refs) {
-    return false;
-  }
-
-  return (
-    refs.bloomPass.enabled ||
-    refs.fxaaPass.enabled ||
-    refs.smaaPass.enabled ||
-    refs.chromaticAberrationPass.enabled ||
-    refs.filmGrainPass.enabled ||
-    refs.glitchPass.enabled ||
-    refs.bleachBypassPass.enabled ||
-    refs.colorCorrectionPass.enabled ||
-    refs.taaPass.enabled
-  );
+  return Boolean(refs?.colorCorrectionPass.enabled);
 }
 
 function applyPostProcessingSettings(refs: PostProcessingRefs, visualSettings: VisualSettings) {
-  refs.bloomPass.enabled = visualSettings.bloom;
-  refs.bloomPass.strength = visualSettings.bloomStrength;
-  refs.bloomPass.radius = visualSettings.bloomRadius;
-  refs.bloomPass.threshold = visualSettings.bloomThreshold;
-
-  refs.chromaticAberrationPass.enabled = visualSettings.chroma;
-  const chromaAmountUniform = refs.chromaticAberrationPass.uniforms['amount'];
-  if (chromaAmountUniform) {
-    chromaAmountUniform.value = visualSettings.chromaAmount;
-  }
-  const chromaAngleUniform = refs.chromaticAberrationPass.uniforms['angle'];
-  if (chromaAngleUniform) {
-    chromaAngleUniform.value = visualSettings.chromaAngle;
-  }
-
-  refs.filmGrainPass.enabled = visualSettings.grain;
-  const grainAmountUniform = refs.filmGrainPass.uniforms['grainAmount'];
-  if (grainAmountUniform) {
-    grainAmountUniform.value = visualSettings.grainAmount;
-  }
-  const vignetteAmountUniform = refs.filmGrainPass.uniforms['vignetteAmount'];
-  if (vignetteAmountUniform) {
-    vignetteAmountUniform.value = visualSettings.vignetteAmount;
-  }
-  const vignetteHardnessUniform = refs.filmGrainPass.uniforms['vignetteHardness'];
-  if (vignetteHardnessUniform) {
-    vignetteHardnessUniform.value = visualSettings.vignetteHardness;
-  }
-
-  refs.glitchPass.enabled = visualSettings.glitch;
-  refs.fxaaPass.enabled = visualSettings.fxaa;
-  refs.smaaPass.enabled = visualSettings.smaa;
-  refs.taaPass.enabled = visualSettings.taa;
-  refs.taaPass.sampleLevel = visualSettings.taaSampleLevel;
-
-  refs.bleachBypassPass.enabled = visualSettings.bleach;
-  const opacityUniform = refs.bleachBypassPass.uniforms['opacity'];
-  if (opacityUniform) {
-    opacityUniform.value = visualSettings.bleachOpacity;
-  }
-
   refs.colorCorrectionPass.enabled = visualSettings.colorCorr;
   const powRgbUniform = refs.colorCorrectionPass.uniforms['powRGB'];
   if (powRgbUniform) {
@@ -372,8 +317,6 @@ function applyPostProcessingSettings(refs: PostProcessingRefs, visualSettings: V
       visualSettings.colorPowB,
     );
   }
-
-  refs.outlinePass.enabled = false;
 }
 
 function easeBlink(value: number) {
@@ -631,10 +574,7 @@ function setFacialExpressionValues(
   }
 }
 
-function clearFacialExpressionRuntime(
-  vrm: VRM | null,
-  state: FacialExpressionRuntimeState,
-) {
+function clearFacialExpressionRuntime(vrm: VRM | null, state: FacialExpressionRuntimeState) {
   if (state.animationFrame !== null) {
     window.cancelAnimationFrame(state.animationFrame);
     state.animationFrame = null;
@@ -1135,7 +1075,7 @@ function SceneRuntime({
     gl.setClearColor(0x02040a, 0);
     gl.autoClear = true;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 0.85;
+    gl.toneMappingExposure = visualSettings.sceneExposure;
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.shadowMap.enabled = false;
 
@@ -1189,8 +1129,12 @@ function SceneRuntime({
       return;
     }
 
-    resizePostProcessing(postProcessingRef.current, gl);
+    resizePostProcessing(postProcessingRef.current);
   }, [gl, size.height, size.width]);
+
+  useEffect(() => {
+    gl.toneMappingExposure = visualSettings.sceneExposure;
+  }, [gl, visualSettings.sceneExposure]);
 
   useEffect(() => {
     if (!postProcessingRef.current) {
@@ -1199,14 +1143,6 @@ function SceneRuntime({
 
     applyPostProcessingSettings(postProcessingRef.current, visualSettings);
   }, [visualSettings]);
-
-  useEffect(() => {
-    if (!postProcessingRef.current) {
-      return;
-    }
-
-    postProcessingRef.current.outlinePass.selectedObjects = vrm ? [vrm.scene] : [];
-  }, [vrm]);
 
   useEffect(() => {
     resetBlinkRuntimeState(blinkRuntimeRef.current, vrm, visualSettings.blinkInterval);
@@ -1251,16 +1187,9 @@ function SceneRuntime({
       return;
     }
 
-    if (postProcessing.filmGrainPass.enabled && visualSettings.postProcessingEnabled) {
-      const timeUniform = postProcessing.filmGrainPass.uniforms['time'];
-      if (timeUniform) {
-        timeUniform.value = performance.now() * 0.001;
-      }
-    }
-
     if (visualSettings.outline && postProcessing.outlineEffect) {
       postProcessing.outlineEffect.render(scene, camera);
-    } else if (visualSettings.postProcessingEnabled && hasActivePass(postProcessing)) {
+    } else if (hasActivePass(postProcessing)) {
       postProcessing.composer.render();
     } else {
       gl.render(scene, camera);
@@ -1319,9 +1248,9 @@ function Avatar({
       ),
       'YXZ',
     );
-    vrm.scene.quaternion.copy(getBaseVrmRotation(vrm.scene)).multiply(
-      new THREE.Quaternion().setFromEuler(placementRotation),
-    );
+    vrm.scene.quaternion
+      .copy(getBaseVrmRotation(vrm.scene))
+      .multiply(new THREE.Quaternion().setFromEuler(placementRotation));
   }, [
     modelPositionX,
     modelPositionZ,
