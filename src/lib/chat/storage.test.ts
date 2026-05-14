@@ -113,6 +113,24 @@ describe('chat settings persistence', () => {
       modelScale: 1.15,
       modelVerticalOffset: -0.4,
       outline: false,
+      outlineAlpha: 0.65,
+      outlineColor: '#334455',
+      outlineThickness: 0.008,
+      mtoonGiEqualization: 0.6,
+      mtoonRimColor: '#ddeeff',
+      mtoonRimFresnel: 7.2,
+      mtoonRimLift: 0.35,
+      mtoonRimLightingMix: 0.45,
+      mtoonShadeColor: '#445566',
+      mtoonShadeShift: -0.2,
+      mtoonToony: 0.75,
+      mtoonTuning: true,
+      pbrClearcoat: 0.4,
+      pbrClearcoatRoughness: 0.25,
+      pbrEnvMapIntensity: 1.2,
+      pbrMetalness: 0.15,
+      pbrRoughness: 0.38,
+      pbrSpecularIntensity: 0.7,
       realisticMode: true,
       rimLight: 0.9,
       sceneExposure: 1.25,
@@ -187,6 +205,8 @@ describe('chat settings persistence', () => {
         chroma: true,
         glitch: true,
         grain: true,
+        mtoonRimColor: 'not-a-color',
+        outlineThickness: 100,
         sceneExposure: 1.3,
       }),
     );
@@ -194,6 +214,8 @@ describe('chat settings persistence', () => {
     const loaded = await loadPersistedChatState();
 
     expect(loaded.visualSettings.sceneExposure).toBe(1.3);
+    expect(loaded.visualSettings.outlineThickness).toBe(0.02);
+    expect(loaded.visualSettings.mtoonRimColor).toBe('#ffffff');
     expect('bloom' in loaded.visualSettings).toBe(false);
     expect('glitch' in loaded.visualSettings).toBe(false);
   });

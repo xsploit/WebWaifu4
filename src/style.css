@@ -850,6 +850,23 @@ input[type='range']::-webkit-slider-thumb {
   cursor: pointer;
 }
 
+.color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.input-tech.color-input {
+  width: 54px;
+  min-width: 54px;
+  height: 34px;
+  padding: 3px;
+  cursor: pointer;
+}
+
 .select-tech option {
   background: #0d1117;
 }

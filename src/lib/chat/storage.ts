@@ -349,6 +349,15 @@ function normalizeSettingsTab(value: string | null): SettingsTabId {
   }
 }
 
+function normalizeHexColor(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : fallback;
+}
+
 function normalizeVisualSettings(value: unknown): VisualSettings {
   const defaults = createDefaultVisualSettings();
 
@@ -383,10 +392,24 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'armClipGuardStrength',
     'armClipTorsoRadius',
     'crossfadeDuration',
+    'outlineAlpha',
+    'outlineThickness',
     'sceneExposure',
     'colorPowR',
     'colorPowG',
     'colorPowB',
+    'pbrClearcoat',
+    'pbrClearcoatRoughness',
+    'pbrEnvMapIntensity',
+    'pbrMetalness',
+    'pbrRoughness',
+    'pbrSpecularIntensity',
+    'mtoonGiEqualization',
+    'mtoonRimFresnel',
+    'mtoonRimLift',
+    'mtoonRimLightingMix',
+    'mtoonShadeShift',
+    'mtoonToony',
     'keyLight',
     'fillLight',
     'rimLight',
@@ -401,6 +424,7 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
     'armClipGuard',
     'outline',
     'colorCorr',
+    'mtoonTuning',
   ];
 
   const next = { ...defaults };
@@ -423,6 +447,9 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   if (source.cameraRigMode === 'locked' || source.cameraRigMode === 'custom') {
     next.cameraRigMode = source.cameraRigMode;
   }
+  next.outlineColor = normalizeHexColor(source.outlineColor, defaults.outlineColor);
+  next.mtoonRimColor = normalizeHexColor(source.mtoonRimColor, defaults.mtoonRimColor);
+  next.mtoonShadeColor = normalizeHexColor(source.mtoonShadeColor, defaults.mtoonShadeColor);
   next.cameraVerticalOffset = Math.max(-0.9, Math.min(0.9, next.cameraVerticalOffset));
   next.cameraOffsetX = Math.max(-3, Math.min(3, next.cameraOffsetX));
   next.cameraOffsetY = Math.max(-1.5, Math.min(1.5, next.cameraOffsetY));
@@ -447,10 +474,24 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   next.gazeAudienceYOffset = Math.max(-0.25, Math.min(0.15, next.gazeAudienceYOffset));
   next.armClipGuardStrength = Math.max(0, Math.min(1, next.armClipGuardStrength));
   next.armClipTorsoRadius = Math.max(0.08, Math.min(0.55, next.armClipTorsoRadius));
+  next.outlineAlpha = Math.max(0, Math.min(1, next.outlineAlpha));
+  next.outlineThickness = Math.max(0.0005, Math.min(0.02, next.outlineThickness));
   next.sceneExposure = Math.max(0.35, Math.min(1.8, next.sceneExposure));
   next.colorPowR = Math.max(0.6, Math.min(2.4, next.colorPowR));
   next.colorPowG = Math.max(0.6, Math.min(2.4, next.colorPowG));
   next.colorPowB = Math.max(0.6, Math.min(2.4, next.colorPowB));
+  next.pbrClearcoat = Math.max(0, Math.min(1, next.pbrClearcoat));
+  next.pbrClearcoatRoughness = Math.max(0, Math.min(1, next.pbrClearcoatRoughness));
+  next.pbrEnvMapIntensity = Math.max(0, Math.min(3, next.pbrEnvMapIntensity));
+  next.pbrMetalness = Math.max(0, Math.min(1, next.pbrMetalness));
+  next.pbrRoughness = Math.max(0, Math.min(1, next.pbrRoughness));
+  next.pbrSpecularIntensity = Math.max(0, Math.min(1, next.pbrSpecularIntensity));
+  next.mtoonGiEqualization = Math.max(0, Math.min(1, next.mtoonGiEqualization));
+  next.mtoonRimFresnel = Math.max(0.1, Math.min(10, next.mtoonRimFresnel));
+  next.mtoonRimLift = Math.max(0, Math.min(1, next.mtoonRimLift));
+  next.mtoonRimLightingMix = Math.max(0, Math.min(1, next.mtoonRimLightingMix));
+  next.mtoonShadeShift = Math.max(-1, Math.min(1, next.mtoonShadeShift));
+  next.mtoonToony = Math.max(0, Math.min(1, next.mtoonToony));
 
   return next;
 }

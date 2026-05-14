@@ -18,7 +18,7 @@ import type {
   VisualSettings,
 } from '../lib/menu/types';
 import { crossfadeToAction, loadVrmAnimationClip, resetCrossfadeState } from '../lib/vrm/animation';
-import { disposeVrm, loadVrm, setRealisticMode } from '../lib/vrm/loadVrm';
+import { applyMaterialSettings, disposeVrm, loadVrm, setRealisticMode } from '../lib/vrm/loadVrm';
 import { updateLipSync, resetLipSync } from '../lib/vrm/lipsync';
 import { initPostProcessing, resizePostProcessing } from '../lib/vrm/postprocessing';
 import type { PostProcessingRefs } from '../lib/vrm/postprocessing';
@@ -1521,8 +1521,31 @@ export function VrmStage({
       return;
     }
 
-    setRealisticMode(vrm.scene, null, visualSettings.realisticMode);
-  }, [visualSettings.realisticMode, vrm]);
+    setRealisticMode(vrm.scene, null, visualSettings.realisticMode, visualSettings);
+    applyMaterialSettings(vrm.scene, visualSettings);
+  }, [
+    visualSettings.mtoonGiEqualization,
+    visualSettings.mtoonRimColor,
+    visualSettings.mtoonRimFresnel,
+    visualSettings.mtoonRimLift,
+    visualSettings.mtoonRimLightingMix,
+    visualSettings.mtoonShadeColor,
+    visualSettings.mtoonShadeShift,
+    visualSettings.mtoonToony,
+    visualSettings.mtoonTuning,
+    visualSettings.outline,
+    visualSettings.outlineAlpha,
+    visualSettings.outlineColor,
+    visualSettings.outlineThickness,
+    visualSettings.pbrClearcoat,
+    visualSettings.pbrClearcoatRoughness,
+    visualSettings.pbrEnvMapIntensity,
+    visualSettings.pbrMetalness,
+    visualSettings.pbrRoughness,
+    visualSettings.pbrSpecularIntensity,
+    visualSettings.realisticMode,
+    vrm,
+  ]);
 
   useEffect(() => {
     if (keyLightRef.current) {

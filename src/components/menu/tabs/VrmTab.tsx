@@ -24,6 +24,28 @@ function updateVisualSettings(
   }));
 }
 
+function ColorField({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="color-row">
+      <span>{label}</span>
+      <input
+        className="input-tech color-input"
+        onChange={(event) => onChange(event.target.value)}
+        type="color"
+        value={value}
+      />
+    </label>
+  );
+}
+
 export function VrmTab({
   bundledModels,
   currentBundledModelId,
@@ -301,15 +323,6 @@ export function VrmTab({
             Reset Camera
           </button>
         </div>
-        <div className="toggle-row">
-          <span>PBR Realism</span>
-          <Toggle
-            checked={visualSettings.realisticMode}
-            onChange={(checked) =>
-              updateVisualSettings(setVisualSettings, { realisticMode: checked })
-            }
-          />
-        </div>
       </div>
 
       <div className="control-group">
@@ -383,6 +396,27 @@ export function VrmTab({
             onChange={(checked) => updateVisualSettings(setVisualSettings, { outline: checked })}
           />
         </div>
+        <ColorField
+          label="Outline Color"
+          onChange={(value) => updateVisualSettings(setVisualSettings, { outlineColor: value })}
+          value={visualSettings.outlineColor}
+        />
+        <Slider
+          label="Outline Size"
+          max={0.02}
+          min={0.0005}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { outlineThickness: value })}
+          step={0.0005}
+          value={visualSettings.outlineThickness}
+        />
+        <Slider
+          label="Outline Alpha"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { outlineAlpha: value })}
+          step={0.05}
+          value={visualSettings.outlineAlpha}
+        />
         <Slider
           label="Exposure"
           max={1.8}
@@ -390,6 +424,148 @@ export function VrmTab({
           onInput={(value) => updateVisualSettings(setVisualSettings, { sceneExposure: value })}
           step={0.05}
           value={visualSettings.sceneExposure}
+        />
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">PBR Material</div>
+        <div className="toggle-row">
+          <span>PBR Realism</span>
+          <Toggle
+            checked={visualSettings.realisticMode}
+            onChange={(checked) =>
+              updateVisualSettings(setVisualSettings, { realisticMode: checked })
+            }
+          />
+        </div>
+        <Slider
+          label="Roughness"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { pbrRoughness: value })}
+          step={0.05}
+          value={visualSettings.pbrRoughness}
+        />
+        <Slider
+          label="Metalness"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { pbrMetalness: value })}
+          step={0.05}
+          value={visualSettings.pbrMetalness}
+        />
+        <Slider
+          label="Specular"
+          max={1}
+          min={0}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { pbrSpecularIntensity: value })
+          }
+          step={0.05}
+          value={visualSettings.pbrSpecularIntensity}
+        />
+        <Slider
+          label="Clearcoat"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { pbrClearcoat: value })}
+          step={0.05}
+          value={visualSettings.pbrClearcoat}
+        />
+        <Slider
+          label="Clear Rough"
+          max={1}
+          min={0}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { pbrClearcoatRoughness: value })
+          }
+          step={0.05}
+          value={visualSettings.pbrClearcoatRoughness}
+        />
+        <Slider
+          label="Env Light"
+          max={3}
+          min={0}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { pbrEnvMapIntensity: value })
+          }
+          step={0.1}
+          value={visualSettings.pbrEnvMapIntensity}
+        />
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">MToon Material</div>
+        <div className="toggle-row">
+          <span>MToon Tuning</span>
+          <Toggle
+            checked={visualSettings.mtoonTuning}
+            onChange={(checked) =>
+              updateVisualSettings(setVisualSettings, { mtoonTuning: checked })
+            }
+          />
+        </div>
+        <ColorField
+          label="Shade Color"
+          onChange={(value) => updateVisualSettings(setVisualSettings, { mtoonShadeColor: value })}
+          value={visualSettings.mtoonShadeColor}
+        />
+        <Slider
+          label="Shade Shift"
+          max={1}
+          min={-1}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { mtoonShadeShift: value })}
+          step={0.05}
+          value={visualSettings.mtoonShadeShift}
+        />
+        <Slider
+          label="Toony"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { mtoonToony: value })}
+          step={0.05}
+          value={visualSettings.mtoonToony}
+        />
+        <Slider
+          label="GI Equalize"
+          max={1}
+          min={0}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { mtoonGiEqualization: value })
+          }
+          step={0.05}
+          value={visualSettings.mtoonGiEqualization}
+        />
+        <ColorField
+          label="Rim Color"
+          onChange={(value) => updateVisualSettings(setVisualSettings, { mtoonRimColor: value })}
+          value={visualSettings.mtoonRimColor}
+        />
+        <Slider
+          label="Rim Lift"
+          max={1}
+          min={0}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { mtoonRimLift: value })}
+          step={0.05}
+          value={visualSettings.mtoonRimLift}
+        />
+        <Slider
+          label="Rim Power"
+          max={10}
+          min={0.1}
+          onInput={(value) => updateVisualSettings(setVisualSettings, { mtoonRimFresnel: value })}
+          step={0.1}
+          value={visualSettings.mtoonRimFresnel}
+        />
+        <Slider
+          label="Rim Light"
+          max={1}
+          min={0}
+          onInput={(value) =>
+            updateVisualSettings(setVisualSettings, { mtoonRimLightingMix: value })
+          }
+          step={0.05}
+          value={visualSettings.mtoonRimLightingMix}
         />
       </div>
 

@@ -2,9 +2,33 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import type { VRM } from '@pixiv/three-vrm';
+import type { VisualSettings } from '../menu/types';
 
 type RotatableVrmUtils = typeof VRMUtils & {
   rotateVRM0?: (vrm: VRM) => void;
+};
+
+type MutableMaterial = THREE.Material & { [key: string]: any };
+
+type MeshMaterialState = {
+  originalMaterials?: THREE.Material[];
+  realisticMaterials?: THREE.Material[];
+};
+
+type StoredMToonMaterialState = {
+  giEqualizationFactor?: number;
+  outlineWidthFactor?: number;
+  parametricRimColorFactor?: THREE.Color;
+  parametricRimFresnelPowerFactor?: number;
+  parametricRimLiftFactor?: number;
+  rimLightingMixFactor?: number;
+  shadeColorFactor?: THREE.Color;
+  shadingShiftFactor?: number;
+  shadingToonyFactor?: number;
+};
+
+type MaterialUserData = THREE.Material['userData'] & {
+  yourwifeyMtoonDefaults?: StoredMToonMaterialState;
 };
 
 function createLoader() {
@@ -13,9 +37,10 @@ function createLoader() {
   return loader;
 }
 
-function disposeMaterial(material: THREE.Material) {
+function disposeMaterial(material: THREE.Material, disposedTextures = new Set<THREE.Texture>()) {
   for (const value of Object.values(material)) {
-    if (value instanceof THREE.Texture) {
+    if (value instanceof THREE.Texture && !disposedTextures.has(value)) {
+      disposedTextures.add(value);
       value.dispose();
     }
   }
@@ -25,6 +50,128 @@ function disposeMaterial(material: THREE.Material) {
 
 function asTexture(value: unknown): THREE.Texture | null {
   return value instanceof THREE.Texture ? value : null;
+}
+
+function getMeshMaterials(mesh: THREE.Mesh): THREE.Material[] {
+  if (!mesh.material) {
+    return [];
+  }
+
+  return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+}
+
+function assignMeshMaterials(mesh: THREE.Mesh, materials: THREE.Material[]) {
+  mesh.material = materials.length === 1 ? materials[0]! : materials;
+}
+
+function getHexColor(value: string): THREE.Color {
+  return new THREE.Color(value);
+}
+
+function applyOutlineSettings(material: THREE.Material, visualSettings: VisualSettings) {
+  const color = getHexColor(visualSettings.outlineColor);
+  material.userData['outlineParameters'] = {
+    thickness: visualSettings.outlineThickness,
+    color: color.toArray(),
+    alpha: visualSettings.outlineAlpha,
+    visible: visualSettings.outline,
+    keepAlive: true,
+  };
+}
+
+function captureMToonDefaults(material: MutableMaterial): StoredMToonMaterialState {
+  return {
+    giEqualizationFactor: material['giEqualizationFactor'],
+    outlineWidthFactor: material['outlineWidthFactor'],
+    parametricRimColorFactor: material['parametricRimColorFactor']?.clone?.(),
+    parametricRimFresnelPowerFactor: material['parametricRimFresnelPowerFactor'],
+    parametricRimLiftFactor: material['parametricRimLiftFactor'],
+    rimLightingMixFactor: material['rimLightingMixFactor'],
+    shadeColorFactor: material['shadeColorFactor']?.clone?.(),
+    shadingShiftFactor: material['shadingShiftFactor'],
+    shadingToonyFactor: material['shadingToonyFactor'],
+  };
+}
+
+function restoreMToonDefaults(material: MutableMaterial) {
+  const stored = (material.userData as MaterialUserData).yourwifeyMtoonDefaults;
+  if (!stored) {
+    return;
+  }
+
+  if (typeof stored.giEqualizationFactor === 'number') {
+    material['giEqualizationFactor'] = stored.giEqualizationFactor;
+  }
+  if (typeof stored.outlineWidthFactor === 'number') {
+    material['outlineWidthFactor'] = stored.outlineWidthFactor;
+  }
+  if (stored.parametricRimColorFactor) {
+    material['parametricRimColorFactor'] = stored.parametricRimColorFactor.clone();
+  }
+  if (typeof stored.parametricRimFresnelPowerFactor === 'number') {
+    material['parametricRimFresnelPowerFactor'] = stored.parametricRimFresnelPowerFactor;
+  }
+  if (typeof stored.parametricRimLiftFactor === 'number') {
+    material['parametricRimLiftFactor'] = stored.parametricRimLiftFactor;
+  }
+  if (typeof stored.rimLightingMixFactor === 'number') {
+    material['rimLightingMixFactor'] = stored.rimLightingMixFactor;
+  }
+  if (stored.shadeColorFactor) {
+    material['shadeColorFactor'] = stored.shadeColorFactor.clone();
+  }
+  if (typeof stored.shadingShiftFactor === 'number') {
+    material['shadingShiftFactor'] = stored.shadingShiftFactor;
+  }
+  if (typeof stored.shadingToonyFactor === 'number') {
+    material['shadingToonyFactor'] = stored.shadingToonyFactor;
+  }
+  material.needsUpdate = true;
+}
+
+function applyMToonSettings(material: MutableMaterial, visualSettings: VisualSettings) {
+  if (!material['isMToonMaterial']) {
+    return;
+  }
+
+  const userData = material.userData as MaterialUserData;
+  if (!userData.yourwifeyMtoonDefaults) {
+    userData.yourwifeyMtoonDefaults = captureMToonDefaults(material);
+  }
+
+  if (!visualSettings.mtoonTuning) {
+    restoreMToonDefaults(material);
+    return;
+  }
+
+  material['giEqualizationFactor'] = visualSettings.mtoonGiEqualization;
+  material['outlineWidthFactor'] = visualSettings.outlineThickness * 1.35;
+  material['parametricRimColorFactor'] = getHexColor(visualSettings.mtoonRimColor);
+  material['parametricRimFresnelPowerFactor'] = visualSettings.mtoonRimFresnel;
+  material['parametricRimLiftFactor'] = visualSettings.mtoonRimLift;
+  material['rimLightingMixFactor'] = visualSettings.mtoonRimLightingMix;
+  material['shadeColorFactor'] = getHexColor(visualSettings.mtoonShadeColor);
+  material['shadingShiftFactor'] = visualSettings.mtoonShadeShift;
+  material['shadingToonyFactor'] = visualSettings.mtoonToony;
+  material.needsUpdate = true;
+}
+
+function applyPbrSettings(material: MutableMaterial, visualSettings: VisualSettings) {
+  if (!material['isMeshStandardMaterial'] && !material['isMeshPhysicalMaterial']) {
+    return;
+  }
+
+  material['roughness'] = visualSettings.pbrRoughness;
+  material['metalness'] = visualSettings.pbrMetalness;
+  material['envMapIntensity'] = visualSettings.pbrEnvMapIntensity;
+
+  if (material['isMeshPhysicalMaterial']) {
+    material['clearcoat'] = visualSettings.pbrClearcoat;
+    material['clearcoatRoughness'] = visualSettings.pbrClearcoatRoughness;
+    material['specularIntensity'] = visualSettings.pbrSpecularIntensity;
+  }
+
+  material.needsUpdate = true;
 }
 
 export async function loadVrm(url: string): Promise<VRM> {
@@ -61,6 +208,7 @@ export async function loadVrm(url: string): Promise<VRM> {
 export function makePhysicalFrom(
   oldMaterial: THREE.Material & { [key: string]: any },
   envMap: THREE.Texture | null,
+  visualSettings: VisualSettings,
 ): THREE.Material {
   const uniforms = oldMaterial['uniforms'] as Record<string, { value?: unknown }> | undefined;
   const map =
@@ -95,14 +243,14 @@ export function makePhysicalFrom(
     emissive,
     emissiveMap: emissiveMap || undefined,
     emissiveIntensity: emissiveIntensity ?? 1,
-    roughness: 0.45,
-    metalness: 0,
+    roughness: visualSettings.pbrRoughness,
+    metalness: visualSettings.pbrMetalness,
     transmission: 0,
     thickness: 0,
-    envMapIntensity: envMap ? 1 : 0,
-    clearcoat: envMap ? 0.3 : 0,
-    clearcoatRoughness: 0.4,
-    specularIntensity: 0.5,
+    envMapIntensity: envMap ? visualSettings.pbrEnvMapIntensity : 0,
+    clearcoat: visualSettings.pbrClearcoat,
+    clearcoatRoughness: visualSettings.pbrClearcoatRoughness,
+    specularIntensity: visualSettings.pbrSpecularIntensity,
     side: oldMaterial.side !== undefined ? oldMaterial.side : THREE.FrontSide,
     depthWrite: oldMaterial.depthWrite !== undefined ? oldMaterial.depthWrite : true,
     transparent: Boolean(oldMaterial.transparent),
@@ -116,10 +264,26 @@ export function makePhysicalFrom(
   return new THREE.MeshPhysicalMaterial(parameters);
 }
 
+export function applyMaterialSettings(root: THREE.Object3D, visualSettings: VisualSettings) {
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) {
+      return;
+    }
+
+    getMeshMaterials(mesh).forEach((material) => {
+      applyOutlineSettings(material, visualSettings);
+      applyMToonSettings(material as MutableMaterial, visualSettings);
+      applyPbrSettings(material as MutableMaterial, visualSettings);
+    });
+  });
+}
+
 export function setRealisticMode(
   root: THREE.Object3D,
   envMap: THREE.Texture | null,
   enable: boolean,
+  visualSettings: VisualSettings,
 ) {
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
@@ -132,36 +296,47 @@ export function setRealisticMode(
       return;
     }
 
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const meshState = mesh.userData as MeshMaterialState;
+    const materials = getMeshMaterials(mesh);
 
     if (enable) {
-      if (!(mesh.userData as { originalMaterials?: THREE.Material[] }).originalMaterials) {
-        (mesh.userData as { originalMaterials?: THREE.Material[] }).originalMaterials =
-          materials.slice();
+      if (!meshState.originalMaterials) {
+        meshState.originalMaterials = materials.slice();
       }
 
-      const nextMaterials = materials.map((material) => makePhysicalFrom(material as any, envMap));
-      mesh.material = nextMaterials.length === 1 ? nextMaterials[0]! : nextMaterials;
+      if (!meshState.realisticMaterials) {
+        meshState.realisticMaterials = meshState.originalMaterials.map((material) =>
+          makePhysicalFrom(material as MutableMaterial, envMap, visualSettings),
+        );
+      }
+
+      meshState.realisticMaterials.forEach((material) =>
+        applyPbrSettings(material as MutableMaterial, visualSettings),
+      );
+      assignMeshMaterials(mesh, meshState.realisticMaterials);
       return;
     }
 
-    const originalMaterials = (mesh.userData as { originalMaterials?: THREE.Material[] })
-      .originalMaterials;
+    const originalMaterials = meshState.originalMaterials;
     if (!originalMaterials) {
       return;
     }
 
     const originalSet = new Set(originalMaterials);
-    materials.forEach((material) => {
+    meshState.realisticMaterials?.forEach((material) => {
       if (!originalSet.has(material)) {
         material.dispose();
       }
     });
-    mesh.material = originalMaterials.length === 1 ? originalMaterials[0]! : originalMaterials;
+    meshState.realisticMaterials = undefined;
+    assignMeshMaterials(mesh, originalMaterials);
   });
 }
 
 export function disposeVrm(vrm: VRM) {
+  const disposedMaterials = new Set<THREE.Material>();
+  const disposedTextures = new Set<THREE.Texture>();
+
   vrm.scene.traverse((object) => {
     const mesh = object as THREE.Mesh;
 
@@ -171,7 +346,18 @@ export function disposeVrm(vrm: VRM) {
       return;
     }
 
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    materials.forEach(disposeMaterial);
+    const meshState = mesh.userData as MeshMaterialState;
+    const materials = [
+      ...getMeshMaterials(mesh),
+      ...(meshState.originalMaterials ?? []),
+      ...(meshState.realisticMaterials ?? []),
+    ];
+    materials.forEach((material) => {
+      if (disposedMaterials.has(material)) {
+        return;
+      }
+      disposedMaterials.add(material);
+      disposeMaterial(material, disposedTextures);
+    });
   });
 }
