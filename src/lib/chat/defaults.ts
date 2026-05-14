@@ -1,10 +1,4 @@
-import type {
-  AiSettings,
-  PersonaProfile,
-  RelationshipMemory,
-  RuntimeContextSnapshot,
-  UiState,
-} from './types';
+import type { AiSettings, PersonaProfile, RelationshipMemory, UiState } from './types';
 import { NEURO_PIPER_VOICE_KEY } from '../tts/piper';
 
 export const STORAGE_KEYS = {
@@ -59,8 +53,8 @@ export const GPT_MODEL_OPTIONS = [
   },
 ] as const;
 
-export const COMMON_RUN_MODELS = GPT_MODEL_OPTIONS.map((model) => model.id);
-export const DEFAULT_RUN_MODEL = 'gpt-5.4-nano';
+export const COMMON_OPENAI_MODELS = GPT_MODEL_OPTIONS.map((model) => model.id);
+export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
 export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-5.4-mini';
 
 export const RIKO_PERSONA: PersonaProfile = {
@@ -99,14 +93,12 @@ export function createDefaultPersonas(): PersonaProfile[] {
 
 export function createDefaultAiSettings(): AiSettings {
   return {
-    model: DEFAULT_RUN_MODEL,
+    model: DEFAULT_OPENAI_MODEL,
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
     aiTransportMode: 'websocket',
     openAiStateMode: 'conversation',
     temperature: 0.85,
     maxTokens: 300,
-    includeHostContext: true,
-    localDevApiKey: '',
     ttsEnabled: true,
     ttsAutoSpeak: true,
     ttsSimulatedStreaming: true,
@@ -148,14 +140,6 @@ export function createDefaultRelationshipMemory(): RelationshipMemory {
     summary: '',
     diaryEntry: '',
     diaryHistory: [],
-  };
-}
-
-export function createEmptyRuntimeContext(): RuntimeContextSnapshot {
-  return {
-    launchParams: {},
-    shareParams: {},
-    notificationParams: {},
   };
 }
 

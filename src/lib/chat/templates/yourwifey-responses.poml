@@ -178,12 +178,6 @@ Do not treat every Twitch chatter as the local controller. Use display/login/bro
       </cp>
     </if>
 
-    <if condition="{{ host_context }}">
-      <cp caption="Host Context" captionStyle="header" syntax="markdown" whiteSpace="pre">
-{{ host_context }}
-      </cp>
-    </if>
-
     <if condition="{{ relationship_memory_context }}">
       <cp caption="Relationship Memory" captionStyle="header" syntax="markdown" whiteSpace="pre">
 {{ relationship_memory_context }}

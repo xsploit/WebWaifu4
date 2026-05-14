@@ -20,8 +20,8 @@ intentionally testing the old server-owned Twitch IRC path.
 
 For Vercel, set `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-5-nano`,
 `AI_PROVIDER=openai-responses`, `VITE_AI_PROXY_ENABLED=true`,
-`VITE_OPENAI_MODEL=gpt-5-nano`, and `VITE_RUN_GAME_SDK_ENABLED=false` as
-environment variables. Do not use a `VITE_` variable for the API key.
+and `VITE_OPENAI_MODEL=gpt-5-nano` as environment variables. Do not use a
+`VITE_` variable for the API key.
 
 ## Twitch
 

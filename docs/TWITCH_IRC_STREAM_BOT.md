@@ -21,9 +21,8 @@ VITE_DIRECT_TWITCH_CHAT=true
 
 Set `VITE_DIRECT_TWITCH_CHAT=false` only if you want to disable direct browser
 IRC. Keep `VITE_STREAM_BOT_WS_ENABLED=false` for the normal client-Twitch path;
-the old server Twitch socket path is opt-in only. Keep
-`VITE_RUN_GAME_SDK_ENABLED=false` for the standalone stream path so the RUN.game
-localhost mock SDK does not boot or log in the stream browser.
+the old server Twitch socket path is opt-in only. The overlay is standalone and
+does not boot a host game SDK in the stream browser.
 
 ## Browser Twitch AI Mode
 

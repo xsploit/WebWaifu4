@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 
 type ChatBarProps = {
   activePersonaName: string;
-  contextEnabled: boolean;
   inputValue: string;
   isGenerating: boolean;
   messageCount: number;
@@ -13,7 +12,6 @@ type ChatBarProps = {
 
 export function ChatBar({
   activePersonaName,
-  contextEnabled,
   inputValue,
   isGenerating,
   messageCount,
@@ -45,7 +43,6 @@ export function ChatBar({
           <span className="meta-item">{model || 'MODEL OFFLINE'}</span>
         </div>
         <div className="chat-meta-group">
-          <span className={`meta-item ${contextEnabled ? 'active' : ''}`}>CTX</span>
           <span className="meta-item">{messageCount} MSGS</span>
         </div>
       </div>

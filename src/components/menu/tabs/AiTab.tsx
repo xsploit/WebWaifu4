@@ -1,8 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { GPT_MODEL_OPTIONS } from '../../../lib/chat/defaults';
-import type { AiProxyHealth, AiSettings, RuntimeContextSnapshot } from '../../../lib/chat/types';
+import type { AiProxyHealth, AiSettings } from '../../../lib/chat/types';
 import { Slider } from '../ui/Slider';
-import { Toggle } from '../ui/Toggle';
 
 type AiTabProps = {
   activePersonaName: string;
@@ -14,7 +13,6 @@ type AiTabProps = {
   modelsLoading: boolean;
   onRefreshAiProxyHealth: () => void;
   onRefreshModels: () => void;
-  runtimeContext: RuntimeContextSnapshot;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
 };
 
@@ -38,13 +36,8 @@ export function AiTab({
   modelsLoading,
   onRefreshAiProxyHealth,
   onRefreshModels,
-  runtimeContext,
   setAiSettings,
 }: AiTabProps) {
-  const hasContext =
-    Object.keys(runtimeContext.launchParams).length > 0 ||
-    Object.keys(runtimeContext.shareParams).length > 0 ||
-    Object.keys(runtimeContext.notificationParams).length > 0;
   const gptModelIds = new Set<string>(GPT_MODEL_OPTIONS.map((model) => model.id));
   const customModels = availableModels.filter((model) => !gptModelIds.has(model));
   const selectedModel =
@@ -183,39 +176,12 @@ export function AiTab({
 
       <div className="control-group">
         <div className="control-label">Prompt Context</div>
-        <div className="toggle-row">
-          <span>Include Host Context</span>
-          <Toggle
-            checked={aiSettings.includeHostContext}
-            onChange={(checked) => updateAiSettings(setAiSettings, { includeHostContext: checked })}
-          />
-        </div>
         <div className="status-copy">
           Active persona: <strong>{activePersonaName}</strong>
         </div>
-        <pre className="context-preview">
-          {hasContext
-            ? JSON.stringify(runtimeContext, null, 2)
-            : 'No launch, share, or notification params are present right now.'}
-        </pre>
-      </div>
-
-      <div className="control-group">
-        <div className="control-label">Local Browser Override</div>
-        <input
-          autoComplete="off"
-          className="input-tech"
-          onChange={(event) =>
-            updateAiSettings(setAiSettings, {
-              localDevApiKey: event.target.value,
-            })
-          }
-          placeholder="Optional API key for local browser testing only..."
-          type="password"
-          value={aiSettings.localDevApiKey}
-        />
         <div className="field-hint">
-          Used only for local static testing. Server-backed chat uses the backend environment key.
+          Prompt context now comes from persona, memory, Twitch/local chat turns, tools, TTS, and
+          animation state. External host launch/share params are no longer injected.
         </div>
       </div>
     </>

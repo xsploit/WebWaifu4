@@ -19,7 +19,6 @@ export type YourWifeyPomlPromptInput = {
   diaryContext?: string;
   dynamicState?: Record<string, PomlDynamicStateValue>;
   history: PomlPromptMessage[];
-  hostContext?: string;
   personaContext?: string;
   relationshipMemoryContext?: string;
   replyMetadataInstruction: string;
@@ -54,7 +53,6 @@ export async function buildYourWifeyPomlMessages(
     animation_catalog_context: cleanBlock(input.animationCatalogContext),
     current_turn_context: cleanBlock(input.currentTurnContext),
     diary_context: cleanBlock(input.diaryContext),
-    host_context: cleanBlock(input.hostContext),
     persona_context: withFallback(input.personaContext, EMPTY_PERSONA_CONTEXT),
     relationship_memory_context: cleanBlock(input.relationshipMemoryContext),
     reply_metadata_instruction: input.replyMetadataInstruction.trim(),

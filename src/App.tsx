@@ -6,14 +6,13 @@ import { VrmStage } from './components/VrmStage';
 import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
 import {
-  COMMON_RUN_MODELS,
+  COMMON_OPENAI_MODELS,
   DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_PERSONA,
-  DEFAULT_RUN_MODEL,
+  DEFAULT_OPENAI_MODEL,
   createDefaultAiSettings,
   createDefaultRelationshipMemory,
   createDefaultPersonas,
-  createEmptyRuntimeContext,
   createDefaultUiState,
 } from './lib/chat/defaults';
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
@@ -60,7 +59,6 @@ import type {
   PersonaDraft,
   PersonaProfile,
   RelationshipMemory,
-  RuntimeContextSnapshot,
 } from './lib/chat/types';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from './lib/menu/defaults';
 import type {
@@ -255,7 +253,6 @@ const CONFIGURED_OPENAI_MODEL = (
 const AI_PROXY_URL = (import.meta.env['VITE_AI_PROXY_URL'] || '').trim();
 const AI_PROXY_ENABLED =
   import.meta.env['VITE_AI_PROXY_ENABLED'] === 'true' || Boolean(AI_PROXY_URL);
-const RUN_GAME_SDK_ENABLED = import.meta.env['VITE_RUN_GAME_SDK_ENABLED'] === 'true';
 const BROWSER_URL_PARAMS =
   typeof window === 'undefined'
     ? new URLSearchParams()
@@ -355,18 +352,6 @@ type StreamingSpeechPlayer = {
   pushDelta: (delta: string) => void;
 };
 
-let runGameSdkPromise: Promise<typeof import('@series-inc/rundot-game-sdk/api').default> | null =
-  null;
-
-async function getRunGameSdk() {
-  if (!RUN_GAME_SDK_ENABLED) {
-    throw new Error('RUN.game SDK is disabled for standalone stream mode.');
-  }
-
-  runGameSdkPromise ??= import('@series-inc/rundot-game-sdk/api').then((module) => module.default);
-  return runGameSdkPromise;
-}
-
 function mergeModels(...sources: Array<readonly string[]>) {
   const merged: string[] = [];
   const seen = new Set<string>();
@@ -389,7 +374,7 @@ function mergeModels(...sources: Array<readonly string[]>) {
 function pickAvailableModel(
   preferredModel: string | undefined,
   availableModels: readonly string[],
-  fallbackModel: string = DEFAULT_RUN_MODEL,
+  fallbackModel: string = DEFAULT_OPENAI_MODEL,
 ) {
   const normalizedPreferred = preferredModel?.trim();
   if (normalizedPreferred && availableModels.includes(normalizedPreferred)) {
@@ -405,7 +390,7 @@ function pickAvailableModel(
 }
 
 function sanitizeAiModels(current: AiSettings, availableModels: readonly string[]) {
-  const nextModel = pickAvailableModel(current.model, availableModels, DEFAULT_RUN_MODEL);
+  const nextModel = pickAvailableModel(current.model, availableModels, DEFAULT_OPENAI_MODEL);
   const nextMemoryAgentModel = pickAvailableModel(
     current.memoryAgentModel,
     availableModels,
@@ -464,7 +449,7 @@ function getAiHealthUrl() {
 }
 
 function getClientAiRouteLabel() {
-  return AI_PROXY_ENABLED ? `local AI proxy ${getAiProxyUrl()}` : 'RUN.game host AI';
+  return AI_PROXY_ENABLED ? `AI proxy ${getAiProxyUrl()}` : 'AI proxy disabled';
 }
 
 function decodeAiProxyAudioEvent(event: AiProxyStreamEvent): RemoteTtsAudioChunk | null {
@@ -607,7 +592,6 @@ async function readAiProxyStream(
 
 async function requestChatCompletion({
   activeChatters = 1,
-  apiKey,
   disableState,
   maxTokens,
   messages,
@@ -624,7 +608,6 @@ async function requestChatCompletion({
   ttsBridge,
 }: {
   activeChatters?: number;
-  apiKey?: string;
   disableState?: boolean;
   maxTokens: number;
   messages: AppCompletionMessage[];
@@ -641,18 +624,7 @@ async function requestChatCompletion({
   ttsBridge?: RemoteTtsRequest;
 }): Promise<AppCompletionResponse> {
   if (!AI_PROXY_ENABLED) {
-    const runGameSdk = await getRunGameSdk();
-    return runGameSdk.ai.requestChatCompletionAsync({
-      model,
-      messages,
-      maxTokens,
-      temperature,
-      ...(apiKey?.trim()
-        ? {
-            apiKey: apiKey.trim(),
-          }
-        : {}),
-    }) as Promise<AppCompletionResponse>;
+    throw new Error('AI proxy is disabled. Start the local/server AI backend to chat.');
   }
 
   const response = await fetch(getAiProxyUrl(), {
@@ -1108,39 +1080,29 @@ function getMemoryProgressStatus(memory: RelationshipMemory) {
   return `Memory updated. Diary pass in ${remainingTurns} turn${remainingTurns === 1 ? '' : 's'}.`;
 }
 
-function getRunAiErrorMessage(error: unknown, context: 'chat' | 'models' = 'chat') {
+function getAiErrorMessage(error: unknown, context: 'chat' | 'models' = 'chat') {
   if (!(error instanceof Error)) {
     return context === 'models'
-      ? 'RUN AI model list unavailable right now.'
-      : 'RUN AI request failed unexpectedly.';
+      ? 'AI model list unavailable right now.'
+      : 'AI request failed unexpectedly.';
   }
 
   const message = error.message.trim();
-  const accessDenied =
-    error.name === 'AccessDeniedError' ||
-    message.includes('Access denied. Required tier: authenticated_18plus');
-
-  if (accessDenied) {
-    return context === 'models'
-      ? 'RUN AI model list requires a logged-in RUN.game account. Sign in and refresh models.'
-      : 'RUN AI now requires a logged-in RUN.game account. Sign in and retry.';
-  }
-
   if (message.includes('Failed to process AI completion request')) {
-    return 'RUN AI host rejected the completion request. Refresh the session and retry.';
+    return 'AI backend rejected the completion request. Refresh the session and retry.';
   }
 
   if (message.includes('HTTP error! status: 500')) {
     return context === 'models'
-      ? 'RUN AI model list failed with a server error.'
-      : 'RUN AI backend returned a server error while generating a reply.';
+      ? 'AI model list failed with a server error.'
+      : 'AI backend returned a server error while generating a reply.';
   }
 
   return (
     message ||
     (context === 'models'
-      ? 'RUN AI model list unavailable right now.'
-      : 'RUN AI request failed unexpectedly.')
+      ? 'AI model list unavailable right now.'
+      : 'AI request failed unexpectedly.')
   );
 }
 
@@ -1185,8 +1147,8 @@ function mergeRelationshipMemoryInWorker(
 }
 
 function App() {
-  const [safeArea, setSafeArea] = useState<SafeAreaInsets>(DEFAULT_SAFE_AREA);
-  const [sceneActive, setSceneActive] = useState(true);
+  const safeArea = DEFAULT_SAFE_AREA;
+  const sceneActive = true;
   const [menuOpen, setMenuOpen] = useState(() => createDefaultUiState().menuOpen);
   const [chatBarOpen, setChatBarOpen] = useState(false);
   const [chatLogOpen, setChatLogOpen] = useState(() => createDefaultUiState().chatLogOpen);
@@ -1211,15 +1173,13 @@ function App() {
     DIRECT_TWITCH_CHAT_ENABLED ? 'Connecting' : 'Offline',
   );
   const [twitchActiveChatterCount, setTwitchActiveChatterCount] = useState(0);
-  const [runtimeContext, setRuntimeContext] =
-    useState<RuntimeContextSnapshot>(createEmptyRuntimeContext);
   const [relationshipMemory, setRelationshipMemory] = useState<RelationshipMemory>(
     createDefaultRelationshipMemory,
   );
   const [relationshipMemories, setRelationshipMemories] = useState<
     Record<string, RelationshipMemory>
   >({});
-  const [availableModels, setAvailableModels] = useState<string[]>(() => [...COMMON_RUN_MODELS]);
+  const [availableModels, setAvailableModels] = useState<string[]>(() => [...COMMON_OPENAI_MODELS]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [aiProxyHealth, setAiProxyHealth] = useState<AiProxyHealth | null>(null);
@@ -1256,7 +1216,7 @@ function App() {
   const relationshipMemoryRef = useRef<RelationshipMemory>(createDefaultRelationshipMemory());
   const relationshipMemoriesRef = useRef<Record<string, RelationshipMemory>>({});
   const aiSettingsRef = useRef<AiSettings>(createDefaultAiSettings());
-  const availableModelsRef = useRef<string[]>([...COMMON_RUN_MODELS]);
+  const availableModelsRef = useRef<string[]>([...COMMON_OPENAI_MODELS]);
   const sequencerSettingsRef = useRef(createDefaultSequencerSettings());
   const directTwitchClientRef = useRef<DirectTwitchIrcClient | null>(null);
   const directTwitchCommandHandlerRef = useRef<(message: CommandChatMessage) => boolean>(
@@ -1421,31 +1381,18 @@ function App() {
     setModelsError(null);
 
     try {
-      if (AI_PROXY_ENABLED) {
-        const proxyModels = mergeModels(
-          CONFIGURED_OPENAI_MODEL ? [CONFIGURED_OPENAI_MODEL] : [],
-          COMMON_RUN_MODELS,
-        );
-        setAvailableModels(proxyModels);
-        setAiSettings((current) => sanitizeAiModels(current, proxyModels));
-        return;
-      }
-
-      const runGameSdk = await getRunGameSdk();
-      const fetchedModels = mergeModels(
+      const proxyModels = mergeModels(
         CONFIGURED_OPENAI_MODEL ? [CONFIGURED_OPENAI_MODEL] : [],
-        await runGameSdk.ai.getAvailableCompletionModels(),
+        COMMON_OPENAI_MODELS,
       );
-      const resolvedModels = fetchedModels.length > 0 ? fetchedModels : [...COMMON_RUN_MODELS];
-
-      setAvailableModels(resolvedModels);
-      setAiSettings((current) => sanitizeAiModels(current, resolvedModels));
+      setAvailableModels(proxyModels);
+      setAiSettings((current) => sanitizeAiModels(current, proxyModels));
     } catch (error) {
-      const message = getRunAiErrorMessage(error, 'models');
+      const message = getAiErrorMessage(error, 'models');
       setModelsError(message);
       const fallbackModels = mergeModels(
         CONFIGURED_OPENAI_MODEL ? [CONFIGURED_OPENAI_MODEL] : [],
-        COMMON_RUN_MODELS,
+        COMMON_OPENAI_MODELS,
       );
       setAvailableModels(fallbackModels);
       setAiSettings((current) => sanitizeAiModels(current, fallbackModels));
@@ -2306,41 +2253,6 @@ function App() {
   );
 
   useEffect(() => {
-    const disposers: Array<{ unsubscribe?: () => void } | undefined> = [];
-    let cancelled = false;
-
-    if (RUN_GAME_SDK_ENABLED) {
-      void getRunGameSdk()
-        .then((runGameSdk) => {
-          if (cancelled) {
-            return;
-          }
-
-          const nextSafeArea = runGameSdk.system.getSafeArea();
-          setSafeArea({
-            top: nextSafeArea.top ?? 0,
-            right: nextSafeArea.right ?? 0,
-            bottom: nextSafeArea.bottom ?? 0,
-            left: nextSafeArea.left ?? 0,
-          });
-
-          disposers.push(
-            runGameSdk.lifecycles.onPause(() => setSceneActive(false)),
-            runGameSdk.lifecycles.onSleep(() => setSceneActive(false)),
-            runGameSdk.lifecycles.onResume(() => setSceneActive(true)),
-            runGameSdk.lifecycles.onAwake(() => setSceneActive(true)),
-          );
-        })
-        .catch(() => {});
-    }
-
-    return () => {
-      cancelled = true;
-      disposers.forEach((disposer) => disposer?.unsubscribe?.());
-    };
-  }, []);
-
-  useEffect(() => {
     ttsManager.onSpeechStarted = () => {
       setTtsStatus('Playing speech.');
     };
@@ -2473,20 +2385,6 @@ function App() {
           ? getRouteletVisualSettings(persistedState.visualSettings)
           : persistedState.visualSettings,
       );
-
-      try {
-        const runGameSdk = await getRunGameSdk();
-        if (cancelled) {
-          return;
-        }
-        setRuntimeContext({
-          launchParams: { ...(runGameSdk.context.launchParams ?? {}) },
-          shareParams: { ...(runGameSdk.context.shareParams ?? {}) },
-          notificationParams: { ...(runGameSdk.context.notificationParams ?? {}) },
-        });
-      } catch {
-        // RUN.game context is optional in standalone stream mode.
-      }
 
       setHydrated(true);
       void loadAvailableModels();
@@ -2867,7 +2765,6 @@ function App() {
               disableState: true,
               transportMode: aiSettings.aiTransportMode,
               temperature: 0.35,
-              apiKey: aiSettings.localDevApiKey,
             });
 
             if (memoryAgentRunRef.current !== scheduledRun) {
@@ -2920,7 +2817,6 @@ function App() {
     },
     [
       activePersona,
-      aiSettings.localDevApiKey,
       aiSettings.memoryAgentModel,
       aiSettings.model,
       availableModels,
@@ -3539,7 +3435,7 @@ function App() {
       const selectedModel = pickAvailableModel(
         settings.model,
         availableModelsRef.current,
-        DEFAULT_RUN_MODEL,
+        DEFAULT_OPENAI_MODEL,
       );
       const targetMessage = job.messages[0];
       const prompt = buildChatAiPrompt(job, persona, channel);
@@ -3589,11 +3485,9 @@ function App() {
             ),
             currentTurnContext: prompt,
             history: requestHistory,
-            includeHostContext: settings.includeHostContext,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
             persona,
             relationshipMemory: memorySnapshot,
-            runtimeContext,
             semanticMemoryContext,
             turnContext: {
               activeChatters: job.activeChatterCount,
@@ -3639,13 +3533,12 @@ function App() {
           temperature: settings.temperature,
           transportMode: settings.aiTransportMode,
           ttsBridge,
-          apiKey: settings.localDevApiKey,
         });
 
         const assistantReply = await speechPlayer.finish(response.choices[0]?.message.content);
         const assistantContent = assistantReply.text;
         if (!assistantContent) {
-          throw new Error('RUN AI returned an empty chat reply.');
+          throw new Error('AI backend returned an empty chat reply.');
         }
         playAssistantMetadataAnimation(assistantReply.metadata);
         const completedAssistantMessage = {
@@ -3670,7 +3563,7 @@ function App() {
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
         void rememberSemanticTurn(stateKey, userContent, assistantContent, persona);
       } catch (error) {
-        const message = getRunAiErrorMessage(error, 'chat');
+        const message = getAiErrorMessage(error, 'chat');
         setChatHistory((current) =>
           trimChatHistory(
             current.map((entry) =>
@@ -3695,7 +3588,6 @@ function App() {
       createStreamingAssistantPlayer,
       getScopedRelationshipMemory,
       playAssistantMetadataAnimation,
-      runtimeContext,
       scheduleRelationshipMemoryRefresh,
       twitchChannel,
     ],
@@ -4194,7 +4086,6 @@ function App() {
             open={menuOpen}
             personas={personas}
             relationshipMemory={relationshipMemory}
-            runtimeContext={runtimeContext}
             memoryAgentBusy={memoryAgentBusy}
             memoryAgentStatus={memoryAgentStatus}
             sequencerSettings={sequencerSettings}
@@ -4251,7 +4142,6 @@ function App() {
         {chatBarOpen ? (
           <ChatBar
             activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
-            contextEnabled={aiSettings.includeHostContext}
             inputValue={chatInput}
             isGenerating={chatGenerating}
             messageCount={chatHistory.length}

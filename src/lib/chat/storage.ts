@@ -34,20 +34,6 @@ import {
   sanitizeDiaryEntry,
 } from './memory-shared';
 
-const RUN_GAME_SDK_ENABLED = import.meta.env['VITE_RUN_GAME_SDK_ENABLED'] === 'true';
-
-let runGameSdkPromise: Promise<typeof import('@series-inc/rundot-game-sdk/api').default> | null =
-  null;
-
-async function getRunGameSdk() {
-  if (!RUN_GAME_SDK_ENABLED) {
-    throw new Error('RUN.game SDK is disabled for standalone stream mode.');
-  }
-
-  runGameSdkPromise ??= import('@series-inc/rundot-game-sdk/api').then((module) => module.default);
-  return runGameSdkPromise;
-}
-
 function getLocalStorage() {
   if (typeof window === 'undefined') {
     return null;
@@ -61,29 +47,10 @@ function getLocalStorage() {
 }
 
 async function getPersistedItem(key: string) {
-  if (RUN_GAME_SDK_ENABLED) {
-    try {
-      const runGameSdk = await getRunGameSdk();
-      return await runGameSdk.appStorage.getItem(key);
-    } catch {
-      // Fall through to browser storage for standalone resilience.
-    }
-  }
-
   return getLocalStorage()?.getItem(key) ?? null;
 }
 
 async function setPersistedItem(key: string, value: string) {
-  if (RUN_GAME_SDK_ENABLED) {
-    try {
-      const runGameSdk = await getRunGameSdk();
-      await runGameSdk.appStorage.setItem(key, value);
-      return;
-    } catch {
-      // Fall through to browser storage for standalone resilience.
-    }
-  }
-
   getLocalStorage()?.setItem(key, value);
 }
 
@@ -224,11 +191,6 @@ function normalizeAiSettings(value: unknown): AiSettings {
     openAiStateMode,
     temperature: typeof source.temperature === 'number' ? source.temperature : defaults.temperature,
     maxTokens: typeof source.maxTokens === 'number' ? source.maxTokens : defaults.maxTokens,
-    includeHostContext:
-      typeof source.includeHostContext === 'boolean'
-        ? source.includeHostContext
-        : defaults.includeHostContext,
-    localDevApiKey: String(source.localDevApiKey ?? defaults.localDevApiKey),
     ttsEnabled: typeof source.ttsEnabled === 'boolean' ? source.ttsEnabled : defaults.ttsEnabled,
     ttsAutoSpeak:
       typeof source.ttsAutoSpeak === 'boolean' ? source.ttsAutoSpeak : defaults.ttsAutoSpeak,

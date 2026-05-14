@@ -1,9 +1,4 @@
-import type {
-  ChatMessage,
-  PersonaProfile,
-  RelationshipMemory,
-  RuntimeContextSnapshot,
-} from './types';
+import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
 import { buildYourWifeyPomlMessages } from './poml';
 import type { PomlPromptMessage } from './poml';
 import { buildReplyMetadataInstruction } from './reply-metadata';
@@ -20,25 +15,14 @@ type BuildChatCompletionMessagesOptions = {
   currentTurnContext?: string;
   history: ChatMessage[];
   animationCatalogContext?: string;
-  includeHostContext: boolean;
   maxHistoryMessages?: number;
   persona: PersonaProfile | null;
   relationshipMemory: RelationshipMemory;
-  runtimeContext: RuntimeContextSnapshot;
   semanticMemoryContext?: string;
   turnContext?: Record<string, PromptTurnContextValue>;
   ttsExpressionTagsEnabled?: boolean;
   ttsProvider?: string;
 };
-
-function serializeContextSection(label: string, values: Record<string, string>) {
-  const entries = Object.entries(values);
-  if (entries.length === 0) {
-    return null;
-  }
-
-  return `${label}: ${JSON.stringify(Object.fromEntries(entries))}`;
-}
 
 function serializeTurnMetadataContext({
   animationCatalogContext,
@@ -108,7 +92,6 @@ function readTurnContextValue(
 function buildDynamicPromptState({
   animationCatalogContext,
   diaryContext,
-  hostContext,
   persona,
   relationshipMemory,
   semanticMemoryContext,
@@ -118,7 +101,6 @@ function buildDynamicPromptState({
 }: {
   animationCatalogContext: string;
   diaryContext: string;
-  hostContext: string;
   persona: PersonaProfile | null;
   relationshipMemory: RelationshipMemory;
   semanticMemoryContext: string;
@@ -156,7 +138,6 @@ function buildDynamicPromptState({
       relationshipMood === 'cold' ||
       relationshipMemory.guard >= 12,
     has_animation_catalog: Boolean(animationCatalogContext.trim()),
-    has_host_context: Boolean(hostContext.trim()),
     has_private_diary: Boolean(diaryContext.trim()),
     has_semantic_memory: Boolean(semanticMemoryContext.trim()),
     high_trust: relationshipMemory.trust >= 12,
@@ -300,11 +281,9 @@ export async function buildChatCompletionMessages({
   animationCatalogContext = '',
   currentTurnContext = '',
   history,
-  includeHostContext,
   maxHistoryMessages = 12,
   persona,
   relationshipMemory,
-  runtimeContext,
   semanticMemoryContext = '',
   turnContext,
   ttsExpressionTagsEnabled = false,
@@ -334,19 +313,6 @@ export async function buildChatCompletionMessages({
     ttsExpressionTagsEnabled && ttsProvider !== 'piper'
       ? 'Speech expression tags are enabled for the active TTS engine. You may add short bracketed delivery tags sparingly inside spoken dialogue when they improve performance, such as [laughs], [sighs], [whispers], [excited], [sarcastic], [nervous], or [pause]. Keep replies as natural spoken dialogue, do not explain the tags, and do not use markdown or stage directions outside those short tags.'
       : '';
-  let hostContext = '';
-
-  if (includeHostContext) {
-    const contextBlocks = [
-      serializeContextSection('launchParams', runtimeContext.launchParams),
-      serializeContextSection('shareParams', runtimeContext.shareParams),
-      serializeContextSection('notificationParams', runtimeContext.notificationParams),
-    ].filter((value): value is string => Boolean(value));
-
-    if (contextBlocks.length > 0) {
-      hostContext = contextBlocks.join('\n');
-    }
-  }
 
   let relationshipMemoryContext = '';
   if (
@@ -392,7 +358,6 @@ export async function buildChatCompletionMessages({
     dynamicState: buildDynamicPromptState({
       animationCatalogContext,
       diaryContext,
-      hostContext,
       persona,
       relationshipMemory,
       semanticMemoryContext,
@@ -401,7 +366,6 @@ export async function buildChatCompletionMessages({
       ttsProvider,
     }),
     history: contextualHistory,
-    hostContext,
     personaContext: personaBlocks.join('\n\n'),
     relationshipMemoryContext,
     replyMetadataInstruction: buildReplyMetadataInstruction(),

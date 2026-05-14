@@ -6,7 +6,6 @@ describe('PomlRenderer', () => {
     const messages = await renderYourWifeyPomlMessages({
       animation_catalog_context: 'Available animation if mood_points < 8 && mood_points > 2',
       diary_context: '',
-      host_context: '',
       persona_context: 'You are Hikari. Stay in character.',
       relationship_memory_context: 'Known user facts: ["likes POML"]',
       reply_metadata_instruction: '<yw-meta>{"emotion":"neutral"}</yw-meta>',

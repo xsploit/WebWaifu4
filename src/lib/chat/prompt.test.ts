@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderYourWifeyPomlMessages } from '../../../server/src/ai/PomlRenderer';
-import {
-  createDefaultRelationshipMemory,
-  createEmptyRuntimeContext,
-  DEFAULT_PERSONA,
-} from './defaults';
+import { createDefaultRelationshipMemory, DEFAULT_PERSONA } from './defaults';
 import { buildYourWifeyResponsesPromptPayload, YOURWIFEY_POML_TEMPLATE } from './poml';
 import { buildChatCompletionMessages } from './prompt';
 
@@ -63,7 +59,6 @@ describe('POML-backed chat prompt', () => {
           createdAt: 3,
         },
       ],
-      includeHostContext: true,
       persona: {
         ...DEFAULT_PERSONA,
         name: 'Hikari',
@@ -77,12 +72,6 @@ describe('POML-backed chat prompt', () => {
         relationshipStage: 'familiar',
         summary: 'The user is trying to make prompt templates less cursed.',
         turnCount: 9,
-      },
-      runtimeContext: {
-        ...createEmptyRuntimeContext(),
-        launchParams: {
-          room: 'stream',
-        },
       },
       semanticMemoryContext: 'Prior note: use OpenAI Responses state keys carefully.',
       turnContext: {
@@ -125,7 +114,6 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('<yw-meta>');
     expect(systemMessage.content).toContain('Available animation: little-wave [wave-01]');
     expect(systemMessage.content).toContain('# Animation Selection Policy');
-    expect(systemMessage.content).toContain('launchParams: {"room":"stream"}');
     expect(systemMessage.content).toContain('Known user facts: ["likes POML"]');
     expect(systemMessage.content).toContain(
       'Prior note: use OpenAI Responses state keys carefully.',
@@ -160,10 +148,8 @@ describe('POML-backed chat prompt', () => {
           createdAt: 1,
         },
       ],
-      includeHostContext: false,
       persona: DEFAULT_PERSONA,
       relationshipMemory: createDefaultRelationshipMemory(),
-      runtimeContext: createEmptyRuntimeContext(),
       turnContext: {
         source: 'twitch',
         turnKind: 'batch',
@@ -192,14 +178,12 @@ describe('POML-backed chat prompt', () => {
         '  metadata: source=local channel=local login=subby display=Subby local=true trustedController=true',
       ].join('\n'),
       history: [],
-      includeHostContext: false,
       persona: {
         ...DEFAULT_PERSONA,
         name: 'Hikari',
         userNickname: 'Subby',
       },
       relationshipMemory: createDefaultRelationshipMemory(),
-      runtimeContext: createEmptyRuntimeContext(),
       turnContext: {
         conversationScope: 'local-chat',
         currentTurnText: 'Local viewer Subby: @Hikari hello from the local box',
@@ -228,10 +212,8 @@ describe('POML-backed chat prompt', () => {
           createdAt: 1,
         },
       ],
-      includeHostContext: false,
       persona: DEFAULT_PERSONA,
       relationshipMemory: createDefaultRelationshipMemory(),
-      runtimeContext: createEmptyRuntimeContext(),
     });
     const systemMessage = messages[0];
     if (!systemMessage) {
@@ -245,7 +227,6 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('# Turn Metadata');
     expect(systemMessage.content).not.toContain('# Speech and TTS');
     expect(systemMessage.content).not.toContain('# Avatar Animation Catalog');
-    expect(systemMessage.content).not.toContain('# Host Context');
     expect(systemMessage.content).not.toContain('# Relationship Memory');
     expect(systemMessage.content).not.toContain('# Relevant Semantic Memory');
   });
@@ -260,10 +241,8 @@ describe('POML-backed chat prompt', () => {
           createdAt: 1,
         },
       ],
-      includeHostContext: false,
       persona: DEFAULT_PERSONA,
       relationshipMemory: createDefaultRelationshipMemory(),
-      runtimeContext: createEmptyRuntimeContext(),
     });
     const systemMessage = messages[0];
     if (!systemMessage) {

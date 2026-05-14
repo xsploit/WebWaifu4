@@ -6,7 +6,6 @@ import type {
   PersonaDraft,
   PersonaProfile,
   RelationshipMemory,
-  RuntimeContextSnapshot,
 } from '../../lib/chat/types';
 import type {
   BundledVrmOption,
@@ -71,7 +70,6 @@ type SettingsPanelProps = {
   open: boolean;
   personas: PersonaProfile[];
   relationshipMemory: RelationshipMemory;
-  runtimeContext: RuntimeContextSnapshot;
   memoryAgentBusy: boolean;
   memoryAgentStatus: string;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
@@ -153,7 +151,6 @@ export function SettingsPanel({
   open,
   personas,
   relationshipMemory,
-  runtimeContext,
   memoryAgentBusy,
   memoryAgentStatus,
   setAiSettings,
@@ -209,7 +206,6 @@ export function SettingsPanel({
         modelsLoading={modelsLoading}
         onRefreshAiProxyHealth={onRefreshAiProxyHealth}
         onRefreshModels={onRefreshModels}
-        runtimeContext={runtimeContext}
         setAiSettings={setAiSettings}
       />
     ) : activeTab === 'twitch' ? (

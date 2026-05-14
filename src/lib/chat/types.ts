@@ -34,8 +34,6 @@ export type AiSettings = {
   openAiStateMode: OpenAiStateMode;
   temperature: number;
   maxTokens: number;
-  includeHostContext: boolean;
-  localDevApiKey: string;
   ttsEnabled: boolean;
   ttsAutoSpeak: boolean;
   ttsSimulatedStreaming: boolean;
@@ -101,12 +99,6 @@ export type RelationshipMemory = {
   summary: string;
   diaryEntry: string;
   diaryHistory: string[];
-};
-
-export type RuntimeContextSnapshot = {
-  launchParams: Record<string, string>;
-  shareParams: Record<string, string>;
-  notificationParams: Record<string, string>;
 };
 
 export type AiProxyHealth = {

@@ -65,21 +65,18 @@ Current implementation note:
   mode. It supports `previous_response_id`, Conversations API state, prompt
   cache keys, and `!yw state` / `!yw state reset`.
 
-## Remove `run.game`
+## Removed Host-Platform Coupling
 
-The original app currently has RUN.game coupling in the app boot, AI calls, storage, CDN helpers, and config. The next AI should remove it intentionally instead of hiding it behind toggles.
+The stream overlay now uses standalone browser/runtime paths for AI, storage,
+and assets instead of host-platform SDK fallbacks.
 
-Main files to inspect first:
+Main files involved:
 
-- `src/main.tsx`
 - `src/App.tsx`
 - `src/lib/chat/defaults.ts`
 - `src/lib/chat/storage.ts`
 - `src/lib/cdn/assets.ts`
 - `vite.config.ts`
-- `game.config.prod.json`
-- `.rundot/`
-- `.rundot-docs/`
 
 Keep the avatar/runtime pieces:
 
@@ -92,13 +89,13 @@ Keep the avatar/runtime pieces:
 - `public/cdn-assets/`
 - `custom-voices/`
 
-Expected removal work:
+Current standalone behavior:
 
-- Replace `RundotGameAPI.ai.requestChatCompletionAsync(...)` with a local `chatProvider.complete(...)`.
-- Replace RUN model discovery with explicit config.
-- Replace RUN storage with `localStorage` or server-persisted JSON.
-- Replace RUN CDN asset resolution with normal `/cdn-assets/...` static paths.
-- Remove `.rundot` build/runtime assumptions from production deployment.
+- AI goes through the local/server OpenAI Responses proxy.
+- Model choices come from explicit OpenAI config and app defaults.
+- Browser state persists through `localStorage`.
+- Assets load through normal `/cdn-assets/...` static paths.
+- Production deployment uses the VPS overlay/backend services.
 
 ## Twitch Chat Direction
 
@@ -444,8 +441,8 @@ For a 24/7 stream bot, reliability matters more than proving browser WASM on day
 
 Recommended order for the next AI:
 
-1. Make the fork build without `run.game`.
-2. Replace RUN AI calls with a `ChatProvider` interface.
+1. Keep the fork building as a standalone stream overlay.
+2. Keep AI calls behind the backend provider path.
 3. Add a fake/mock provider so the overlay can be tested without real AI.
 4. Add a Node Twitch chat service.
 5. Add scheduler logic and unit tests for active chatter scaling.

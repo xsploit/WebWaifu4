@@ -243,10 +243,9 @@ start_app_if_needed() {
     (
       cd "$ROOT_DIR"
       VITE_AUTO_RESUME_AUDIO="${VITE_AUTO_RESUME_AUDIO:-true}" \
-        VITE_DIRECT_TWITCH_CHAT="${VITE_DIRECT_TWITCH_CHAT:-true}" \
+      VITE_DIRECT_TWITCH_CHAT="${VITE_DIRECT_TWITCH_CHAT:-true}" \
         VITE_STREAM_BOT_WS_ENABLED="${VITE_STREAM_BOT_WS_ENABLED:-false}" \
         VITE_AI_PROXY_ENABLED="${VITE_AI_PROXY_ENABLED:-true}" \
-        VITE_RUN_GAME_SDK_ENABLED="${VITE_RUN_GAME_SDK_ENABLED:-false}" \
         npm run build
     )
   fi
