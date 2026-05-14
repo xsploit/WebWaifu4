@@ -278,14 +278,45 @@ Swap the prompt and completion promise for the other lanes.
 - 2026-05-14: `bash -n scripts/stream-routelet.sh` -> passed. `npm run build`
   -> passed with existing `onnxruntime-web` eval and large chunk warnings.
   `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-14: Efficiency iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\STREAM_ROUTELET.md`,
+  `docs\grillo-memory-status.md`, `.ralph-loop\ralph-state.json`,
+  `git status --short` (clean before edits), and `git log -3 --oneline`
+  (`0253a5c`, `04c7ce8`, `9b6bdd1`) before editing. Required-area read
+  covered browser direct Twitch queue drain/cooldown and batch timers in
+  `src\App.tsx`, older server scheduler queue caps in
+  `server\src\scheduler\ChatScheduler.ts`, OpenAI Responses streaming/tool
+  rounds in `server\src\ai\OpenAiResponsesProvider.ts` and `api\ai\chat.ts`,
+  Fish/Inworld/Piper buffering and cleanup in `src\lib\tts\manager.ts`,
+  `server\src\tts\RemoteTtsProvider.ts`, and `src\lib\tts\piper.ts`, memory
+  worker loops in `src\lib\chat\grillo-memory-loop.ts`, VRM animation cleanup
+  in `src\components\VrmStage.tsx` and `src\lib\vrm\sequencer.ts`, direct IRC
+  listener cleanup in `src\lib\twitch\direct-irc.ts`, routelet cleanup in
+  `scripts\stream-routelet.sh`, and current bundle warnings from
+  `npm run build`.
+- 2026-05-14: Finding fixed, Medium: browser direct Twitch AI jobs had no
+  pending queue cap. Evidence before the patch: `enqueueTwitchAiJob` in
+  `src\App.tsx` pushed directly to `twitchAiQueueRef.current`, while
+  `processTwitchAiQueue` serialized every job behind reply/TTS completion and a
+  2 second reply gap. A slow AI/TTS period could turn chat mentions or batch
+  work into stale, unbounded backlog. Patch added
+  `src\lib\chat\twitch-ai-queue.ts` with an 8-job pending cap, direct-reply
+  freshness policy, batch coalescing, a 120-message retained batch cap, and an
+  operator-visible backpressure status line. `!yw status` / `!yw state` now
+  show queue length against the cap.
+- 2026-05-14: `npx vitest run src/lib/chat/twitch-ai-queue.test.ts` -> passed,
+  1 file, 3 tests. `npm run build` -> passed with existing `onnxruntime-web`
+  eval and large chunk warnings. `git diff --check` -> passed with line-ending
+  warnings only.
 
 ## Current Blocker Or Next Patch
 
-Next efficiency read: inspect browser Twitch AI queue backpressure. Current
-evidence: `enqueueTwitchAiJob` in `src\App.tsx` appends directly to
-`twitchAiQueueRef.current`, while `processTwitchAiQueue` serializes jobs through
-reply/TTS completion and a 2 second cooldown. Decide the smallest safe cap,
-drop/coalesce policy, and operator-visible status before changing behavior.
+Next efficiency read: inspect remote TTS first-audio latency and duplicate
+speech risk in the live bridge path. Current evidence to re-check:
+`createStreamingAssistantPlayer` feeds Fish live-bridge deltas while
+`TtsManager.queueRemoteText` also supports full-response and sentence-chunk
+paths; verify the active provider/mode cannot enqueue both streaming and final
+speech for the same reply, and measure where the first PCM chunk is scheduled.
 
 Prior code-review next remains queued for that lane: inspect serverless
 `/api/ai/embeddings.ts` parity against the long-running `/ai/embeddings` route,

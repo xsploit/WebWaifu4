@@ -58,6 +58,12 @@ import {
   type ChatTurn,
 } from './lib/chat/chat-turn';
 import {
+  TWITCH_AI_QUEUE_MAX_PENDING_JOBS,
+  describeTwitchAiQueueBackpressure,
+  enqueueTwitchAiJobWithBackpressure,
+  type TwitchAiQueueJob,
+} from './lib/chat/twitch-ai-queue';
+import {
   addSemanticMemoryTurn,
   buildSemanticMemoryContext,
   findSemanticMemoryMatchesInRecords,
@@ -306,14 +312,7 @@ const TWITCH_REPLY_GAP_MS = 2000;
 const TWITCH_CONTEXT_LIMIT = 80;
 const TWITCH_BATCH_DEFAULT_MAX_WAIT_MS = 30000;
 
-type ChatAiJob = {
-  id: string;
-  mode: 'direct' | 'batch';
-  activeChatterCount: number;
-  context: ChatTurn[];
-  firstTimeChatter?: boolean;
-  messages: ChatTurn[];
-};
+type ChatAiJob = TwitchAiQueueJob;
 
 type CommandChatMessage = DirectTwitchChatMessage & {
   isLocal?: boolean;
@@ -3303,7 +3302,7 @@ function App() {
           ? getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA)
           : getTwitchConversationStateKey(currentChannel, activePersona ?? DEFAULT_PERSONA);
         respond(
-          `Direct Twitch IRC: #${currentChannel}, controller=subsect, activeChatters=${activeChatters}, aiQueue=${twitchAiQueueRef.current.length}, batchPending=${twitchBatchRef.current.length}, state=${chatStateKey}.`,
+          `Direct Twitch IRC: #${currentChannel}, controller=subsect, activeChatters=${activeChatters}, aiQueue=${twitchAiQueueRef.current.length}/${TWITCH_AI_QUEUE_MAX_PENDING_JOBS}, batchPending=${twitchBatchRef.current.length}, state=${chatStateKey}.`,
         );
         return true;
       }
@@ -3328,7 +3327,7 @@ function App() {
         }
 
         respond(
-          `Client AI: route=${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}, state=${getTwitchConversationStateKey(directTwitchClientRef.current?.channel ?? twitchChannel, activePersona ?? DEFAULT_PERSONA)}, queue=${twitchAiQueueRef.current.length}, batchPending=${twitchBatchRef.current.length}.`,
+          `Client AI: route=${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}, state=${getTwitchConversationStateKey(directTwitchClientRef.current?.channel ?? twitchChannel, activePersona ?? DEFAULT_PERSONA)}, queue=${twitchAiQueueRef.current.length}/${TWITCH_AI_QUEUE_MAX_PENDING_JOBS}, batchPending=${twitchBatchRef.current.length}.`,
         );
         return true;
       }
@@ -3718,10 +3717,15 @@ function App() {
 
   const enqueueTwitchAiJob = useCallback(
     (job: ChatAiJob) => {
-      twitchAiQueueRef.current.push(job);
+      const backpressure = enqueueTwitchAiJobWithBackpressure(twitchAiQueueRef.current, job);
+      const backpressureMessage = describeTwitchAiQueueBackpressure(backpressure);
+      if (backpressureMessage) {
+        console.warn(`[Twitch AI] ${backpressureMessage}`);
+        appendSystemMessage(`[Twitch AI] ${backpressureMessage}`);
+      }
       void processTwitchAiQueue();
     },
-    [processTwitchAiQueue],
+    [appendSystemMessage, processTwitchAiQueue],
   );
 
   useEffect(() => {
