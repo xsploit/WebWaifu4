@@ -308,15 +308,55 @@ Swap the prompt and completion promise for the other lanes.
   1 file, 3 tests. `npm run build` -> passed with existing `onnxruntime-web`
   eval and large chunk warnings. `git diff --check` -> passed with line-ending
   warnings only.
+- 2026-05-14: Efficiency iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\STREAM_ROUTELET.md`,
+  `docs\grillo-memory-status.md`, `git status --short` (clean before edits),
+  and `git log -3 --oneline` (`e73abcb`, `0253a5c`, `04c7ce8`) before
+  editing. Required-area read covered browser direct Twitch queue
+  drain/cooldown and backpressure in `src\App.tsx` plus
+  `src\lib\chat\twitch-ai-queue.ts`, older server scheduler batch caps in
+  `server\src\scheduler\ChatScheduler.ts`, OpenAI Responses streaming/tool
+  rounds in `server\src\ai\OpenAiResponsesProvider.ts`, `api\ai\chat.ts`, and
+  `server\src\index.ts`, Fish/Inworld/Piper buffering and cleanup in
+  `src\lib\tts\manager.ts`, `server\src\tts\RemoteTtsProvider.ts`, and
+  `src\lib\tts\piper.ts`, memory worker loops in `src\App.tsx` and
+  `src\lib\chat\grillo-memory-loop.ts`, VRM animation/frame cleanup in
+  `src\components\VrmStage.tsx` and `src\lib\vrm\sequencer.ts`, direct IRC and
+  audio listener cleanup in `src\lib\twitch\direct-irc.ts` and `src\App.tsx`,
+  routelet cleanup in `scripts\stream-routelet.sh`, and current bundle warnings
+  from `npm run build`.
+- 2026-05-14: Finding fixed, Medium: remote PCM TTS scheduling waited for a
+  chunk's playback `ended` event before scheduling the next PCM chunk. Evidence
+  before the patch: `src\lib\tts\manager.ts` chained live-bridge pushes through
+  `tail.then(... await scheduleRemotePcmChunk(...))`, while
+  `scheduleRemotePcmChunk` resolved only from `source.onended`; the remote
+  `queueRemoteText` PCM path also treated that playback-end promise as the
+  scheduling tail. Fish live-bridge audio could therefore sit in a client-side
+  promise queue until the prior PCM buffer finished, defeating the existing
+  `streamPlaybackEndTime` lookahead/crossfade logic and adding small gaps under
+  streamed speech. Patch separates PCM scheduling order from playback completion:
+  chunks are scheduled in arrival order as soon as their PCM bytes are decoded,
+  but each push still resolves when its audio source ends so TTS busy/cooldown
+  behavior stays intact. Added `src\lib\tts\manager.test.ts` with a fake
+  `AudioContext` proving a second live PCM chunk is scheduled before the first
+  chunk fires `onended`.
+- 2026-05-14: `npx vitest run src/lib/tts/manager.test.ts
+  server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
+  `npm run build` -> passed with existing `onnxruntime-web` eval warning and
+  existing large chunk warnings (`index` about 1517 kB, `phonemizer` about
+  1321 kB, `ort.min` about 537 kB). `git diff --check` -> passed with
+  line-ending warnings only.
 
 ## Current Blocker Or Next Patch
 
-Next efficiency read: inspect remote TTS first-audio latency and duplicate
-speech risk in the live bridge path. Current evidence to re-check:
-`createStreamingAssistantPlayer` feeds Fish live-bridge deltas while
-`TtsManager.queueRemoteText` also supports full-response and sentence-chunk
-paths; verify the active provider/mode cannot enqueue both streaming and final
-speech for the same reply, and measure where the first PCM chunk is scheduled.
+Next efficiency read: inspect the SSE live-bridge close path for chat queue
+stall risk. Current evidence to re-check: `server\src\index.ts` awaits
+`bridgeDone` before emitting the final `done` event for `/ai/chat`, and
+`RemoteTtsProvider` has a 45 second remote TTS timeout. If Fish generation hangs
+after the AI text is complete, the browser can keep the chat job open until the
+TTS timeout even though streamed text/audio already reached the overlay. Prove
+whether this is acceptable with a fake provider/bridge test, or bound/decouple
+the bridge drain safely.
 
 Prior code-review next remains queued for that lane: inspect serverless
 `/api/ai/embeddings.ts` parity against the long-running `/ai/embeddings` route,

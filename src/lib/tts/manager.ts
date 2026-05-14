@@ -30,6 +30,10 @@ export type RemotePcmPushStream = {
   push: (chunk: RemoteTtsAudioChunk) => Promise<void>;
 };
 
+type ScheduledRemotePcmChunk = {
+  ended: Promise<void>;
+};
+
 function canAttemptAudioResume() {
   return AUTO_RESUME_AUDIO || navigator.userActivation?.isActive === true;
 }
@@ -216,7 +220,8 @@ export class TtsManager {
     const abortController = new AbortController();
     this.remoteAbortControllers.add(abortController);
     let started = false;
-    let tail = Promise.resolve();
+    let scheduleTail = Promise.resolve();
+    let playbackTail = Promise.resolve();
     const ready = (async () => {
       if (!this.audioContext) {
         await this.initialize();
@@ -234,25 +239,37 @@ export class TtsManager {
         if (chunk.mimeType !== 'audio/pcm') {
           return Promise.reject(new Error(`Live bridge expected audio/pcm, got ${chunk.mimeType}.`));
         }
-        tail = tail.then(async () => {
+        const scheduled = scheduleTail.then(async () => {
           await ready;
           if (
             generation !== this.queueGeneration ||
             abortController.signal.aborted ||
             !this.audioContext
           ) {
-            return;
+            return null;
           }
           if (!started) {
             started = true;
             this.beginRemotePcmStream(cleaned);
           }
-          await this.scheduleRemotePcmChunk(chunk, generation, abortController.signal, cleaned);
+          return this.scheduleRemotePcmChunk(chunk, generation, abortController.signal, cleaned);
         });
-        return tail;
+        scheduleTail = scheduled.then(
+          () => undefined,
+          () => undefined,
+        );
+        const ended = scheduled.then(async (scheduledChunk) => {
+          if (!scheduledChunk) {
+            return;
+          }
+          playbackTail = scheduledChunk.ended.catch(() => {});
+          await scheduledChunk.ended;
+        });
+        return ended;
       },
       close: async () => {
-        await tail.catch(() => {});
+        await scheduleTail.catch(() => {});
+        await playbackTail.catch(() => {});
         this.remoteAbortControllers.delete(abortController);
         if (generation === this.queueGeneration && !abortController.signal.aborted) {
           this.onSpeechFinished?.();
@@ -329,6 +346,7 @@ export class TtsManager {
         this.remoteAbortControllers.add(abortController);
         const audioChunks: RemoteTtsAudioChunk[] = [];
         let playingPcmStream = false;
+        let pcmScheduleTail: Promise<void> = Promise.resolve();
         let pcmStreamTail: Promise<void> = Promise.resolve();
         try {
           const remoteStream = createRemoteTtsStream(
@@ -347,12 +365,17 @@ export class TtsManager {
                 playingPcmStream = true;
                 this.beginRemotePcmStream(cleaned);
               }
-              pcmStreamTail = this.scheduleRemotePcmChunk(
-                chunk,
-                generation,
-                abortController.signal,
-                cleaned,
-              );
+              pcmScheduleTail = pcmScheduleTail.then(async () => {
+                const scheduled = await this.scheduleRemotePcmChunk(
+                  chunk,
+                  generation,
+                  abortController.signal,
+                  cleaned,
+                );
+                if (scheduled) {
+                  pcmStreamTail = scheduled.ended;
+                }
+              });
             } else if (playingPcmStream) {
               console.warn('[TTS] Mixed remote audio formats during PCM stream; dropping chunk.');
             } else {
@@ -363,6 +386,7 @@ export class TtsManager {
           this.remoteAbortControllers.delete(abortController);
         }
         if (playingPcmStream) {
+          await pcmScheduleTail;
           await pcmStreamTail;
           if (generation === this.queueGeneration && !abortController.signal.aborted) {
             this.onSpeechFinished?.();
@@ -445,13 +469,13 @@ export class TtsManager {
     generation: number,
     signal: AbortSignal,
     text: string,
-  ) {
+  ): Promise<ScheduledRemotePcmChunk | null> {
     if (!this.audioContext || !this.audioAnalyser) {
       throw new Error('AudioContext not initialized');
     }
     const raw = new Uint8Array(await chunk.audioBlob.arrayBuffer());
     if (generation !== this.queueGeneration || signal.aborted || raw.byteLength < 2) {
-      return Promise.resolve();
+      return null;
     }
 
     const sampleRate = chunk.sampleRate ?? 24000;
@@ -502,7 +526,7 @@ export class TtsManager {
     this.currentStreamGains.add(frameGain);
     this.streamScheduledChunkCount += 1;
 
-    const tail = new Promise<void>((resolve) => {
+    const ended = new Promise<void>((resolve) => {
       source.onended = () => {
         this.currentStreamSources.delete(source);
         this.currentStreamGains.delete(frameGain);
@@ -535,7 +559,7 @@ export class TtsManager {
     }
 
     source.start(startAt);
-    return tail;
+    return { ended };
   }
 
   resetSpeechQueue() {
