@@ -29,6 +29,10 @@ import {
   getGrilloParticipantKey,
   recordGrilloMemoryTurn,
 } from './lib/chat/grillo-memory';
+import {
+  extractGrilloWorkerRelationshipJson,
+  runGrilloMemoryWorkerLoop,
+} from './lib/chat/grillo-memory-loop';
 import { buildChatCompletionMessages, trimChatHistory } from './lib/chat/prompt';
 import {
   buildAnimationCatalogInstruction,
@@ -1246,6 +1250,7 @@ function App() {
   const memoryAgentTimeoutRef = useRef<number | null>(null);
   const memoryAgentRunRef = useRef(0);
   const memoryAgentFailedModelsRef = useRef<Set<string>>(new Set());
+  const grilloRecentTurnsByStateKeyRef = useRef<Record<string, ChatTurn[]>>({});
   const ttsManager = useMemo(() => getTtsManager(), []);
 
   const activePersona = useMemo(
@@ -2750,37 +2755,82 @@ function App() {
 
         let rawContent = '';
         let lastError: unknown = null;
+        const recentTurns = grilloRecentTurnsByStateKeyRef.current[stateKey] ?? [];
 
         for (const model of modelCandidates) {
           try {
-            const response = await requestChatCompletion({
+            const result = await runGrilloMemoryWorkerLoop({
+              complete: async (request) => {
+                const response = await requestChatCompletion({
+                  disableState: true,
+                  maxTokens: request.maxTokens,
+                  messages: request.messages,
+                  model: request.model,
+                  responseFormat: request.responseFormat,
+                  stateKey: request.stateKey,
+                  stateScope: request.stateScope,
+                  temperature: request.temperature,
+                  transportMode: aiSettings.aiTransportMode,
+                });
+                return response.choices[0]?.message.content?.trim() ?? '';
+              },
+              history: historySnapshot,
               model,
-              messages: buildMemoryAgentMessages(
-                historySnapshot,
-                memorySnapshot,
-                activePersona ?? DEFAULT_PERSONA,
-              ),
-              maxTokens: 260,
-              responseFormat: MEMORY_AGENT_JSON_FORMAT,
-              stateKey: getMemoryStateKey(stateKey),
-              stateScope: 'memory',
-              disableState: true,
-              transportMode: aiSettings.aiTransportMode,
-              temperature: 0.35,
+              persona: activePersona ?? DEFAULT_PERSONA,
+              relationshipMemory: memorySnapshot,
+              scopeKey: stateKey,
+              turns: recentTurns,
             });
 
             if (memoryAgentRunRef.current !== scheduledRun) {
               return;
             }
 
-            rawContent = response.choices[0]?.message.content?.trim() ?? '';
+            rawContent = extractGrilloWorkerRelationshipJson(result.finalJsonText);
             if (rawContent) {
-              setMemoryAgentStatus(`Diary model: ${model}`);
+              setMemoryAgentStatus(
+                `Grillo worker: ${model}; tools=${result.toolCalls.length}; rounds=${result.rounds}.`,
+              );
               break;
             }
           } catch (error) {
             lastError = error;
             memoryAgentFailedModelsRef.current.add(model.toLowerCase());
+          }
+        }
+
+        if (!rawContent) {
+          for (const model of modelCandidates) {
+            try {
+              const response = await requestChatCompletion({
+                model,
+                messages: buildMemoryAgentMessages(
+                  historySnapshot,
+                  memorySnapshot,
+                  activePersona ?? DEFAULT_PERSONA,
+                ),
+                maxTokens: 260,
+                responseFormat: MEMORY_AGENT_JSON_FORMAT,
+                stateKey: getMemoryStateKey(stateKey),
+                stateScope: 'memory',
+                disableState: true,
+                transportMode: aiSettings.aiTransportMode,
+                temperature: 0.35,
+              });
+
+              if (memoryAgentRunRef.current !== scheduledRun) {
+                return;
+              }
+
+              rawContent = response.choices[0]?.message.content?.trim() ?? '';
+              if (rawContent) {
+                setMemoryAgentStatus(`Legacy diary model: ${model}`);
+                break;
+              }
+            } catch (error) {
+              lastError = error;
+              memoryAgentFailedModelsRef.current.add(model.toLowerCase());
+            }
           }
         }
 
@@ -2819,6 +2869,7 @@ function App() {
     },
     [
       activePersona,
+      aiSettings.aiTransportMode,
       aiSettings.memoryAgentModel,
       aiSettings.model,
       availableModels,
@@ -3569,6 +3620,10 @@ function App() {
         );
         commitScopedRelationshipMemory(stateKey, nextRelationshipMemory);
         setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
+        grilloRecentTurnsByStateKeyRef.current[stateKey] = [
+          ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
+          ...job.messages,
+        ].slice(-24);
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
         void rememberSemanticTurn(stateKey, userContent, assistantContent, persona);
         recordGrilloMemoryTurn({

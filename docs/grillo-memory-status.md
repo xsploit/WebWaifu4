@@ -15,9 +15,11 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 
 - Added a Grillo-style context packet in `src/lib/chat/grillo-context.ts`.
 - Added a Grillo-style browser memory repository in `src/lib/chat/grillo-memory.ts`.
+- Added a Grillo-style background worker tool loop in `src/lib/chat/grillo-memory-loop.ts`.
 - Prompt rendering now has strict lanes: `background_information`, `instructions`, `channel_history`, `relationship_memory`, `recalled_memories`, `thoughts`, and `output_description`.
 - Recent local/Twitch transcript context now feeds the packet as `channel_history` instead of being duplicated into the current turn prompt.
 - Completed local/Twitch replies now write scoped Grillo candidates and diary entries, then promote repeated high-confidence candidates into memory blocks.
+- Scheduled/manual memory passes now run a tool loop before the legacy relationship merge. The loop can read/search/list memory, write candidates, write diary entries, write consolidated memory blocks, insert archival thread memory, and recover candidate/diary objects that were returned without an explicit tool call.
 - Grillo memory is scoped by conversation state key and participant key. It currently persists in browser localStorage. Server JSONL/SQLite backing is still the next implementation step.
 
 ## Verification Log
@@ -29,15 +31,16 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-13 22:18: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 - 2026-05-13 22:34: `npx vitest run src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 27 tests.
 - 2026-05-13 22:34: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-13 22:50: `npx vitest run src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 30 tests.
+- 2026-05-13 22:50: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 
 ## Next Patch
 
 Implement the durable memory repository:
 
-- Move the new Grillo memory repository behind server JSONL or SQLite.
-- Keep the browser localStorage repository as fallback/offline mode.
-- Add API endpoints or reuse the AI server so the browser can write completed turns and read context packets.
-- Preserve existing source/channel/persona/participant scoping.
+- Make the worker loop use native OpenAI tool calls when the server provider exposes app-local tools, while keeping the JSON loop fallback.
+- Add a visible memory/debug panel or command output for recent worker rounds, side effects, and tool errors.
+- Move the localStorage repository behind server JSONL or SQLite only if we need multi-browser/session durability.
 
 ## Completion Bar
 
