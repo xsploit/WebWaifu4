@@ -232,7 +232,7 @@ function toDisplayName(fileName: string) {
     .replace(/[-_]+/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .trim()
-    .replace(/\\b\\w/g, (letter) => letter.toUpperCase())
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .replace(/^/, 'Silly ');
 }
 

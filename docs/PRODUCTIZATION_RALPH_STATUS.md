@@ -135,15 +135,30 @@ Swap the prompt and completion promise for the other lanes.
   2 tests. `npm run build` -> passed with existing `onnxruntime-web` eval and
   large chunk warnings. `git diff --check` -> passed with line-ending warnings
   only.
+- 2026-05-14: Polish iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
+  `src\components\menu\SettingsPanel.tsx`,
+  `src\components\menu\tabs\ContextTab.tsx`,
+  `src\components\menu\tabs\AnimTab.tsx`, `git status --short` (clean), and
+  `git log -3 --oneline` (`e0665b3`, `a9b9e45`, `28e0c68`). Finding: generated
+  Silly Tavern animation labels were not title-cased because
+  `src\lib\vrm\sequencer.ts` used an escaped word-boundary regex
+  (`/\\b\\w/g`). Patch changed the formatter to real word boundaries so the
+  settings animation playlist shows title-cased names such as
+  `Silly Action Attention Seeking`, and added `src\lib\vrm\sequencer.test.ts`.
+- 2026-05-14: `npx vitest run src/lib/vrm/sequencer.test.ts` -> passed, 1 file,
+  1 test. `npm run build` -> passed with existing `onnxruntime-web` eval and
+  large chunk warnings. `git diff --check` -> passed with line-ending warnings
+  only.
 
 ## Current Blocker Or Next Patch
 
-Next polish read: inspect `src\components\menu\SettingsPanel.tsx`,
-`src\components\menu\tabs\ContextTab.tsx`, and
-`src\components\menu\tabs\AnimTab.tsx` for tab labels, empty states, and
-animation mapping clarity. The lane is not complete yet because the settings
-surface still needs a visual/demo pass for Memory/Diary/tools wording and
-animation category clarity.
+Next polish read: inspect `src\components\menu\tabs\ContextTab.tsx`,
+`src\components\menu\tabs\TwitchTab.tsx`, and
+`src\components\menu\tabs\TtsTab.tsx` for Memory/Diary/tools wording,
+Twitch/local chat empty states, and TTS voice error states. The lane is not
+complete yet because the settings surface still needs a visual/demo pass for
+Memory/Diary/tools wording and operator-facing empty states.
 
 ## Completion Bar
 
