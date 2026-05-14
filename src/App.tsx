@@ -60,7 +60,7 @@ import {
 import {
   addSemanticMemoryTurn,
   buildSemanticMemoryContext,
-  findSemanticMemoryMatches,
+  findSemanticMemoryMatchesInRecords,
   loadSemanticMemory,
 } from './lib/chat/semantic-memory';
 import { loadPersistedChatState, savePersistedChatState } from './lib/chat/storage';
@@ -733,12 +733,13 @@ async function requestTextEmbedding(input: string): Promise<number[] | null> {
 }
 
 async function getSemanticMemoryContext(scopeKey: string, query: string) {
-  if (loadSemanticMemory(scopeKey).length === 0) {
+  const records = await loadSemanticMemory(scopeKey);
+  if (records.length === 0) {
     return '';
   }
 
   const embedding = await requestTextEmbedding(query);
-  return buildSemanticMemoryContext(findSemanticMemoryMatches(scopeKey, query, embedding));
+  return buildSemanticMemoryContext(findSemanticMemoryMatchesInRecords(records, query, embedding));
 }
 
 async function rememberSemanticTurn(
@@ -748,7 +749,7 @@ async function rememberSemanticTurn(
   persona: PersonaProfile | null,
 ) {
   const embedding = await requestTextEmbedding(`${userText}\n${assistantText}`);
-  addSemanticMemoryTurn({
+  await addSemanticMemoryTurn({
     assistantText,
     embedding,
     persona,

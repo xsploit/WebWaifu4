@@ -22,6 +22,7 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - Scheduled/manual memory passes now run a tool loop before the legacy relationship merge. The loop can read/search/list memory, write candidates, write diary entries, write consolidated memory blocks, insert archival thread memory, and recover candidate/diary objects that were returned without an explicit tool call.
 - The worker loop now requests a `json_schema` structured output contract named `grillo_worker_loop`, and the runtime accepts both `{toolCalls:[...]}` JSON and OpenAI-style `tool_calls` / function-call shaped JSON with stringified arguments.
 - Grillo memory is scoped by conversation state key and participant key. It currently persists in browser localStorage. Server JSONL/SQLite backing is still the next implementation step.
+- Semantic vector memory now persists in browser IndexedDB when available, migrates/falls back to the older semantic localStorage records, calls `/ai/embeddings` for query/save vectors, and does local cosine/lexical/recency scoring before injection into the Grillo/POML context.
 
 ## Verification Log
 
@@ -37,6 +38,8 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-13 23:06: `npx vitest run src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 32 tests.
 - 2026-05-13 23:06: `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-13 23:06: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-14 00:25: `npx vitest run src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts` -> passed, 18 tests.
+- 2026-05-14 00:26: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 
 ## Next Patch
 
@@ -44,7 +47,7 @@ Implement the durable memory repository:
 
 - Make the worker loop use native OpenAI app-local tool definitions when the server provider exposes them; the structured JSON tool loop remains the browser-safe fallback.
 - Add a visible memory/debug panel or command output for recent worker rounds, side effects, and tool errors.
-- Move the localStorage repository behind server JSONL or SQLite only if we need multi-browser/session durability.
+- Move the Grillo localStorage repository and browser IndexedDB semantic vector store behind server JSONL or SQLite only if we need multi-browser/session durability.
 
 ## Completion Bar
 
@@ -53,6 +56,6 @@ Do not claim `YOURWIFEY_GRILLO_MEMORY_COMPLETE` until:
 - Durable scoped memory backs the context packet.
 - Candidate extraction/promotion exists and is tested.
 - Diary/reflection records are stored separately from relationship memory.
-- Semantic recall and budget reduction are tested.
+- Semantic recall, browser vector scoring, and budget reduction are tested.
 - OpenAI Responses state remains isolated per persona/channel/source.
 - `npm run build` passes.

@@ -252,8 +252,19 @@ Grillo-style memory:
 - The Memory tab exposes current scope, blocks, candidates, diary entries,
   promoted count, and recent worker state.
 
+Semantic vector memory:
+
+- Stored in browser IndexedDB when available.
+- Migrates/falls back to the older semantic memory localStorage records.
+- Calls `/ai/embeddings` to embed the current query before prompt build when the
+  active scope already has records.
+- Saves completed user/assistant turns with their embedding after each reply.
+- Searches locally in the browser with cosine similarity plus lexical and recency
+  scoring, then injects the top matches into the Grillo/POML context.
+
 Current limitation: durable server JSONL/SQLite memory is not implemented yet.
-The current Grillo repository is browser localStorage.
+The current Grillo repository is browser localStorage, while semantic vector
+memory is browser IndexedDB/localStorage fallback.
 
 ## TTS
 
@@ -495,8 +506,8 @@ and remote TTS streaming.
 
 ## What Is Not Done Yet
 
-- Durable server-side Grillo memory repository. Current Grillo memory is
-  browser localStorage.
+- Durable server-side Grillo/vector memory repository. Current Grillo memory is
+  browser localStorage and semantic vector memory is browser IndexedDB.
 - Full database-backed multi-browser memory sync.
 - Inworld true bidirectional live bridge. Current Inworld path is SDK
   full-response stream or sentence chunks.
