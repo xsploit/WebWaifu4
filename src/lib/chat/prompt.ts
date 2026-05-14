@@ -1,5 +1,6 @@
 import { buildGrilloContextPromptBlock } from './grillo-context';
 import type { ChatTurn } from './chat-turn';
+import type { GrilloMemoryPromptAdditions } from './grillo-memory';
 import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
 import { buildYourWifeyPomlMessages } from './poml';
 import type { PomlPromptMessage } from './poml';
@@ -16,6 +17,7 @@ const LOW_SIGNAL_RELATIONSHIP_MOODS = new Set(['curious', 'guarded']);
 type BuildChatCompletionMessagesOptions = {
   channelHistory?: ChatTurn[];
   currentTurnContext?: string;
+  grilloMemory?: GrilloMemoryPromptAdditions;
   history: ChatMessage[];
   animationCatalogContext?: string;
   maxHistoryMessages?: number;
@@ -284,6 +286,7 @@ export async function buildChatCompletionMessages({
   animationCatalogContext = '',
   channelHistory = [],
   currentTurnContext = '',
+  grilloMemory,
   history,
   maxHistoryMessages = 12,
   persona,
@@ -330,6 +333,7 @@ export async function buildChatCompletionMessages({
     channelHistory,
     currentTurnText: currentTurnContext || readTurnContextValue(turnContext, 'currentTurnText'),
     diaryContext,
+    memoryAdditions: grilloMemory,
     persona,
     relationshipMemory,
     semanticMemoryContext,

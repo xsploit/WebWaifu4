@@ -50,6 +50,11 @@ type BuildGrilloContextSectionsOptions = {
   channelHistory?: ChatTurn[];
   currentTurnText?: string;
   diaryContext?: string;
+  memoryAdditions?: {
+    diaryThoughts?: string[];
+    recalledMemories?: GrilloScoredItem[];
+    relationshipMemory?: string[];
+  };
   persona: PersonaProfile | null;
   relationshipMemory: RelationshipMemory;
   semanticMemoryContext?: string;
@@ -64,6 +69,7 @@ export function buildGrilloContextSections({
   channelHistory = [],
   currentTurnText = '',
   diaryContext = '',
+  memoryAdditions,
   persona,
   relationshipMemory,
   semanticMemoryContext = '',
@@ -104,9 +110,15 @@ export function buildGrilloContextSections({
       'Growth should come from validated memory/profile updates, not from rewriting the persona prompt mid-turn.',
     ],
     channel_history: channelHistory.slice(-18).map(formatGrilloChatTurn),
-    relationship_memory: buildRelationshipLane(relationshipMemory),
-    recalled_memories: buildRecalledMemoryLane(semanticMemoryContext),
-    thoughts: buildThoughtLane(diaryContext),
+    relationship_memory: [
+      ...buildRelationshipLane(relationshipMemory),
+      ...(memoryAdditions?.relationshipMemory ?? []),
+    ],
+    recalled_memories: [
+      ...buildRecalledMemoryLane(semanticMemoryContext),
+      ...(memoryAdditions?.recalledMemories ?? []),
+    ],
+    thoughts: [...buildThoughtLane(diaryContext), ...(memoryAdditions?.diaryThoughts ?? [])],
     output_description: [
       'Return concise spoken dialogue for the live stream, then append the required hidden reply metadata block.',
       'Select emotion/animation metadata that matches the visible reply; avoid conflicting motion cues.',

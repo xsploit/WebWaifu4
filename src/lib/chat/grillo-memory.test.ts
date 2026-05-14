@@ -1,0 +1,134 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_PERSONA } from './defaults';
+import {
+  buildGrilloMemoryPromptAdditions,
+  getGrilloParticipantKey,
+  loadGrilloMemoryState,
+  recordGrilloMemoryTurn,
+} from './grillo-memory';
+import type { ChatTurn } from './chat-turn';
+
+function createStorage() {
+  const values = new Map<string, string>();
+  return {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  };
+}
+
+function createTurn(overrides: Partial<ChatTurn> = {}): ChatTurn {
+  return {
+    id: overrides.id ?? 'turn-1',
+    source: overrides.source ?? 'twitch',
+    channel: overrides.channel ?? 'subsect',
+    login: overrides.login ?? 'subsect',
+    displayName: overrides.displayName ?? 'Subsect',
+    text: overrides.text ?? 'I love scoped memory',
+    timestamp: overrides.timestamp ?? Date.parse('2026-05-13T09:00:00.000Z'),
+    badges: overrides.badges ?? [],
+    isMod: overrides.isMod ?? false,
+    isBroadcaster: overrides.isBroadcaster ?? false,
+    isLocal: overrides.isLocal ?? false,
+    isTrustedController: overrides.isTrustedController ?? false,
+    firstTimeChatter: overrides.firstTimeChatter,
+  };
+}
+
+describe('Grillo memory store', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', {
+      localStorage: createStorage(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('writes candidates, diary entries, and promoted memory blocks per scope', () => {
+    const scopeKey = 'twitch:subsect:persona:hikari';
+    recordGrilloMemoryTurn({
+      assistantText: 'Obviously, I will remember that.',
+      now: Date.parse('2026-05-13T09:00:00.000Z'),
+      persona: { ...DEFAULT_PERSONA, name: 'Hikari' },
+      scopeKey,
+      turns: [createTurn({ id: 'turn-1', text: 'I love scoped memory' })],
+    });
+    const state = recordGrilloMemoryTurn({
+      assistantText: 'Still filed under excellent taste.',
+      now: Date.parse('2026-05-13T09:01:00.000Z'),
+      persona: { ...DEFAULT_PERSONA, name: 'Hikari' },
+      scopeKey,
+      turns: [createTurn({ id: 'turn-2', text: 'I love scoped memory' })],
+    });
+
+    expect(state.candidates).toHaveLength(2);
+    expect(state.diaryEntries).toHaveLength(2);
+    expect(state.blocks).toHaveLength(1);
+    expect(state.blocks[0]?.blockName).toBe('preferences');
+    expect(state.blocks[0]?.items).toContain('Subsect likes scoped memory');
+    expect(state.promotedCandidateIds).toHaveLength(2);
+  });
+
+  it('keeps participant and channel scopes isolated in prompt additions', () => {
+    const twitchScope = 'twitch:subsect:persona:hikari';
+    const localScope = 'local:persona:hikari';
+    const twitchTurn = createTurn({
+      id: 'tw-1',
+      login: 'viewer_a',
+      text: 'remember I prefer quiet sarcasm',
+    });
+    const localTurn = createTurn({
+      channel: 'local',
+      displayName: 'Subby',
+      id: 'local-1',
+      isLocal: true,
+      login: 'subby',
+      source: 'local',
+      text: 'remember I prefer local control',
+    });
+
+    recordGrilloMemoryTurn({
+      assistantText: 'Got it.',
+      persona: DEFAULT_PERSONA,
+      scopeKey: twitchScope,
+      turns: [twitchTurn],
+    });
+    recordGrilloMemoryTurn({
+      assistantText: 'Got it locally.',
+      persona: DEFAULT_PERSONA,
+      scopeKey: localScope,
+      turns: [localTurn],
+    });
+
+    const twitchPrompt = buildGrilloMemoryPromptAdditions({
+      participantKeys: [getGrilloParticipantKey(twitchTurn)],
+      query: 'quiet sarcasm',
+      scopeKey: twitchScope,
+    });
+    const localPrompt = buildGrilloMemoryPromptAdditions({
+      participantKeys: [getGrilloParticipantKey(localTurn)],
+      query: 'local control',
+      scopeKey: localScope,
+    });
+
+    expect(twitchPrompt.recalledMemories.map((item) => item.text).join('\n')).toContain(
+      'quiet sarcasm',
+    );
+    expect(twitchPrompt.recalledMemories.map((item) => item.text).join('\n')).not.toContain(
+      'local control',
+    );
+    expect(localPrompt.recalledMemories.map((item) => item.text).join('\n')).toContain(
+      'local control',
+    );
+  });
+
+  it('loads an empty state when storage is unavailable or empty', () => {
+    const state = loadGrilloMemoryState('missing-scope');
+    expect(state.scopeKey).toBe('missing-scope');
+    expect(state.candidates).toEqual([]);
+    expect(state.blocks).toEqual([]);
+  });
+});

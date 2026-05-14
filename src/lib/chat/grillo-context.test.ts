@@ -34,6 +34,13 @@ describe('Grillo context packet', () => {
       ],
       currentTurnText: 'Twitch viewer Subsect: @Hikari remember this chat lane',
       diaryContext: 'Latest private note: she felt proud after fixing Twitch chat.',
+      memoryAdditions: {
+        diaryThoughts: ['2026-05-13 I noticed the stream owner cares about scoped memory.'],
+        recalledMemories: [
+          { text: '[candidate:fact twitch/subsect] Subsect likes POML', score: 0.9 },
+        ],
+        relationshipMemory: ['[twitch:subsect:subsect preferences] Subsect likes scoped memory'],
+      },
       persona: { ...DEFAULT_PERSONA, name: 'Hikari', userNickname: 'Subby' },
       relationshipMemory: {
         ...createDefaultRelationshipMemory(),
@@ -57,8 +64,15 @@ describe('Grillo context packet', () => {
     expect(sections.relationship_memory.join('\n')).toContain(
       'known_facts=["likes scoped memory"]',
     );
+    expect(sections.relationship_memory.join('\n')).toContain(
+      '[twitch:subsect:subsect preferences] Subsect likes scoped memory',
+    );
     expect(sections.recalled_memories[0]?.text).toContain('separate state per Twitch channel');
+    expect(sections.recalled_memories.map((item) => item.text).join('\n')).toContain(
+      'Subsect likes POML',
+    );
     expect(sections.thoughts.join('\n')).toContain('Latest private note');
+    expect(sections.thoughts.join('\n')).toContain('stream owner cares about scoped memory');
   });
 
   it('renders local chat as a participant path with trusted metadata', () => {

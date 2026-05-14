@@ -24,6 +24,11 @@ import {
   shouldRunMemoryAgent,
 } from './lib/chat/memory-agent';
 import { updateRelationshipMemory } from './lib/chat/memory';
+import {
+  buildGrilloMemoryPromptAdditions,
+  getGrilloParticipantKey,
+  recordGrilloMemoryTurn,
+} from './lib/chat/grillo-memory';
 import { buildChatCompletionMessages, trimChatHistory } from './lib/chat/prompt';
 import {
   buildAnimationCatalogInstruction,
@@ -3472,6 +3477,11 @@ function App() {
       try {
         setChatGenerating(true);
         const semanticMemoryContext = await getSemanticMemoryContext(stateKey, userContent);
+        const grilloMemory = buildGrilloMemoryPromptAdditions({
+          participantKeys: job.messages.map(getGrilloParticipantKey),
+          query: userContent,
+          scopeKey: stateKey,
+        });
         const response = await requestChatCompletion({
           activeChatters: job.activeChatterCount,
           mode: job.mode,
@@ -3482,6 +3492,7 @@ function App() {
             ),
             channelHistory: job.context,
             currentTurnContext: prompt,
+            grilloMemory,
             history: requestHistory,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
             persona,
@@ -3560,6 +3571,12 @@ function App() {
         setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
         void rememberSemanticTurn(stateKey, userContent, assistantContent, persona);
+        recordGrilloMemoryTurn({
+          assistantText: assistantContent,
+          persona,
+          scopeKey: stateKey,
+          turns: job.messages,
+        });
       } catch (error) {
         const message = getAiErrorMessage(error, 'chat');
         setChatHistory((current) =>
