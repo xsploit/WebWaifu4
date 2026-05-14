@@ -249,14 +249,47 @@ Swap the prompt and completion promise for the other lanes.
   server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 2 files, 19 tests.
   `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
   warnings. `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-14: Efficiency iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\STREAM_ROUTELET.md`,
+  `docs\grillo-memory-status.md`, `git status --short` (clean), and
+  `git log -3 --oneline` (`04c7ce8`, `9b6bdd1`, `66c9267`) before editing.
+  Required-area review covered browser Twitch intake, direct queue drain, batch
+  timers, and cooldown in `src\App.tsx`; older server scheduler drain behavior
+  in `server\src\scheduler\ChatScheduler.ts`; OpenAI Responses streaming and
+  tool rounds in `server\src\ai\OpenAiResponsesProvider.ts` and `api\ai\chat.ts`;
+  Fish/Inworld/Piper buffering and cleanup in `src\lib\tts\manager.ts`,
+  `server\src\tts\RemoteTtsProvider.ts`, and `src\lib\tts\piper.ts`; memory
+  worker/background loops in `src\App.tsx` and
+  `src\lib\chat\grillo-memory-loop.ts`; VRM animation/frame/timer cleanup in
+  `src\components\VrmStage.tsx` and `src\lib\vrm\sequencer.ts`; direct Twitch
+  and overlay socket listener cleanup in `src\lib\twitch\direct-irc.ts` and
+  `src\App.tsx`; routelet process cleanup in `scripts\stream-routelet.sh`; and
+  current bundle warnings from `npm run build`.
+- 2026-05-14: Finding fixed, Medium: the VPS routelet only sent `SIGTERM` to
+  the recorded root PID for Chromium, Xvfb, and the locally started
+  `npm run start:stream` app. Evidence before the patch: `start_chromium` and
+  `start_app_if_needed` launch background shell/process trees, but
+  `cleanup_run`/`cleanup_all` killed only `$CHROME_PID`, `$XVFB_PID`, and
+  `$APP_PID`. A routelet restart or exit could leave Chromium renderer/GPU or
+  app child processes behind. Patch added `terminate_process_tree`, reusing the
+  existing descendant walk, with configurable `STREAM_CLEANUP_GRACE_SECONDS`
+  before `SIGKILL`, and routelet cleanup now stops Chromium, Xvfb, and the app
+  process tree.
+- 2026-05-14: `bash -n scripts/stream-routelet.sh` -> passed. `npm run build`
+  -> passed with existing `onnxruntime-web` eval and large chunk warnings.
+  `git diff --check` -> passed with line-ending warnings only.
 
 ## Current Blocker Or Next Patch
 
-Next code-review read: inspect serverless `/api/ai/embeddings.ts` parity against
-the long-running `/ai/embeddings` route, then re-check command reply routing and
-routelet smoke-test failure handling. The code-review lane is not complete yet
-because this iteration fixed one medium serverless streaming-tool parity bug and
-left the next release parity pass queued.
+Next efficiency read: inspect browser Twitch AI queue backpressure. Current
+evidence: `enqueueTwitchAiJob` in `src\App.tsx` appends directly to
+`twitchAiQueueRef.current`, while `processTwitchAiQueue` serializes jobs through
+reply/TTS completion and a 2 second cooldown. Decide the smallest safe cap,
+drop/coalesce policy, and operator-visible status before changing behavior.
+
+Prior code-review next remains queued for that lane: inspect serverless
+`/api/ai/embeddings.ts` parity against the long-running `/ai/embeddings` route,
+then re-check command reply routing and routelet smoke-test failure handling.
 
 ## Completion Bar
 

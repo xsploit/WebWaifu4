@@ -36,6 +36,7 @@ ENV_OVERRIDE_KEYS=(
   STREAM_DISPLAY
   STREAM_MONITOR_AUDIO
   STREAM_MONITOR_SINK
+  STREAM_CLEANUP_GRACE_SECONDS
 )
 
 declare -A ENV_OVERRIDES=()
@@ -106,6 +107,7 @@ PULSE_SINK_DESCRIPTION="${PULSE_SINK_DESCRIPTION:-YourWifey_Stream}"
 STREAM_DISPLAY="${STREAM_DISPLAY:-${DISPLAY:-:99}}"
 STREAM_MONITOR_AUDIO="${STREAM_MONITOR_AUDIO:-false}"
 STREAM_MONITOR_SINK="${STREAM_MONITOR_SINK:-@DEFAULT_SINK@}"
+STREAM_CLEANUP_GRACE_SECONDS="${STREAM_CLEANUP_GRACE_SECONDS:-3}"
 
 APP_PID=""
 XVFB_PID=""
@@ -159,6 +161,53 @@ tune_process_tree() {
       fi
     fi
   done
+}
+
+terminate_process_tree() {
+  local root_pid="$1"
+  local label="$2"
+  local grace_seconds="$STREAM_CLEANUP_GRACE_SECONDS"
+  local pid
+  local waited=0
+  local alive=0
+  local pids=()
+
+  [[ -n "$root_pid" ]] || return 0
+  kill -0 "$root_pid" >/dev/null 2>&1 || return 0
+
+  if ! [[ "$grace_seconds" =~ ^[0-9]+$ ]]; then
+    grace_seconds=3
+  fi
+
+  mapfile -t pids < <(process_tree_pids "$root_pid" | sort -urn)
+  [[ "${#pids[@]}" -gt 0 ]] || return 0
+
+  log "Stopping $label process tree (${#pids[@]} process(es))."
+  for pid in "${pids[@]}"; do
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+
+  while (( waited < grace_seconds )); do
+    alive=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "$pid" >/dev/null 2>&1; then
+        alive=1
+        break
+      fi
+    done
+
+    (( alive == 0 )) && break
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  for pid in "${pids[@]}"; do
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill -KILL "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+
+  wait "$root_pid" >/dev/null 2>&1 || true
 }
 
 prefix_command() {
@@ -310,10 +359,7 @@ start_pulse_if_needed() {
 }
 
 cleanup_run() {
-  if [[ -n "$CHROME_PID" ]] && kill -0 "$CHROME_PID" >/dev/null 2>&1; then
-    kill "$CHROME_PID" >/dev/null 2>&1 || true
-    wait "$CHROME_PID" >/dev/null 2>&1 || true
-  fi
+  terminate_process_tree "$CHROME_PID" "Chromium"
   CHROME_PID=""
 }
 
@@ -326,14 +372,8 @@ cleanup_all() {
   if [[ -n "$SINK_MODULE_ID" ]]; then
     pactl unload-module "$SINK_MODULE_ID" >/dev/null 2>&1 || true
   fi
-  if [[ -n "$XVFB_PID" ]] && kill -0 "$XVFB_PID" >/dev/null 2>&1; then
-    kill "$XVFB_PID" >/dev/null 2>&1 || true
-    wait "$XVFB_PID" >/dev/null 2>&1 || true
-  fi
-  if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" >/dev/null 2>&1; then
-    kill "$APP_PID" >/dev/null 2>&1 || true
-    wait "$APP_PID" >/dev/null 2>&1 || true
-  fi
+  terminate_process_tree "$XVFB_PID" "Xvfb"
+  terminate_process_tree "$APP_PID" "overlay app"
 }
 
 start_chromium() {
