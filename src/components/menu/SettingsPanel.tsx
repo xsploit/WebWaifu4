@@ -17,6 +17,7 @@ import type {
 import type { PiperVoiceProfile } from '../../lib/tts/piper';
 import type { RemoteTtsProvider, RemoteTtsVoice } from '../../lib/tts/remote';
 import { DEFAULT_PERSONA } from '../../lib/chat/defaults';
+import type { GrilloMemoryState } from '../../lib/chat/grillo-memory';
 import { AiTab } from './tabs/AiTab';
 import { AnimTab } from './tabs/AnimTab';
 import { CharacterTab } from './tabs/CharacterTab';
@@ -69,6 +70,7 @@ type SettingsPanelProps = {
   onToggleChatOverlay: (open: boolean) => void;
   open: boolean;
   personas: PersonaProfile[];
+  grilloMemoryState: GrilloMemoryState;
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
   memoryAgentStatus: string;
@@ -150,6 +152,7 @@ export function SettingsPanel({
   onToggleChatOverlay,
   open,
   personas,
+  grilloMemoryState,
   relationshipMemory,
   memoryAgentBusy,
   memoryAgentStatus,
@@ -235,6 +238,7 @@ export function SettingsPanel({
         onRefreshModels={onRefreshModels}
         onResetContext={onResetContext}
         onRunMemoryAgent={onRunMemoryAgent}
+        grilloMemoryState={grilloMemoryState}
         relationshipMemory={relationshipMemory}
         memoryAgentBusy={memoryAgentBusy}
         memoryAgentStatus={memoryAgentStatus}

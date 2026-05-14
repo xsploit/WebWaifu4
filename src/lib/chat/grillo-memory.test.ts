@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PERSONA } from './defaults';
 import {
   buildGrilloMemoryPromptAdditions,
+  clearGrilloMemoryState,
   getGrilloParticipantKey,
   loadGrilloMemoryState,
   recordGrilloMemoryTurn,
@@ -130,5 +131,23 @@ describe('Grillo memory store', () => {
     expect(state.scopeKey).toBe('missing-scope');
     expect(state.candidates).toEqual([]);
     expect(state.blocks).toEqual([]);
+  });
+
+  it('clears a scoped Grillo memory state', () => {
+    const scopeKey = 'twitch:subsect:persona:hikari';
+    recordGrilloMemoryTurn({
+      assistantText: 'Filed.',
+      persona: DEFAULT_PERSONA,
+      scopeKey,
+      turns: [createTurn({ text: 'remember I like memory UI' })],
+    });
+
+    expect(loadGrilloMemoryState(scopeKey).candidates.length).toBeGreaterThan(0);
+
+    const cleared = clearGrilloMemoryState(scopeKey);
+
+    expect(cleared.scopeKey).toBe(scopeKey);
+    expect(loadGrilloMemoryState(scopeKey).candidates).toEqual([]);
+    expect(loadGrilloMemoryState(scopeKey).diaryEntries).toEqual([]);
   });
 });

@@ -26,8 +26,11 @@ import {
 import { updateRelationshipMemory } from './lib/chat/memory';
 import {
   buildGrilloMemoryPromptAdditions,
+  clearGrilloMemoryState,
   getGrilloParticipantKey,
+  loadGrilloMemoryState,
   recordGrilloMemoryTurn,
+  type GrilloMemoryState,
 } from './lib/chat/grillo-memory';
 import {
   extractGrilloWorkerRelationshipJson,
@@ -1198,7 +1201,10 @@ function App() {
   const [aiProxyHealth, setAiProxyHealth] = useState<AiProxyHealth | null>(null);
   const [aiProxyHealthError, setAiProxyHealthError] = useState<string | null>(null);
   const [memoryAgentBusy, setMemoryAgentBusy] = useState(false);
-  const [memoryAgentStatus, setMemoryAgentStatus] = useState('Diary idle.');
+  const [memoryAgentStatus, setMemoryAgentStatus] = useState('Memory worker idle.');
+  const [grilloMemoryState, setGrilloMemoryState] = useState<GrilloMemoryState>(() =>
+    loadGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
+  );
   const [ttsVoices, setTtsVoices] = useState<PiperVoiceProfile[]>(() => [
     ...CUSTOM_RIKO_PIPER_VOICES,
   ]);
@@ -1300,6 +1306,10 @@ function App() {
     [activePersona],
   );
 
+  const refreshGrilloMemoryState = useCallback((stateKey: string) => {
+    setGrilloMemoryState(loadGrilloMemoryState(stateKey));
+  }, []);
+
   const getScopedRelationshipMemory = useCallback((stateKey: string) => {
     return relationshipMemoriesRef.current[stateKey] ?? createDefaultRelationshipMemory();
   }, []);
@@ -1333,7 +1343,8 @@ function App() {
       return;
     }
     setRelationshipMemory(getScopedRelationshipMemory(activeRelationshipStateKey));
-  }, [activeRelationshipStateKey, getScopedRelationshipMemory, hydrated]);
+    refreshGrilloMemoryState(activeRelationshipStateKey);
+  }, [activeRelationshipStateKey, getScopedRelationshipMemory, hydrated, refreshGrilloMemoryState]);
 
   useEffect(() => {
     aiSettingsRef.current = aiSettings;
@@ -2723,6 +2734,8 @@ function App() {
 
   const handleClearMemory = useCallback(() => {
     commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
+    setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
+    setMemoryAgentStatus('Memory cleared for current scope.');
   }, [activeRelationshipStateKey, commitScopedRelationshipMemory]);
 
   const handleResetContext = useCallback(() => {
@@ -2731,6 +2744,8 @@ function App() {
     setChatInput('');
     setChatHistory([]);
     commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
+    setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
+    setMemoryAgentStatus('Context and memory cleared for current scope.');
   }, [activeRelationshipStateKey, cancelAssistantPresentation, commitScopedRelationshipMemory]);
 
   const runRelationshipMemoryRefresh = useCallback(
@@ -2795,6 +2810,7 @@ function App() {
 
             rawContent = extractGrilloWorkerRelationshipJson(result.finalJsonText);
             if (rawContent) {
+              refreshGrilloMemoryState(stateKey);
               setMemoryAgentStatus(
                 `Grillo worker: ${model}; tools=${result.toolCalls.length}; rounds=${result.rounds}.`,
               );
@@ -2882,6 +2898,7 @@ function App() {
       availableModels,
       commitScopedRelationshipMemory,
       getScopedRelationshipMemory,
+      refreshGrilloMemoryState,
       twitchChannel,
     ],
   );
@@ -3633,12 +3650,15 @@ function App() {
         ].slice(-24);
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
         void rememberSemanticTurn(stateKey, userContent, assistantContent, persona);
-        recordGrilloMemoryTurn({
+        const nextGrilloMemoryState = recordGrilloMemoryTurn({
           assistantText: assistantContent,
           persona,
           scopeKey: stateKey,
           turns: job.messages,
         });
+        if (stateKey === activeRelationshipStateKey) {
+          setGrilloMemoryState(nextGrilloMemoryState);
+        }
       } catch (error) {
         const message = getAiErrorMessage(error, 'chat');
         setChatHistory((current) =>
@@ -3666,6 +3686,7 @@ function App() {
       getScopedRelationshipMemory,
       playAssistantMetadataAnimation,
       scheduleRelationshipMemoryRefresh,
+      activeRelationshipStateKey,
       twitchChannel,
     ],
   );
@@ -4162,6 +4183,7 @@ function App() {
             onToggleChatOverlay={setChatLogOpen}
             open={menuOpen}
             personas={personas}
+            grilloMemoryState={grilloMemoryState}
             relationshipMemory={relationshipMemory}
             memoryAgentBusy={memoryAgentBusy}
             memoryAgentStatus={memoryAgentStatus}

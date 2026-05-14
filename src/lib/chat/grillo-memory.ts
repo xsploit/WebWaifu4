@@ -145,6 +145,16 @@ export function saveGrilloMemoryState(state: GrilloMemoryState) {
   storage.setItem(storageKey(state.scopeKey), JSON.stringify(compactState(state)));
 }
 
+export function clearGrilloMemoryState(scopeKey: string) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return createDefaultGrilloMemoryState(scopeKey);
+  }
+
+  storage.removeItem(storageKey(scopeKey));
+  return createDefaultGrilloMemoryState(scopeKey);
+}
+
 export function recordGrilloMemoryTurn({
   assistantText,
   now = Date.now(),
