@@ -2374,6 +2374,7 @@ function App() {
           : {
               [hydratedLocalStateKey]: persistedState.relationshipMemory,
             };
+      const hydratedTwitchChannel = persistedState.twitchChannel || DIRECT_TWITCH_CHANNEL;
 
       setPersonas(persistedState.personas);
       setActivePersonaId(persistedState.activePersonaId);
@@ -2395,6 +2396,7 @@ function App() {
       setChatLogOpen(true);
       setChatInput(persistedState.uiState.chatDraft);
       setActiveTab(persistedState.activeTab);
+      setTwitchChannel(hydratedTwitchChannel);
       setCurrentBundledModelId(persistedState.currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID);
       setSequencerSettings(persistedState.sequencerSettings);
       setVisualSettings(
@@ -2464,6 +2466,7 @@ function App() {
           },
           activeTab,
           currentBundledModelId,
+          twitchChannel,
           sequencerSettings,
           visualSettings,
         }).catch((error) => {
@@ -2505,6 +2508,7 @@ function App() {
     relationshipMemory,
     relationshipMemories,
     sequencerSettings,
+    twitchChannel,
     visualSettings,
   ]);
 
@@ -3007,9 +3011,9 @@ function App() {
 
     startupStatusSentRef.current = true;
     appendSystemMessage(
-      `[Startup] Client Twitch IRC ${DIRECT_TWITCH_CHAT_ENABLED ? `listening to #${DIRECT_TWITCH_CHANNEL}` : 'disabled'}; server Twitch is off by default. AI: ${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}. Browser audio stream exposed at window.__yourwifeyAudio.getStream(). Commands: !yw help, status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro|hikari>, llm <model>, vrm <id>, camera close|full, anim <name|index>, tts on|off, autospeak on|off, say <text>, chat on|off.`,
+      `[Startup] Client Twitch IRC ${DIRECT_TWITCH_CHAT_ENABLED ? `listening to #${twitchChannel || DIRECT_TWITCH_CHANNEL}` : 'disabled'}; server Twitch is off by default. AI: ${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}. Browser audio stream exposed at window.__yourwifeyAudio.getStream(). Commands: !yw help, status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro|hikari>, llm <model>, vrm <id>, camera close|full, anim <name|index>, tts on|off, autospeak on|off, say <text>, chat on|off.`,
     );
-  }, [appendSystemMessage, hydrated]);
+  }, [appendSystemMessage, hydrated, twitchChannel]);
 
   useEffect(() => {
     if (!hydrated || !activePersona) {
@@ -3839,11 +3843,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!DIRECT_TWITCH_CHAT_ENABLED) {
+    if (!hydrated || !DIRECT_TWITCH_CHAT_ENABLED) {
       return;
     }
 
-    const client = new DirectTwitchIrcClient(DIRECT_TWITCH_CHANNEL, {
+    const client = new DirectTwitchIrcClient(twitchChannel || DIRECT_TWITCH_CHANNEL, {
       onMessage: (message) => {
         const displayTurn = createTwitchChatTurn(message, client.channel, false);
         setChatHistory((current) =>
@@ -3876,7 +3880,7 @@ function App() {
         directTwitchClientRef.current = null;
       }
     };
-  }, []);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!STREAM_BOT_WS_ENABLED) {

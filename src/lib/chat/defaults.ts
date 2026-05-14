@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   uiState: 'yourwifey.uiState.v1',
   activeTab: 'yourwifey.activeTab.v1',
   currentBundledModelId: 'yourwifey.currentBundledModelId.v1',
+  twitchChannel: 'yourwifey.twitchChannel.v1',
   sequencerSettings: 'yourwifey.sequencerSettings.v1',
   visualSettings: 'yourwifey.visualSettings.v1',
 } as const;

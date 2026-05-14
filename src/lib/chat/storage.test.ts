@@ -160,6 +160,7 @@ describe('chat settings persistence', () => {
         facts: ['likes saved settings'],
         summary: 'global summary',
       },
+      twitchChannel: '#CohhCarnage',
       sequencerSettings,
       uiState: {
         ...createDefaultUiState(),
@@ -186,6 +187,7 @@ describe('chat settings persistence', () => {
     expect(loaded.sequencerSettings.playlist).toHaveLength(sequencerSettings.playlist.length);
     expect(loaded.activeTab).toBe('tts');
     expect(loaded.currentBundledModelId).toBe('hikari-chan');
+    expect(loaded.twitchChannel).toBe('cohhcarnage');
     expect(loaded.uiState).toEqual({
       ...state.uiState,
       menuOpen: false,

@@ -349,6 +349,11 @@ function normalizeSettingsTab(value: string | null): SettingsTabId {
   }
 }
 
+function normalizeTwitchChannel(value: string | null) {
+  const normalized = (value ?? '').trim().toLowerCase().replace(/^#/, '');
+  return /^[a-z0-9_]{1,25}$/.test(normalized) ? normalized : '';
+}
+
 function normalizeHexColor(value: unknown, fallback: string): string {
   if (typeof value !== 'string') {
     return fallback;
@@ -745,6 +750,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     uiState: createDefaultUiState(),
     activeTab: 'vrm',
     currentBundledModelId: 'neuro-sama',
+    twitchChannel: '',
     sequencerSettings: createDefaultSequencerSettings(),
     visualSettings: createDefaultVisualSettings(),
   };
@@ -760,6 +766,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       uiStateRaw,
       activeTabRaw,
       currentBundledModelIdRaw,
+      twitchChannelRaw,
       sequencerSettingsRaw,
       visualSettingsRaw,
     ] = await Promise.all([
@@ -772,6 +779,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       getPersistedItem(STORAGE_KEYS.uiState),
       getPersistedItem(STORAGE_KEYS.activeTab),
       getPersistedItem(STORAGE_KEYS.currentBundledModelId),
+      getPersistedItem(STORAGE_KEYS.twitchChannel),
       getPersistedItem(STORAGE_KEYS.sequencerSettings),
       getPersistedItem(STORAGE_KEYS.visualSettings),
     ]);
@@ -795,6 +803,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       typeof currentBundledModelIdRaw === 'string' && currentBundledModelIdRaw.trim().length > 0
         ? currentBundledModelIdRaw
         : defaults.currentBundledModelId;
+    const twitchChannel = normalizeTwitchChannel(twitchChannelRaw);
     const sequencerSettings = normalizeSequencerSettings(safeParse(sequencerSettingsRaw, null));
     const visualSettings = normalizeVisualSettings(safeParse(visualSettingsRaw, null));
 
@@ -818,6 +827,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       uiState,
       activeTab,
       currentBundledModelId,
+      twitchChannel,
       sequencerSettings,
       visualSettings,
     };
@@ -843,6 +853,7 @@ export async function savePersistedChatState(state: PersistedChatState) {
     [STORAGE_KEYS.uiState, JSON.stringify(state.uiState)],
     [STORAGE_KEYS.activeTab, state.activeTab],
     [STORAGE_KEYS.currentBundledModelId, state.currentBundledModelId],
+    [STORAGE_KEYS.twitchChannel, normalizeTwitchChannel(state.twitchChannel)],
     [
       STORAGE_KEYS.sequencerSettings,
       JSON.stringify({

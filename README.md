@@ -362,8 +362,8 @@ The side settings panel is the primary operator surface. Current tabs:
 
 State is persisted in browser localStorage for personas, active persona, AI/TTS
 settings, chat history, relationship memory, scoped relationship memories, UI
-state, active tab, current bundled model, sequencer settings, and visual
-settings.
+state, active tab, current bundled model, Twitch channel, sequencer settings,
+and visual settings.
 
 ## Environment
 

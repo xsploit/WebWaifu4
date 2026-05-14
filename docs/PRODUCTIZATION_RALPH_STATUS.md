@@ -124,12 +124,26 @@ Swap the prompt and completion promise for the other lanes.
   polish, code review, efficiency, and commercial-production work.
 - 2026-05-14: Dry-run validation showed the runner state file is shared; do not
   launch Ralph lanes in parallel.
+- 2026-05-14: Polish iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
+  `.ralph-loop\ralph-state.json`, `git status --short` (clean), and
+  `git log -3 --oneline` (`a9b9e45`, `28e0c68`, `2782074`). Patch landed
+  Twitch channel persistence for the operator settings path: saved as
+  `yourwifey.twitchChannel.v1`, normalized without `#`, hydrated before direct
+  browser IRC starts, and reflected in the startup status line.
+- 2026-05-14: `npx vitest run src/lib/chat/storage.test.ts` -> passed, 1 file,
+  2 tests. `npm run build` -> passed with existing `onnxruntime-web` eval and
+  large chunk warnings. `git diff --check` -> passed with line-ending warnings
+  only.
 
 ## Current Blocker Or Next Patch
 
-Run the polish lane once with `MaxIterations 1`, inspect `.ralph-loop`, inspect
-`git status --short`, then either commit its coherent checkpoint or add operator
-context for the next lane.
+Next polish read: inspect `src\components\menu\SettingsPanel.tsx`,
+`src\components\menu\tabs\ContextTab.tsx`, and
+`src\components\menu\tabs\AnimTab.tsx` for tab labels, empty states, and
+animation mapping clarity. The lane is not complete yet because the settings
+surface still needs a visual/demo pass for Memory/Diary/tools wording and
+animation category clarity.
 
 ## Completion Bar
 
