@@ -33,6 +33,7 @@ describe('POML-backed chat prompt', () => {
     expect(YOURWIFEY_POML_TEMPLATE).toContain('<let');
     expect(YOURWIFEY_POML_TEMPLATE).toContain('name="response_priorities"');
     expect(YOURWIFEY_POML_TEMPLATE).toContain('caption="Relationship Dynamics"');
+    expect(YOURWIFEY_POML_TEMPLATE).toContain('caption="Grillo Context Packet"');
     expect(YOURWIFEY_POML_TEMPLATE).toContain('<human-msg name="current-turn"');
   });
 
@@ -114,7 +115,10 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('<yw-meta>');
     expect(systemMessage.content).toContain('Available animation: little-wave [wave-01]');
     expect(systemMessage.content).toContain('# Animation Selection Policy');
-    expect(systemMessage.content).toContain('Known user facts: ["likes POML"]');
+    expect(systemMessage.content).toContain('# Grillo Context Packet');
+    expect(systemMessage.content).toContain('## relationship_memory');
+    expect(systemMessage.content).toContain('known_facts=["likes POML"]');
+    expect(systemMessage.content).toContain('## recalled_memories');
     expect(systemMessage.content).toContain(
       'Prior note: use OpenAI Responses state keys carefully.',
     );
@@ -150,7 +154,24 @@ describe('POML-backed chat prompt', () => {
       ],
       persona: DEFAULT_PERSONA,
       relationshipMemory: createDefaultRelationshipMemory(),
+      channelHistory: [
+        {
+          id: 'tw-1',
+          source: 'twitch',
+          channel: 'subsect',
+          login: 'subsect',
+          displayName: 'Subsect',
+          text: '@Hikari test the batch',
+          timestamp: Date.parse('2026-05-13T09:00:00.000Z'),
+          badges: ['broadcaster/1'],
+          isMod: false,
+          isBroadcaster: true,
+          isLocal: false,
+          isTrustedController: true,
+        },
+      ],
       turnContext: {
+        channel: 'subsect',
         source: 'twitch',
         turnKind: 'batch',
       },
@@ -167,6 +188,8 @@ describe('POML-backed chat prompt', () => {
       },
     ]);
     expect(messages[2]?.content).toContain('metadata: login=subsect');
+    expect(messages[0]?.content).toContain('## channel_history');
+    expect(messages[0]?.content).toContain('Subsect: @Hikari test the batch');
   });
 
   it('renders local chat as a participant transcript turn instead of legacy sole user', async () => {
@@ -184,6 +207,22 @@ describe('POML-backed chat prompt', () => {
         userNickname: 'Subby',
       },
       relationshipMemory: createDefaultRelationshipMemory(),
+      channelHistory: [
+        {
+          id: 'local-1',
+          source: 'local',
+          channel: 'local',
+          login: 'subby',
+          displayName: 'Subby',
+          text: '@Hikari hello from the local box',
+          timestamp: Date.parse('2026-05-13T09:00:00.000Z'),
+          badges: ['local-controller'],
+          isMod: true,
+          isBroadcaster: true,
+          isLocal: true,
+          isTrustedController: true,
+        },
+      ],
       turnContext: {
         conversationScope: 'local-chat',
         currentTurnText: 'Local viewer Subby: @Hikari hello from the local box',
@@ -197,6 +236,8 @@ describe('POML-backed chat prompt', () => {
 
     expect(messages[0]?.content).toContain('source: local');
     expect(messages[0]?.content).toContain('speaker: Subby');
+    expect(messages[0]?.content).toContain('interface_path: local/subby');
+    expect(messages[0]?.content).toContain('local=true');
     expect(messages[1]?.role).toBe('user');
     expect(messages[1]?.content).toContain('Local chat mode: direct queue for Hikari.');
     expect(messages[1]?.content).toContain('trustedController=true');
@@ -225,6 +266,7 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('# Relationship Dynamics');
     expect(systemMessage.content).toContain('New relationship');
     expect(systemMessage.content).toContain('# Turn Metadata');
+    expect(systemMessage.content).toContain('# Grillo Context Packet');
     expect(systemMessage.content).not.toContain('# Speech and TTS');
     expect(systemMessage.content).not.toContain('# Avatar Animation Catalog');
     expect(systemMessage.content).not.toContain('# Relationship Memory');

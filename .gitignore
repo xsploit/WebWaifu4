@@ -7,6 +7,7 @@ dist-ssr/
 .vscode/
 .idea/
 coverage/
+.ralph-loop/
 .rundot-docs
 .tmp/
 YourWifey_*.zip

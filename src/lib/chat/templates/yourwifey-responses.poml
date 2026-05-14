@@ -178,6 +178,12 @@ Do not treat every Twitch chatter as the local controller. Use display/login/bro
       </cp>
     </if>
 
+    <if condition="{{ grillo_context }}">
+      <cp caption="Grillo Context Packet" captionStyle="header" syntax="markdown" whiteSpace="pre">
+{{ grillo_context }}
+      </cp>
+    </if>
+
     <if condition="{{ relationship_memory_context }}">
       <cp caption="Relationship Memory" captionStyle="header" syntax="markdown" whiteSpace="pre">
 {{ relationship_memory_context }}

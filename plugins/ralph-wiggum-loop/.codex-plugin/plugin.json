@@ -1,0 +1,25 @@
+{
+  "name": "yourwifey-ralph-wiggum-loop",
+  "version": "0.1.0",
+  "description": "Bounded Codex exec loop for YourWifey Grillo memory work.",
+  "author": {
+    "name": "SUBSECT + Codex",
+    "email": "noreply@example.com"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["codex", "ralph", "loop", "memory", "yourwifey"],
+  "interface": {
+    "displayName": "YourWifey Ralph Loop",
+    "shortDescription": "Keep Grillo memory adaptation moving from a stable prompt/status file.",
+    "longDescription": "A repo-local Codex exec loop for bounded YourWifey implementation passes. Each iteration reads the Grillo memory status, picks one narrow patch, verifies it, updates the status doc, and stops only on a real completion promise.",
+    "developerName": "SUBSECT + Codex",
+    "category": "Developer Tools",
+    "capabilities": ["Loop", "Run", "Verify"],
+    "defaultPrompt": [
+      "Read docs/grillo-memory-status.md.",
+      "Make the next smallest verified Grillo memory patch.",
+      "Update status and commit coherent checkpoints."
+    ],
+    "brandColor": "#22C55E"
+  }
+}

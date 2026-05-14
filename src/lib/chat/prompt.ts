@@ -1,3 +1,5 @@
+import { buildGrilloContextPromptBlock } from './grillo-context';
+import type { ChatTurn } from './chat-turn';
 import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
 import { buildYourWifeyPomlMessages } from './poml';
 import type { PomlPromptMessage } from './poml';
@@ -12,6 +14,7 @@ const DIARY_CONTEXT_HISTORY_LIMIT = 3;
 const LOW_SIGNAL_RELATIONSHIP_MOODS = new Set(['curious', 'guarded']);
 
 type BuildChatCompletionMessagesOptions = {
+  channelHistory?: ChatTurn[];
   currentTurnContext?: string;
   history: ChatMessage[];
   animationCatalogContext?: string;
@@ -279,6 +282,7 @@ export function trimChatHistory(history: ChatMessage[], limit = 36) {
 
 export async function buildChatCompletionMessages({
   animationCatalogContext = '',
+  channelHistory = [],
   currentTurnContext = '',
   history,
   maxHistoryMessages = 12,
@@ -314,34 +318,6 @@ export async function buildChatCompletionMessages({
       ? 'Speech expression tags are enabled for the active TTS engine. You may add short bracketed delivery tags sparingly inside spoken dialogue when they improve performance, such as [laughs], [sighs], [whispers], [excited], [sarcastic], [nervous], or [pause]. Keep replies as natural spoken dialogue, do not explain the tags, and do not use markdown or stage directions outside those short tags.'
       : '';
 
-  let relationshipMemoryContext = '';
-  if (
-    relationshipMemory.turnCount > 0 ||
-    relationshipMemory.summary ||
-    relationshipMemory.facts.length > 0
-  ) {
-    const memoryBlocks = [
-      `Relationship stage: ${relationshipMemory.relationshipStage}`,
-      `Total prior turns: ${relationshipMemory.turnCount}`,
-      `Current mood: ${relationshipMemory.mood}`,
-      `Relationship stats: ${JSON.stringify({
-        trust: relationshipMemory.trust,
-        attraction: relationshipMemory.attraction,
-        respect: relationshipMemory.respect,
-        irritation: relationshipMemory.irritation,
-        jealousy: relationshipMemory.jealousy,
-        guard: relationshipMemory.guard,
-      })}`,
-      `Last classified action: ${relationshipMemory.lastActionTag}`,
-      relationshipMemory.summary ? `Memory summary: ${relationshipMemory.summary}` : null,
-      relationshipMemory.facts.length > 0
-        ? `Known user facts: ${JSON.stringify(relationshipMemory.facts)}`
-        : null,
-    ].filter((value): value is string => Boolean(value));
-
-    relationshipMemoryContext = memoryBlocks.join('\n');
-  }
-
   const contextualHistory = history
     .filter((message) => message.role === 'user' || message.role === 'assistant')
     .slice(-maxHistoryMessages)
@@ -350,11 +326,20 @@ export async function buildChatCompletionMessages({
       content,
     }));
   const diaryContext = serializeDiaryContext(history, relationshipMemory, turnContext);
+  const grilloContext = buildGrilloContextPromptBlock({
+    channelHistory,
+    currentTurnText: currentTurnContext || readTurnContextValue(turnContext, 'currentTurnText'),
+    diaryContext,
+    persona,
+    relationshipMemory,
+    semanticMemoryContext,
+    turnContext,
+  });
 
   return await buildYourWifeyPomlMessages({
     animationCatalogContext,
     currentTurnContext,
-    diaryContext,
+    diaryContext: '',
     dynamicState: buildDynamicPromptState({
       animationCatalogContext,
       diaryContext,
@@ -365,11 +350,12 @@ export async function buildChatCompletionMessages({
       ttsExpressionTagsEnabled,
       ttsProvider,
     }),
+    grilloContext,
     history: contextualHistory,
     personaContext: personaBlocks.join('\n\n'),
-    relationshipMemoryContext,
+    relationshipMemoryContext: '',
     replyMetadataInstruction: buildReplyMetadataInstruction(),
-    semanticMemoryContext,
+    semanticMemoryContext: '',
     turnMetadataContext: serializeTurnMetadataContext({
       animationCatalogContext,
       diaryContext,

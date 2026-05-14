@@ -1000,7 +1000,6 @@ function buildChatAiPrompt(job: ChatAiJob, persona: PersonaProfile | null, chann
     .map((tag) => `@${tag}`)
     .join(', ');
   const localControllerNickname = persona?.userNickname.trim();
-  const recentContext = formatChatTurns(job.context, 18);
   const batchSize = getTwitchBatchSize(job.activeChatterCount);
   const batchWaitSeconds = Math.round(getTwitchBatchWaitMs(job.activeChatterCount) / 1000);
   const isTwitchTurn = job.messages.some((turn) => turn.source === 'twitch');
@@ -1035,7 +1034,6 @@ function buildChatAiPrompt(job: ChatAiJob, persona: PersonaProfile | null, chann
         : null,
       'Reply directly to that viewer in one or two short spoken sentences.',
       'Do not mention command syntax, queues, batching, or system internals.',
-      recentContext ? `Recent chat context:\n${recentContext}` : null,
     ]
       .filter((value): value is string => Boolean(value))
       .join('\n\n');
@@ -1049,7 +1047,6 @@ function buildChatAiPrompt(job: ChatAiJob, persona: PersonaProfile | null, chann
     'The chat is busy, so answer the overall energy or strongest shared topic instead of replying to every line.',
     'Keep it stream-safe and concise: one or two spoken sentences.',
     `Current batch:\n${formatChatTurns(job.messages, 30)}`,
-    recentContext ? `Recent chat context:\n${recentContext}` : null,
   ]
     .filter((value): value is string => Boolean(value))
     .join('\n\n');
@@ -3483,6 +3480,7 @@ function App() {
             animationCatalogContext: buildAnimationCatalogInstruction(
               sequencerSettingsRef.current.playlist,
             ),
+            channelHistory: job.context,
             currentTurnContext: prompt,
             history: requestHistory,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,

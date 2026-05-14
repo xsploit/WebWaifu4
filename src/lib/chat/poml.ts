@@ -18,6 +18,7 @@ export type YourWifeyPomlPromptInput = {
   currentTurnContext?: string;
   diaryContext?: string;
   dynamicState?: Record<string, PomlDynamicStateValue>;
+  grilloContext?: string;
   history: PomlPromptMessage[];
   personaContext?: string;
   relationshipMemoryContext?: string;
@@ -53,6 +54,7 @@ export async function buildYourWifeyPomlMessages(
     animation_catalog_context: cleanBlock(input.animationCatalogContext),
     current_turn_context: cleanBlock(input.currentTurnContext),
     diary_context: cleanBlock(input.diaryContext),
+    grillo_context: cleanBlock(input.grilloContext),
     persona_context: withFallback(input.personaContext, EMPTY_PERSONA_CONTEXT),
     relationship_memory_context: cleanBlock(input.relationshipMemoryContext),
     reply_metadata_instruction: input.replyMetadataInstruction.trim(),
