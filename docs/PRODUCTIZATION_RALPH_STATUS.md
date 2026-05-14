@@ -150,15 +150,30 @@ Swap the prompt and completion promise for the other lanes.
   1 test. `npm run build` -> passed with existing `onnxruntime-web` eval and
   large chunk warnings. `git diff --check` -> passed with line-ending warnings
   only.
+- 2026-05-14: Polish iteration inspected `README.md`,
+  `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
+  `src\components\menu\tabs\ContextTab.tsx`,
+  `src\components\menu\tabs\TwitchTab.tsx`,
+  `src\components\menu\tabs\TtsTab.tsx`, and TTS wiring in `src\App.tsx`;
+  `git status --short` was clean and `git log -3 --oneline` showed `ed02ad4`,
+  `e0665b3`, and `a9b9e45`. Finding: the TTS surface still used stale
+  `FishSpeech`/`Inworld Realtime` wording and remote voice registry
+  empty/error/manual states were not consistently visible. Patch centralized TTS
+  provider labels, changed Inworld to `Inworld Stream`, spaced `Fish Speech`,
+  and added an operator-visible remote voice list status line for loading,
+  errors, empty server-default mode, and manual voice ids.
+- 2026-05-14: `npx vitest run src/lib/tts/labels.test.ts` -> passed, 1 file,
+  2 tests. `npm run build` -> passed with existing `onnxruntime-web` eval and
+  large chunk warnings. `git diff --check` -> passed with line-ending warnings
+  only.
 
 ## Current Blocker Or Next Patch
 
 Next polish read: inspect `src\components\menu\tabs\ContextTab.tsx`,
-`src\components\menu\tabs\TwitchTab.tsx`, and
-`src\components\menu\tabs\TtsTab.tsx` for Memory/Diary/tools wording,
-Twitch/local chat empty states, and TTS voice error states. The lane is not
+`src\components\menu\tabs\TwitchTab.tsx`, and the overlay chat components for
+Memory/Diary/tools wording plus Twitch/local chat empty states. The lane is not
 complete yet because the settings surface still needs a visual/demo pass for
-Memory/Diary/tools wording and operator-facing empty states.
+Memory/Diary/tools wording and operator-facing chat empty states.
 
 ## Completion Bar
 

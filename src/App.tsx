@@ -93,6 +93,7 @@ import {
   NEURO_PIPER_VOICE_KEY,
 } from './lib/tts/piper';
 import type { PiperVoiceProfile, WordBoundary } from './lib/tts/piper';
+import { getTtsProviderLabel } from './lib/tts/labels';
 import { getTtsManager, type RemotePcmPushStream } from './lib/tts/manager';
 import { fetchRemoteTtsVoices } from './lib/tts/remote';
 import type {
@@ -477,17 +478,6 @@ function decodeAiProxyAudioEvent(event: AiProxyStreamEvent): RemoteTtsAudioChunk
     mimeType,
     sampleRate: typeof event.sampleRate === 'number' ? event.sampleRate : undefined,
   };
-}
-
-function getTtsProviderLabel(provider: AiSettings['ttsProvider']) {
-  switch (provider) {
-    case 'fish-speech':
-      return 'FishSpeech Live';
-    case 'inworld':
-      return 'Inworld Realtime';
-    default:
-      return 'Piper Web';
-  }
 }
 
 function getActiveTtsLabel(settings: AiSettings, piperVoice?: PiperVoiceProfile | null) {

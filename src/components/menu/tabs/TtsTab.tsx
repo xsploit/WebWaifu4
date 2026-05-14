@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AiSettings } from '../../../lib/chat/types';
+import { getRemoteTtsProviderLabel, getRemoteVoiceStatus } from '../../../lib/tts/labels';
 import type { PiperVoiceProfile } from '../../../lib/tts/piper';
 import type { RemoteTtsProvider, RemoteTtsVoice } from '../../../lib/tts/remote';
 import { Toggle } from '../ui/Toggle';
@@ -65,26 +66,42 @@ export function TtsTab({
   voicesLoading,
 }: TtsTabProps) {
   const selectedVoice = ttsVoices.find((voice) => voice.key === aiSettings.ttsVoice) ?? null;
-  const remoteProviderSelected = aiSettings.ttsProvider !== 'piper';
+  const selectedRemoteProvider: RemoteTtsProvider | null =
+    aiSettings.ttsProvider === 'piper' ? null : aiSettings.ttsProvider;
+  const remoteProviderSelected = selectedRemoteProvider !== null;
   const selectedRemoteVoiceId =
     aiSettings.ttsProvider === 'fish-speech'
       ? aiSettings.fishSpeechVoiceId
       : aiSettings.ttsProvider === 'inworld'
         ? aiSettings.inworldVoiceId
         : '';
-  const selectedRemoteVoice = remoteTtsVoices.find((voice) => voice.id === selectedRemoteVoiceId);
-  const remoteVoiceOptions = selectedRemoteVoice
-    ? remoteTtsVoices
-    : selectedRemoteVoiceId
-      ? [
-          {
-            provider: aiSettings.ttsProvider as RemoteTtsProvider,
-            id: selectedRemoteVoiceId,
-            name: `Manual: ${selectedRemoteVoiceId}`,
-          },
-          ...remoteTtsVoices,
-        ]
-      : remoteTtsVoices;
+  const selectedRemoteVoice =
+    remoteProviderSelected && selectedRemoteVoiceId
+      ? (remoteTtsVoices.find((voice) => voice.id === selectedRemoteVoiceId) ?? null)
+      : null;
+  const remoteVoiceOptions =
+    !remoteProviderSelected || selectedRemoteVoice
+      ? remoteTtsVoices
+      : selectedRemoteVoiceId
+        ? [
+            {
+              provider: selectedRemoteProvider,
+              id: selectedRemoteVoiceId,
+              name: `Manual: ${selectedRemoteVoiceId}`,
+            },
+            ...remoteTtsVoices,
+          ]
+        : remoteTtsVoices;
+  const remoteVoiceStatus = remoteProviderSelected
+    ? getRemoteVoiceStatus({
+        error: remoteVoicesError,
+        listedVoiceCount: remoteTtsVoices.length,
+        loading: remoteVoicesLoading,
+        provider: selectedRemoteProvider,
+        selectedVoiceId: selectedRemoteVoiceId,
+        selectedVoiceListed: selectedRemoteVoice !== null,
+      })
+    : '';
 
   const renderRemoteVoiceOptions = () =>
     remoteVoiceOptions.map((voice) => {
@@ -148,7 +165,7 @@ export function TtsTab({
           value={aiSettings.ttsProvider}
         >
           <option value="piper">Piper Web</option>
-          <option value="fish-speech">FishSpeech Live Bridge</option>
+          <option value="fish-speech">Fish Speech Live Bridge</option>
           <option value="inworld">Inworld Stream</option>
         </select>
         <div className="field-hint">
@@ -169,15 +186,15 @@ export function TtsTab({
             value={normalizeRemoteModeForProvider(aiSettings)}
           >
             {aiSettings.ttsProvider === 'fish-speech' ? (
-              <option value="live-bridge">Fish Live Bridge / Streams Into Streams</option>
+              <option value="live-bridge">Fish Speech Live Bridge</option>
             ) : null}
-            <option value="full-response">Stable Stream / One TTS Request</option>
-            <option value="sentence-chunks">Sentence Chunks / Lower Latency</option>
+            <option value="full-response">Stable Stream</option>
+            <option value="sentence-chunks">Sentence Chunks</option>
           </select>
           <div className="field-hint">
-            Fish Live Bridge feeds Responses text deltas into one realtime Fish stream. Inworld uses
-            its SDK stream endpoint per request. Sentence chunks starts sooner, but each chunk can
-            shift voice or prosody.
+            Fish Speech Live Bridge feeds Responses text deltas into one realtime Fish Speech
+            stream. Inworld uses its SDK stream endpoint per request. Sentence chunks starts
+            sooner, but each chunk can shift voice or prosody.
           </div>
         </div>
       ) : null}
@@ -236,7 +253,7 @@ export function TtsTab({
 
       {aiSettings.ttsProvider === 'fish-speech' ? (
         <div className="control-group">
-          <div className="control-label">FishSpeech Live</div>
+          <div className="control-label">Fish Speech Live</div>
           <select
             className="select-tech"
             onChange={(event) =>
@@ -280,7 +297,7 @@ export function TtsTab({
               {remoteVoicesLoading ? 'Fetching...' : 'Fetch Fish Voices'}
             </button>
           </div>
-          {remoteVoicesError ? <div className="status-copy">{remoteVoicesError}</div> : null}
+          <div className="status-copy">{remoteVoiceStatus}</div>
           <select
             className="select-tech"
             onChange={(event) =>
@@ -335,7 +352,7 @@ export function TtsTab({
 
       {aiSettings.ttsProvider === 'inworld' ? (
         <div className="control-group">
-          <div className="control-label">Inworld Realtime</div>
+          <div className="control-label">{getRemoteTtsProviderLabel('inworld')} Stream</div>
           <select
             className="select-tech"
             disabled={remoteVoicesLoading}
@@ -366,7 +383,7 @@ export function TtsTab({
               {remoteVoicesLoading ? 'Fetching...' : 'Fetch Inworld Voices'}
             </button>
           </div>
-          {remoteVoicesError ? <div className="status-copy">{remoteVoicesError}</div> : null}
+          <div className="status-copy">{remoteVoiceStatus}</div>
           <input
             autoComplete="off"
             className="input-tech"
