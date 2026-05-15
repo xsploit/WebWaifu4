@@ -39,6 +39,16 @@ src/lib/product/byok.test.ts` -> passed.
 - 2026-05-15: `git diff --check` -> passed.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: committed `f276929 feat(byok): add local provider key vault`.
+- 2026-05-15: pushed `codex/byok-product-spine` to `origin`.
+- 2026-05-15: added `src\lib\product\scene-export.ts` and
+  `src\lib\product\scene-export.test.ts`.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts` ->
+  3 files, 13 tests passed.
+- 2026-05-15: `git diff --check` -> passed.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 - 2026-05-15: committed `1610392 chore(byok): add product spine contracts`.
 - 2026-05-15: added `src\lib\product\provider-key-vault.ts` and
   `src\lib\product\provider-key-vault.test.ts`.
@@ -50,8 +60,8 @@ src/lib/product/provider-key-vault.test.ts` -> 2 files, 9 tests passed.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add scene import/export contracts and tests that omit provider
-secrets by default while allowing redacted provider descriptors.
+Next patch: add Clerk auth shell and account state without blocking local-only
+overlay mode.
 
 ## Stop Conditions
 

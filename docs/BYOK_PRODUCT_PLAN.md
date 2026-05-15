@@ -77,7 +77,8 @@ No `credit_ledger`, `stripe_events`, or payments in this BYOK fork.
 1. Add BYOK product contracts and tests. Done in this checkpoint.
 2. Add local key-vault abstraction backed by browser storage. Done in the
    second checkpoint.
-3. Add scene import/export with secret omission tests.
+3. Add scene import/export with secret omission tests. Done in the third
+   checkpoint.
 4. Add Clerk auth shell and account state without blocking local-only mode.
 5. Add Drizzle schema/migrations for users/workspaces/scenes/settings.
 6. Add server route guards and ownership tests.
