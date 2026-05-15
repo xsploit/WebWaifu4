@@ -69,6 +69,7 @@ type SettingsPanelProps = {
   onSetTwitchChannel: (channel: string) => void;
   onSpeakLastReply: () => void;
   onStopTts: () => void;
+  onSupabaseLocalSignOut: () => void;
   onTabChange: (tab: SettingsTabId) => void;
   onTestVoice: () => void;
   onToggleChatOverlay: (open: boolean) => void;
@@ -96,6 +97,7 @@ type SettingsPanelProps = {
   twitchDirectChatEnabled: boolean;
   twitchQueueLength: number;
   visualSettings: VisualSettings;
+  supabaseAuthStatus: string;
   supabaseConfig: SupabasePublicConfig;
   modelsError: string | null;
   modelsLoading: boolean;
@@ -154,6 +156,7 @@ export function SettingsPanel({
   onSetTwitchChannel,
   onSpeakLastReply,
   onStopTts,
+  onSupabaseLocalSignOut,
   onTabChange,
   onTestVoice,
   onToggleChatOverlay,
@@ -181,6 +184,7 @@ export function SettingsPanel({
   twitchDirectChatEnabled,
   twitchQueueLength,
   visualSettings,
+  supabaseAuthStatus,
   supabaseConfig,
   modelsError,
   modelsLoading,
@@ -192,7 +196,12 @@ export function SettingsPanel({
 
   const activeContent =
     activeTab === 'account' ? (
-      <AccountTab accountMode={accountMode} supabaseConfig={supabaseConfig} />
+      <AccountTab
+        accountMode={accountMode}
+        authStatus={supabaseAuthStatus}
+        onSignOut={onSupabaseLocalSignOut}
+        supabaseConfig={supabaseConfig}
+      />
     ) : activeTab === 'anim' ? (
       <AnimTab
         onImportAnimationFile={onImportAnimationFile}

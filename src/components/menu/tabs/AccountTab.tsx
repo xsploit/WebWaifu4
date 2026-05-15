@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { ByokAccountMode } from '../../../lib/product/account-mode';
 import {
   describeByokAccountShell,
@@ -9,6 +9,8 @@ import type { SupabasePublicConfig } from '../../../lib/product/supabase-env';
 
 type AccountTabProps = {
   accountMode: ByokAccountMode;
+  authStatus: string;
+  onSignOut: () => void;
   supabaseConfig: SupabasePublicConfig;
 };
 
@@ -24,13 +26,22 @@ function formatList(values: readonly string[]) {
   return values.length > 0 ? values.join(', ') : 'none';
 }
 
-export function AccountTab({ accountMode, supabaseConfig }: AccountTabProps) {
+export function AccountTab({
+  accountMode,
+  authStatus,
+  onSignOut,
+  supabaseConfig,
+}: AccountTabProps) {
   const summary = useMemo(() => describeByokAccountShell(accountMode), [accountMode]);
   const [email, setEmail] = useState(accountMode.user?.email ?? '');
   const [loginStatus, setLoginStatus] = useState(summary.detail);
   const [sending, setSending] = useState(false);
   const normalizedEmail = normalizeAccountEmail(email);
   const loginAvailable = accountMode.loginAvailable && supabaseConfig.status === 'configured';
+
+  useEffect(() => {
+    setLoginStatus(authStatus || summary.detail);
+  }, [authStatus, summary.detail]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,6 +110,11 @@ export function AccountTab({ accountMode, supabaseConfig }: AccountTabProps) {
           >
             {sending ? 'Sending Link...' : 'Send Login Link'}
           </button>
+          {accountMode.kind === 'supabase-cloud-sync' ? (
+            <button className="btn-tech secondary" onClick={onSignOut} type="button">
+              Sign Out
+            </button>
+          ) : null}
         </div>
         <div className="status-copy">{loginStatus}</div>
       </form>

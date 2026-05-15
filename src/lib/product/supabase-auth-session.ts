@@ -1,0 +1,495 @@
+import type { SupabaseAuthIdentity } from './account-mode';
+import type { SupabasePublicConfig } from './supabase-env';
+
+export const SUPABASE_AUTH_SESSION_STORAGE_KEY = 'yourwifey.byok.supabase.authSession.v1';
+
+export type SupabaseAuthSession = {
+  accessToken: string;
+  refreshToken: string | null;
+  tokenType: 'bearer';
+  expiresAt: string | null;
+};
+
+export type SupabaseAuthCallbackResult =
+  | {
+      kind: 'none';
+      cleanUrl: null;
+    }
+  | {
+      kind: 'session';
+      cleanUrl: string;
+      session: SupabaseAuthSession;
+    }
+  | {
+      kind: 'pkce-code';
+      cleanUrl: string;
+      code: string;
+      message: string;
+    }
+  | {
+      kind: 'error';
+      cleanUrl: string;
+      error: string;
+      message: string;
+    };
+
+export type SupabaseAuthHydrationResult =
+  | {
+      status:
+        | 'callback-error'
+        | 'disabled'
+        | 'expired'
+        | 'misconfigured'
+        | 'no-session'
+        | 'pkce-code-unsupported'
+        | 'user-fetch-failed';
+      cleanUrl?: string;
+      message: string;
+      statusCode?: number;
+      user: null;
+    }
+  | {
+      status: 'authenticated';
+      cleanUrl?: string;
+      message: string;
+      user: SupabaseAuthIdentity;
+    };
+
+type SupabaseAuthStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
+
+const CALLBACK_PARAM_NAMES = [
+  'access_token',
+  'code',
+  'error',
+  'error_code',
+  'error_description',
+  'expires_at',
+  'expires_in',
+  'provider_refresh_token',
+  'provider_token',
+  'refresh_token',
+  'token_type',
+  'type',
+] as const;
+
+const FORBIDDEN_USER_METADATA_KEY_PATTERN =
+  /(?:api[_-]?key|apikey|secret|password|service[_-]?role|jwt|token|credential)/i;
+
+export function parseSupabaseAuthCallbackUrl(
+  href: string,
+  nowMs = Date.now(),
+): SupabaseAuthCallbackResult {
+  const parsed = parseUrl(href);
+  if (!parsed) {
+    return { kind: 'none', cleanUrl: null };
+  }
+
+  const hashParams = readHashParams(parsed);
+  if (hasKnownCallbackParam(hashParams)) {
+    return parseCallbackParams(hashParams, cleanUrl(parsed, 'hash'), nowMs);
+  }
+
+  if (hasKnownCallbackParam(parsed.searchParams)) {
+    return parseCallbackParams(parsed.searchParams, cleanUrl(parsed, 'search'), nowMs);
+  }
+
+  return { kind: 'none', cleanUrl: null };
+}
+
+export function getBrowserSupabaseAuthStorage(): SupabaseAuthStorage | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function persistSupabaseAuthSession(
+  session: SupabaseAuthSession,
+  storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
+) {
+  if (!storage) {
+    return false;
+  }
+  storage.setItem(SUPABASE_AUTH_SESSION_STORAGE_KEY, JSON.stringify(session));
+  return true;
+}
+
+export function loadPersistedSupabaseAuthSession(
+  storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
+  nowMs = Date.now(),
+) {
+  if (!storage) {
+    return null;
+  }
+
+  const session = normalizeSupabaseAuthSession(storage.getItem(SUPABASE_AUTH_SESSION_STORAGE_KEY));
+  if (session && isSupabaseAuthSessionExpired(session, nowMs)) {
+    clearPersistedSupabaseAuthSession(storage);
+    return null;
+  }
+  return session;
+}
+
+export function clearPersistedSupabaseAuthSession(
+  storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
+) {
+  storage?.removeItem(SUPABASE_AUTH_SESSION_STORAGE_KEY);
+}
+
+export function isSupabaseAuthSessionExpired(session: SupabaseAuthSession, nowMs = Date.now()) {
+  if (!session.expiresAt) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(session.expiresAt);
+  return Number.isFinite(expiresAtMs) && expiresAtMs <= nowMs;
+}
+
+export function buildSupabaseUserRequest(input: {
+  config: SupabasePublicConfig;
+  session: SupabaseAuthSession;
+  nowMs?: number;
+}):
+  | {
+      ok: true;
+      init: RequestInit;
+      url: string;
+    }
+  | {
+      ok: false;
+      reason: 'cloud-sync-unavailable' | 'expired' | 'missing-access-token';
+      message: string;
+    } {
+  const { config, session } = input;
+  if (config.status !== 'configured' || !config.url || !config.anonKey) {
+    return {
+      ok: false,
+      reason: 'cloud-sync-unavailable',
+      message: 'Supabase user hydration requires configured browser cloud-sync config.',
+    };
+  }
+
+  if (!session.accessToken.trim()) {
+    return {
+      ok: false,
+      reason: 'missing-access-token',
+      message: 'Supabase user hydration requires an access token.',
+    };
+  }
+
+  if (isSupabaseAuthSessionExpired(session, input.nowMs)) {
+    return {
+      ok: false,
+      reason: 'expired',
+      message: 'Supabase session expired; local-only mode remains active.',
+    };
+  }
+
+  return {
+    ok: true,
+    url: `${config.url}/auth/v1/user`,
+    init: {
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+      method: 'GET',
+    },
+  };
+}
+
+export async function hydrateSupabaseAuthSession(input: {
+  config: SupabasePublicConfig;
+  fetchImpl?: typeof fetch;
+  href?: string;
+  nowMs?: number;
+  storage?: SupabaseAuthStorage | null;
+}): Promise<SupabaseAuthHydrationResult> {
+  const nowMs = input.nowMs ?? Date.now();
+  const storage = input.storage ?? getBrowserSupabaseAuthStorage();
+  const callback = input.href ? parseSupabaseAuthCallbackUrl(input.href, nowMs) : null;
+  const cleanUrl = callback?.cleanUrl ?? undefined;
+
+  if (input.config.status === 'disabled') {
+    return {
+      status: 'disabled',
+      cleanUrl,
+      message: 'Supabase login is disabled because browser cloud-sync config is absent.',
+      user: null,
+    };
+  }
+
+  if (input.config.status !== 'configured') {
+    return {
+      status: 'misconfigured',
+      cleanUrl,
+      message: 'Supabase login is unavailable until browser cloud-sync config is complete.',
+      user: null,
+    };
+  }
+
+  if (callback?.kind === 'error') {
+    clearPersistedSupabaseAuthSession(storage);
+    return {
+      status: 'callback-error',
+      cleanUrl,
+      message: callback.message,
+      user: null,
+    };
+  }
+
+  if (callback?.kind === 'pkce-code') {
+    return {
+      status: 'pkce-code-unsupported',
+      cleanUrl,
+      message: callback.message,
+      user: null,
+    };
+  }
+
+  const session =
+    callback?.kind === 'session'
+      ? callback.session
+      : loadPersistedSupabaseAuthSession(storage, nowMs);
+  if (callback?.kind === 'session') {
+    persistSupabaseAuthSession(callback.session, storage);
+  }
+
+  if (!session) {
+    return {
+      status: 'no-session',
+      cleanUrl,
+      message: 'No Supabase session is present; guest local-only mode remains active.',
+      user: null,
+    };
+  }
+
+  const request = buildSupabaseUserRequest({
+    config: input.config,
+    nowMs,
+    session,
+  });
+  if (!request.ok) {
+    if (request.reason === 'expired') {
+      clearPersistedSupabaseAuthSession(storage);
+    }
+    return {
+      status: request.reason === 'expired' ? 'expired' : 'user-fetch-failed',
+      cleanUrl,
+      message: request.message,
+      user: null,
+    };
+  }
+
+  const fetchImpl = input.fetchImpl ?? globalThis.fetch;
+  if (!fetchImpl) {
+    return {
+      status: 'user-fetch-failed',
+      cleanUrl,
+      message: 'Browser fetch is unavailable, so Supabase session could not be hydrated.',
+      user: null,
+    };
+  }
+
+  try {
+    const response = await fetchImpl(request.url, request.init);
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        clearPersistedSupabaseAuthSession(storage);
+      }
+      return {
+        status: 'user-fetch-failed',
+        cleanUrl,
+        message: `Supabase user hydration failed with HTTP ${response.status}.`,
+        statusCode: response.status,
+        user: null,
+      };
+    }
+
+    const user = normalizeSupabaseUserPayload(await response.json());
+    if (!user) {
+      return {
+        status: 'user-fetch-failed',
+        cleanUrl,
+        message: 'Supabase user hydration did not return a stable user identity.',
+        user: null,
+      };
+    }
+
+    return {
+      status: 'authenticated',
+      cleanUrl,
+      message: `Signed in as ${user.email ?? user.id}.`,
+      user,
+    };
+  } catch (error) {
+    return {
+      status: 'user-fetch-failed',
+      cleanUrl,
+      message: error instanceof Error ? error.message : 'Supabase user hydration failed.',
+      user: null,
+    };
+  }
+}
+
+function parseCallbackParams(
+  params: URLSearchParams,
+  cleanUrlValue: string,
+  nowMs: number,
+): SupabaseAuthCallbackResult {
+  const error = normalizeOptionalString(params.get('error') ?? params.get('error_code'));
+  if (error) {
+    return {
+      kind: 'error',
+      cleanUrl: cleanUrlValue,
+      error,
+      message:
+        normalizeOptionalString(params.get('error_description')) ??
+        'Supabase login callback returned an error.',
+    };
+  }
+
+  const session = readSessionFromCallbackParams(params, nowMs);
+  if (session) {
+    return {
+      kind: 'session',
+      cleanUrl: cleanUrlValue,
+      session,
+    };
+  }
+
+  const code = normalizeOptionalString(params.get('code'));
+  if (code) {
+    return {
+      kind: 'pkce-code',
+      cleanUrl: cleanUrlValue,
+      code,
+      message: 'Supabase returned a PKCE code; this no-SDK shell does not exchange auth codes yet.',
+    };
+  }
+
+  return { kind: 'none', cleanUrl: null };
+}
+
+function readSessionFromCallbackParams(params: URLSearchParams, nowMs: number) {
+  const accessToken = normalizeOptionalString(params.get('access_token'));
+  if (!accessToken) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    refreshToken: normalizeOptionalString(params.get('refresh_token')) ?? null,
+    tokenType: 'bearer',
+    expiresAt: readCallbackExpiry(params, nowMs),
+  } satisfies SupabaseAuthSession;
+}
+
+function readCallbackExpiry(params: URLSearchParams, nowMs: number) {
+  const expiresAt = Number(params.get('expires_at') ?? '');
+  if (Number.isFinite(expiresAt) && expiresAt > 0) {
+    const expiresAtMs = expiresAt > 999999999999 ? expiresAt : expiresAt * 1000;
+    return new Date(expiresAtMs).toISOString();
+  }
+
+  const expiresIn = Number(params.get('expires_in') ?? '');
+  if (Number.isFinite(expiresIn) && expiresIn > 0) {
+    return new Date(nowMs + expiresIn * 1000).toISOString();
+  }
+
+  return null;
+}
+
+function normalizeSupabaseAuthSession(value: string | null): SupabaseAuthSession | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<SupabaseAuthSession>;
+    const accessToken = normalizeOptionalString(parsed.accessToken);
+    if (!accessToken) {
+      return null;
+    }
+
+    return {
+      accessToken,
+      refreshToken: normalizeOptionalString(parsed.refreshToken) ?? null,
+      tokenType: 'bearer',
+      expiresAt: normalizeOptionalString(parsed.expiresAt) ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeSupabaseUserPayload(value: unknown): SupabaseAuthIdentity | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const source = value as Record<string, unknown>;
+  const id = normalizeOptionalString(source['id']);
+  if (!id) {
+    return null;
+  }
+
+  const metadata = source['user_metadata'];
+  return {
+    id,
+    email: normalizeOptionalString(source['email']),
+    user_metadata: sanitizeUserMetadata(metadata),
+  };
+}
+
+function sanitizeUserMetadata(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).filter(
+    ([key]) => !FORBIDDEN_USER_METADATA_KEY_PATTERN.test(key),
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+function readHashParams(url: URL) {
+  const hash = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
+  return hash.includes('=') ? new URLSearchParams(hash) : new URLSearchParams();
+}
+
+function hasKnownCallbackParam(params: URLSearchParams) {
+  return CALLBACK_PARAM_NAMES.some((name) => params.has(name));
+}
+
+function cleanUrl(url: URL, source: 'hash' | 'search') {
+  const next = new URL(url.toString());
+  if (source === 'hash') {
+    next.hash = '';
+    return next.toString();
+  }
+
+  CALLBACK_PARAM_NAMES.forEach((name) => next.searchParams.delete(name));
+  return next.toString();
+}
+
+function parseUrl(href: string) {
+  try {
+    return new URL(href);
+  } catch {
+    try {
+      return new URL(href, 'http://localhost');
+    } catch {
+      return null;
+    }
+  }
+}
+
+function normalizeOptionalString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}

@@ -277,15 +277,76 @@ src/components/menu/tabs/AccountTab.tsx` -> passed.
   emitted LF/CRLF warnings for the two BYOK docs and touched TS/TSX files.
 - 2026-05-15: after the review tweak, `npm run build` -> passed. Existing Vite
   warnings remained: onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: `git status --short` before this checkpoint -> clean.
+- 2026-05-15: `git log -5 --oneline` before this checkpoint -> top commit
+  `be54bdb feat(byok): add account auth shell`; then `d68c9c7`,
+  `d4a02ed`, `dc6be3c`, and `cf5ad9b`.
+- 2026-05-15: read `docs\BYOK_PRODUCT_STATUS.md`,
+  `docs\BYOK_PRODUCT_PLAN.md`, `src\components\menu\tabs\AccountTab.tsx`,
+  `src\lib\product\supabase-auth-shell.ts`,
+  `src\lib\product\account-mode.ts`,
+  `src\lib\product\server-route-ownership.ts`, `api\ai\chat.ts`,
+  `src\App.tsx`, `src\lib\chat\storage.ts`,
+  `src\components\menu\SettingsPanel.tsx`, and the existing API/typecheck
+  configs before choosing the patch.
+- 2026-05-15: added `src\lib\product\supabase-auth-session.ts` and
+  `src\lib\product\supabase-auth-session.test.ts`; wired Supabase session
+  hydration and local sign-out through `src\App.tsx`,
+  `src\components\menu\SettingsPanel.tsx`, and
+  `src\components\menu\tabs\AccountTab.tsx`.
+- 2026-05-15: decision: Supabase magic-link callback handling remains no-SDK.
+  The browser parses implicit-flow callback tokens, strips auth parameters from
+  the URL, stores only the Supabase auth session in browser local storage, and
+  fetches `/auth/v1/user` with the public anon key plus the Supabase access
+  token. Supabase OAuth provider tokens and secret-shaped user metadata are not
+  copied into account mode. Missing, expired, failed, or PKCE-code-only
+  sessions leave the overlay in guest local-only mode.
+- 2026-05-15: `npx vitest run src/lib/product/supabase-auth-session.test.ts`
+  -> 1 file, 7 tests passed.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts
+src/lib/product/scene-export.test.ts src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts src/lib/product/supabase-schema.test.ts
+src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-shell.test.ts
+src/lib/product/supabase-auth-session.test.ts` -> 9 files, 48 tests passed.
+- 2026-05-15: `npx prettier --write src/App.tsx
+src/components/menu/SettingsPanel.tsx
+src/components/menu/tabs/AccountTab.tsx
+src/lib/product/supabase-auth-session.ts
+src/lib/product/supabase-auth-session.test.ts` -> formatted touched app and
+  session files.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: final `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts
+src/lib/product/scene-export.test.ts src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts src/lib/product/supabase-schema.test.ts
+src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-shell.test.ts
+src/lib/product/supabase-auth-session.test.ts` -> 9 files, 48 tests passed.
+- 2026-05-15: final `npx prettier --check docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/App.tsx
+src/components/menu/SettingsPanel.tsx
+src/components/menu/tabs/AccountTab.tsx
+src/lib/product/supabase-auth-session.ts
+src/lib/product/supabase-auth-session.test.ts` -> passed.
+- 2026-05-15: final `git diff --check` -> passed. Git emitted LF/CRLF
+  warnings for the two BYOK docs and touched TS/TSX files.
+- 2026-05-15: final `npm run build` -> passed. Existing Vite warnings
+  remained: onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: committed `feat(byok): hydrate supabase auth sessions`.
+- 2026-05-15: pushed `codex/byok-product-spine` to `origin`.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add Supabase session hydration/callback handling or guarded
-profile/workspace API route stubs, still without syncing provider keys. Next
-read: `src\components\menu\tabs\AccountTab.tsx`,
-`src\lib\product\supabase-auth-shell.ts`, `src\lib\product\account-mode.ts`,
-`src\lib\product\server-route-ownership.ts`, and `api\ai\chat.ts` for existing
-API route patterns.
+Next patch: add guarded profile/workspace API route stubs that use the existing
+route ownership contract before wiring real Supabase DB calls, or add explicit
+PKCE code exchange/refresh-token handling if hosted Supabase Auth is configured
+for PKCE. Still do not sync provider keys. Next read:
+`src\lib\product\server-route-ownership.ts`,
+`src\lib\product\supabase-auth-session.ts`, `api\ai\chat.ts`,
+`api\ai\embeddings.ts`, and `src\lib\product\supabase-env.ts`.
 
 ## Stop Conditions
 

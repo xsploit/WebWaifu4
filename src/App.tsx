@@ -118,7 +118,11 @@ import {
   type OverlayServerEvent,
 } from './lib/stream/overlay-events';
 import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitch/direct-irc';
-import { resolveByokAccountMode } from './lib/product/account-mode';
+import { resolveByokAccountMode, type SupabaseAuthIdentity } from './lib/product/account-mode';
+import {
+  clearPersistedSupabaseAuthSession,
+  hydrateSupabaseAuthSession,
+} from './lib/product/supabase-auth-session';
 import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import './style.css';
 
@@ -1156,13 +1160,49 @@ function App() {
     () => readSupabaseBrowserEnv(import.meta.env as Record<string, string | undefined>),
     [],
   );
+  const [supabaseAuthUser, setSupabaseAuthUser] = useState<SupabaseAuthIdentity | null>(null);
+  const [supabaseAuthStatus, setSupabaseAuthStatus] = useState('Checking Supabase session state.');
   const accountMode = useMemo(
     () =>
       resolveByokAccountMode({
+        authUser: supabaseAuthUser,
         supabaseConfig,
       }),
-    [supabaseConfig],
+    [supabaseAuthUser, supabaseConfig],
   );
+  useEffect(() => {
+    let cancelled = false;
+
+    void hydrateSupabaseAuthSession({
+      config: supabaseConfig,
+      href: typeof window === 'undefined' ? undefined : window.location.href,
+    }).then((result) => {
+      if (cancelled) {
+        return;
+      }
+
+      if (
+        result.cleanUrl &&
+        typeof window !== 'undefined' &&
+        result.cleanUrl !== window.location.href
+      ) {
+        window.history.replaceState(window.history.state, document.title, result.cleanUrl);
+      }
+
+      setSupabaseAuthUser(result.user);
+      setSupabaseAuthStatus(result.message);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabaseConfig]);
+
+  const handleSupabaseLocalSignOut = useCallback(() => {
+    clearPersistedSupabaseAuthSession();
+    setSupabaseAuthUser(null);
+    setSupabaseAuthStatus('Signed out locally. Guest local-only mode is active.');
+  }, []);
   const [menuOpen, setMenuOpen] = useState(() => createDefaultUiState().menuOpen);
   const [chatBarOpen, setChatBarOpen] = useState(false);
   const [chatLogOpen, setChatLogOpen] = useState(() => createDefaultUiState().chatLogOpen);
@@ -4191,6 +4231,7 @@ function App() {
             }}
             onSpeakLastReply={handleSpeakLastReply}
             onStopTts={handleStopTts}
+            onSupabaseLocalSignOut={handleSupabaseLocalSignOut}
             onTabChange={setActiveTab}
             onTestVoice={handleTestTtsVoice}
             onToggleChatOverlay={setChatLogOpen}
@@ -4212,6 +4253,7 @@ function App() {
             remoteTtsVoices={activeRemoteTtsVoices}
             remoteVoicesError={remoteTtsVoicesError}
             remoteVoicesLoading={remoteTtsVoicesLoading}
+            supabaseAuthStatus={supabaseAuthStatus}
             supabaseConfig={supabaseConfig}
             twitchAiModeLabel={twitchModeLabel}
             twitchChannel={twitchChannel}

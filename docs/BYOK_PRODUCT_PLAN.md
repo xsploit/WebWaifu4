@@ -37,8 +37,8 @@ server-side route policies.
 The current checkpoints do not install Supabase dependencies. They lock the
 stack decision, product contracts, Supabase environment contract, account-mode
 contract, initial Supabase SQL/RLS contract, route ownership contract, and a
-minimal account UI shell first so hosted sync can be wired without smearing
-provider keys through app state.
+minimal account UI shell with no-SDK session hydration first so hosted sync can
+be wired without smearing provider keys through app state.
 
 ## Supabase Environment Contract
 
@@ -130,4 +130,10 @@ arrive as a later migration with a specific security design and tests.
 9. Add a minimal Supabase auth/account UI shell while preserving guest
    local-only mode. Done in the ninth checkpoint as a no-SDK settings tab and
    magic-link request contract that uses only the public anon key.
-10. Add optional hosted encrypted vault only after a security review.
+10. Add Supabase Auth session hydration/callback handling. Done in the tenth
+    checkpoint for implicit magic-link callbacks: callback auth parameters are
+    stripped from the URL, Supabase auth sessions stay in browser local storage,
+    `/auth/v1/user` is fetched with the anon key plus Supabase access token, and
+    PKCE-code-only callbacks remain local-only until explicit exchange support is
+    added.
+11. Add optional hosted encrypted vault only after a security review.
