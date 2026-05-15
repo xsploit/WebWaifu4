@@ -57,11 +57,23 @@ src/lib/product/provider-key-vault.test.ts` -> 2 files, 9 tests passed.
 - 2026-05-15: `git diff --check` -> passed.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: locked BYOK stack decision to Supabase Auth, Supabase Postgres,
+  and Supabase Storage while preserving local-only mode and browser-local
+  provider keys.
+- 2026-05-15: `npx prettier --check docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/lib/product/byok.ts
+src/lib/product/byok.test.ts` -> passed.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts` ->
+  3 files, 14 tests passed.
+- 2026-05-15: `git diff --check` -> passed.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add Clerk auth shell and account state without blocking local-only
-overlay mode.
+Next patch: add Supabase client/server environment contracts and an auth shell
+that does not block local-only overlay mode.
 
 ## Stop Conditions
 

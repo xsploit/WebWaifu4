@@ -21,15 +21,22 @@ The product is a stream-ready AI VTuber assistant kit:
 Recommended hosted stack:
 
 - Vercel for the dashboard, overlay pages, and serverless API routes.
-- Clerk for auth.
-- Postgres plus Drizzle for users/workspaces/scenes/settings/memory metadata.
+- Supabase Auth for login, social providers, and Twitch-capable identity.
+- Supabase Postgres for users/workspaces/scenes/settings/memory metadata, with
+  row-level security as the cloud authorization layer.
+- Supabase Storage for uploaded VRMs/backgrounds/animation packs at first;
+  external object storage can be added later if asset traffic grows.
 - Optional realtime Node worker later for backend Twitch, long WebSocket TTS, and
   always-on stream jobs. Keep the existing local/VPS routelet for power users.
-- Object storage later for uploaded VRMs/backgrounds/voice assets.
 
-This checkpoint does not install Clerk, Drizzle, or Postgres dependencies. It
-adds the contracts and security rules first so the next checkpoint can wire the
-right DB/auth pieces without smearing keys through app state.
+Clerk remains a possible future swap if polished auth UI becomes more important
+than owning the auth/database coupling. Firebase is not the default because the
+product data wants relational ownership, scoped memory, scene config, and
+server-side route policies.
+
+This checkpoint does not install Supabase dependencies. It locks the stack
+decision and product contracts first so the next checkpoint can wire auth
+without smearing provider keys through app state.
 
 ## Key Storage Policy
 
@@ -50,7 +57,7 @@ Optional future mode: `hosted-encrypted-vault`.
 
 Initial tables once DB is added:
 
-- `users`: Clerk subject and profile.
+- `profiles`: Supabase auth user id and product profile.
 - `workspaces`: owner, storage mode, key mode.
 - `workspace_members`: future team support.
 - `scenes`: Twitch channel, overlay config, active character.
@@ -69,6 +76,8 @@ No `credit_ledger`, `stripe_events`, or payments in this BYOK fork.
 - Provider keys are never included in public overlay config.
 - Synced settings reject API key fields.
 - Server routes must check workspace ownership before reading scenes/settings.
+- Supabase RLS must enforce the same ownership checks for cloud tables.
+- Supabase service-role keys are server-only and never exposed to the browser.
 - Local-only mode must keep working without login.
 - Exported scene files must omit provider keys by default.
 
@@ -79,7 +88,9 @@ No `credit_ledger`, `stripe_events`, or payments in this BYOK fork.
    second checkpoint.
 3. Add scene import/export with secret omission tests. Done in the third
    checkpoint.
-4. Add Clerk auth shell and account state without blocking local-only mode.
-5. Add Drizzle schema/migrations for users/workspaces/scenes/settings.
-6. Add server route guards and ownership tests.
-7. Add optional hosted encrypted vault only after a security review.
+4. Lock Supabase Auth/Postgres as the BYOK stack. Done in the fourth checkpoint.
+5. Add Supabase client/server environment contracts and an auth shell that does
+   not block local-only mode.
+6. Add Supabase SQL migrations/RLS for profiles/workspaces/scenes/settings.
+7. Add server route guards and ownership tests.
+8. Add optional hosted encrypted vault only after a security review.

@@ -1,4 +1,8 @@
-export type AuthProvider = 'clerk';
+export type AuthProvider = 'supabase';
+
+export type DatabaseProvider = 'supabase-postgres';
+
+export type AssetStorageProvider = 'supabase-storage' | 'external-object-storage';
 
 export type ProductStorageMode = 'local-only' | 'cloud-sync';
 
@@ -21,6 +25,16 @@ export type ProductUser = {
   displayName: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProductStackDecision = {
+  authProvider: AuthProvider;
+  databaseProvider: DatabaseProvider;
+  assetStorageProvider: AssetStorageProvider;
+  defaultStorageMode: ProductStorageMode;
+  defaultProviderKeyMode: ProviderKeyMode;
+  localOnlySupported: boolean;
+  paymentsInScope: boolean;
 };
 
 export type Workspace = {
@@ -95,6 +109,16 @@ export const PROVIDER_SECRET_ENV_NAMES: Record<ProviderKind, readonly string[]> 
   custom: [],
 };
 
+export const BYOK_STACK_DECISION: ProductStackDecision = {
+  authProvider: 'supabase',
+  databaseProvider: 'supabase-postgres',
+  assetStorageProvider: 'supabase-storage',
+  defaultStorageMode: 'local-only',
+  defaultProviderKeyMode: 'local-indexeddb',
+  localOnlySupported: true,
+  paymentsInScope: false,
+};
+
 const LOCAL_SECRET_SETTING_KEYS = new Set([
   'openai.apiKey',
   'fishSpeech.apiKey',
@@ -113,7 +137,8 @@ const PUBLIC_OVERLAY_SETTING_KEYS = new Set([
 ]);
 
 const SERVER_ONLY_SETTING_KEYS = new Set([
-  'auth.clerkSecret',
+  'auth.supabaseServiceRoleKey',
+  'auth.supabaseJwtSecret',
   'overlay.signingSecret',
   'database.url',
 ]);

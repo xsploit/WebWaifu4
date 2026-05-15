@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   assertOverlayTokenClaims,
   assertSettingCanSync,
+  BYOK_STACK_DECISION,
   classifyByokSetting,
   createProviderSecretDescriptor,
   isValidTwitchChannelName,
@@ -10,11 +11,26 @@ import {
 } from './byok';
 
 describe('BYOK product contracts', () => {
+  it('locks the BYOK product stack to Supabase without payments or managed credits', () => {
+    expect(BYOK_STACK_DECISION).toEqual({
+      authProvider: 'supabase',
+      databaseProvider: 'supabase-postgres',
+      assetStorageProvider: 'supabase-storage',
+      defaultStorageMode: 'local-only',
+      defaultProviderKeyMode: 'local-indexeddb',
+      localOnlySupported: true,
+      paymentsInScope: false,
+    });
+  });
+
   it('keeps provider keys out of synced settings by default', () => {
     expect(classifyByokSetting('openai.apiKey', 'local-indexeddb')).toBe('local-secret');
     expect(classifyByokSetting('openai.apiKey', 'hosted-encrypted-vault')).toBe('hosted-secret');
     expect(classifyByokSetting('visualSettings', 'local-indexeddb')).toBe('public-overlay');
     expect(classifyByokSetting('aiSettings.model', 'local-indexeddb')).toBe('synced-private');
+    expect(classifyByokSetting('auth.supabaseServiceRoleKey', 'local-indexeddb')).toBe(
+      'server-only',
+    );
   });
 
   it('rejects accidental API key sync records', () => {
