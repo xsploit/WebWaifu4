@@ -94,14 +94,49 @@ src/lib/product/supabase-env.test.ts` -> passed.
   onnxruntime-web eval and large bundle chunks.
 - 2026-05-15: committed reusable BYOK Ralph prompt at
   `plugins\ralph-wiggum-loop\prompts\yourwifey-byok-product-next.prompt.md`.
+- 2026-05-15: `git status --short` before this checkpoint -> clean.
+- 2026-05-15: `git log -5 --oneline` before this checkpoint -> top commit
+  `cf5ad9b chore(byok): add ralph product prompt`; then `1e7bf3c`,
+  `8943e0b`, `f7e47d4`, and `f276929`.
+- 2026-05-15: read `src\App.tsx`,
+  `src\components\menu\SettingsPanel.tsx`,
+  `src\lib\product\supabase-env.ts`, and
+  `src\lib\product\provider-key-vault.ts` before choosing the patch.
+- 2026-05-15: added `src\lib\product\account-mode.ts` and
+  `src\lib\product\account-mode.test.ts`.
+- 2026-05-15: decision: account mode remains a pure contract layer for now.
+  Missing or misconfigured Supabase env resolves to guest local-only mode.
+  Configured Supabase plus a signed-in auth identity resolves to cloud-sync
+  account mode. Provider key mode stays `local-indexeddb` in both modes, and
+  the account-mode projection does not copy anon keys or auth metadata into UI
+  state.
+- 2026-05-15: `npx vitest run src/lib/product/account-mode.test.ts` -> 1 file,
+  5 tests passed.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts
+src/lib/product/supabase-env.test.ts src/lib/product/account-mode.test.ts` ->
+  5 files, 27 tests passed.
+- 2026-05-15: first `npm run build` attempt exposed a TypeScript narrowing bug:
+  `ProviderKeyMode` was too broad for the account-mode `local-indexeddb`
+  contract. Fixed by pinning the account-mode provider key mode literal.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: `npx prettier --write docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/lib/product/account-mode.ts
+src/lib/product/account-mode.test.ts` -> formatted the status doc and
+  account-mode source.
+- 2026-05-15: `npx prettier --check docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/lib/product/account-mode.ts
+src/lib/product/account-mode.test.ts` -> passed.
+- 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  the two BYOK docs.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add a minimal auth/account mode model that distinguishes guest
-local-only users from Supabase-authenticated cloud-sync users, then read
-`src\App.tsx`, `src\components\menu\SettingsPanel.tsx`,
-`src\lib\product\supabase-env.ts`, and the provider key vault before wiring any
-UI shell.
+Next patch: add Supabase SQL migration/RLS files for profiles, workspaces,
+scenes, characters, synced settings, memory metadata, and asset metadata before
+wiring any UI shell. Next read: existing repo migration conventions if any,
+`docs\BYOK_PRODUCT_PLAN.md`, and `src\lib\product\byok.ts`.
 
 ## Stop Conditions
 

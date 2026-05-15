@@ -111,7 +111,9 @@ No `credit_ledger`, `stripe_events`, or payments in this BYOK fork.
 5. Add Supabase client/server environment contracts. Done in the fifth
    checkpoint without installing SDKs or blocking local-only mode.
 6. Add a minimal auth/account mode model that distinguishes guest local-only
-   users from Supabase-authenticated cloud-sync users.
+   users from Supabase-authenticated cloud-sync users. Done in the sixth
+   checkpoint as a contract-only resolver with no Supabase SDK dependency or UI
+   wiring.
 7. Add Supabase SQL migrations/RLS for profiles/workspaces/scenes/settings.
 8. Add server route guards and ownership tests.
 9. Add optional hosted encrypted vault only after a security review.
