@@ -165,13 +165,54 @@ docs/BYOK_PRODUCT_STATUS.md src/lib/product/supabase-schema.test.ts` ->
   the two BYOK docs.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: `git status --short` before this checkpoint -> clean.
+- 2026-05-15: `git log -5 --oneline` before this checkpoint -> top commit
+  `d4a02ed feat(byok): add supabase schema rls`; then `dc6be3c`, `cf5ad9b`,
+  `1e7bf3c`, and `8943e0b`.
+- 2026-05-15: read `api\ai\chat.ts`, `api\ai\embeddings.ts`,
+  `api\ai\poml\render.ts`, `server\src\index.ts`,
+  `supabase\migrations\20260515000100_byok_product_spine.sql`,
+  `src\lib\product\byok.ts`, `src\lib\product\account-mode.ts`, and
+  `src\lib\product\supabase-env.ts` before choosing the patch.
+- 2026-05-15: added `src\lib\product\server-route-ownership.ts` and
+  `src\lib\product\server-route-ownership.test.ts`.
+- 2026-05-15: decision: future hosted product APIs live under `/api/byok/*`
+  and start with a pure route contract instead of installing Supabase SDKs.
+  Signed-in Supabase cloud-sync users are required for account routes, workspace
+  owners can write, workspace members can read, and local-only guests stay out
+  of cloud DB routes.
+- 2026-05-15: decision: public overlay config reads require a matching scoped
+  overlay token and can only expose `public-overlay` settings. Cloud route
+  request bodies reject secret-shaped fields, including nested JSON inside
+  `valueJson`.
+- 2026-05-15: `npx vitest run
+src/lib/product/server-route-ownership.test.ts` -> 1 file, 5 tests passed.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts
+src/lib/product/scene-export.test.ts src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts
+src/lib/product/supabase-schema.test.ts
+src/lib/product/server-route-ownership.test.ts` -> 7 files, 37 tests passed.
+- 2026-05-15: first `npm run build` attempts exposed a TypeScript fixture
+  issue in `src\lib\product\server-route-ownership.test.ts`: overlay-token
+  `scopes` was first readonly, then widened to `string[]`, while
+  `OverlayTokenClaims.scopes` expects product scope literals. Fixed by
+  annotating the fixture as `OverlayTokenClaims`.
+- 2026-05-15: `npx prettier --check docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/lib/product/server-route-ownership.ts
+src/lib/product/server-route-ownership.test.ts` -> passed.
+- 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  the two BYOK docs.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add route/ownership contract tests for future server APIs before
-wiring any UI shell. Next read: `api\ai\chat.ts`, `api\ai\embeddings.ts`,
-`api\ai\poml\render.ts`, `server\src\index.ts`, and the new Supabase
-migration.
+Next patch: add the minimal Supabase auth/account UI shell while preserving the
+guest local-only overlay mode. Next read: `src\App.tsx`,
+`src\components\menu\SettingsPanel.tsx`, `src\lib\product\account-mode.ts`,
+`src\lib\product\server-route-ownership.ts`, and the existing local settings
+load/save path.
 
 ## Stop Conditions
 

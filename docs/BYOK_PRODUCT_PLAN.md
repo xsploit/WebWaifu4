@@ -122,5 +122,8 @@ arrive as a later migration with a specific security design and tests.
    wiring.
 7. Add Supabase SQL migrations/RLS for profiles/workspaces/scenes/settings.
    Done in the seventh checkpoint as a migration plus static contract tests.
-8. Add server route guards and ownership tests.
+8. Add server route guards and ownership tests. Done in the eighth checkpoint
+   as a pure contract layer for future `/api/byok/*` routes. Owner routes can
+   write, workspace members can read, public overlay config requires a scoped
+   overlay token, and cloud route bodies reject secret-shaped fields.
 9. Add optional hosted encrypted vault only after a security review.
