@@ -39,12 +39,19 @@ src/lib/product/byok.test.ts` -> passed.
 - 2026-05-15: `git diff --check` -> passed.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: committed `1610392 chore(byok): add product spine contracts`.
+- 2026-05-15: added `src\lib\product\provider-key-vault.ts` and
+  `src\lib\product\provider-key-vault.test.ts`.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts` -> 2 files, 9 tests passed.
+- 2026-05-15: `git diff --check` -> passed.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add a local provider key-vault abstraction that stores OpenAI/Fish
-Speech/Inworld/Tavily keys outside synced settings, plus export/import tests
-that omit secrets by default.
+Next patch: add scene import/export contracts and tests that omit provider
+secrets by default while allowing redacted provider descriptors.
 
 ## Stop Conditions
 
