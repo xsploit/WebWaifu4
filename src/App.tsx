@@ -118,6 +118,8 @@ import {
   type OverlayServerEvent,
 } from './lib/stream/overlay-events';
 import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitch/direct-irc';
+import { resolveByokAccountMode } from './lib/product/account-mode';
+import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import './style.css';
 
 type SafeAreaInsets = {
@@ -1150,6 +1152,17 @@ function mergeRelationshipMemoryInWorker(
 function App() {
   const safeArea = DEFAULT_SAFE_AREA;
   const sceneActive = true;
+  const supabaseConfig = useMemo(
+    () => readSupabaseBrowserEnv(import.meta.env as Record<string, string | undefined>),
+    [],
+  );
+  const accountMode = useMemo(
+    () =>
+      resolveByokAccountMode({
+        supabaseConfig,
+      }),
+    [supabaseConfig],
+  );
   const [menuOpen, setMenuOpen] = useState(() => createDefaultUiState().menuOpen);
   const [chatBarOpen, setChatBarOpen] = useState(false);
   const [chatLogOpen, setChatLogOpen] = useState(() => createDefaultUiState().chatLogOpen);
@@ -4073,6 +4086,7 @@ function App() {
 
         {menuOpen ? (
           <SettingsPanel
+            accountMode={accountMode}
             activePersona={activePersona}
             activeTab={activeTab}
             activeTwitchChatters={twitchActiveChatterCount}
@@ -4198,6 +4212,7 @@ function App() {
             remoteTtsVoices={activeRemoteTtsVoices}
             remoteVoicesError={remoteTtsVoicesError}
             remoteVoicesLoading={remoteTtsVoicesLoading}
+            supabaseConfig={supabaseConfig}
             twitchAiModeLabel={twitchModeLabel}
             twitchChannel={twitchChannel}
             twitchConnectionLabel={twitchConnectionLabel}

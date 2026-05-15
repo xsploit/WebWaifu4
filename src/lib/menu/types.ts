@@ -1,4 +1,12 @@
-export type SettingsTabId = 'vrm' | 'anim' | 'character' | 'ai' | 'twitch' | 'context' | 'tts';
+export type SettingsTabId =
+  | 'account'
+  | 'vrm'
+  | 'anim'
+  | 'character'
+  | 'ai'
+  | 'twitch'
+  | 'context'
+  | 'tts';
 
 export type CameraViewMode = 'full-body' | 'half-body';
 

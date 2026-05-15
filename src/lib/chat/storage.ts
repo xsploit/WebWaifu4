@@ -336,6 +336,7 @@ function normalizeUiState(value: unknown): UiState {
 
 function normalizeSettingsTab(value: string | null): SettingsTabId {
   switch (value) {
+    case 'account':
     case 'anim':
     case 'character':
     case 'ai':

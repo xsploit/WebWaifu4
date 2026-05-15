@@ -205,14 +205,87 @@ src/lib/product/server-route-ownership.test.ts` -> passed.
   the two BYOK docs.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: `git status --short` before this checkpoint -> clean.
+- 2026-05-15: `git log -5 --oneline` before this checkpoint -> top commit
+  `d68c9c7 feat(byok): add route ownership contracts`; then `d4a02ed`,
+  `dc6be3c`, `cf5ad9b`, and `1e7bf3c`.
+- 2026-05-15: read `docs\BYOK_PRODUCT_STATUS.md`,
+  `docs\BYOK_PRODUCT_PLAN.md`, `src\App.tsx`,
+  `src\components\menu\SettingsPanel.tsx`,
+  `src\lib\product\account-mode.ts`,
+  `src\lib\product\server-route-ownership.ts`, and the existing local settings
+  load/save path in `src\lib\chat\storage.ts` before choosing the patch.
+- 2026-05-15: added `src\lib\product\supabase-auth-shell.ts`,
+  `src\lib\product\supabase-auth-shell.test.ts`, and
+  `src\components\menu\tabs\AccountTab.tsx`; wired an `Account` settings tab
+  through `src\components\menu\SettingsPanel.tsx`, `src\App.tsx`,
+  `src\lib\menu\types.ts`, and `src\lib\chat\storage.ts`.
+- 2026-05-15: decision: the first auth/account UI shell remains no-SDK and
+  no-cloud-write. It reads the existing Supabase browser env contract, keeps
+  unauthenticated users in guest local-only mode, and can request a Supabase
+  Auth magic link with only the public anon key when Supabase is configured.
+  Provider API keys remain browser-local and are not added to account state or
+  synced settings.
+- 2026-05-15: `npx vitest run src/lib/product/account-mode.test.ts
+src/lib/product/supabase-auth-shell.test.ts` -> 2 files, 9 tests passed.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts
+src/lib/product/scene-export.test.ts src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts src/lib/product/supabase-schema.test.ts
+src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-shell.test.ts` -> 8 files, 41 tests passed.
+- 2026-05-15: first `npm run build` attempt exposed a TypeScript
+  `noPropertyAccessFromIndexSignature` issue in
+  `src\lib\product\supabase-auth-shell.ts` for `email_redirect_to`; fixed it by
+  using bracket assignment.
+- 2026-05-15: `npx vitest run src/lib/product/supabase-auth-shell.test.ts` ->
+  1 file, 4 tests passed.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: `npx prettier --write docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/App.tsx
+src/components/menu/SettingsPanel.tsx
+src/components/menu/tabs/AccountTab.tsx src/lib/chat/storage.ts
+src/lib/menu/types.ts src/lib/product/supabase-auth-shell.ts
+src/lib/product/supabase-auth-shell.test.ts` -> formatted touched files.
+- 2026-05-15: `npx vitest run src/lib/chat/storage.test.ts
+src/lib/product/byok.test.ts src/lib/product/provider-key-vault.test.ts
+src/lib/product/scene-export.test.ts src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts src/lib/product/supabase-schema.test.ts
+src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-shell.test.ts` -> 9 files, 43 tests passed.
+- 2026-05-15: `npx prettier --check docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/App.tsx
+src/components/menu/SettingsPanel.tsx
+src/components/menu/tabs/AccountTab.tsx src/lib/chat/storage.ts
+src/lib/menu/types.ts src/lib/product/supabase-auth-shell.ts
+src/lib/product/supabase-auth-shell.test.ts` -> passed.
+- 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings
+  for the two BYOK docs and touched TS/TSX files.
+- 2026-05-15: final `npm run build` -> passed. Existing Vite warnings
+  remained: onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: review tweak: wrapped the Account tab magic-link request in a
+  `finally` block so the submit button always re-enables after future request
+  failures.
+- 2026-05-15: after the review tweak,
+  `npx vitest run src/lib/product/supabase-auth-shell.test.ts` -> 1 file, 4
+  tests passed.
+- 2026-05-15: after the review tweak,
+  `npx prettier --check docs/BYOK_PRODUCT_STATUS.md docs/BYOK_PRODUCT_PLAN.md
+src/components/menu/tabs/AccountTab.tsx` -> passed.
+- 2026-05-15: after the review tweak, `git diff --check` -> passed. Git
+  emitted LF/CRLF warnings for the two BYOK docs and touched TS/TSX files.
+- 2026-05-15: after the review tweak, `npm run build` -> passed. Existing Vite
+  warnings remained: onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add the minimal Supabase auth/account UI shell while preserving the
-guest local-only overlay mode. Next read: `src\App.tsx`,
-`src\components\menu\SettingsPanel.tsx`, `src\lib\product\account-mode.ts`,
-`src\lib\product\server-route-ownership.ts`, and the existing local settings
-load/save path.
+Next patch: add Supabase session hydration/callback handling or guarded
+profile/workspace API route stubs, still without syncing provider keys. Next
+read: `src\components\menu\tabs\AccountTab.tsx`,
+`src\lib\product\supabase-auth-shell.ts`, `src\lib\product\account-mode.ts`,
+`src\lib\product\server-route-ownership.ts`, and `api\ai\chat.ts` for existing
+API route patterns.
 
 ## Stop Conditions
 

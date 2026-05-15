@@ -34,10 +34,11 @@ than owning the auth/database coupling. Firebase is not the default because the
 product data wants relational ownership, scoped memory, scene config, and
 server-side route policies.
 
-This checkpoint does not install Supabase dependencies. It locks the stack
-decision, product contracts, Supabase environment contract, account-mode
-contract, and initial Supabase SQL/RLS contract first so the next checkpoint can
-add route ownership tests without smearing provider keys through app state.
+The current checkpoints do not install Supabase dependencies. They lock the
+stack decision, product contracts, Supabase environment contract, account-mode
+contract, initial Supabase SQL/RLS contract, route ownership contract, and a
+minimal account UI shell first so hosted sync can be wired without smearing
+provider keys through app state.
 
 ## Supabase Environment Contract
 
@@ -126,4 +127,7 @@ arrive as a later migration with a specific security design and tests.
    as a pure contract layer for future `/api/byok/*` routes. Owner routes can
    write, workspace members can read, public overlay config requires a scoped
    overlay token, and cloud route bodies reject secret-shaped fields.
-9. Add optional hosted encrypted vault only after a security review.
+9. Add a minimal Supabase auth/account UI shell while preserving guest
+   local-only mode. Done in the ninth checkpoint as a no-SDK settings tab and
+   magic-link request contract that uses only the public anon key.
+10. Add optional hosted encrypted vault only after a security review.
