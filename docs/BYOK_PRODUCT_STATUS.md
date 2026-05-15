@@ -72,7 +72,7 @@ src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts`
 - 2026-05-15: `git status --short` before this checkpoint -> one pre-existing
   untracked prompt file:
   `?? plugins/ralph-wiggum-loop/prompts/yourwifey-byok-product-next.prompt.md`.
-  Left it uncommitted.
+  Ralph left it uncommitted.
 - 2026-05-15: `git log -5 --oneline` before this checkpoint -> top commit
   `8943e0b chore(byok): lock supabase product stack`; then `f7e47d4`,
   `f276929`, `1610392`, and `8cf539d`.
@@ -92,6 +92,8 @@ src/lib/product/supabase-env.test.ts` -> passed.
   the two BYOK docs.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: committed reusable BYOK Ralph prompt at
+  `plugins\ralph-wiggum-loop\prompts\yourwifey-byok-product-next.prompt.md`.
 
 ## Current Blocker Or Next Patch
 
