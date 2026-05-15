@@ -35,8 +35,9 @@ product data wants relational ownership, scoped memory, scene config, and
 server-side route policies.
 
 This checkpoint does not install Supabase dependencies. It locks the stack
-decision, product contracts, and Supabase environment contract first so the
-next checkpoint can wire auth without smearing provider keys through app state.
+decision, product contracts, Supabase environment contract, account-mode
+contract, and initial Supabase SQL/RLS contract first so the next checkpoint can
+add route ownership tests without smearing provider keys through app state.
 
 ## Supabase Environment Contract
 
@@ -74,7 +75,7 @@ Optional future mode: `hosted-encrypted-vault`.
 
 ## Data Model
 
-Initial tables once DB is added:
+Initial migration tables:
 
 - `profiles`: Supabase auth user id and product profile.
 - `workspaces`: owner, storage mode, key mode.
@@ -88,6 +89,11 @@ Initial tables once DB is added:
 - `assets`: uploaded VRMs/backgrounds/animation packs.
 
 No `credit_ledger`, `stripe_events`, or payments in this BYOK fork.
+
+Cloud database rows are cloud-sync rows. Guest local-only mode stays outside
+Supabase and continues to use browser/local storage. The first migration keeps
+`provider_key_mode` pinned to `local-indexeddb`; a hosted encrypted vault must
+arrive as a later migration with a specific security design and tests.
 
 ## Security Boundaries
 
@@ -115,5 +121,6 @@ No `credit_ledger`, `stripe_events`, or payments in this BYOK fork.
    checkpoint as a contract-only resolver with no Supabase SDK dependency or UI
    wiring.
 7. Add Supabase SQL migrations/RLS for profiles/workspaces/scenes/settings.
+   Done in the seventh checkpoint as a migration plus static contract tests.
 8. Add server route guards and ownership tests.
 9. Add optional hosted encrypted vault only after a security review.

@@ -130,13 +130,48 @@ docs/BYOK_PRODUCT_STATUS.md src/lib/product/account-mode.ts
 src/lib/product/account-mode.test.ts` -> passed.
 - 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
   the two BYOK docs.
+- 2026-05-15: `git status --short` before this checkpoint -> clean.
+- 2026-05-15: `git log -5 --oneline` before this checkpoint -> top commit
+  `dc6be3c feat(byok): add account mode contract`; then `cf5ad9b`,
+  `1e7bf3c`, `8943e0b`, and `f7e47d4`.
+- 2026-05-15: read `docs\BYOK_PRODUCT_STATUS.md`,
+  `docs\BYOK_PRODUCT_PLAN.md`, `src\lib\product\byok.ts`,
+  `src\lib\product\account-mode.ts`, and
+  `src\lib\product\supabase-env.ts`; checked for existing migration
+  directories and found none.
+- 2026-05-15: added
+  `supabase\migrations\20260515000100_byok_product_spine.sql` and
+  `src\lib\product\supabase-schema.test.ts`.
+- 2026-05-15: decision: Supabase cloud rows are cloud-sync rows only; guest
+  local-only mode remains outside the database. The first RLS schema pins
+  workspace and provider descriptor key mode to `local-indexeddb`, stores only
+  redacted provider secret descriptors, stores overlay token hashes instead of
+  raw tokens, and limits synced settings to `public-overlay` or
+  `synced-private` keys that do not look like API keys/secrets/tokens.
+- 2026-05-15: decision: authenticated users get explicit table grants, RLS is
+  enabled and forced on every product table, workspace members can read scoped
+  records, and only workspace owners can write scoped records in this first
+  contract.
+- 2026-05-15: `npx vitest run src/lib/product/supabase-schema.test.ts` -> 1
+  file, 5 tests passed.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts
+src/lib/product/supabase-env.test.ts src/lib/product/account-mode.test.ts
+src/lib/product/supabase-schema.test.ts` -> 6 files, 32 tests passed.
+- 2026-05-15: `npx prettier --check docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/lib/product/supabase-schema.test.ts` ->
+  passed.
+- 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  the two BYOK docs.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add Supabase SQL migration/RLS files for profiles, workspaces,
-scenes, characters, synced settings, memory metadata, and asset metadata before
-wiring any UI shell. Next read: existing repo migration conventions if any,
-`docs\BYOK_PRODUCT_PLAN.md`, and `src\lib\product\byok.ts`.
+Next patch: add route/ownership contract tests for future server APIs before
+wiring any UI shell. Next read: `api\ai\chat.ts`, `api\ai\embeddings.ts`,
+`api\ai\poml\render.ts`, `server\src\index.ts`, and the new Supabase
+migration.
 
 ## Stop Conditions
 
