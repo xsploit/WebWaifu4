@@ -1,0 +1,203 @@
+export type AuthProvider = 'clerk';
+
+export type ProductStorageMode = 'local-only' | 'cloud-sync';
+
+export type ProviderKeyMode = 'local-indexeddb' | 'hosted-encrypted-vault';
+
+export type ProviderKind = 'openai' | 'fish_speech' | 'inworld' | 'tavily' | 'custom';
+
+export type SettingStorageClass =
+  | 'public-overlay'
+  | 'synced-private'
+  | 'local-secret'
+  | 'hosted-secret'
+  | 'server-only';
+
+export type ProductUser = {
+  id: string;
+  authProvider: AuthProvider;
+  authSubject: string;
+  email?: string;
+  displayName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Workspace = {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  storageMode: ProductStorageMode;
+  providerKeyMode: ProviderKeyMode;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Scene = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  twitchChannel: string;
+  activeCharacterId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CharacterProfile = {
+  id: string;
+  workspaceId: string;
+  sceneId: string;
+  personaId: string;
+  name: string;
+  vrmModelId: string;
+  backgroundAssetId?: string;
+  ttsProvider: ProviderKind;
+  ttsVoiceId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProviderSecretDescriptor = {
+  id: string;
+  workspaceId: string;
+  provider: ProviderKind;
+  keyName: string;
+  mode: ProviderKeyMode;
+  redactedLabel: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SyncedSettingRecord = {
+  id: string;
+  workspaceId: string;
+  sceneId?: string;
+  characterId?: string;
+  key: string;
+  storageClass: Exclude<SettingStorageClass, 'local-secret' | 'hosted-secret'>;
+  valueJson: string;
+  updatedAt: string;
+};
+
+export type OverlayTokenClaims = {
+  workspaceId: string;
+  sceneId: string;
+  characterId?: string;
+  scopes: Array<'overlay:read' | 'chat:send' | 'chat:control' | 'scene:read'>;
+  expiresAt: string;
+};
+
+export const PROVIDER_SECRET_ENV_NAMES: Record<ProviderKind, readonly string[]> = {
+  openai: ['OPENAI_API_KEY'],
+  fish_speech: ['FISH_AUDIO_API_KEY', 'FISH_SPEECH_API_KEY'],
+  inworld: ['INWORLD_API_KEY'],
+  tavily: ['TAVILY_API_KEY'],
+  custom: [],
+};
+
+const LOCAL_SECRET_SETTING_KEYS = new Set([
+  'openai.apiKey',
+  'fishSpeech.apiKey',
+  'inworld.apiKey',
+  'tavily.apiKey',
+]);
+
+const PUBLIC_OVERLAY_SETTING_KEYS = new Set([
+  'scene.name',
+  'scene.twitchChannel',
+  'character.personaId',
+  'character.vrmModelId',
+  'character.backgroundAssetId',
+  'visualSettings',
+  'sequencerSettings',
+]);
+
+const SERVER_ONLY_SETTING_KEYS = new Set([
+  'auth.clerkSecret',
+  'overlay.signingSecret',
+  'database.url',
+]);
+
+export function classifyByokSetting(
+  key: string,
+  providerKeyMode: ProviderKeyMode,
+): SettingStorageClass {
+  const normalized = normalizeSettingKey(key);
+  if (SERVER_ONLY_SETTING_KEYS.has(normalized)) {
+    return 'server-only';
+  }
+  if (LOCAL_SECRET_SETTING_KEYS.has(normalized)) {
+    return providerKeyMode === 'hosted-encrypted-vault' ? 'hosted-secret' : 'local-secret';
+  }
+  if (PUBLIC_OVERLAY_SETTING_KEYS.has(normalized)) {
+    return 'public-overlay';
+  }
+  return 'synced-private';
+}
+
+export function normalizeSettingKey(key: string) {
+  return key.trim().replace(/\s+/g, '');
+}
+
+export function normalizeTwitchChannelName(value: string) {
+  return value.trim().toLowerCase().replace(/^#/, '');
+}
+
+export function isValidTwitchChannelName(value: string) {
+  return /^[a-z0-9_]{1,25}$/.test(normalizeTwitchChannelName(value));
+}
+
+export function redactProviderSecret(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (trimmed.length <= 10) {
+    return `${trimmed.slice(0, 2)}...${trimmed.slice(-2)}`;
+  }
+  return `${trimmed.slice(0, 6)}...${trimmed.slice(-4)}`;
+}
+
+export function assertSettingCanSync(record: SyncedSettingRecord) {
+  if (record.storageClass === 'server-only') {
+    throw new Error('Server-only settings cannot be stored as synced user settings.');
+  }
+  if (LOCAL_SECRET_SETTING_KEYS.has(normalizeSettingKey(record.key))) {
+    throw new Error('Provider API keys must use the key vault, not synced settings.');
+  }
+}
+
+export function createProviderSecretDescriptor(input: {
+  id: string;
+  workspaceId: string;
+  provider: ProviderKind;
+  keyName: string;
+  mode: ProviderKeyMode;
+  secretPreview: string;
+  createdAt: string;
+  updatedAt?: string;
+}): ProviderSecretDescriptor {
+  return {
+    id: input.id,
+    workspaceId: input.workspaceId,
+    provider: input.provider,
+    keyName: normalizeSettingKey(input.keyName),
+    mode: input.mode,
+    redactedLabel: redactProviderSecret(input.secretPreview),
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt ?? input.createdAt,
+  };
+}
+
+export function assertOverlayTokenClaims(claims: OverlayTokenClaims) {
+  if (!claims.workspaceId || !claims.sceneId) {
+    throw new Error('Overlay token requires workspaceId and sceneId.');
+  }
+  const expiresAt = Date.parse(claims.expiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    throw new Error('Overlay token expiry must be in the future.');
+  }
+  if (claims.scopes.length === 0) {
+    throw new Error('Overlay token requires at least one scope.');
+  }
+}
