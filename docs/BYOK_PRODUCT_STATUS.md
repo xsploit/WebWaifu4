@@ -69,11 +69,37 @@ src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts`
 - 2026-05-15: `git diff --check` -> passed.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: `git status --short` before this checkpoint -> one pre-existing
+  untracked prompt file:
+  `?? plugins/ralph-wiggum-loop/prompts/yourwifey-byok-product-next.prompt.md`.
+  Left it uncommitted.
+- 2026-05-15: `git log -5 --oneline` before this checkpoint -> top commit
+  `8943e0b chore(byok): lock supabase product stack`; then `f7e47d4`,
+  `f276929`, `1610392`, and `8cf539d`.
+- 2026-05-15: added `src\lib\product\supabase-env.ts` and
+  `src\lib\product\supabase-env.test.ts`.
+- 2026-05-15: decision: Supabase config remains a pure contract layer with no
+  SDK dependency yet. Missing browser config disables cloud sync but preserves
+  local-only mode; partial/insecure config is misconfigured; service-role/JWT
+  values are server-only and excluded from public projections.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts
+src/lib/product/supabase-env.test.ts` -> 4 files, 22 tests passed.
+- 2026-05-15: `npx prettier --check docs/BYOK_PRODUCT_PLAN.md
+docs/BYOK_PRODUCT_STATUS.md src/lib/product/supabase-env.ts
+src/lib/product/supabase-env.test.ts` -> passed.
+- 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  the two BYOK docs.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add Supabase client/server environment contracts and an auth shell
-that does not block local-only overlay mode.
+Next patch: add a minimal auth/account mode model that distinguishes guest
+local-only users from Supabase-authenticated cloud-sync users, then read
+`src\App.tsx`, `src\components\menu\SettingsPanel.tsx`,
+`src\lib\product\supabase-env.ts`, and the provider key vault before wiring any
+UI shell.
 
 ## Stop Conditions
 

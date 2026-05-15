@@ -35,8 +35,27 @@ product data wants relational ownership, scoped memory, scene config, and
 server-side route policies.
 
 This checkpoint does not install Supabase dependencies. It locks the stack
-decision and product contracts first so the next checkpoint can wire auth
-without smearing provider keys through app state.
+decision, product contracts, and Supabase environment contract first so the
+next checkpoint can wire auth without smearing provider keys through app state.
+
+## Supabase Environment Contract
+
+Browser cloud-sync config:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Server cloud-sync/admin config:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` for admin/server-only routes.
+- `SUPABASE_JWT_SECRET` for future token verification.
+- `SUPABASE_STORAGE_BUCKET`, defaulting to `yourwifey-assets`.
+
+Absent browser config keeps cloud sync disabled and local-only overlay mode
+available. Partial or insecure config is treated as misconfigured. Service-role
+and JWT secrets must never be projected into browser/public config.
 
 ## Key Storage Policy
 
@@ -89,8 +108,10 @@ No `credit_ledger`, `stripe_events`, or payments in this BYOK fork.
 3. Add scene import/export with secret omission tests. Done in the third
    checkpoint.
 4. Lock Supabase Auth/Postgres as the BYOK stack. Done in the fourth checkpoint.
-5. Add Supabase client/server environment contracts and an auth shell that does
-   not block local-only mode.
-6. Add Supabase SQL migrations/RLS for profiles/workspaces/scenes/settings.
-7. Add server route guards and ownership tests.
-8. Add optional hosted encrypted vault only after a security review.
+5. Add Supabase client/server environment contracts. Done in the fifth
+   checkpoint without installing SDKs or blocking local-only mode.
+6. Add a minimal auth/account mode model that distinguishes guest local-only
+   users from Supabase-authenticated cloud-sync users.
+7. Add Supabase SQL migrations/RLS for profiles/workspaces/scenes/settings.
+8. Add server route guards and ownership tests.
+9. Add optional hosted encrypted vault only after a security review.
