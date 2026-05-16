@@ -54,11 +54,14 @@ describe('BYOK cloud route ownership contracts', () => {
   it('defines cloud routes without payments, credits, or secret acceptance', () => {
     expect(BYOK_CLOUD_ROUTE_CONTRACTS.map((route) => route.id)).toEqual([
       'profile.self.read',
+      'profile.self.write',
       'workspace.read',
       'workspace.write',
       'scene.read',
       'scene.write',
       'character.write',
+      'synced-setting.list',
+      'synced-setting.read',
       'synced-setting.write',
       'provider-secret-descriptor.write',
       'overlay-token.issue',

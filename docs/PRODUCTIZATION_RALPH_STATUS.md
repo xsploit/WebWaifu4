@@ -346,6 +346,18 @@ src/lib/product/cloud-settings.test.ts src/lib/product/app-route.test.ts` ->
 - 2026-05-15: `npx vitest run src/lib/product/supabase-schema.test.ts
 src/lib/product/supabase-env.test.ts src/lib/product/byok.test.ts` -> passed,
   3 files, 19 tests.
+- 2026-05-15: Security/review checkpoint swept BYOK auth/API token and secret
+  handling with grep probes plus targeted route/env/token tests. The sweep found
+  a stale safety-net test: `server-route-ownership.test.ts` still expected the
+  older route contract list and failed after profile write plus setting list/read
+  routes were added. Fixed the test expectation so the route contract table is
+  covered again.
+- 2026-05-15: `git grep` secret probe found only placeholders, redaction tests,
+  and documentation examples. Targeted auth/API test rerun:
+  `npx vitest run src/lib/product/supabase-env.test.ts
+src/lib/product/byok.test.ts src/lib/product/server-route-ownership.test.ts
+api/byok/_lib/overlay-token.test.ts api/byok/_lib/supabase-context.test.ts
+src/lib/product/byok-api.test.ts` -> passed, 6 files, 33 tests.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and
