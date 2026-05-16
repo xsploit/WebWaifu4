@@ -34,6 +34,13 @@ describe('cloud settings adapter', () => {
     ]);
     expect(records.map((record) => record.storageClass)).toContain('public-overlay');
     expect(records.map((record) => record.storageClass)).toContain('synced-private');
+    expect(records.map((record) => record.id)).toEqual(
+      records.map(() =>
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        ),
+      ),
+    );
     expect(JSON.stringify(records)).not.toMatch(
       /relationshipMemory|chatHistory|apiKey|secret|sk-/i,
     );
