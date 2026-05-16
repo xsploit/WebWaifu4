@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAuthenticatedByokRequest,
+  buildOverlayTokenRequest,
   fetchByokSettings,
   getSupabaseAccessToken,
+  parseOverlayTokenClaims,
   patchByokSetting,
 } from './byok-api';
 import { SUPABASE_AUTH_SESSION_STORAGE_KEY } from './supabase-auth-session';
@@ -131,6 +133,42 @@ describe('BYOK API client helpers', () => {
           key: 'scene.twitchChannel',
         },
       ],
+    });
+  });
+
+  it('builds overlay-token requests without dashboard bearer state', () => {
+    expect(
+      buildOverlayTokenRequest({
+        path: '/api/byok/overlay/scene-1/config',
+        token: 'signed-token',
+      }),
+    ).toEqual({
+      init: {
+        headers: {
+          authorization: 'Bearer signed-token',
+        },
+        method: 'GET',
+      },
+      url: '/api/byok/overlay/scene-1/config',
+    });
+  });
+
+  it('parses overlay token claims for UI diagnostics', () => {
+    const payload = btoa(
+      JSON.stringify({
+        expiresAt: '2026-05-16T00:00:00.000Z',
+        sceneId: 'scene-1',
+        scopes: ['overlay:read'],
+        workspaceId: 'workspace-1',
+      }),
+    )
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    expect(parseOverlayTokenClaims(`ywot1.${payload}.signature`)).toMatchObject({
+      sceneId: 'scene-1',
+      workspaceId: 'workspace-1',
     });
   });
 });

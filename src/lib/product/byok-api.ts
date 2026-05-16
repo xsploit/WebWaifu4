@@ -1,5 +1,11 @@
-import type { ProductStorageMode, ProviderKeyMode, Scene, Workspace } from './byok.js';
-import type { SyncedSettingRecord } from './byok.js';
+import type {
+  OverlayTokenClaims,
+  ProductStorageMode,
+  ProviderKeyMode,
+  Scene,
+  SyncedSettingRecord,
+  Workspace,
+} from './byok.js';
 import {
   loadPersistedSupabaseAuthSession,
   type SupabaseAuthSession,
@@ -51,6 +57,20 @@ export type ByokSettingResponse = {
 export type ByokSettingsResponse = {
   ok: true;
   settings: SyncedSettingRecord[];
+};
+
+export type ByokOverlayTokenResponse = {
+  ok: true;
+  expiresAt: string | null;
+  scene: ByokSceneSummary;
+  token: string;
+};
+
+export type ByokOverlayConfigResponse = {
+  ok: true;
+  scene: ByokSceneSummary;
+  settings: SyncedSettingRecord[];
+  workspaceId: string;
 };
 
 export type ByokApiError = {
@@ -215,6 +235,60 @@ export async function patchByokSetting(input: {
   return fetchByokJson<ByokSettingResponse>(request, input.fetchImpl);
 }
 
+export async function issueByokOverlayToken(input: {
+  accessToken?: string | null;
+  expiresInHours?: number;
+  fetchImpl?: typeof fetch;
+  sceneId: string;
+  workspaceId: string;
+}) {
+  const request = buildAuthenticatedByokRequest({
+    accessToken: input.accessToken,
+    body: {
+      expiresInHours: input.expiresInHours ?? 24 * 30,
+    },
+    method: 'POST',
+    path: `/api/byok/workspaces/${encodeURIComponent(input.workspaceId)}/scenes/${encodeURIComponent(input.sceneId)}/overlay-tokens`,
+  });
+  return fetchByokJson<ByokOverlayTokenResponse>(request, input.fetchImpl);
+}
+
+export async function fetchByokOverlayConfig(input: {
+  fetchImpl?: typeof fetch;
+  sceneId: string;
+  token: string;
+}) {
+  const request = buildOverlayTokenRequest({
+    path: `/api/byok/overlay/${encodeURIComponent(input.sceneId)}/config`,
+    token: input.token,
+  });
+  return fetchByokJson<ByokOverlayConfigResponse>(request, input.fetchImpl);
+}
+
+export function buildOverlayTokenRequest(input: { path: string; token: string }) {
+  return {
+    init: {
+      headers: {
+        authorization: `Bearer ${input.token}`,
+      },
+      method: 'GET',
+    },
+    url: normalizeByokApiPath(input.path),
+  } satisfies AuthenticatedByokRequest;
+}
+
+export function parseOverlayTokenClaims(token: string): OverlayTokenClaims | null {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) {
+      return null;
+    }
+    return JSON.parse(decodeBase64Url(payload)) as OverlayTokenClaims;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchByokJson<T>(request: AuthenticatedByokRequest, fetchImpl = fetch): Promise<T> {
   const response = await fetchImpl(request.url, request.init);
   const body = (await response.json().catch(() => null)) as T | ByokApiError | null;
@@ -233,4 +307,13 @@ function normalizeByokApiPath(path: string) {
     return path;
   }
   return path.startsWith('/') ? path : `/${path}`;
+}
+
+function decodeBase64Url(value: string) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  if (typeof atob === 'function') {
+    return atob(padded);
+  }
+  return Buffer.from(value, 'base64url').toString('utf8');
 }

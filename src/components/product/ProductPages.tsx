@@ -4,6 +4,7 @@ import type { AppRoute } from '../../lib/product/app-route';
 import {
   fetchByokProfile,
   fetchByokSettings,
+  issueByokOverlayToken,
   patchByokSetting,
   patchByokProfile,
   type ByokProfileResponse,
@@ -213,6 +214,7 @@ function DashboardPage(
   },
 ) {
   const [profile, setProfile] = useState<ByokProfileResponse | null>(null);
+  const [overlayShareUrl, setOverlayShareUrl] = useState('');
   const [status, setStatus] = useState(props.authStatus);
   const [pulling, setPulling] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -285,6 +287,31 @@ function DashboardPage(
     }
   };
 
+  const handleIssueOverlayUrl = async () => {
+    if (
+      !profile?.bootstrap.workspace.id ||
+      !profile.bootstrap.scene.id ||
+      props.accountMode.kind !== 'supabase-cloud-sync'
+    ) {
+      setStatus('Sign in before issuing an OBS overlay URL.');
+      return;
+    }
+
+    try {
+      const response = await issueByokOverlayToken({
+        sceneId: profile.bootstrap.scene.id,
+        workspaceId: profile.bootstrap.workspace.id,
+      });
+      const path = `/overlay/${encodeURIComponent(response.scene.id)}?token=${encodeURIComponent(response.token)}`;
+      const url =
+        typeof window === 'undefined' ? path : new URL(path, window.location.href).toString();
+      setOverlayShareUrl(url);
+      setStatus(`OBS overlay URL issued. Expires ${response.expiresAt ?? 'later'}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Overlay URL issue failed.');
+    }
+  };
+
   return (
     <ProductPageFrame eyebrow="Dashboard" onNavigate={props.onNavigate} title="Stream workspace">
       <div className="product-card">
@@ -306,6 +333,13 @@ function DashboardPage(
           </button>
           <button
             className="product-secondary"
+            disabled={props.accountMode.kind !== 'supabase-cloud-sync'}
+            onClick={handleIssueOverlayUrl}
+          >
+            Issue OBS URL
+          </button>
+          <button
+            className="product-secondary"
             disabled={syncing || props.accountMode.kind !== 'supabase-cloud-sync'}
             onClick={handleSyncSettings}
           >
@@ -319,6 +353,12 @@ function DashboardPage(
             {pulling ? 'Loading...' : 'Load cloud'}
           </button>
         </div>
+        {overlayShareUrl ? (
+          <label className="product-field">
+            <span>OBS overlay URL</span>
+            <input readOnly value={overlayShareUrl} />
+          </label>
+        ) : null}
         <p>{status}</p>
       </div>
     </ProductPageFrame>

@@ -210,6 +210,20 @@ export async function ensureDefaultScene(input: {
   return scene;
 }
 
+export async function fetchSceneSummary(input: {
+  config: SupabaseServerConfig;
+  fetchFn: SupabaseFetch;
+  sceneId: string;
+  workspaceId: string;
+}) {
+  const rows = await fetchSupabaseRest<SceneRow>(
+    input.config,
+    `/rest/v1/scenes?workspace_id=eq.${encodeURIComponent(input.workspaceId)}&id=eq.${encodeURIComponent(input.sceneId)}&select=${SCENE_SELECT}&limit=1`,
+    input.fetchFn,
+  );
+  return normalizeScene(rows[0], input.workspaceId);
+}
+
 export async function fetchWorkspaceSummary(input: {
   config: SupabaseServerConfig;
   fetchFn: SupabaseFetch;
@@ -305,6 +319,25 @@ export async function fetchSyncedSettings(input: {
   return rows
     .map((row) => normalizeSyncedSetting(row, input.workspaceId))
     .filter((record): record is SyncedSettingRecord => Boolean(record));
+}
+
+export async function fetchPublicOverlayConfig(input: {
+  config: SupabaseServerConfig;
+  fetchFn: SupabaseFetch;
+  sceneId: string;
+  workspaceId: string;
+}) {
+  const scene = await fetchSceneSummary(input);
+  const settings = (await fetchSyncedSettings(input)).filter(
+    (record) =>
+      record.storageClass === 'public-overlay' &&
+      (!record.sceneId || record.sceneId === input.sceneId),
+  );
+  return {
+    scene,
+    settings,
+    workspaceId: input.workspaceId,
+  };
 }
 
 export async function upsertSyncedSetting(input: {

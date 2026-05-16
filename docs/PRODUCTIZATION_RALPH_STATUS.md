@@ -284,6 +284,25 @@ Swap the prompt and completion promise for the other lanes.
   api/byok/_lib/supabase-context.test.ts` -> passed, 6 files, 26 tests.
   `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
   warnings. `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-15: Work-rhythm checkpoint added scoped OBS overlay sharing
+  groundwork. Dashboard can issue a signed OBS overlay URL for the default
+  scene. Added `POST
+  /api/byok/workspaces/:workspaceId/scenes/:sceneId/overlay-tokens` for owner
+  token issuance and `GET /api/byok/overlay/:sceneId/config` for token-scoped
+  public overlay config. Tokens are HMAC-signed server-side, default to 30 days,
+  and carry only workspace/scene/scope/expiry claims.
+- 2026-05-15: Security pass for overlay sharing found no new blocker: the
+  public overlay route requires a valid scoped overlay token, only returns
+  `public-overlay` setting records, verifies scene/workspace binding, and never
+  uses the dashboard bearer session for OBS access. Token signing uses
+  `OVERLAY_SIGNING_SECRET` when configured, falling back to existing server-only
+  secrets.
+- 2026-05-15: `npx vitest run api/byok/_lib/overlay-token.test.ts
+  api/byok/_lib/product-data.test.ts api/byok/_lib/supabase-context.test.ts
+  src/lib/product/byok-api.test.ts src/lib/product/byok-route-stub.test.ts
+  src/lib/product/byok.test.ts` -> passed, 6 files, 25 tests. `npm run build`
+  -> passed with existing `onnxruntime-web` eval and large chunk warnings.
+  `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and

@@ -12,6 +12,7 @@ export const SUPABASE_SERVER_ENV = {
   anonKey: 'SUPABASE_ANON_KEY',
   serviceRoleKey: 'SUPABASE_SERVICE_ROLE_KEY',
   jwtSecret: 'SUPABASE_JWT_SECRET',
+  overlaySigningSecret: 'OVERLAY_SIGNING_SECRET',
   storageBucket: 'SUPABASE_STORAGE_BUCKET',
 } as const;
 
@@ -38,6 +39,7 @@ export type SupabasePublicConfig = {
 export type SupabaseServerConfig = SupabasePublicConfig & {
   serviceRoleKey: string | null;
   jwtSecret: string | null;
+  overlaySigningSecret: string | null;
   storageBucket: string;
   adminReady: boolean;
   serverMissing: SupabaseServerEnvName[];
@@ -46,6 +48,7 @@ export type SupabaseServerConfig = SupabasePublicConfig & {
 const BROWSER_SECRET_ENV_NAMES = [
   'VITE_SUPABASE_SERVICE_ROLE_KEY',
   'VITE_SUPABASE_JWT_SECRET',
+  'VITE_OVERLAY_SIGNING_SECRET',
   'VITE_SUPABASE_DB_PASSWORD',
 ] as const;
 
@@ -93,6 +96,7 @@ export function readSupabaseServerEnv(env: SupabaseEnvSource): SupabaseServerCon
   ]);
   const serviceRoleKey = readTrimmed(env, SUPABASE_SERVER_ENV.serviceRoleKey);
   const jwtSecret = readTrimmed(env, SUPABASE_SERVER_ENV.jwtSecret);
+  const overlaySigningSecret = readTrimmed(env, SUPABASE_SERVER_ENV.overlaySigningSecret);
   const storageBucket =
     readTrimmed(env, SUPABASE_SERVER_ENV.storageBucket) ?? DEFAULT_SUPABASE_STORAGE_BUCKET;
   const serverMissing = requiredMissing(
@@ -125,6 +129,7 @@ export function readSupabaseServerEnv(env: SupabaseEnvSource): SupabaseServerCon
     problems,
     serviceRoleKey,
     jwtSecret,
+    overlaySigningSecret,
     storageBucket,
     adminReady: status === 'configured' && Boolean(serviceRoleKey),
     serverMissing,

@@ -17,6 +17,7 @@ const config: SupabaseServerConfig = {
   databaseProvider: 'supabase-postgres',
   jwtSecret: null,
   missing: [],
+  overlaySigningSecret: 'overlay-secret',
   problems: [],
   serverMissing: [],
   serviceRoleKey: 'service-role',
