@@ -810,16 +810,29 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `aiProvider: disabled`, `serverProviderProxyEnabled: false`, `providerState:
   null`, and remote TTS providers `configured: false`. Public `/ai/chat` returns
   `Server AI proxy is disabled for BYOK mode.` without calling provider APIs.
+- 2026-05-16 browser-local provider-key controls checkpoint: fixed commit
+  `15e5a65`, adding the first real BYOK key-management surface to the Account
+  tab. OpenAI, Fish Speech, Inworld, and Tavily keys can now be saved/removed
+  through the existing browser-local provider key vault. Inputs use password
+  fields, clear after save/remove, and the UI renders only redacted descriptors.
+  Signed-in users get a user-scoped local vault id; guests use the local-browser
+  vault. Verification: `npx vitest run src/lib/product/provider-key-vault.test.ts
+  src/lib/product/byok.test.ts` -> passed, 2 files, 10 tests; `npm run build` ->
+  passed with existing `onnxruntime-web` eval and large chunk warnings;
+  `git diff --check` -> passed with line-ending warnings only; tracked diff scan
+  found no literal provider secrets or auth tokens. Deployed rebuilt `dist` to
+  the OVH VPS, restarted `serve-dist.mjs`, and verified the public dashboard URL
+  returned HTTP 200.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: refresh Codex so Supabase MCP tools are actually exposed,
-then use MCP to inspect the live BYOK Supabase tables/policies and record a
-proper schema/data audit before doing more Supabase work. In parallel, continue
-the product hardening lane by wiring the actual browser-local provider-key flow:
-key entry/status UI, local OpenAI Responses calls, browser-local embeddings or a
-clear no-embedding state, and equivalent Fish/Inworld BYOK behavior. Remaining
-server work: signed overlay token rotation or revocation backend semantics.
+Next BYOK product patch: wire the chat path to read the browser-local OpenAI key
+from the provider key vault and execute OpenAI Responses directly from the
+browser when server provider proxies are disabled. Then add browser-local
+embeddings or an explicit no-embedding state, and equivalent Fish/Inworld BYOK
+behavior. Supabase MCP/schema audit remains queued before more database policy
+work. Remaining server work: signed overlay token rotation or revocation backend
+semantics.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
