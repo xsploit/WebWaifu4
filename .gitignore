@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-ssr/
+api-dist/
 *.log
 .env*
 .DS_Store

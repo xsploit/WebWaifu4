@@ -5,14 +5,16 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": ["node"],
+    "rootDir": ".",
+    "outDir": "api-dist",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "noEmit": true,
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["api/**/*.ts"]
+  "include": ["api/**/*.ts"],
+  "exclude": ["api/**/*.test.ts", "src/**/*.test.ts"]
 }

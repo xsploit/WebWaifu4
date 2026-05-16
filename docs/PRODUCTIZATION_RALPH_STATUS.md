@@ -530,13 +530,25 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   only; local preview route smoke for `/`, `/dashboard`, `/login`, `/account`,
   and `/overlay/private-preview` -> HTTP 200; Chrome headless screenshot of
   `/dashboard` rendered the product shell correctly.
+- 2026-05-16: Supabase project `btjccsyoevbczmamoamt` configured locally and
+  on the OVH VPS. Added ignored local `.env` / `.env.local` values and upserted
+  the same Supabase public/admin config plus generated overlay signing secret
+  into `/home/ubuntu/yourwifey-stream/.env`. Added VPS standalone support for
+  BYOK cloud routes: `serve-dist.mjs` now proxies `/api/*` to the bot API
+  process, `server\src\index.ts` mounts compiled `/api/byok/*` handlers, and
+  `tsconfig.api.json` now emits `api-dist` for that runtime. Verification:
+  Supabase `/auth/v1/settings` -> HTTP 200; `npm run build` -> passed with
+  existing `onnxruntime-web` eval and large chunk warnings; local direct
+  `/api/byok/profile` and proxied `/api/byok/profile` -> expected HTTP 401 JSON
+  auth-required response instead of 404/501.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: visually smoke the signed-in Supabase state once the
-project URL is configured locally, then decide whether `/dashboard` needs a
-lightweight scene list or whether the editor/settings panel remains the scene
-source of truth for v1.
+Next UI/product patch: run an actual magic-link sign-in smoke and check whether
+the Supabase migration has been applied. If profile bootstrap fails after login,
+apply `supabase\migrations\20260515000100_byok_product_spine.sql` in the
+Supabase SQL editor/CLI, then re-test `/api/byok/profile`,
+settings sync/pull, and signed OBS overlay URL issuance.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
