@@ -602,13 +602,28 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   warnings only. VPS public smoke still needs the rebuilt API bundle deployed;
   SSH key auth from this Codex session returned permission denied, so hot-upload
   was not completed in this checkpoint.
+- 2026-05-16 heartbeat deploy checkpoint: confirmed the remaining blocker is
+  deploy access, not Supabase schema or local API code. `git status --short`
+  was clean and recent commits were `e7785f2`, `ff6a9bd`, `1cc345e`,
+  `1c41259`, and `882a4dd`. SSH deploy probe
+  `ssh -o BatchMode=yes -o ConnectTimeout=10 ubuntu@148.113.191.103 "cd
+  /home/ubuntu/yourwifey-stream && ..."` still failed with
+  `Permission denied (publickey,password)`. Public authenticated VPS smoke
+  created a temporary Supabase auth user, signed in, called
+  `https://148-113-191-103.sslip.io/api/byok/profile`, and cleaned the user up;
+  the deployed API still returned HTTP 500 `byok-route-failed` with
+  `Supabase did not return a default scene`, which matches the stale pre-`e7785f2`
+  bundle. No code changed in this checkpoint, so no `npm run build` or deploy
+  was run. Security review: the smoke used ignored local env values and printed
+  only statuses/error text, not access tokens or key material.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: deploy the rebuilt API bundle to the VPS, rerun the
-public authenticated profile/workspace bootstrap smoke, then run the magic-link
-sign-in browser smoke, callback persistence, settings sync/pull, and signed OBS
-overlay URL issuance.
+Next UI/product patch: regain VPS deploy access or deploy the pushed
+`codex/byok-product-spine` branch through another known path, restart the
+overlay/bot runtime, rerun the public authenticated profile/workspace bootstrap
+smoke, then run magic-link browser smoke, callback persistence, settings
+sync/pull, and signed OBS overlay URL issuance.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
