@@ -546,14 +546,30 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   Caddy, and confirmed public
   `https://148-113-191-103.sslip.io/api/byok/profile` now returns expected HTTP
   401 `supabase-auth-required` JSON.
+- 2026-05-16 heartbeat checkpoint: proved the next Supabase blocker. Read
+  `git status --short` (clean), recent commits (`1c41259`, `882a4dd`,
+  `b5007b8`, `e440acd`, `436d763`), this status doc, and
+  `supabase\migrations\20260515000100_byok_product_spine.sql`. Supabase Auth
+  settings still returns HTTP 200, but server-side Node `fetch` with the
+  configured server key returns HTTP 404 for every expected migration table:
+  `profiles`, `workspaces`, `workspace_members`, `scenes`, `characters`,
+  `synced_settings`, `provider_secret_descriptors`, `overlay_tokens`,
+  `memory_entries`, and `assets`, each reporting that the table is not in the
+  public schema cache. A PowerShell probe with `sb_secret` returned Supabase's
+  browser-use guard; official Supabase docs confirm secret keys are blocked for
+  browser-like clients, so the decisive check is the Node/server-side fetch.
+  No runtime code changed in this checkpoint, so no `npm run build` or VPS
+  deploy was required. Security review: checked staged/tracked diff for
+  `sb_secret`, `sb_publishable`, and provider-secret strings before commit;
+  only ignored `.env`/`.env.local` contain configured key values.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: run an actual magic-link sign-in smoke and check whether
-the Supabase migration has been applied. If profile bootstrap fails after login,
-apply `supabase\migrations\20260515000100_byok_product_spine.sql` in the
-Supabase SQL editor/CLI, then re-test `/api/byok/profile`,
-settings sync/pull, and signed OBS overlay URL issuance.
+Next UI/product patch: apply
+`supabase\migrations\20260515000100_byok_product_spine.sql` in the Supabase SQL
+editor/CLI for project `btjccsyoevbczmamoamt`, then rerun the Node table probe,
+magic-link sign-in smoke, `/api/byok/profile`, settings sync/pull, and signed
+OBS overlay URL issuance.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
