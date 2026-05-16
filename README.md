@@ -2,7 +2,7 @@
 
 Source-of-truth README for the standalone Twitch-first web waifu stream overlay.
 
-Current as of 2026-05-14. This file should describe what the repo actually does
+Current as of 2026-05-15. This file should describe what the repo actually does
 today. If code and this README disagree, fix the README or the code in the same
 change.
 
@@ -45,6 +45,20 @@ Stream routelet
   -> routes browser audio into Pulse/PipeWire
   -> FFmpeg maps Chromium video plus browser audio to RTMP
 ```
+
+BYOK product shell:
+
+```text
+Vercel-shaped app/API
+  -> /login magic-link auth
+  -> /dashboard workspace/scene controls
+  -> /account profile and local key status
+  -> /overlay/:sceneId private preview or signed OBS token route
+  -> /api/byok/* Supabase-backed profile/workspace/settings/overlay APIs
+```
+
+Deployment runbook: `docs/VERCEL_SUPABASE_BYOK.md`.
+Environment example: `.env.example`.
 
 The browser is the primary Twitch reader. The server defaults to
 `TWITCH_MOCK=true`, which means "server Twitch is off / client-direct mode" in

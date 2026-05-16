@@ -334,6 +334,18 @@ src/lib/product/cloud-settings.test.ts src/lib/product/byok.test.ts` ->
 - 2026-05-15: `npx vitest run src/lib/product/byok-api.test.ts
 src/lib/product/cloud-settings.test.ts src/lib/product/app-route.test.ts` ->
   passed, 3 files, 20 tests.
+- 2026-05-15: Work-rhythm checkpoint added deployment source-of-truth docs for
+  the BYOK hosted path. Added `.env.example` with browser-visible and
+  server-only variables, added `docs\VERCEL_SUPABASE_BYOK.md` with Supabase
+  migration/auth redirect/Vercel env/smoke-test steps, and updated `README.md`
+  to describe the product shell routes plus deployment runbook.
+- 2026-05-15: Security pass for the deployment docs found no new blocker:
+  placeholders only, no real key material; docs explicitly warn against `VITE_`
+  provider/service-role/JWT/signing secrets and keep provider keys browser-local
+  for v1.
+- 2026-05-15: `npx vitest run src/lib/product/supabase-schema.test.ts
+src/lib/product/supabase-env.test.ts src/lib/product/byok.test.ts` -> passed,
+  3 files, 19 tests.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and
