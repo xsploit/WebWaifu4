@@ -276,6 +276,31 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('reports requested transport overrides in health state', () => {
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      store: true,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createFetcher([]),
+    });
+
+    expect(provider.getState('local:persona:hikari', { transportMode: 'websocket' })).toMatchObject(
+      {
+        activeStateKey: 'local:persona:hikari',
+        provider: 'openai-responses-ws',
+        transport: 'websocket',
+        websocketConfigured: true,
+        websocketLifecycle: 'request-scoped',
+      },
+    );
+  });
+
   it('passes request generation settings into Responses API payloads', async () => {
     const calls: FetchCall[] = [];
     const provider = new OpenAiResponsesProvider({

@@ -6,6 +6,7 @@ import type {
   ChatProviderRequest,
   ChatProviderResponse,
   ChatProviderStreamHandlers,
+  ChatProviderStateOptions,
 } from './ChatProvider.js';
 import {
   TAVILY_OPENAI_TOOLS,
@@ -436,8 +437,17 @@ export class OpenAiResponsesProvider implements ChatProvider {
     }
   }
 
-  getState(stateKey?: string) {
+  getState(stateKey?: string, options: ChatProviderStateOptions = {}) {
     const defaultState = this.getScopedState('default');
+    const runtime = {
+      stateMode: options.openAiStateMode ?? this.options.stateMode,
+      useWebSocket:
+        options.transportMode === 'websocket'
+          ? true
+          : options.transportMode === 'http-stream'
+            ? false
+            : this.options.useWebSocket,
+    };
     const snapshots = Array.from(this.states.entries())
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, state]) => this.getStateSnapshot(key, state));
@@ -446,8 +456,8 @@ export class OpenAiResponsesProvider implements ChatProvider {
       snapshots.find((snapshot) => snapshot.stateKey === activeStateKey) ??
       this.getStateSnapshot(activeStateKey, null);
     return {
-      provider: this.options.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
-      stateMode: this.options.stateMode,
+      provider: runtime.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
+      stateMode: runtime.stateMode,
       activeState,
       activeStateKey,
       conversationId: activeState.conversationId ?? defaultState.conversationId,
@@ -461,11 +471,11 @@ export class OpenAiResponsesProvider implements ChatProvider {
       toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
       toolsAvailable: Boolean(this.options.tavilyTools),
       requestedTransport: 'server-default',
-      transport: this.options.useWebSocket ? 'websocket' : 'http-stream',
-      websocketConfigured: this.options.useWebSocket,
+      transport: runtime.useWebSocket ? 'websocket' : 'http-stream',
+      websocketConfigured: runtime.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
-      websocketStatus: this.options.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
-      websocketLifecycle: this.options.useWebSocket ? 'request-scoped' : 'disabled',
+      websocketStatus: runtime.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
+      websocketLifecycle: runtime.useWebSocket ? 'request-scoped' : 'disabled',
     };
   }
 

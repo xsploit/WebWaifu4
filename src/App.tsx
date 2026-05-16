@@ -506,10 +506,14 @@ function getAiModelsUrl(llmProvider: AiSettings['llmProvider']) {
 
 function getAiHealthUrl({
   model,
+  openAiStateMode,
   stateKey,
+  transportMode,
 }: {
   model?: string;
+  openAiStateMode?: AiSettings['openAiStateMode'];
   stateKey?: string;
+  transportMode?: AiSettings['aiTransportMode'];
 } = {}) {
   const url = new URL(getAiProxyUrl());
   url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/health');
@@ -521,6 +525,12 @@ function getAiHealthUrl({
   }
   if (model?.trim()) {
     url.searchParams.set('model', model.trim());
+  }
+  if (transportMode && transportMode !== 'server-default') {
+    url.searchParams.set('transportMode', transportMode);
+  }
+  if (openAiStateMode && openAiStateMode !== 'server-default') {
+    url.searchParams.set('openAiStateMode', openAiStateMode);
   }
   return url.toString();
 }
@@ -1695,7 +1705,9 @@ function App() {
       const response = await fetch(
         getAiHealthUrl({
           model: aiSettingsRef.current.model,
+          openAiStateMode: aiSettingsRef.current.openAiStateMode,
           stateKey: activeRelationshipStateKeyRef.current,
+          transportMode: aiSettingsRef.current.aiTransportMode,
         }),
         {
           cache: 'no-store',

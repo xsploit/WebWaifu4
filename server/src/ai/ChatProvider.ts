@@ -41,6 +41,11 @@ export type ChatProviderStreamHandlers = {
   onTextDelta?: (delta: string) => void;
 };
 
+export type ChatProviderStateOptions = {
+  openAiStateMode?: ChatProviderRequest['openAiStateMode'];
+  transportMode?: ChatProviderRequest['transportMode'];
+};
+
 export interface ChatProvider {
   complete(request: ChatProviderRequest): Promise<ChatProviderResponse>;
   completeStream?(
@@ -49,6 +54,6 @@ export interface ChatProvider {
   ): Promise<ChatProviderResponse>;
   getModel?(): string;
   setModel?(model: string): void;
-  getState?(stateKey?: string): Record<string, unknown>;
+  getState?(stateKey?: string, options?: ChatProviderStateOptions): Record<string, unknown>;
   resetState?(): void;
 }

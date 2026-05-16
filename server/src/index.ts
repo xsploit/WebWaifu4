@@ -856,13 +856,21 @@ const httpServer = createServer(async (request, response) => {
   if (request.method === 'GET' && runtimePath === '/health') {
     const requestedStateKey = url.searchParams.get('stateKey') ?? undefined;
     const requestedModel = url.searchParams.get('model') ?? undefined;
+    const requestedTransportMode = normalizeAiTransportMode(url.searchParams.get('transportMode'));
+    const requestedOpenAiStateMode = normalizeOpenAiStateMode(
+      url.searchParams.get('openAiStateMode'),
+    );
     const runtimeHealthProvider = getRuntimeChatProvider(
       config,
       request,
       getHeaderValue(request, 'x-yourwifey-llm-provider') || config.aiProvider,
       requestedModel ?? undefined,
     );
-    const providerState = runtimeHealthProvider?.getState?.(requestedStateKey) ?? null;
+    const providerState =
+      runtimeHealthProvider?.getState?.(requestedStateKey, {
+        openAiStateMode: requestedOpenAiStateMode,
+        transportMode: requestedTransportMode,
+      }) ?? null;
     const runtimeTavilyApiKey = getRuntimeTavilyApiKey(config, request);
     const healthProviderState =
       providerState && runtimeTavilyApiKey
