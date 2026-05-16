@@ -108,6 +108,8 @@ type OpenAiRequestRuntime = {
   useWebSocket: boolean;
 };
 
+type UnsupportedOpenAiParam = 'reasoning' | 'temperature';
+
 function getWebSocketStatus(ws: WebSocket | null) {
   if (!ws) {
     return 'idle';
@@ -382,21 +384,15 @@ function isReasoningStyleModel(model: string) {
   );
 }
 
-function supportsNoReasoningEffort(model: string) {
-  const normalized = model.trim().toLowerCase();
-  const gpt5Version = normalized.match(/^gpt-5\.(\d+)/);
-  return gpt5Version ? Number(gpt5Version[1]) >= 1 : false;
-}
-
-function normalizeReasoningEffortForModel(model: string, effort: OpenAiReasoningEffort) {
-  if (effort === 'none' && !supportsNoReasoningEffort(model)) {
-    return 'minimal';
+function normalizeReasoningEffortForModel(effort: OpenAiReasoningEffort | undefined) {
+  if (!effort || effort === 'none') {
+    return null;
   }
   return effort;
 }
 
 function supportsTemperature(model: string, reasoningEffort?: OpenAiReasoningEffort | null) {
-  return !isReasoningStyleModel(model) || reasoningEffort === 'none';
+  return !isReasoningStyleModel(model) || !reasoningEffort || reasoningEffort === 'none';
 }
 
 function normalizeMaxOutputTokens(requested: number | undefined, fallback: number) {
@@ -409,8 +405,24 @@ function normalizeTemperature(requested: number | undefined, fallback: number) {
   return Math.min(2, Math.max(0, value));
 }
 
+function getUnsupportedParamFromError(error: unknown): UnsupportedOpenAiParam | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  if (!normalized.includes('unsupported parameter')) {
+    return null;
+  }
+  if (normalized.includes('reasoning.effort') || normalized.includes("'reasoning'")) {
+    return 'reasoning';
+  }
+  if (normalized.includes('temperature')) {
+    return 'temperature';
+  }
+  return null;
+}
+
 export class OpenAiResponsesProvider implements ChatProvider {
   private readonly states = new Map<string, OpenAiScopedState>();
+  private readonly unsupportedParamsByModel = new Map<string, Set<UnsupportedOpenAiParam>>();
   private ws: WebSocket | null = null;
   private wsReady: Promise<WebSocket> | null = null;
   private readonly fetcher: typeof fetch;
@@ -569,6 +581,35 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return headers;
   }
 
+  private get capabilityKey() {
+    return `${this.baseUrl}|${this.options.model.trim().toLowerCase()}`;
+  }
+
+  private isUnsupportedParam(param: UnsupportedOpenAiParam) {
+    return this.unsupportedParamsByModel.get(this.capabilityKey)?.has(param) ?? false;
+  }
+
+  private markUnsupportedParam(param: UnsupportedOpenAiParam) {
+    const key = this.capabilityKey;
+    const params = this.unsupportedParamsByModel.get(key) ?? new Set<UnsupportedOpenAiParam>();
+    params.add(param);
+    this.unsupportedParamsByModel.set(key, params);
+  }
+
+  private getReasoningEffort() {
+    if (!isReasoningStyleModel(this.options.model) || this.isUnsupportedParam('reasoning')) {
+      return null;
+    }
+    return normalizeReasoningEffortForModel(this.options.reasoningEffort);
+  }
+
+  private supportsTemperature(reasoningEffort?: OpenAiReasoningEffort | null) {
+    return (
+      supportsTemperature(this.options.model, reasoningEffort) &&
+      !this.isUnsupportedParam('temperature')
+    );
+  }
+
   private createInitialState(): OpenAiScopedState {
     return {
       cachedTokens: 0,
@@ -601,10 +642,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       request.disableState === true ||
       request.stateScope === 'memory' ||
       runtime.stateMode === 'stateless';
-    const reasoningEffort =
-      isReasoningStyleModel(this.options.model) && this.options.reasoningEffort
-        ? normalizeReasoningEffortForModel(this.options.model, this.options.reasoningEffort)
-        : null;
+    const reasoningEffort = this.getReasoningEffort();
     return {
       provider: runtime.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
       stateKey: key,
@@ -620,7 +658,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       maxOutputTokens: normalizeMaxOutputTokens(request.maxTokens, this.options.maxOutputTokens),
       reasoningEffort,
       store: this.options.store,
-      temperature: supportsTemperature(this.options.model, reasoningEffort)
+      temperature: this.supportsTemperature(reasoningEffort)
         ? normalizeTemperature(request.temperature, this.options.temperature)
         : null,
       toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
@@ -658,10 +696,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       state.stateSignature = signature;
     }
 
-    const reasoningEffort =
-      isReasoningStyleModel(this.options.model) && this.options.reasoningEffort
-        ? normalizeReasoningEffortForModel(this.options.model, this.options.reasoningEffort)
-        : null;
+    const reasoningEffort = this.getReasoningEffort();
     const conversationAlreadySeeded =
       usesConversation &&
       Boolean(state.conversationId || (key === 'default' && this.options.conversationId?.trim()));
@@ -696,7 +731,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       };
     }
 
-    if (supportsTemperature(this.options.model, reasoningEffort)) {
+    if (this.supportsTemperature(reasoningEffort)) {
       payload.temperature = normalizeTemperature(request.temperature, this.options.temperature);
     }
 
@@ -795,13 +830,28 @@ export class OpenAiResponsesProvider implements ChatProvider {
       useWebSocket: this.options.useWebSocket,
     },
   ) {
-    if (runtime.useWebSocket) {
-      return this.completeWithWebSocket(payload, stream ? onTextDelta : undefined);
+    let nextPayload = { ...payload };
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        if (runtime.useWebSocket) {
+          return await this.completeWithWebSocket(nextPayload, stream ? onTextDelta : undefined);
+        }
+
+        return stream
+          ? await this.completeWithHttpStream(nextPayload, onTextDelta)
+          : await this.completeWithHttp(nextPayload);
+      } catch (error) {
+        const unsupportedParam = getUnsupportedParamFromError(error);
+        if (!unsupportedParam || !(unsupportedParam in nextPayload)) {
+          throw error;
+        }
+        this.markUnsupportedParam(unsupportedParam);
+        const { [unsupportedParam]: _unused, ...withoutUnsupportedParam } = nextPayload;
+        nextPayload = withoutUnsupportedParam;
+      }
     }
 
-    return stream
-      ? this.completeWithHttpStream(payload, onTextDelta)
-      : this.completeWithHttp(payload);
+    throw new Error('OpenAI Responses API parameter compatibility retry failed.');
   }
 
   private createToolFollowupPayload(

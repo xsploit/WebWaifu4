@@ -80,6 +80,7 @@ type OpenAiConversationPayload = {
 };
 
 type OpenAiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+type UnsupportedOpenAiParam = 'reasoning' | 'temperature';
 
 type ResponsesFunctionCallOutput = {
   type: 'function_call_output';
@@ -103,6 +104,7 @@ type StreamingFunctionCallState = {
 const MAX_TOOL_ROUNDS = 5;
 
 const routeStates = new Map<string, RouteState>();
+const unsupportedParamsByModel = new Map<string, Set<UnsupportedOpenAiParam>>();
 
 function normalizeMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value)) {
@@ -432,7 +434,7 @@ function isReasoningStyleModel(model: string) {
 }
 
 function supportsTemperature(model: string, reasoningEffort?: OpenAiReasoningEffort | null) {
-  return !isReasoningStyleModel(model) || reasoningEffort === 'none';
+  return !isReasoningStyleModel(model) || !reasoningEffort || reasoningEffort === 'none';
 }
 
 function normalizeMaxOutputTokens(requested: number | undefined, fallback: number) {
@@ -445,17 +447,40 @@ function normalizeTemperature(requested: number | undefined, fallback: number) {
   return Math.min(2, Math.max(0, value));
 }
 
-function supportsNoReasoningEffort(model: string) {
-  const normalized = model.trim().toLowerCase();
-  const gpt5Version = normalized.match(/^gpt-5\.(\d+)/);
-  return gpt5Version ? Number(gpt5Version[1]) >= 1 : false;
-}
-
-function normalizeReasoningEffortForModel(model: string, effort: OpenAiReasoningEffort) {
-  if (effort === 'none' && !supportsNoReasoningEffort(model)) {
-    return 'minimal';
+function normalizeReasoningEffortForModel(effort: OpenAiReasoningEffort | undefined) {
+  if (!effort || effort === 'none') {
+    return null;
   }
   return effort;
+}
+
+function getUnsupportedParamFromText(text: string): UnsupportedOpenAiParam | null {
+  const normalized = text.toLowerCase();
+  if (!normalized.includes('unsupported parameter')) {
+    return null;
+  }
+  if (normalized.includes('reasoning.effort') || normalized.includes("'reasoning'")) {
+    return 'reasoning';
+  }
+  if (normalized.includes('temperature')) {
+    return 'temperature';
+  }
+  return null;
+}
+
+function getCapabilityKey(apiBaseUrl: string, model: string) {
+  return `${apiBaseUrl}|${model.trim().toLowerCase()}`;
+}
+
+function isUnsupportedParam(apiBaseUrl: string, model: string, param: UnsupportedOpenAiParam) {
+  return unsupportedParamsByModel.get(getCapabilityKey(apiBaseUrl, model))?.has(param) ?? false;
+}
+
+function markUnsupportedParam(apiBaseUrl: string, model: string, param: UnsupportedOpenAiParam) {
+  const key = getCapabilityKey(apiBaseUrl, model);
+  const params = unsupportedParamsByModel.get(key) ?? new Set<UnsupportedOpenAiParam>();
+  params.add(param);
+  unsupportedParamsByModel.set(key, params);
 }
 
 function parseReasoningEffort(): OpenAiReasoningEffort {
@@ -818,9 +843,14 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     state.stateSignature = signature;
   }
-  const reasoningEffort = isReasoningStyleModel(model)
-    ? normalizeReasoningEffortForModel(model, parseReasoningEffort())
-    : null;
+  const apiBaseUrl = (process.env['OPENAI_API_BASE_URL'] || 'https://api.openai.com/v1').replace(
+    /\/+$/,
+    '',
+  );
+  const reasoningEffort =
+    isReasoningStyleModel(model) && !isUnsupportedParam(apiBaseUrl, model, 'reasoning')
+      ? normalizeReasoningEffortForModel(parseReasoningEffort())
+      : null;
   const maxOutputTokens = normalizeMaxOutputTokens(body.maxTokens, 220);
   const conversationAlreadySeeded =
     !stateDisabled &&
@@ -858,7 +888,10 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     };
   }
 
-  if (supportsTemperature(model, reasoningEffort)) {
+  if (
+    supportsTemperature(model, reasoningEffort) &&
+    !isUnsupportedParam(apiBaseUrl, model, 'temperature')
+  ) {
     payload.temperature = normalizeTemperature(body.temperature, 0.7);
   }
 
@@ -883,10 +916,6 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     payload.tool_choice = 'auto';
   }
 
-  const apiBaseUrl = (process.env['OPENAI_API_BASE_URL'] || 'https://api.openai.com/v1').replace(
-    /\/+$/,
-    '',
-  );
   try {
     if (!stateDisabled && stateMode === 'conversation') {
       payload.conversation = await ensureConversationId(apiBaseUrl, apiKey, state);
@@ -901,12 +930,34 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const requestOpenAiResponse = (requestPayload: Record<string, unknown>) =>
-    fetch(`${apiBaseUrl}/responses`, {
-      method: 'POST',
-      headers: getOpenAiHeaders(apiKey),
-      body: JSON.stringify(requestPayload),
+  const requestOpenAiResponse = async (requestPayload: Record<string, unknown>) => {
+    let nextPayload = requestPayload;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const openAiResponse = await fetch(`${apiBaseUrl}/responses`, {
+        method: 'POST',
+        headers: getOpenAiHeaders(apiKey),
+        body: JSON.stringify(nextPayload),
+      });
+      if (openAiResponse.ok) {
+        return openAiResponse;
+      }
+      const errorText = await openAiResponse.text().catch(() => '');
+      const unsupportedParam = getUnsupportedParamFromText(errorText);
+      if (!unsupportedParam || !(unsupportedParam in nextPayload)) {
+        return new Response(
+          errorText || `OpenAI Responses API failed with HTTP ${openAiResponse.status}.`,
+          { status: openAiResponse.status },
+        );
+      }
+      markUnsupportedParam(apiBaseUrl, model, unsupportedParam);
+      const { [unsupportedParam]: _unused, ...withoutUnsupportedParam } = nextPayload;
+      nextPayload = withoutUnsupportedParam;
+    }
+
+    return new Response('OpenAI Responses API parameter compatibility retry failed.', {
+      status: 400,
     });
+  };
 
   let openAiResponse = await requestOpenAiResponse(
     shouldStream ? { ...payload, stream: true } : payload,

@@ -165,6 +165,40 @@ function createStreamingLifecycleFetcher(calls: FetchCall[]) {
   }) as typeof fetch;
 }
 
+function createUnsupportedTemperatureFetcher(calls: FetchCall[]) {
+  let responseIndex = 0;
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+    calls.push({
+      url: String(input),
+      body,
+    });
+
+    if ('temperature' in body) {
+      return new Response(
+        "Unsupported parameter: 'temperature' is not supported with this model.",
+        {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+        },
+      );
+    }
+
+    responseIndex += 1;
+    return new Response(
+      JSON.stringify({
+        id: `resp_no_temp_${responseIndex}`,
+        output_text: 'reply',
+        usage: { input_tokens_details: { cached_tokens: responseIndex } },
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+  }) as typeof fetch;
+}
+
 function createToolCallingFetcher(calls: FetchCall[]) {
   let responseIndex = 0;
   const responses = [
@@ -380,14 +414,44 @@ describe('OpenAiResponsesProvider', () => {
     expect(calls[0]?.body).toMatchObject({
       max_output_tokens: 340,
       model: 'gpt-5.5',
-      reasoning: { effort: 'none' },
       temperature: 0.35,
     });
+    expect(calls[0]?.body).not.toHaveProperty('reasoning');
     expect(response.meta).toMatchObject({
       maxOutputTokens: 340,
-      reasoningEffort: 'none',
+      reasoningEffort: null,
       temperature: 0.35,
     });
+  });
+
+  it('retries without temperature when a model rejects it and remembers the capability', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createUnsupportedTemperatureFetcher(calls),
+    });
+
+    await provider.complete({
+      ...createRequest('first'),
+      temperature: 0.35,
+    });
+    await provider.complete({
+      ...createRequest('second'),
+      temperature: 0.35,
+    });
+
+    expect(calls).toHaveLength(3);
+    expect(calls[0]?.body).toHaveProperty('temperature', 0.35);
+    expect(calls[1]?.body).not.toHaveProperty('temperature');
+    expect(calls[2]?.body).not.toHaveProperty('temperature');
   });
 
   it('floors max output tokens to the Responses API minimum', async () => {
