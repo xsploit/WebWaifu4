@@ -41,6 +41,8 @@ One live polish iteration:
   -MaxIterations 1 `
   -MinIterations 1 `
   -Sandbox danger-full-access `
+  -ApprovalPolicy never `
+  -IterationTimeoutSeconds 7200 `
   -SkipGitRepoCheck
 ```
 
@@ -80,6 +82,8 @@ Bounded sprint:
   -MaxIterations 4 `
   -MinIterations 1 `
   -Sandbox danger-full-access `
+  -ApprovalPolicy never `
+  -IterationTimeoutSeconds 7200 `
   -SkipGitRepoCheck
 ```
 
@@ -92,3 +96,16 @@ Operator controls:
 ```
 
 Logs go to `.ralph-loop/`. Keep `MaxIterations` small and inspect the status doc after each sprint.
+
+## Headless Codex Notes
+
+The runner uses `codex exec`, not the interactive TUI. For unattended runs it
+passes `--ask-for-approval never` by default, keeps sandbox mode explicit, writes
+the final assistant message to `.ralph-loop`, and kills a stuck iteration after
+`-IterationTimeoutSeconds`.
+
+Use `-DryRun` first and confirm the printed command contains:
+
+```text
+codex exec ... --sandbox danger-full-access --ask-for-approval never
+```

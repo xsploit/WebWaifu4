@@ -9,7 +9,9 @@ param(
     [string] $Model = "",
     [ValidateSet("read-only", "workspace-write", "danger-full-access")]
     [string] $Sandbox = "danger-full-access",
-    [string] $ApprovalPolicy = "",
+    [ValidateSet("", "untrusted", "on-failure", "on-request", "never")]
+    [string] $ApprovalPolicy = "never",
+    [int] $IterationTimeoutSeconds = 7200,
     [string] $LogDir = ".ralph-loop",
     [int] $SleepSeconds = 0,
     [switch] $Search,
@@ -60,6 +62,7 @@ function Write-RalphState {
         lastMessageFile = $LastMessageFile
         lastLogFile = $LogFile
         lastExitCode = $ExitCode
+        iterationTimeoutSeconds = $IterationTimeoutSeconds
         updatedAt = (Get-Date).ToString("o")
     }
     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -184,7 +187,7 @@ $Prompt
         } else {
             $ArgsList += @("--sandbox", $Sandbox)
             if (-not [string]::IsNullOrWhiteSpace($ApprovalPolicy)) {
-                Write-Warning "This Codex CLI does not expose --ask-for-approval; ignoring -ApprovalPolicy. Use -BypassApprovalsAndSandbox for unattended no-prompt runs."
+                $ArgsList += @("--ask-for-approval", $ApprovalPolicy)
             }
         }
         if (-not [string]::IsNullOrWhiteSpace($Model)) {
@@ -218,9 +221,42 @@ $Prompt
         $PreviousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         try {
-            $Output = & $Codex @ArgsList 2>&1
-            $ExitCode = $LASTEXITCODE
+            $Output = @()
+            $Job = Start-Job -ScriptBlock {
+                param($Command, $Arguments, $JobWorkdir)
+                Set-Location -LiteralPath $JobWorkdir
+                & $Command @Arguments 2>&1
+                $global:LASTEXITCODE
+            } -ArgumentList $Codex, $ArgsList, $Workdir
+
+            if ($IterationTimeoutSeconds -gt 0) {
+                $Completed = Wait-Job -Job $Job -Timeout $IterationTimeoutSeconds
+            } else {
+                $Completed = Wait-Job -Job $Job
+            }
+
+            if ($null -eq $Completed) {
+                Stop-Job -Job $Job -ErrorAction SilentlyContinue
+                $ExitCode = 124
+                $Output = @("[ralph-codex] iteration timed out after $IterationTimeoutSeconds seconds.")
+            } else {
+                $JobOutput = Receive-Job -Job $Job
+                $ExitCode = 0
+                if ($JobOutput.Count -gt 0 -and $JobOutput[-1] -is [int]) {
+                    $ExitCode = [int]$JobOutput[-1]
+                    $Output = if ($JobOutput.Count -gt 1) {
+                        $JobOutput[0..($JobOutput.Count - 2)]
+                    } else {
+                        @()
+                    }
+                } else {
+                    $Output = $JobOutput
+                }
+            }
         } finally {
+            if ($Job) {
+                Remove-Job -Job $Job -Force -ErrorAction SilentlyContinue
+            }
             $ErrorActionPreference = $PreviousErrorActionPreference
         }
         $OutputText = $Output | Out-String
