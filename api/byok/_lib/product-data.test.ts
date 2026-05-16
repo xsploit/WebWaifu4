@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseServerConfig } from '../../../src/lib/product/supabase-env.js';
-import { ensureByokProfile, ensureDefaultScene, ensureDefaultWorkspace } from './product-data.js';
+import {
+  ensureByokProfile,
+  ensureDefaultScene,
+  ensureDefaultWorkspace,
+  fetchSyncedSetting,
+  upsertSyncedSetting,
+} from './product-data.js';
 import type { SupabaseFetch } from './supabase-context.js';
 
 const config: SupabaseServerConfig = {
@@ -101,6 +107,80 @@ describe('BYOK product data bootstrap', () => {
     const postCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
     expect(postCalls).toHaveLength(3);
     expect(postCalls.map(([, init]) => init?.body).join('\n')).not.toMatch(/apiKey|secret|sk-/i);
+  });
+
+  it('upserts and reads synced settings without accepting secret-shaped keys', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/rest/v1/synced_settings?on_conflict=id') && init?.method === 'POST') {
+        return jsonResponse([
+          {
+            id: 'visualSettings',
+            key: 'visualSettings',
+            storage_class: 'public-overlay',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            value_json: '{}',
+            workspace_id: 'workspace-1',
+          },
+        ]);
+      }
+      if (url.includes('/rest/v1/synced_settings?')) {
+        return jsonResponse([
+          {
+            id: 'visualSettings',
+            key: 'visualSettings',
+            storage_class: 'public-overlay',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            value_json: '{}',
+            workspace_id: 'workspace-1',
+          },
+        ]);
+      }
+      return jsonResponse([], 404);
+    });
+    const fetchFn = fetchMock as unknown as SupabaseFetch;
+
+    await expect(
+      upsertSyncedSetting({
+        body: {
+          key: 'visualSettings',
+          storageClass: 'public-overlay',
+          valueJson: '{}',
+        },
+        config,
+        fetchFn,
+        settingId: 'visualSettings',
+        workspaceId: 'workspace-1',
+      }),
+    ).resolves.toMatchObject({
+      key: 'visualSettings',
+      storageClass: 'public-overlay',
+    });
+
+    await expect(
+      fetchSyncedSetting({
+        config,
+        fetchFn,
+        settingId: 'visualSettings',
+        workspaceId: 'workspace-1',
+      }),
+    ).resolves.toMatchObject({
+      id: 'visualSettings',
+      valueJson: '{}',
+    });
+
+    await expect(
+      upsertSyncedSetting({
+        body: {
+          key: 'openai.apiKey',
+          storageClass: 'synced-private',
+          valueJson: '"sk-test"',
+        },
+        config,
+        fetchFn,
+        settingId: 'openai.apiKey',
+        workspaceId: 'workspace-1',
+      }),
+    ).rejects.toThrow(/key vault/i);
   });
 });
 

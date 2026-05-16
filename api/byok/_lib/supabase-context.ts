@@ -15,6 +15,7 @@ import {
 } from '../../../src/lib/product/supabase-env.js';
 
 export type ByokApiRequestLike = {
+  body?: unknown;
   headers?: Record<string, string | string[] | undefined>;
   query?: Record<string, string | string[] | undefined>;
 };
@@ -86,6 +87,7 @@ export async function resolveByokApiRouteRequest(input: {
     context: {
       accountMode,
       workspace,
+      settingStorageClass: readSettingStorageClass(input.request.body),
       targetUserId: input.routeId.startsWith('profile.self.') ? (authUser?.id ?? null) : null,
     },
   };
@@ -201,4 +203,12 @@ function readHeader(request: ByokApiRequestLike, name: string) {
     return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
   }
   return '';
+}
+
+function readSettingStorageClass(body: unknown) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null;
+  }
+  const value = (body as Record<string, unknown>)['storageClass'];
+  return value === 'public-overlay' || value === 'synced-private' ? value : null;
 }

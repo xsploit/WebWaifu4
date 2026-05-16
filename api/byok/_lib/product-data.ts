@@ -5,6 +5,7 @@ import type {
   ByokWorkspaceSummary,
 } from '../../../src/lib/product/byok-api.js';
 import type { ProductStorageMode, ProviderKeyMode } from '../../../src/lib/product/byok.js';
+import { assertSettingCanSync, type SyncedSettingRecord } from '../../../src/lib/product/byok.js';
 import type { SupabaseServerConfig } from '../../../src/lib/product/supabase-env.js';
 import { fetchSupabaseRest, type SupabaseFetch } from './supabase-context.js';
 
@@ -38,6 +39,17 @@ type SceneRow = {
   name?: unknown;
   twitch_channel?: unknown;
   updated_at?: unknown;
+  workspace_id?: unknown;
+};
+
+type SyncedSettingRow = {
+  character_id?: unknown;
+  id?: unknown;
+  key?: unknown;
+  scene_id?: unknown;
+  storage_class?: unknown;
+  updated_at?: unknown;
+  value_json?: unknown;
   workspace_id?: unknown;
 };
 
@@ -266,6 +278,72 @@ export async function updateWorkspace(input: {
   return summary;
 }
 
+export async function fetchSyncedSetting(input: {
+  config: SupabaseServerConfig;
+  fetchFn: SupabaseFetch;
+  settingId: string;
+  workspaceId: string;
+}) {
+  const rows = await fetchSupabaseRest<SyncedSettingRow>(
+    input.config,
+    `/rest/v1/synced_settings?workspace_id=eq.${encodeURIComponent(input.workspaceId)}&id=eq.${encodeURIComponent(input.settingId)}&select=${SYNCED_SETTING_SELECT}&limit=1`,
+    input.fetchFn,
+  );
+  return normalizeSyncedSetting(rows[0], input.workspaceId);
+}
+
+export async function upsertSyncedSetting(input: {
+  body: unknown;
+  config: SupabaseServerConfig;
+  fetchFn: SupabaseFetch;
+  settingId: string;
+  workspaceId: string;
+}) {
+  const body =
+    input.body && typeof input.body === 'object' ? (input.body as Record<string, unknown>) : {};
+  const key = normalizeText(body['key'], 160) || input.settingId;
+  const storageClass = normalizeSyncedStorageClass(body['storageClass']);
+  const valueJson = normalizeText(body['valueJson'], 250000);
+  if (!storageClass || valueJson === null) {
+    throw new Error('Synced setting requires storageClass and valueJson.');
+  }
+
+  const record: SyncedSettingRecord = {
+    characterId: normalizeNullableText(body['characterId'], 160) ?? undefined,
+    id: input.settingId,
+    key,
+    sceneId: normalizeNullableText(body['sceneId'], 160) ?? undefined,
+    storageClass,
+    updatedAt: new Date().toISOString(),
+    valueJson,
+    workspaceId: input.workspaceId,
+  };
+  assertSettingCanSync(record);
+
+  const rows = await fetchSupabaseRest<SyncedSettingRow>(
+    input.config,
+    '/rest/v1/synced_settings?on_conflict=id',
+    input.fetchFn,
+    {
+      body: JSON.stringify({
+        character_id: record.characterId ?? null,
+        id: record.id,
+        key: record.key,
+        scene_id: record.sceneId ?? null,
+        storage_class: record.storageClass,
+        updated_at: record.updatedAt,
+        value_json: record.valueJson,
+        workspace_id: record.workspaceId,
+      }),
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=representation',
+      },
+      method: 'POST',
+    },
+  );
+  return normalizeSyncedSetting(rows[0], input.workspaceId) ?? record;
+}
+
 export async function attachDefaultScene(input: {
   config: SupabaseServerConfig;
   fetchFn: SupabaseFetch;
@@ -286,6 +364,8 @@ const WORKSPACE_SELECT =
   'id,owner_user_id,name,storage_mode,provider_key_mode,created_at,updated_at';
 const SCENE_SELECT =
   'id,workspace_id,name,twitch_channel,active_character_id,created_at,updated_at';
+const SYNCED_SETTING_SELECT =
+  'id,workspace_id,scene_id,character_id,key,storage_class,value_json,updated_at';
 
 async function selectProfile(input: {
   authUser: SupabaseAuthIdentity;
@@ -352,6 +432,35 @@ function normalizeScene(row: SceneRow | undefined, workspaceId: string): ByokSce
     updatedAt: stringOrNull(row.updated_at) ?? fallbackNow,
     workspaceId: stringOrNull(row.workspace_id) ?? workspaceId,
   };
+}
+
+function normalizeSyncedSetting(
+  row: SyncedSettingRow | undefined,
+  workspaceId: string,
+): SyncedSettingRecord | null {
+  if (!row || typeof row.id !== 'string') {
+    return null;
+  }
+  const storageClass = normalizeSyncedStorageClass(row.storage_class);
+  const key = stringOrNull(row.key);
+  const valueJson = typeof row.value_json === 'string' ? row.value_json : null;
+  if (!storageClass || !key || valueJson === null) {
+    return null;
+  }
+  return {
+    characterId: stringOrNull(row.character_id) ?? undefined,
+    id: row.id,
+    key,
+    sceneId: stringOrNull(row.scene_id) ?? undefined,
+    storageClass,
+    updatedAt: stringOrNull(row.updated_at) ?? new Date().toISOString(),
+    valueJson,
+    workspaceId: stringOrNull(row.workspace_id) ?? workspaceId,
+  };
+}
+
+function normalizeSyncedStorageClass(value: unknown): SyncedSettingRecord['storageClass'] | null {
+  return value === 'public-overlay' || value === 'synced-private' ? value : null;
 }
 
 function normalizeStorageMode(value: unknown): ProductStorageMode | null {

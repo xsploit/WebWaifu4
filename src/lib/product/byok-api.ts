@@ -1,4 +1,5 @@
 import type { ProductStorageMode, ProviderKeyMode, Scene, Workspace } from './byok.js';
+import type { SyncedSettingRecord } from './byok.js';
 import {
   loadPersistedSupabaseAuthSession,
   type SupabaseAuthSession,
@@ -40,6 +41,11 @@ export type ByokProfileResponse = {
 export type ByokWorkspaceResponse = {
   ok: true;
   workspace: ByokWorkspaceSummary;
+};
+
+export type ByokSettingResponse = {
+  ok: true;
+  setting: SyncedSettingRecord;
 };
 
 export type ByokApiError = {
@@ -157,6 +163,39 @@ export async function patchByokWorkspace(input: {
     path: `/api/byok/workspaces/${encodeURIComponent(input.workspaceId)}`,
   });
   return fetchByokJson<ByokWorkspaceResponse>(request, input.fetchImpl);
+}
+
+export async function fetchByokSetting(input: {
+  accessToken?: string | null;
+  fetchImpl?: typeof fetch;
+  settingId: string;
+  workspaceId: string;
+}) {
+  const request = buildAuthenticatedByokRequest({
+    accessToken: input.accessToken,
+    path: `/api/byok/workspaces/${encodeURIComponent(input.workspaceId)}/settings/${encodeURIComponent(input.settingId)}`,
+  });
+  return fetchByokJson<ByokSettingResponse>(request, input.fetchImpl);
+}
+
+export async function patchByokSetting(input: {
+  accessToken?: string | null;
+  fetchImpl?: typeof fetch;
+  record: SyncedSettingRecord;
+}) {
+  const request = buildAuthenticatedByokRequest({
+    accessToken: input.accessToken,
+    body: {
+      characterId: input.record.characterId ?? null,
+      key: input.record.key,
+      sceneId: input.record.sceneId ?? null,
+      storageClass: input.record.storageClass,
+      valueJson: input.record.valueJson,
+    },
+    method: 'PATCH',
+    path: `/api/byok/workspaces/${encodeURIComponent(input.record.workspaceId)}/settings/${encodeURIComponent(input.record.id)}`,
+  });
+  return fetchByokJson<ByokSettingResponse>(request, input.fetchImpl);
 }
 
 async function fetchByokJson<T>(request: AuthenticatedByokRequest, fetchImpl = fetch): Promise<T> {

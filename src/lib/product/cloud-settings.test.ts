@@ -1,0 +1,105 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createDefaultAiSettings,
+  createDefaultPersonas,
+  createDefaultUiState,
+} from '../chat/defaults';
+import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
+import {
+  buildCloudSettingPatchBody,
+  buildCloudSettingRecords,
+  LOCAL_ONLY_PERSISTED_SETTING_KEYS,
+} from './cloud-settings';
+import type { PersistedChatState } from '../chat/types';
+
+describe('cloud settings adapter', () => {
+  it('exports only safe non-secret product settings', () => {
+    const records = buildCloudSettingRecords({
+      now: '2026-05-15T12:00:00.000Z',
+      sceneId: 'scene-1',
+      state: createState(),
+      workspaceId: 'workspace-1',
+    });
+
+    expect(records.map((record) => record.key)).toEqual([
+      'personas',
+      'character.personaId',
+      'aiSettings',
+      'uiState',
+      'character.vrmModelId',
+      'scene.twitchChannel',
+      'sequencerSettings',
+      'visualSettings',
+    ]);
+    expect(records.map((record) => record.storageClass)).toContain('public-overlay');
+    expect(records.map((record) => record.storageClass)).toContain('synced-private');
+    expect(JSON.stringify(records)).not.toMatch(
+      /relationshipMemory|chatHistory|apiKey|secret|sk-/i,
+    );
+  });
+
+  it('marks memory and chat history as local-only for now', () => {
+    expect(LOCAL_ONLY_PERSISTED_SETTING_KEYS).toEqual([
+      'yourwifey.chatHistory.v1',
+      'yourwifey.relationshipMemory.v1',
+      'yourwifey.relationshipMemories.v1',
+    ]);
+  });
+
+  it('builds cloud patch bodies without ids or timestamps', () => {
+    const [record] = buildCloudSettingRecords({
+      state: createState(),
+      workspaceId: 'workspace-1',
+    });
+
+    expect(buildCloudSettingPatchBody(record!)).toEqual({
+      characterId: null,
+      key: 'personas',
+      sceneId: null,
+      storageClass: 'synced-private',
+      valueJson: record!.valueJson,
+    });
+  });
+});
+
+function createState(): PersistedChatState {
+  return {
+    activePersonaId: 'hikari',
+    activeTab: 'ai',
+    aiSettings: createDefaultAiSettings(),
+    chatHistory: [
+      {
+        content: 'local-only chat',
+        createdAt: 1,
+        id: 'chat-1',
+        role: 'user',
+      },
+    ],
+    currentBundledModelId: 'neuro-sama',
+    personas: createDefaultPersonas(),
+    relationshipMemories: {},
+    relationshipMemory: {
+      attraction: 0,
+      diaryEntry: '',
+      diaryHistory: [],
+      facts: ['local-only fact'],
+      guard: 0,
+      irritation: 0,
+      jealousy: 0,
+      lastActionTag: 'none',
+      lastDiaryTurnCount: 0,
+      lastSeenAt: null,
+      mood: 'guarded',
+      relationshipStage: 'new',
+      respect: 0,
+      summary: '',
+      trust: 0,
+      turnCount: 0,
+      version: 2,
+    },
+    sequencerSettings: createDefaultSequencerSettings(),
+    twitchChannel: 'subsect',
+    uiState: createDefaultUiState(),
+    visualSettings: createDefaultVisualSettings(),
+  };
+}

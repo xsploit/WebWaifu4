@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildAuthenticatedByokRequest, getSupabaseAccessToken } from './byok-api';
+import {
+  buildAuthenticatedByokRequest,
+  getSupabaseAccessToken,
+  patchByokSetting,
+} from './byok-api';
 import { SUPABASE_AUTH_SESSION_STORAGE_KEY } from './supabase-auth-session';
 
 describe('BYOK API client helpers', () => {
@@ -47,6 +51,49 @@ describe('BYOK API client helpers', () => {
         path: '/api/byok/profile',
       }),
     ).toThrow('requires a signed-in Supabase session');
+  });
+
+  it('patches cloud settings through the per-workspace route', async () => {
+    const fetchImpl = async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(url)).toBe('/api/byok/workspaces/workspace-1/settings/visualSettings');
+      expect(init).toMatchObject({
+        body: '{"characterId":null,"key":"visualSettings","sceneId":null,"storageClass":"public-overlay","valueJson":"{}"}',
+        method: 'PATCH',
+      });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          setting: {
+            id: 'visualSettings',
+            key: 'visualSettings',
+            storageClass: 'public-overlay',
+            updatedAt: '2026-05-15T00:00:00.000Z',
+            valueJson: '{}',
+            workspaceId: 'workspace-1',
+          },
+        }),
+        { status: 200 },
+      );
+    };
+
+    await expect(
+      patchByokSetting({
+        accessToken: 'access-token',
+        fetchImpl,
+        record: {
+          id: 'visualSettings',
+          key: 'visualSettings',
+          storageClass: 'public-overlay',
+          updatedAt: '2026-05-15T00:00:00.000Z',
+          valueJson: '{}',
+          workspaceId: 'workspace-1',
+        },
+      }),
+    ).resolves.toMatchObject({
+      setting: {
+        id: 'visualSettings',
+      },
+    });
   });
 });
 
