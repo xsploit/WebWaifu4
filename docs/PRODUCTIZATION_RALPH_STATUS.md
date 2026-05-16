@@ -903,8 +903,14 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   -> passed, 3 files, 27 tests; `git diff --check` -> passed with line-ending
   warnings only; `npm run build` -> passed with existing `onnxruntime-web` eval
   and large chunk warnings. Secret scan over changed runtime files found no
-  literal provider secrets or auth tokens. Commit/deploy pending for this
-  checkpoint.
+  literal provider secrets or auth tokens. Commit `8fd008a` was pushed to
+  `origin/codex/byok-product-spine`. Deployed rebuilt `dist`, `server/dist`,
+  and `api-dist` to the OVH VPS, restarted `yourwifey-ai.service`, and verified
+  public `/api/health?stateKey=local:persona:hikari&model=gpt-5-nano` with
+  browser-vault headers returns active state `local:persona:hikari`, model
+  `gpt-5-nano`, and Tavily tools source `browser-vault`. Public Fish voices
+  returned HTTP 200 with 100 voices, and public HTML serves
+  `/assets/index-CYIvbtA-.js`.
 
 ## Current Blocker Or Next Patch
 
