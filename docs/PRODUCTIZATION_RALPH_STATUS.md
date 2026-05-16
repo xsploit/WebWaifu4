@@ -375,6 +375,19 @@ src/lib/product/byok-api.test.ts` -> passed, 6 files, 33 tests.
 src/lib/product/account-mode.test.ts src/lib/product/supabase-auth-shell.test.ts
 src/lib/product/supabase-auth-session.test.ts src/lib/product/byok.test.ts` ->
   passed, 5 files, 35 tests.
+- 2026-05-15: Polish checkpoint cleaned up the product dashboard UI after the
+  first VPS upload exposed that the account/dashboard pages still looked like a
+  debug modal. Reworked `ProductPages` and product CSS into a full-height BYOK
+  Studio shell with left navigation, compact header, separated dashboard
+  sections for current scene, overlay, settings, and account, plus less noisy
+  button/card styling.
+- 2026-05-15: `npm run build` -> passed locally with existing
+  `onnxruntime-web` eval and large chunk warnings. `git diff --check` -> passed
+  with line-ending warnings only. Commit `436d763 style(byok): clean up product
+dashboard ui` was pushed to `codex/byok-product-spine`, hot-uploaded to the
+  OVH VPS, rebuilt there, and restarted. VPS checks: `/dashboard` and `/`
+  returned HTTP 200 through `https://148-113-191-103.sslip.io/`; bot health
+  stayed OK on `127.0.0.1:8787`.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and
