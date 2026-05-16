@@ -37,6 +37,12 @@ describe('Supabase BYOK schema contract', () => {
     expect(migrationSql).not.toMatch(/stripe|payment|credit_ledger|managed_provider_credit/i);
   });
 
+  it('keeps the profile schema aligned with the bootstrap API payload', () => {
+    expect(migrationSql).toMatch(/create table if not exists public\.profiles \([\s\S]*email text/);
+    expect(migrationSql).toContain('alter table public.profiles');
+    expect(migrationSql).toContain('add column if not exists email text');
+  });
+
   it('enables RLS on every product table', () => {
     for (const table of productTables) {
       expect(migrationSql).toContain(`alter table public.${table} enable row level security`);

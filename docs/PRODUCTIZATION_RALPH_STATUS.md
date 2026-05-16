@@ -584,12 +584,31 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `npx vitest run` over all `src\lib\product\*.test.ts` and
   `api\byok\_lib\*.test.ts` -> passed, 17 files, 88 tests; `npm run build` ->
   passed with existing `onnxruntime-web` eval and large chunk warnings.
+- 2026-05-16: Real auth/bootstrap smoke found and fixed two Supabase BYOK
+  bootstrap defects. First, `ensureByokProfile` wrote `profiles.email`, but the
+  migration did not create the column; patched the migration to include
+  `email text` plus an idempotent `alter table public.profiles add column if not
+  exists email text`, applied that alter in Supabase SQL editor, and forced a
+  PostgREST schema reload with `notify pgrst, 'reload schema'`. Second,
+  `ensureDefaultScene` inserted `active_character_id: ''` into a uuid column;
+  patched the bootstrap payload to use `null` and added test coverage. Live
+  local API smoke against the real Supabase project created a temporary auth
+  user, signed in, called `GET /api/byok/profile`, created profile/workspace/
+  scene, called `GET /api/byok/workspaces/:workspaceId`, and deleted the test
+  user: all checks passed. Verification: `npx vitest run` over all
+  `src\lib\product\*.test.ts` and `api\byok\_lib\*.test.ts` -> passed, 17
+  files, 89 tests; `npm run build` -> passed with existing `onnxruntime-web`
+  eval and large chunk warnings; `git diff --check` -> passed with line-ending
+  warnings only. VPS public smoke still needs the rebuilt API bundle deployed;
+  SSH key auth from this Codex session returned permission denied, so hot-upload
+  was not completed in this checkpoint.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: run the magic-link sign-in smoke against the deployed
-app, confirm callback persistence, bootstrap profile/workspace/scene creation,
-settings sync/pull, and signed OBS overlay URL issuance.
+Next UI/product patch: deploy the rebuilt API bundle to the VPS, rerun the
+public authenticated profile/workspace bootstrap smoke, then run the magic-link
+sign-in browser smoke, callback persistence, settings sync/pull, and signed OBS
+overlay URL issuance.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits

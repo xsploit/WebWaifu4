@@ -109,6 +109,8 @@ describe('BYOK product data bootstrap', () => {
     const postCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
     expect(postCalls).toHaveLength(3);
     expect(postCalls.map(([, init]) => init?.body).join('\n')).not.toMatch(/apiKey|secret|sk-/i);
+    const scenePostBody = JSON.parse(String(postCalls[2]?.[1]?.body));
+    expect(scenePostBody.active_character_id).toBeNull();
   });
 
   it('upserts and reads synced settings without accepting secret-shaped keys', async () => {

@@ -192,7 +192,7 @@ export async function ensureDefaultScene(input: {
 
   const rows = await fetchSupabaseRest<SceneRow>(input.config, '/rest/v1/scenes', input.fetchFn, {
     body: JSON.stringify({
-      active_character_id: '',
+      active_character_id: null,
       id: createId(),
       name: DEFAULT_SCENE_NAME,
       twitch_channel: DEFAULT_TWITCH_CHANNEL,
