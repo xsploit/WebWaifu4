@@ -45,13 +45,16 @@ be wired without smearing provider keys through app state.
 Browser cloud-sync config:
 
 - `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` preferred, with legacy
+  `VITE_SUPABASE_ANON_KEY` still supported.
 
 Server cloud-sync/admin config:
 
 - `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` for admin/server-only routes.
+- `SUPABASE_PUBLISHABLE_KEY` preferred, with legacy `SUPABASE_ANON_KEY` still
+  supported.
+- `SUPABASE_SECRET_KEY` preferred, with legacy `SUPABASE_SERVICE_ROLE_KEY` still
+  supported for admin/server-only routes.
 - `SUPABASE_JWT_SECRET` for future token verification.
 - `SUPABASE_STORAGE_BUCKET`, defaulting to `yourwifey-assets`.
 

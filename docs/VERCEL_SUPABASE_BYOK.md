@@ -27,23 +27,26 @@ Browser-visible:
 
 ```text
 VITE_SUPABASE_URL
-VITE_SUPABASE_ANON_KEY
+VITE_SUPABASE_PUBLISHABLE_KEY
 ```
 
 Server-only:
 
 ```text
 SUPABASE_URL
-SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY
 SUPABASE_JWT_SECRET
 SUPABASE_STORAGE_BUCKET
 OVERLAY_SIGNING_SECRET
 ```
 
-Use `.env.example` as the source of truth for names. Never create `VITE_`
-variables for service-role, JWT, overlay-signing, OpenAI, Fish, Inworld, or
-Tavily secrets.
+Legacy `VITE_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`, and
+`SUPABASE_SERVICE_ROLE_KEY` names still work, but Supabase's new
+publishable/secret key names are preferred. Use `.env.example` as the source of
+truth for names. Never create `VITE_` variables for Supabase secret keys,
+service-role keys, JWT, overlay-signing, OpenAI, Fish, Inworld, or Tavily
+secrets.
 
 ## 3. Deploy Shape
 

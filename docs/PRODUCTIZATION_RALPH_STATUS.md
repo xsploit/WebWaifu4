@@ -363,6 +363,18 @@ src/lib/product/byok-api.test.ts` -> passed, 6 files, 33 tests.
   direct refresh/open of `/login`, `/auth/callback`, `/account`, `/dashboard`,
   and `/overlay/:sceneId` from falling through to a hosted 404 while preserving
   `/api/byok/*` as serverless API routes.
+- 2026-05-15: Supabase key compatibility checkpoint updated the env reader to
+  accept the new Supabase API key names. `VITE_SUPABASE_PUBLISHABLE_KEY` and
+  `SUPABASE_PUBLISHABLE_KEY` now map to the public browser/API key slot, while
+  `SUPABASE_SECRET_KEY` maps to the server-only admin key slot. Legacy
+  `*_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` names remain supported.
+- 2026-05-15: Security pass for key compatibility found no new blocker:
+  `VITE_SUPABASE_SECRET_KEY` is explicitly rejected as browser-exposed secret
+  material, docs prefer publishable/secret names, and `.env.example` contains
+  placeholders only. `npx vitest run src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts src/lib/product/supabase-auth-shell.test.ts
+src/lib/product/supabase-auth-session.test.ts src/lib/product/byok.test.ts` ->
+  passed, 5 files, 35 tests.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and

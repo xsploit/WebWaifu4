@@ -5,12 +5,15 @@ export type SupabaseEnvSource = Record<string, string | undefined>;
 export const SUPABASE_BROWSER_ENV = {
   url: 'VITE_SUPABASE_URL',
   anonKey: 'VITE_SUPABASE_ANON_KEY',
+  publishableKey: 'VITE_SUPABASE_PUBLISHABLE_KEY',
 } as const;
 
 export const SUPABASE_SERVER_ENV = {
   url: 'SUPABASE_URL',
   anonKey: 'SUPABASE_ANON_KEY',
+  publishableKey: 'SUPABASE_PUBLISHABLE_KEY',
   serviceRoleKey: 'SUPABASE_SERVICE_ROLE_KEY',
+  secretKey: 'SUPABASE_SECRET_KEY',
   jwtSecret: 'SUPABASE_JWT_SECRET',
   overlaySigningSecret: 'OVERLAY_SIGNING_SECRET',
   storageBucket: 'SUPABASE_STORAGE_BUCKET',
@@ -47,6 +50,7 @@ export type SupabaseServerConfig = SupabasePublicConfig & {
 
 const BROWSER_SECRET_ENV_NAMES = [
   'VITE_SUPABASE_SERVICE_ROLE_KEY',
+  'VITE_SUPABASE_SECRET_KEY',
   'VITE_SUPABASE_JWT_SECRET',
   'VITE_OVERLAY_SIGNING_SECRET',
   'VITE_SUPABASE_DB_PASSWORD',
@@ -63,7 +67,10 @@ const BASE_PUBLIC_CONFIG = {
 
 export function readSupabaseBrowserEnv(env: SupabaseEnvSource): SupabasePublicConfig {
   const url = normalizeSupabaseUrl(readTrimmed(env, SUPABASE_BROWSER_ENV.url));
-  const anonKey = readTrimmed(env, SUPABASE_BROWSER_ENV.anonKey);
+  const anonKey = readFirstTrimmed(env, [
+    SUPABASE_BROWSER_ENV.publishableKey,
+    SUPABASE_BROWSER_ENV.anonKey,
+  ]);
   const missing = requiredMissing(
     [
       [SUPABASE_BROWSER_ENV.url, url],
@@ -91,10 +98,15 @@ export function readSupabaseServerEnv(env: SupabaseEnvSource): SupabaseServerCon
     readFirstTrimmed(env, [SUPABASE_SERVER_ENV.url, SUPABASE_BROWSER_ENV.url]),
   );
   const anonKey = readFirstTrimmed(env, [
+    SUPABASE_SERVER_ENV.publishableKey,
     SUPABASE_SERVER_ENV.anonKey,
+    SUPABASE_BROWSER_ENV.publishableKey,
     SUPABASE_BROWSER_ENV.anonKey,
   ]);
-  const serviceRoleKey = readTrimmed(env, SUPABASE_SERVER_ENV.serviceRoleKey);
+  const serviceRoleKey = readFirstTrimmed(env, [
+    SUPABASE_SERVER_ENV.secretKey,
+    SUPABASE_SERVER_ENV.serviceRoleKey,
+  ]);
   const jwtSecret = readTrimmed(env, SUPABASE_SERVER_ENV.jwtSecret);
   const overlaySigningSecret = readTrimmed(env, SUPABASE_SERVER_ENV.overlaySigningSecret);
   const storageBucket =

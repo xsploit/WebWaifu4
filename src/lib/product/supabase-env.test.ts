@@ -37,6 +37,20 @@ describe('Supabase BYOK environment contracts', () => {
     expect(() => assertSupabaseCloudSyncReady(config)).not.toThrow();
   });
 
+  it('accepts Supabase publishable key aliases for browser cloud-sync config', () => {
+    const config = readSupabaseBrowserEnv({
+      VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_public-key',
+    });
+
+    expect(config).toMatchObject({
+      status: 'configured',
+      anonKey: 'sb_publishable_public-key',
+      missing: [],
+      problems: [],
+    });
+  });
+
   it('treats partial browser Supabase env as misconfigured instead of blocking local-only mode', () => {
     const config = readSupabaseBrowserEnv({
       VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
@@ -58,6 +72,33 @@ describe('Supabase BYOK environment contracts', () => {
     expect(config.problems).toEqual([
       'VITE_SUPABASE_SERVICE_ROLE_KEY must not be exposed to browser code.',
     ]);
+  });
+
+  it('rejects browser-exposed new Supabase secret keys', () => {
+    const config = readSupabaseBrowserEnv({
+      VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_public-key',
+      VITE_SUPABASE_SECRET_KEY: 'sb_secret_server-only',
+    });
+
+    expect(config.status).toBe('misconfigured');
+    expect(config.problems).toEqual([
+      'VITE_SUPABASE_SECRET_KEY must not be exposed to browser code.',
+    ]);
+  });
+
+  it('builds server config from new Supabase publishable and secret key aliases', () => {
+    const config = readSupabaseServerEnv({
+      SUPABASE_URL: 'https://project-ref.supabase.co/',
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_public-key',
+      SUPABASE_SECRET_KEY: 'sb_secret_server-key',
+    });
+
+    expect(config.status).toBe('configured');
+    expect(config.anonKey).toBe('sb_publishable_public-key');
+    expect(config.serviceRoleKey).toBe('sb_secret_server-key');
+    expect(config.adminReady).toBe(true);
+    expect(() => assertSupabaseAdminReady(config)).not.toThrow();
   });
 
   it('builds server config with service-role access and safe public projection', () => {
