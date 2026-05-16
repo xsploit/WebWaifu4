@@ -132,13 +132,7 @@ import {
 import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import { applyCloudSettingRecords } from './lib/product/cloud-settings';
 import { fetchByokOverlayConfig } from './lib/product/byok-api';
-import type { SyncedSettingRecord } from './lib/product/byok';
-import {
-  requestBrowserOpenAiCompletion,
-  requestBrowserOpenAiEmbedding,
-  requestBrowserOpenRouterCompletion,
-  requestBrowserOpenRouterEmbedding,
-} from './lib/product/browser-openai-responses';
+import type { ProviderKind, SyncedSettingRecord } from './lib/product/byok';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
 import './style.css';
 
@@ -296,12 +290,6 @@ const CONFIGURED_OPENAI_MODEL = (
   ''
 ).trim();
 const AI_PROXY_URL = (import.meta.env['VITE_AI_PROXY_URL'] || '').trim();
-const SERVER_PROVIDER_PROXY_ALLOWED =
-  import.meta.env['VITE_BYOK_SERVER_PROVIDER_PROXY_ENABLED'] === 'true' ||
-  import.meta.env['VITE_SERVER_PROVIDER_PROXY_ENABLED'] === 'true';
-const AI_PROXY_ENABLED =
-  SERVER_PROVIDER_PROXY_ALLOWED &&
-  (import.meta.env['VITE_AI_PROXY_ENABLED'] === 'true' || Boolean(AI_PROXY_URL));
 const BROWSER_URL_PARAMS =
   typeof window === 'undefined'
     ? new URLSearchParams()
@@ -515,7 +503,7 @@ function getAiHealthUrl() {
 }
 
 function getClientAiRouteLabel() {
-  return AI_PROXY_ENABLED ? `AI proxy ${getAiProxyUrl()}` : 'AI proxy disabled';
+  return `AI backend ${getAiProxyUrl()}`;
 }
 
 function decodeAiProxyAudioEvent(event: AiProxyStreamEvent): RemoteTtsAudioChunk | null {
@@ -569,6 +557,88 @@ function createRemoteTtsRequest(text: string, settings: AiSettings): RemoteTtsRe
     conditionOnPreviousChunks: settings.fishSpeechConditionOnPreviousChunks,
     chunkLength: settings.fishSpeechChunkLength,
   };
+}
+
+async function getBrowserProviderApiKey({
+  keyName,
+  provider,
+  providerKeyVaultWorkspaceId,
+}: {
+  keyName: string;
+  provider: ProviderKind;
+  providerKeyVaultWorkspaceId?: string;
+}) {
+  const providerVault = createBrowserProviderKeyVault({
+    workspaceId: providerKeyVaultWorkspaceId ?? 'local-browser',
+  });
+  return providerVault.getSecret(provider, keyName);
+}
+
+function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
+  return llmProvider === 'openrouter-responses'
+    ? {
+        keyName: 'openrouter.apiKey',
+        label: 'OpenRouter',
+        provider: 'openrouter' as const,
+      }
+    : {
+        keyName: 'openai.apiKey',
+        label: 'OpenAI',
+        provider: 'openai' as const,
+      };
+}
+
+async function getBrowserRemoteTtsApiKey(
+  providerName: RemoteTtsProvider,
+  providerKeyVaultWorkspaceId?: string,
+) {
+  return getBrowserProviderApiKey(
+    providerName === 'inworld'
+      ? {
+          keyName: 'inworld.apiKey',
+          provider: 'inworld',
+          providerKeyVaultWorkspaceId,
+        }
+      : {
+          keyName: 'fishSpeech.apiKey',
+          provider: 'fish_speech',
+          providerKeyVaultWorkspaceId,
+        },
+  );
+}
+
+async function buildBackendProviderHeaders({
+  llmProvider,
+  providerKeyVaultWorkspaceId,
+  ttsBridge,
+}: {
+  llmProvider: AiSettings['llmProvider'];
+  providerKeyVaultWorkspaceId?: string;
+  ttsBridge?: RemoteTtsRequest;
+}) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const providerConfig = getBrowserLlmProviderConfig(llmProvider);
+  const apiKey = await getBrowserProviderApiKey({
+    keyName: providerConfig.keyName,
+    provider: providerConfig.provider,
+    providerKeyVaultWorkspaceId,
+  });
+  if (apiKey) {
+    headers['x-yourwifey-llm-provider'] = llmProvider;
+    headers['x-yourwifey-llm-provider-key'] = apiKey;
+  }
+
+  if (ttsBridge?.provider) {
+    const ttsApiKey = await getBrowserRemoteTtsApiKey(
+      ttsBridge.provider,
+      providerKeyVaultWorkspaceId,
+    );
+    if (ttsApiKey) {
+      headers['x-yourwifey-tts-provider-key'] = ttsApiKey;
+    }
+  }
+
+  return headers;
 }
 
 async function readAiProxyStream(
@@ -682,55 +752,18 @@ async function requestChatCompletion({
   ttsBridge?: RemoteTtsRequest;
   providerKeyVaultWorkspaceId?: string;
 }): Promise<AppCompletionResponse> {
-  if (!AI_PROXY_ENABLED) {
-    const providerVault = createBrowserProviderKeyVault({
-      workspaceId: providerKeyVaultWorkspaceId ?? 'local-browser',
-    });
-    const isOpenRouter = llmProvider === 'openrouter-responses';
-    const apiKey = await providerVault.getSecret(
-      isOpenRouter ? 'openrouter' : 'openai',
-      isOpenRouter ? 'openrouter.apiKey' : 'openai.apiKey',
-    );
-    const browserResponse = isOpenRouter
-      ? await requestBrowserOpenRouterCompletion({
-          apiKey: apiKey ?? '',
-          maxTokens,
-          messages,
-          model,
-          onTextDelta,
-          responseFormat,
-          stateKey,
-          stateScope,
-        })
-      : await requestBrowserOpenAiCompletion({
-          apiKey: apiKey ?? '',
-          disableState,
-          maxTokens,
-          messages,
-          model,
-          onTextDelta,
-          openAiStateMode,
-          responseFormat,
-          stateKey,
-          stateScope,
-        });
-    return {
-      choices: [
-        {
-          message: {
-            content: browserResponse.text,
-          },
-        },
-      ],
-    };
-  }
-
+  const headers = await buildBackendProviderHeaders({
+    llmProvider,
+    providerKeyVaultWorkspaceId,
+    ttsBridge,
+  });
   const response = await fetch(getAiProxyUrl(), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       activeChatters,
       disableState,
+      llmProvider,
       maxTokens,
       messages,
       mode,
@@ -793,42 +826,23 @@ async function requestTextEmbedding(
     return null;
   }
 
-  if (!AI_PROXY_ENABLED) {
-    try {
-      const providerVault = createBrowserProviderKeyVault({
-        workspaceId: providerKeyVaultWorkspaceId ?? 'local-browser',
-      });
-      const isOpenRouter = llmProvider === 'openrouter-responses';
-      const apiKey = await providerVault.getSecret(
-        isOpenRouter ? 'openrouter' : 'openai',
-        isOpenRouter ? 'openrouter.apiKey' : 'openai.apiKey',
-      );
-      if (!apiKey) {
-        return null;
-      }
-      return isOpenRouter
-        ? await requestBrowserOpenRouterEmbedding({
-            apiKey,
-            input: text,
-            model: DEFAULT_OPENROUTER_EMBEDDING_MODEL,
-          })
-        : await requestBrowserOpenAiEmbedding({
-            apiKey,
-            input: text,
-          });
-    } catch {
-      return null;
-    }
-  }
-
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 1800);
   try {
+    const headers = await buildBackendProviderHeaders({
+      llmProvider,
+      providerKeyVaultWorkspaceId,
+    });
     const response = await fetch(getAiEmbeddingUrl(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       signal: controller.signal,
-      body: JSON.stringify({ input: text.slice(0, 4000) }),
+      body: JSON.stringify({
+        input: text.slice(0, 4000),
+        llmProvider,
+        model:
+          llmProvider === 'openrouter-responses' ? DEFAULT_OPENROUTER_EMBEDDING_MODEL : undefined,
+      }),
     });
     if (!response.ok) {
       return null;
@@ -1619,12 +1633,6 @@ function App() {
   }, []);
 
   const refreshAiProxyHealth = useCallback(async () => {
-    if (!AI_PROXY_ENABLED) {
-      setAiProxyHealth(null);
-      setAiProxyHealthError(null);
-      return;
-    }
-
     try {
       const response = await fetch(getAiHealthUrl(), {
         cache: 'no-store',
@@ -1713,34 +1721,42 @@ function App() {
     }
   }, [refreshStoredTtsVoices]);
 
-  const loadRemoteTtsVoices = useCallback(async (provider: RemoteTtsProvider, force = false) => {
-    const fishScope = aiSettingsRef.current.fishSpeechVoiceScope;
-    const fetchKey = provider === 'fish-speech' ? `${provider}:${fishScope}` : provider;
-    if (!force && remoteTtsVoiceFetchAttemptedRef.current.has(fetchKey)) {
-      return;
-    }
-    remoteTtsVoiceFetchAttemptedRef.current.add(fetchKey);
-    setRemoteTtsVoicesLoading(true);
-    setRemoteTtsVoicesError(null);
-
-    try {
-      const voices = await fetchRemoteTtsVoices(provider, { fishScope });
-      setRemoteTtsVoices((current) => ({
-        ...current,
-        [provider]: voices,
-      }));
-      setTtsStatus(`${getTtsProviderLabel(provider)} voices ready (${voices.length}).`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Remote voice registry unavailable.';
-      setRemoteTtsVoicesError(message);
-      setTtsStatus(`Remote voice fetch failed: ${message}`);
-      if (force) {
-        remoteTtsVoiceFetchAttemptedRef.current.delete(fetchKey);
+  const loadRemoteTtsVoices = useCallback(
+    async (provider: RemoteTtsProvider, force = false) => {
+      const fishScope = aiSettingsRef.current.fishSpeechVoiceScope;
+      const fetchKey = provider === 'fish-speech' ? `${provider}:${fishScope}` : provider;
+      if (!force && remoteTtsVoiceFetchAttemptedRef.current.has(fetchKey)) {
+        return;
       }
-    } finally {
-      setRemoteTtsVoicesLoading(false);
-    }
-  }, []);
+      remoteTtsVoiceFetchAttemptedRef.current.add(fetchKey);
+      setRemoteTtsVoicesLoading(true);
+      setRemoteTtsVoicesError(null);
+
+      try {
+        const providerApiKey = await getBrowserRemoteTtsApiKey(
+          provider,
+          providerKeyVaultWorkspaceId,
+        );
+        const voices = await fetchRemoteTtsVoices(provider, { fishScope, providerApiKey });
+        setRemoteTtsVoices((current) => ({
+          ...current,
+          [provider]: voices,
+        }));
+        setTtsStatus(`${getTtsProviderLabel(provider)} voices ready (${voices.length}).`);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Remote voice registry unavailable.';
+        setRemoteTtsVoicesError(message);
+        setTtsStatus(`Remote voice fetch failed: ${message}`);
+        if (force) {
+          remoteTtsVoiceFetchAttemptedRef.current.delete(fetchKey);
+        }
+      } finally {
+        setRemoteTtsVoicesLoading(false);
+      }
+    },
+    [providerKeyVaultWorkspaceId],
+  );
 
   useEffect(() => {
     if (aiSettings.ttsProvider === 'piper') {
@@ -1771,7 +1787,13 @@ function App() {
           setTtsActiveVoiceKey(selectedTtsVoice!.key);
           await refreshStoredTtsVoices();
         } else {
-          await ttsManager.speakRemoteText(createRemoteTtsRequest(content, aiSettings));
+          const providerApiKey = await getBrowserRemoteTtsApiKey(
+            aiSettings.ttsProvider,
+            providerKeyVaultWorkspaceId,
+          );
+          await ttsManager.speakRemoteText(createRemoteTtsRequest(content, aiSettings), {
+            providerApiKey,
+          });
           setTtsActiveVoiceKey(null);
         }
         setTtsStatus(`${label} finished.`);
@@ -1784,7 +1806,7 @@ function App() {
         setTtsBusy(false);
       }
     },
-    [aiSettings, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
+    [aiSettings, providerKeyVaultWorkspaceId, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
   );
 
   useEffect(() => {
@@ -1964,7 +1986,15 @@ function App() {
         const task =
           ttsProvider === 'piper'
             ? ttsManager.queuePiperText(chunk, voice!.key)
-            : ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings));
+            : (async () => {
+                const providerApiKey = await getBrowserRemoteTtsApiKey(
+                  ttsProvider,
+                  providerKeyVaultWorkspaceId,
+                );
+                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings), {
+                  providerApiKey,
+                });
+              })();
         speechPromises.push(
           task.catch((error) => {
             const message =
@@ -2113,6 +2143,7 @@ function App() {
     },
     [
       aiSettings,
+      providerKeyVaultWorkspaceId,
       refreshStoredTtsVoices,
       selectedTtsVoice,
       ttsManager,
@@ -2155,7 +2186,15 @@ function App() {
         const task =
           ttsProvider === 'piper'
             ? ttsManager.queuePiperText(chunk, voice!.key)
-            : ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings));
+            : (async () => {
+                const providerApiKey = await getBrowserRemoteTtsApiKey(
+                  ttsProvider,
+                  providerKeyVaultWorkspaceId,
+                );
+                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings), {
+                  providerApiKey,
+                });
+              })();
         speechPromises.push(
           task.catch((error) => {
             const message =
@@ -2243,7 +2282,7 @@ function App() {
 
       return { finish, pushDelta };
     },
-    [aiSettings, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
+    [aiSettings, providerKeyVaultWorkspaceId, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
   );
 
   const handleCacheTtsVoice = useCallback(async () => {
@@ -2619,7 +2658,7 @@ function App() {
   }, [loadAvailableModels, loadTtsVoices, refreshAiProxyHealth]);
 
   useEffect(() => {
-    if (!menuOpen || !AI_PROXY_ENABLED) {
+    if (!menuOpen) {
       return;
     }
 

@@ -33,6 +33,10 @@ export type RemoteTtsVoice = {
   source?: string;
 };
 
+export type RemoteTtsProxyOptions = {
+  providerApiKey?: string | null;
+};
+
 type RemoteTtsStreamEvent =
   | {
       type: 'audio';
@@ -51,6 +55,7 @@ type RemoteTtsStreamEvent =
     };
 
 const TTS_PROXY_URL = (import.meta.env['VITE_TTS_PROXY_URL'] || '').trim();
+const TTS_PROVIDER_KEY_HEADER = 'x-yourwifey-tts-provider-key';
 
 function getTtsProxyUrl(path = '/tts/stream') {
   if (TTS_PROXY_URL) {
@@ -89,6 +94,7 @@ function base64ToBytes(value: string) {
 export function createRemoteTtsStream(
   request: RemoteTtsRequest,
   signal?: AbortSignal,
+  options: RemoteTtsProxyOptions = {},
 ): AsyncIterable<RemoteTtsAudioChunk> {
   const queue: RemoteTtsAudioChunk[] = [];
   const waiters: Array<() => void> = [];
@@ -133,7 +139,7 @@ export function createRemoteTtsStream(
     try {
       const response = await fetch(getTtsProxyUrl('/tts/stream'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildRemoteTtsHeaders(options),
         body: JSON.stringify(request),
         signal,
       });
@@ -209,7 +215,7 @@ export function createRemoteTtsStream(
 
 export async function fetchRemoteTtsVoices(
   provider: RemoteTtsProvider,
-  options: { fishScope?: FishSpeechVoiceScope } = {},
+  options: { fishScope?: FishSpeechVoiceScope; providerApiKey?: string | null } = {},
 ) {
   const url = new URL(getTtsProxyUrl('/tts/voices'));
   url.searchParams.set('provider', provider);
@@ -218,7 +224,7 @@ export async function fetchRemoteTtsVoices(
   }
   const response = await fetch(url.toString(), {
     method: 'GET',
-    headers: { Accept: 'application/json' },
+    headers: buildRemoteTtsHeaders(options, { acceptJson: true }),
   });
   if (!response.ok) {
     throw new Error(`Remote TTS voice fetch failed with HTTP ${response.status}.`);
@@ -233,4 +239,18 @@ export async function fetchRemoteTtsVoices(
     throw new Error(data.error || 'Remote TTS voice fetch failed.');
   }
   return data.voices ?? [];
+}
+
+function buildRemoteTtsHeaders(
+  options: RemoteTtsProxyOptions,
+  requestOptions: { acceptJson?: boolean } = {},
+) {
+  const headers: Record<string, string> = requestOptions.acceptJson
+    ? { Accept: 'application/json' }
+    : { 'Content-Type': 'application/json' };
+  const providerApiKey = options.providerApiKey?.trim();
+  if (providerApiKey) {
+    headers[TTS_PROVIDER_KEY_HEADER] = providerApiKey;
+  }
+  return headers;
 }

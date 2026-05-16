@@ -1,7 +1,12 @@
 import type { WLipSyncAudioNode, Profile as WLipSyncProfile } from 'wlipsync';
 import type { LipSyncData, WordBoundary } from './piper';
 import { synthesizePiperChunk } from './piper';
-import { createRemoteTtsStream, type RemoteTtsAudioChunk, type RemoteTtsRequest } from './remote';
+import {
+  createRemoteTtsStream,
+  type RemoteTtsAudioChunk,
+  type RemoteTtsProxyOptions,
+  type RemoteTtsRequest,
+} from './remote';
 
 const LIP_SYNC_PROFILE_URL =
   typeof window === 'undefined'
@@ -208,9 +213,9 @@ export class TtsManager {
     await this.queuePiperText(text, voiceId);
   }
 
-  async speakRemoteText(options: RemoteTtsRequest) {
+  async speakRemoteText(options: RemoteTtsRequest, proxyOptions?: RemoteTtsProxyOptions) {
     this.resetSpeechQueue();
-    await this.queueRemoteText(options);
+    await this.queueRemoteText(options, proxyOptions);
   }
 
   startRemotePcmPushStream(text: string): RemotePcmPushStream {
@@ -233,11 +238,17 @@ export class TtsManager {
 
     return {
       push: (chunk: RemoteTtsAudioChunk) => {
-        if (!this.enableTts || generation !== this.queueGeneration || abortController.signal.aborted) {
+        if (
+          !this.enableTts ||
+          generation !== this.queueGeneration ||
+          abortController.signal.aborted
+        ) {
           return Promise.resolve();
         }
         if (chunk.mimeType !== 'audio/pcm') {
-          return Promise.reject(new Error(`Live bridge expected audio/pcm, got ${chunk.mimeType}.`));
+          return Promise.reject(
+            new Error(`Live bridge expected audio/pcm, got ${chunk.mimeType}.`),
+          );
         }
         const scheduled = scheduleTail.then(async () => {
           await ready;
@@ -314,7 +325,7 @@ export class TtsManager {
     return playbackPromise;
   }
 
-  queueRemoteText(options: RemoteTtsRequest) {
+  queueRemoteText(options: RemoteTtsRequest, proxyOptions?: RemoteTtsProxyOptions) {
     if (!this.enableTts) {
       return Promise.resolve();
     }
@@ -355,6 +366,7 @@ export class TtsManager {
               text: cleaned,
             },
             abortController.signal,
+            proxyOptions,
           );
           for await (const chunk of remoteStream) {
             if (generation !== this.queueGeneration || abortController.signal.aborted) {
@@ -460,7 +472,10 @@ export class TtsManager {
     if (this.audioContext.state === 'suspended' && canAttemptAudioResume()) {
       void this.audioContext.resume().catch(() => {});
     }
-    this.streamPlaybackEndTime = Math.max(this.audioContext.currentTime + 0.05, this.audioContext.currentTime);
+    this.streamPlaybackEndTime = Math.max(
+      this.audioContext.currentTime + 0.05,
+      this.audioContext.currentTime,
+    );
     this.streamScheduledChunkCount = 0;
   }
 
@@ -505,7 +520,10 @@ export class TtsManager {
     const overlap = canCrossfade
       ? Math.min(REMOTE_PCM_CROSSFADE_SECONDS, Math.max(0, duration * 0.35))
       : 0;
-    const startAt = Math.max(this.streamPlaybackEndTime - overlap, this.audioContext.currentTime + 0.02);
+    const startAt = Math.max(
+      this.streamPlaybackEndTime - overlap,
+      this.audioContext.currentTime + 0.02,
+    );
     const endAt = startAt + duration;
     const fadeSeconds = Math.min(REMOTE_PCM_FADE_SECONDS, Math.max(0, duration / 3));
     const fadeInEnd = startAt + fadeSeconds;

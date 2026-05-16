@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
@@ -54,6 +55,9 @@ type MatchedByokApiRoute = {
   modulePath: string;
   query: Record<string, string | string[] | undefined>;
 };
+
+const CORS_REQUEST_HEADERS =
+  'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key';
 
 function createProvider(config: StreamBotConfig): ChatProvider {
   if (!config.providerProxyEnabled) {
@@ -129,7 +133,7 @@ function readRequestJson<T>(request: IncomingMessage) {
 
 function writeJson(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': CORS_REQUEST_HEADERS,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
@@ -140,7 +144,7 @@ function writeJson(response: ServerResponse, status: number, body: unknown) {
 function writeSseHead(response: ServerResponse) {
   response.socket?.setNoDelay(true);
   response.writeHead(200, {
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': CORS_REQUEST_HEADERS,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'no-cache, no-transform',
@@ -160,7 +164,7 @@ function writeSseEvent(response: ServerResponse, body: unknown) {
 function writeNdjsonHead(response: ServerResponse) {
   response.socket?.setNoDelay(true);
   response.writeHead(200, {
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': CORS_REQUEST_HEADERS,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'no-cache, no-transform',
@@ -250,6 +254,116 @@ function normalizeStateKey(value: unknown, fallback: string) {
 
 function normalizeRemoteTtsProvider(value: unknown): RemoteTtsProvider {
   return value === 'inworld' ? 'inworld' : 'fish-speech';
+}
+
+function getHeaderValue(request: IncomingMessage, name: string) {
+  const value = request.headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getHeaderSecret(request: IncomingMessage, name: string) {
+  return getHeaderValue(request, name)?.trim() ?? '';
+}
+
+function normalizeRuntimeLlmProvider(value: unknown) {
+  return value === 'openrouter-responses' ? 'openrouter-responses' : 'openai-responses';
+}
+
+function hashSecret(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function getRuntimeChatProvider(
+  baseConfig: StreamBotConfig,
+  request: IncomingMessage,
+  llmProvider: unknown,
+  model?: string,
+) {
+  const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  if (!apiKey) {
+    return baseConfig.providerProxyEnabled ? provider : null;
+  }
+
+  const providerName = normalizeRuntimeLlmProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
+  );
+  const runtimeConfig: StreamBotConfig = {
+    ...baseConfig,
+    aiApiBaseUrl:
+      providerName === 'openrouter-responses'
+        ? 'https://openrouter.ai/api/v1'
+        : baseConfig.aiApiBaseUrl,
+    aiApiKey: apiKey,
+    aiModel: model?.trim() || baseConfig.aiModel,
+    aiProvider: 'openai-responses',
+    openAiStateMode:
+      providerName === 'openrouter-responses' ? 'stateless' : baseConfig.openAiStateMode,
+    openAiStore: providerName === 'openrouter-responses' ? false : baseConfig.openAiStore,
+    openAiWebSocketUrl:
+      providerName === 'openrouter-responses' ? '' : baseConfig.openAiWebSocketUrl,
+    providerProxyEnabled: true,
+  };
+  const cacheKey = [
+    providerName,
+    runtimeConfig.aiApiBaseUrl,
+    runtimeConfig.aiModel,
+    runtimeConfig.openAiStateMode,
+    runtimeConfig.openAiStore ? 'store' : 'no-store',
+    hashSecret(apiKey),
+  ].join('|');
+  let runtimeProvider = runtimeProviderCache.get(cacheKey);
+  if (!runtimeProvider) {
+    runtimeProvider = createProvider(runtimeConfig);
+    runtimeProviderCache.set(cacheKey, runtimeProvider);
+  }
+  return runtimeProvider;
+}
+
+function getRuntimeEmbeddingConfig(
+  baseConfig: StreamBotConfig,
+  request: IncomingMessage,
+  llmProvider: unknown,
+) {
+  const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  if (!apiKey) {
+    return baseConfig.providerProxyEnabled ? baseConfig : null;
+  }
+
+  const providerName = normalizeRuntimeLlmProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
+  );
+  return {
+    ...baseConfig,
+    aiApiBaseUrl:
+      providerName === 'openrouter-responses'
+        ? 'https://openrouter.ai/api/v1'
+        : baseConfig.aiApiBaseUrl,
+    aiApiKey: apiKey,
+    providerProxyEnabled: true,
+  };
+}
+
+function getRuntimeTtsConfig(
+  baseConfig: StreamBotConfig,
+  providerName: RemoteTtsProvider,
+  request: IncomingMessage,
+) {
+  const apiKey = getHeaderSecret(request, 'x-yourwifey-tts-provider-key');
+  if (!apiKey) {
+    return baseConfig.providerProxyEnabled ? baseConfig : null;
+  }
+
+  return providerName === 'inworld'
+    ? {
+        ...baseConfig,
+        inworldApiKey: apiKey,
+        providerProxyEnabled: true,
+      }
+    : {
+        ...baseConfig,
+        fishSpeechApiKey: apiKey,
+        providerProxyEnabled: true,
+      };
 }
 
 function normalizeTtsLatency(value: unknown) {
@@ -562,7 +676,8 @@ function matchByokApiRoute(url: URL): MatchedByokApiRoute | null {
 function getRuntimeApiPath(pathname: string) {
   return pathname.startsWith('/api/ai/') ||
     pathname.startsWith('/api/tts/') ||
-    pathname.startsWith('/api/mock/')
+    pathname.startsWith('/api/mock/') ||
+    pathname === '/api/health'
     ? pathname.slice('/api'.length)
     : pathname;
 }
@@ -633,6 +748,7 @@ async function handleByokApiRoute(
 
 const config = loadConfig();
 const provider = createProvider(config);
+const runtimeProviderCache = new Map<string, ChatProvider>();
 const serverTwitchMode = config.twitchMock ? 'client-direct' : 'server-irc';
 
 let mockSource: MockTwitchChatSource | null = null;
@@ -687,17 +803,18 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && runtimePath === '/tts/voices') {
-    if (!config.providerProxyEnabled) {
+    const providerName = normalizeRemoteTtsProvider(url.searchParams.get('provider'));
+    const ttsConfig = getRuntimeTtsConfig(config, providerName, request);
+    if (!ttsConfig) {
       writeJson(response, 200, {
         ok: false,
-        error: 'Server provider proxy is disabled for BYOK mode.',
+        error: 'Remote TTS provider key is not configured.',
         voices: [],
       });
       return;
     }
     try {
-      const providerName = normalizeRemoteTtsProvider(url.searchParams.get('provider'));
-      const voices = await listRemoteTtsVoices(config, providerName, {
+      const voices = await listRemoteTtsVoices(ttsConfig, providerName, {
         fishScope: normalizeFishVoiceScope(url.searchParams.get('scope')),
       });
       writeJson(response, 200, {
@@ -716,13 +833,6 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && runtimePath === '/tts/stream') {
-    if (!config.providerProxyEnabled) {
-      writeJson(response, 200, {
-        ok: false,
-        error: 'Server provider proxy is disabled for BYOK mode.',
-      });
-      return;
-    }
     try {
       const body = await readRequestJson<{
         provider?: unknown;
@@ -741,12 +851,21 @@ const httpServer = createServer(async (request, response) => {
         writeJson(response, 200, { ok: false, error: 'text is required.' });
         return;
       }
+      const providerName = normalizeRemoteTtsProvider(body.provider);
+      const ttsConfig = getRuntimeTtsConfig(config, providerName, request);
+      if (!ttsConfig) {
+        writeJson(response, 200, {
+          ok: false,
+          error: 'Remote TTS provider key is not configured.',
+        });
+        return;
+      }
 
       writeNdjsonHead(response);
       await streamRemoteTts(
-        config,
+        ttsConfig,
         {
-          provider: normalizeRemoteTtsProvider(body.provider),
+          provider: providerName,
           text,
           streamingMode: typeof body.streamingMode === 'string' ? body.streamingMode : undefined,
           voiceId: typeof body.voiceId === 'string' ? body.voiceId : undefined,
@@ -793,20 +912,18 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && runtimePath === '/ai/embeddings') {
-    if (!config.providerProxyEnabled) {
-      writeJson(response, 200, {
-        ok: false,
-        error: 'Server AI proxy is disabled for BYOK mode.',
-      });
-      return;
-    }
     try {
-      if (!config.aiApiKey) {
-        writeJson(response, 200, { ok: false, error: 'OPENAI_API_KEY is not configured.' });
+      const body = await readRequestJson<{
+        input?: unknown;
+        llmProvider?: unknown;
+        model?: unknown;
+      }>(request);
+      const embeddingConfig = getRuntimeEmbeddingConfig(config, request, body.llmProvider);
+      if (!embeddingConfig?.aiApiKey) {
+        writeJson(response, 200, { ok: false, error: 'AI provider key is not configured.' });
         return;
       }
 
-      const body = await readRequestJson<{ input?: unknown; model?: unknown }>(request);
       const input = normalizeEmbeddingInput(body.input);
       if (!input) {
         writeJson(response, 200, { ok: false, error: 'input is required.' });
@@ -817,7 +934,7 @@ const httpServer = createServer(async (request, response) => {
         typeof body.model === 'string' && body.model.trim()
           ? body.model.trim()
           : process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small';
-      const embedding = await createOpenAiEmbedding(config, input, model);
+      const embedding = await createOpenAiEmbedding(embeddingConfig, input, model);
       writeJson(response, 200, {
         embedding,
         model,
@@ -846,13 +963,6 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && runtimePath === '/ai/chat') {
-    if (!config.providerProxyEnabled) {
-      writeJson(response, 200, {
-        ok: false,
-        error: 'Server AI proxy is disabled for BYOK mode.',
-      });
-      return;
-    }
     try {
       const body = await readRequestJson<{
         mode?: 'direct' | 'batch';
@@ -869,6 +979,7 @@ const httpServer = createServer(async (request, response) => {
         transportMode?: unknown;
         openAiStateMode?: unknown;
         ttsBridge?: unknown;
+        llmProvider?: unknown;
       }>(request);
       const messages = normalizeProviderMessages(body.messages);
       if (messages.length === 0) {
@@ -876,8 +987,16 @@ const httpServer = createServer(async (request, response) => {
         return;
       }
 
+      const runtimeProvider = getRuntimeChatProvider(config, request, body.llmProvider, body.model);
+      if (!runtimeProvider) {
+        writeJson(response, 200, {
+          ok: false,
+          error: 'AI provider key is not configured.',
+        });
+        return;
+      }
       if (typeof body.model === 'string' && body.model.trim()) {
-        provider.setModel?.(body.model);
+        runtimeProvider.setModel?.(body.model);
       }
 
       const providerRequest: ChatProviderRequest = {
@@ -898,9 +1017,19 @@ const httpServer = createServer(async (request, response) => {
       if (body.stream === true) {
         writeSseHead(response);
         const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
-        const bridge = bridgeRequest ? createLiveSpeechTextBridge() : null;
+        const bridgeConfig = bridgeRequest
+          ? getRuntimeTtsConfig(config, 'fish-speech', request)
+          : null;
+        if (bridgeRequest && !bridgeConfig) {
+          writeSseEvent(response, {
+            type: 'tts-error',
+            ok: false,
+            error: 'Fish Speech live bridge provider key is not configured.',
+          });
+        }
+        const bridge = bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge() : null;
         const bridgeDone = bridge
-          ? streamFishSpeechTextStream(config, bridgeRequest!, bridge.stream, {
+          ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
               onAudioChunk: (chunk) => {
                 writeSseEvent(response, {
                   type: 'audio',
@@ -920,12 +1049,12 @@ const httpServer = createServer(async (request, response) => {
         let providerResponse: ChatProviderResponse;
         try {
           providerResponse =
-            (await provider.completeStream?.(providerRequest, {
+            (await runtimeProvider.completeStream?.(providerRequest, {
               onTextDelta: (delta) => {
                 writeSseEvent(response, { type: 'delta', delta });
                 bridge?.push(delta);
               },
-            })) ?? (await provider.complete(providerRequest));
+            })) ?? (await runtimeProvider.complete(providerRequest));
           bridge?.close();
           if (bridgeDone) {
             await bridgeDone;
@@ -942,18 +1071,18 @@ const httpServer = createServer(async (request, response) => {
           type: 'done',
           ok: true,
           text: providerResponse.text,
-          meta: providerResponse.meta ?? provider.getState?.() ?? null,
+          meta: providerResponse.meta ?? runtimeProvider.getState?.() ?? null,
         });
         response.end();
         return;
       }
 
-      const providerResponse = await provider.complete(providerRequest);
+      const providerResponse = await runtimeProvider.complete(providerRequest);
 
       writeJson(response, 200, {
         ok: true,
         text: providerResponse.text,
-        meta: providerResponse.meta ?? provider.getState?.() ?? null,
+        meta: providerResponse.meta ?? runtimeProvider.getState?.() ?? null,
       });
     } catch (error) {
       if (response.headersSent) {
