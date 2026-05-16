@@ -58,6 +58,7 @@ Vercel-shaped app/API
 ```
 
 Deployment runbook: `docs/VERCEL_SUPABASE_BYOK.md`.
+OVH VPS deploy/access runbook: `docs/OVH_VPS_DEPLOY_RUNBOOK.md`.
 Environment example: `.env.example`.
 
 The browser is the primary Twitch reader. The server defaults to
