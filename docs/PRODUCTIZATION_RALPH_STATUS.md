@@ -681,15 +681,34 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   scanned for concrete Supabase/OpenAI/Fish/Inworld token values before commit,
   provider keys still stay browser-local, and the throwaway auth user cleanup
   invalidated the smoke account.
+- 2026-05-16 overlay loader checkpoint: verified `codex mcp list` and
+  `codex mcp get supabase` show Supabase MCP registered/enabled with OAuth for
+  project `btjccsyoevbczmamoamt`, but this running desktop session still did
+  not expose callable `mcp__supabase__*` tools through `tool_search`; future
+  Supabase schema/data work should be run from a fresh Codex session or after
+  MCP tool reload so database inspection happens through the MCP tool surface.
+  Fixed the signed overlay page loading-state bug in commit `6ff14da`: the
+  overlay config effect now depends only on route/token and calls the latest
+  cloud-settings applier through a ref, so state changes cannot cancel a
+  successful config fetch and leave `Loading OBS overlay config...` stuck.
+  Verification: `npx vitest run src/lib/product/app-route.test.ts src/lib/product/byok-api.test.ts src/lib/product/cloud-settings.test.ts`
+  -> passed, 3 files, 20 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` ->
+  passed with line-ending warnings only. Deployed rebuilt `dist` to the OVH VPS
+  and verified the public bundle references `/assets/index-iDLgo-6s.js`.
+  Browser smoke with a fresh temporary Supabase account issued a signed overlay
+  URL, loaded `/overlay/:sceneId?token=...`, and confirmed the page no longer
+  displayed loading or invalid-token text; the temporary user was deleted after
+  the smoke.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: debug the signed `/overlay/:sceneId?token=...` page
-client-side loading state. The token-authenticated config API returns HTTP 200,
-but the overlay page still shows `Loading OBS overlay config...`; start by
-instrumenting or testing the `fetchByokOverlayConfig` effect around
-`src\App.tsx` and verifying whether `handleApplyCloudSettings` or route state
-is preventing `setOverlayConfigStatus('')` from rendering.
+Next UI/product patch: refresh Codex so Supabase MCP tools are actually exposed,
+then use MCP to inspect the live BYOK Supabase tables/policies and record a
+proper schema/data audit before doing more Supabase work. After that, smoke the
+overlay route visually in OBS/browser context and decide whether an empty DOM is
+expected for the pure overlay canvas stage or whether it needs an explicit
+ready/health marker for operator confidence.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
