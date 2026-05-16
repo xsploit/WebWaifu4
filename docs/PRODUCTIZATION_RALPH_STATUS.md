@@ -776,6 +776,21 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   storage event and dropped back to local-only mode. Smoke result:
   `pageASignedOut: true`, `pageBObservedLocal: true`. The temporary Supabase user
   was deleted after verification.
+- 2026-05-16 OBS URL controls checkpoint: fixed and deployed commit `c7f98bd`,
+  adding honest v1 controls for signed overlay URLs without pretending token
+  revocation exists yet. Dashboard users can choose signed URL lifetime
+  (24 hours, 7 days, 30 days, or 90 days), issue the OBS URL, copy it, and clear
+  it from the UI. Verification:
+  `npx vitest run src/lib/product/byok-api.test.ts src/lib/product/app-route.test.ts`
+  -> passed, 2 files, 16 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` -> passed
+  with line-ending warnings only; tracked diff scan found no concrete
+  secret/token values. Deployed rebuilt `dist` to the OVH VPS and verified the
+  public bundle references `/assets/index-BuDt7Hqe.js` and
+  `/assets/index-Cq94o-Nl.css`. Fresh signed-in Chrome/Playwright smoke passed:
+  selected 24 hour lifetime, issued a signed `/overlay/...token=...` URL, cleared
+  it from the UI, and saw zero browser warnings. The temporary Supabase user was
+  deleted after verification.
 
 ## Current Blocker Or Next Patch
 
@@ -784,8 +799,8 @@ then use MCP to inspect the live BYOK Supabase tables/policies and record a
 proper schema/data audit before doing more Supabase work. In parallel, continue
 the product hardening lane by auditing the remaining signed-in/account flow
 rough edges: clearer production env validation, signed overlay token rotation or
-revocation UX, and a deeper product dashboard/home UI pass using the supplied
-style references once the functional account flow is locked.
+revocation backend semantics, and a deeper product dashboard/home UI pass using
+the supplied style references once the functional account flow is locked.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
