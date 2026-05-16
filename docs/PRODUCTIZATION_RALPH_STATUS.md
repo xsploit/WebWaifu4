@@ -754,6 +754,22 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `/dashboard` passed with `h1Font` and brand font set to the product sans stack,
   `.product-header` direction `column`, dashboard text present, and no browser
   warnings.
+- 2026-05-16 BYOK runtime health checkpoint: fixed and deployed commit
+  `06ecf51`, adding a secret-safe Supabase/BYOK readiness block to `/health`.
+  It reports booleans and missing env names only: public config readiness, server
+  admin readiness, service key presence, overlay signing presence, storage bucket
+  presence, and whether browser-prefixed secret env names were detected.
+  Verification:
+  `npx vitest run server/src/byokHealth.test.ts src/lib/product/supabase-env.test.ts api/byok/_lib/supabase-context.test.ts`
+  -> passed, 3 files, 18 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` -> passed
+  with line-ending warnings only; tracked diff scan found no concrete
+  secret/token values. Deployed rebuilt `server/dist` to the OVH VPS and
+  restarted the API runtime from `/home/ubuntu/yourwifey-stream`. Public
+  `https://148-113-191-103.sslip.io/health` returned `ok: true`,
+  `aiProvider: openai-responses-ws`, and `byok: { adminReady: true,
+  publicReady: true, serviceKeyConfigured: true, overlaySigningConfigured: true,
+  storageBucketConfigured: true, browserSecretLeakDetected: false, missing: [] }`.
 
 ## Current Blocker Or Next Patch
 
