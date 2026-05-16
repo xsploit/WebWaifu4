@@ -499,6 +499,36 @@ function DashboardPage(
           />
         </section>
 
+        <section className="product-card product-operator-card">
+          <SectionTitle title="Provider keys" />
+          <div className="product-provider-list">
+            <ProviderStatus
+              label="OpenAI"
+              status={props.accountSummary.providerKeyLabel}
+              tone="ready"
+            />
+            <ProviderStatus label="Fish Speech" status="Browser local" tone="ready" />
+            <ProviderStatus label="Inworld" status="Browser local" tone="ready" />
+            <ProviderStatus label="Cloud secrets" status="Never uploaded" tone="safe" />
+          </div>
+        </section>
+
+        <section className="product-card product-operator-card">
+          <SectionTitle title="Launch checklist" />
+          <div className="product-checklist">
+            <ChecklistItem
+              done
+              label={isCloud ? 'Cloud account linked' : 'Local-only mode active'}
+            />
+            <ChecklistItem done label={`Twitch channel #${props.twitchChannel || 'subsect'}`} />
+            <ChecklistItem
+              done={Boolean(profile?.bootstrap.scene.id)}
+              label="Scene bootstrap ready"
+            />
+            <ChecklistItem done={Boolean(overlayShareUrl)} label="Signed OBS URL issued" />
+          </div>
+        </section>
+
         {!isCloud ? (
           <section className="product-card product-card-cta">
             <SectionTitle title="Cloud sync" />
@@ -530,10 +560,14 @@ function ProductPageFrame(props: {
   const isCloud = props.accountMode.kind === 'supabase-cloud-sync';
   return (
     <div className="product-page" onClick={(event) => event.stopPropagation()}>
+      <div className="product-scanline" />
       <nav className="product-nav">
         <div className="product-brand">
-          <strong>YourWifey</strong>
-          <span>BYOK Studio</span>
+          <div className="product-brand-icon">YW</div>
+          <div>
+            <strong>YourWifey</strong>
+            <span>BYOK Studio</span>
+          </div>
         </div>
         <div className="product-nav-links">
           <NavButton active={props.routeKind === 'editor'} onClick={() => props.onNavigate('/')}>
@@ -579,6 +613,19 @@ function ProductPageFrame(props: {
           <span className="product-mode-label">{isCloud ? 'Cloud sync' : 'Local only'}</span>
         </div>
       </nav>
+      <header className="product-topbar">
+        <div className="product-breadcrumb">
+          Workspace / <span>{props.title}</span>
+        </div>
+        <div className="product-status-strip">
+          <TopbarStatus active label="System ready" />
+          <TopbarStatus active={isCloud} label={isCloud ? 'Cloud sync online' : 'Local mode'} />
+          <TopbarStatus
+            active={props.routeKind === 'overlay'}
+            label={props.routeKind === 'overlay' ? 'Overlay route' : 'Overlay idle'}
+          />
+        </div>
+      </header>
       <main className="product-panel">
         <header className="product-header">
           <p className="product-eyebrow">{props.eyebrow}</p>
@@ -587,6 +634,15 @@ function ProductPageFrame(props: {
         {props.children}
       </main>
     </div>
+  );
+}
+
+function TopbarStatus(props: { active: boolean; label: string }) {
+  return (
+    <span className="product-topbar-status">
+      <span className={props.active ? 'product-led is-active' : 'product-led'} />
+      {props.label}
+    </span>
   );
 }
 
@@ -611,6 +667,24 @@ function Stat(props: { label: string; value: string }) {
     <div className="product-stat">
       <span>{props.label}</span>
       <strong>{props.value}</strong>
+    </div>
+  );
+}
+
+function ProviderStatus(props: { label: string; status: string; tone: 'ready' | 'safe' }) {
+  return (
+    <div className="product-provider-row">
+      <span>{props.label}</span>
+      <strong className={props.tone === 'safe' ? 'is-safe' : ''}>{props.status}</strong>
+    </div>
+  );
+}
+
+function ChecklistItem(props: { done: boolean; label: string }) {
+  return (
+    <div className={props.done ? 'product-check-item is-done' : 'product-check-item'}>
+      <span />
+      {props.label}
     </div>
   );
 }
