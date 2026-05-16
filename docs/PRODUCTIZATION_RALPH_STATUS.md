@@ -723,15 +723,32 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   clipboard path failed, so this smoke proves load/save but not manual text
   editing through browser automation. The temporary user was deleted after the
   smoke.
+- 2026-05-16 unsigned overlay route checkpoint: fixed and deployed commit
+  `9f40a6b`, which separates dashboard preview from signed OBS scene links.
+  Dashboard preview now routes to `/overlay/private-preview`; real
+  `/overlay/:sceneId` routes without `token=...` now show
+  `Signed OBS overlay token required.` instead of silently rendering local
+  preview state. Verification:
+  `npx vitest run src/lib/product/app-route.test.ts src/lib/product/byok-api.test.ts src/lib/product/cloud-settings.test.ts`
+  -> passed, 3 files, 20 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` -> passed
+  with line-ending warnings only; tracked diff scan found no concrete
+  secret/token values. Deployed rebuilt `dist` to the OVH VPS and verified the
+  public bundle references `/assets/index-DVQfRG4z.js`. Chrome/Playwright smoke
+  against the deployed app passed: `/overlay/private-preview` emitted one
+  `data-testid="obs-overlay-ready"` marker with body text `OBS overlay ready`;
+  `/overlay/not-a-real-scene` emitted zero ready markers and body text
+  `Signed OBS overlay token required.`; both checks had no browser warnings.
 
 ## Current Blocker Or Next Patch
 
 Next UI/product patch: refresh Codex so Supabase MCP tools are actually exposed,
 then use MCP to inspect the live BYOK Supabase tables/policies and record a
 proper schema/data audit before doing more Supabase work. In parallel, continue
-the product hardening lane by auditing the signed overlay/account/dashboard
-flow for remaining rough edges: route protection, sign-out cross-tab browser
-smoke, and clearer production env validation.
+the product hardening lane by auditing the remaining signed-in/account flow
+rough edges: sign-out cross-tab browser smoke, clearer production env
+validation, and a better product dashboard/home UI pass using the supplied
+style references.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
