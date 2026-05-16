@@ -739,6 +739,21 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `data-testid="obs-overlay-ready"` marker with body text `OBS overlay ready`;
   `/overlay/not-a-real-scene` emitted zero ready markers and body text
   `Signed OBS overlay token required.`; both checks had no browser warnings.
+- 2026-05-16 product shell typography checkpoint: fixed and deployed commit
+  `9fc0b7e`, narrowing the supplied HUD-style references into the live BYOK
+  product shell without touching overlay runtime behavior. The product pages now
+  use their own sans/mono stacks instead of inheriting the stream character
+  serif font, the dashboard header stays grouped on the left instead of splitting
+  the eyebrow/title across the row, and HUD labels/buttons/status rows keep the
+  mono treatment. Verification: `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` -> passed
+  with line-ending warnings only; tracked diff scan found no concrete
+  secret/token values. Deployed rebuilt `dist` to the OVH VPS and verified the
+  public bundle references `/assets/index-Ds15Uoo1.js` and
+  `/assets/index-C7wyL7B7.css`. Chrome/Playwright smoke against public
+  `/dashboard` passed with `h1Font` and brand font set to the product sans stack,
+  `.product-header` direction `column`, dashboard text present, and no browser
+  warnings.
 
 ## Current Blocker Or Next Patch
 
@@ -747,8 +762,8 @@ then use MCP to inspect the live BYOK Supabase tables/policies and record a
 proper schema/data audit before doing more Supabase work. In parallel, continue
 the product hardening lane by auditing the remaining signed-in/account flow
 rough edges: sign-out cross-tab browser smoke, clearer production env
-validation, and a better product dashboard/home UI pass using the supplied
-style references.
+validation, and a deeper product dashboard/home UI pass using the supplied
+style references once the functional account flow is locked.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
