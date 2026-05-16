@@ -1,542 +1,459 @@
-# YourWifey Stream
+# YourWifey BYOK
 
-Source-of-truth README for the standalone Twitch-first web waifu stream overlay.
+Source-of-truth README for the current YourWifey BYOK / stream overlay repo.
 
-Current as of 2026-05-15. This file should describe what the repo actually does
-today. If code and this README disagree, fix the README or the code in the same
-change.
+Current as of 2026-05-16. This document is intentionally factual. If this file
+and the code disagree, fix one of them in the same checkpoint.
 
 ## What This Is
 
-YourWifey Stream is a React/Vite browser overlay with a VRM avatar, Twitch chat
-intake, OpenAI-backed replies, browser/local and remote TTS, subtitles, memory,
-and animation metadata.
-
-The current product target is not a single-user chat toy. It is a Twitch-first
-stream assistant where Twitch chat and the local chat box both become normalized
-participant turns. The local chat box still has trusted/controller power, but it
-is rendered to the AI as another participant in the room.
-
-## Current Architecture
-
-```text
-Browser overlay
-  React UI, VRM stage, settings menu, local chat, direct Twitch IRC
-  -> normalizes local/Twitch input into ChatTurn
-  -> queues or batches chat work
-  -> renders POML prompt context
-  -> calls local/server AI proxy
-  -> streams text into subtitles/TTS/animation metadata
-
-AI/TTS server
-  Node HTTP server on BOT_PORT, default 8787
-  -> /health
-  -> /ai/chat
-  -> /ai/poml/render
-  -> /ai/embeddings
-  -> /tts/voices
-  -> /tts/stream
-  -> /ws overlay event socket
-
-Stream routelet
-  Linux VPS runner
-  -> starts built overlay
-  -> starts Chromium under Xvfb
-  -> routes browser audio into Pulse/PipeWire
-  -> FFmpeg maps Chromium video plus browser audio to RTMP
-```
-
-BYOK product shell:
-
-```text
-Vercel-shaped app/API
-  -> /login magic-link auth
-  -> /dashboard workspace/scene controls
-  -> /account profile and local key status
-  -> /overlay/:sceneId private preview or signed OBS token route
-  -> /api/byok/* Supabase-backed profile/workspace/settings/overlay APIs
-```
-
-Deployment runbook: `docs/VERCEL_SUPABASE_BYOK.md`.
-OVH VPS deploy/access runbook: `docs/OVH_VPS_DEPLOY_RUNBOOK.md`.
-Environment example: `.env.example`.
-
-The browser is the primary Twitch reader. The server defaults to
-`TWITCH_MOCK=true`, which means "server Twitch is off / client-direct mode" in
-normal overlay operation. Use `TWITCH_MOCK=false` only when intentionally testing
-the older server-owned IRC path.
-
-## Important Source Files
-
-- `src/App.tsx`: main overlay shell, chat intake, queueing, prompt calls, TTS,
-  model/persona switching, settings wiring, command handling.
-- `src/lib/chat/chat-turn.ts`: normalized `ChatTurn` model for local and Twitch
-  participant messages.
-- `src/lib/chat/templates/yourwifey-responses.poml`: live POML prompt template.
-- `src/lib/chat/poml.ts`: browser/server POML render helper.
-- `src/lib/chat/prompt.ts`: prompt context builder that feeds POML.
-- `src/lib/chat/grillo-context.ts`: Grillo-style strict context lanes and budget
-  reduction.
-- `src/lib/chat/grillo-memory.ts`: browser localStorage memory repository.
-- `src/lib/chat/grillo-memory-loop.ts`: structured JSON memory worker/tool loop.
-- `src/lib/chat/reply-metadata.ts`: hidden reply metadata contract and mapping
-  to animation/facial expression.
-- `src/lib/tts/manager.ts`: browser TTS playback, queueing, audio capture, and
-  lip sync.
-- `server/src/index.ts`: local/server HTTP API, SSE streaming, embeddings, TTS
-  proxy, health, overlay socket, mock/server IRC entrypoints.
-- `server/src/ai/OpenAiResponsesProvider.ts`: OpenAI Responses API provider,
-  conversation/previous-response/stateless modes, WebSocket/HTTP streaming, and
-  Tavily tool calls.
-- `server/src/tts/RemoteTtsProvider.ts`: Fish Speech and Inworld TTS adapters.
-- `src/lib/vrm/sequencer.ts`: bundled animation catalog, weights, and sequencer.
-- `scripts/stream-routelet.sh`: Linux stream loop for Chromium/Xvfb/Pulse/FFmpeg.
-- `docs/grillo-memory-status.md`: current memory-system status and completion bar.
-- `docs/STREAM_ROUTELET.md`: routelet signal flow and VPS smoke-test notes.
-
-## Chat Model
-
-All chat intake should flow through one shape:
-
-```ts
-type ChatTurn = {
-  source: 'local' | 'twitch';
-  channel: string;
-  login: string;
-  displayName: string;
-  text: string;
-  timestamp: number;
-  badges: string[];
-  isMod: boolean;
-  isBroadcaster: boolean;
-  isLocal: boolean;
-  isTrustedController: boolean;
-  firstTimeChatter?: boolean;
-};
-```
-
-Current behavior:
-
-- Local chat becomes `source: "local"`, `channel: "local"`,
-  `isLocal: true`, and `isTrustedController: true`.
-- Twitch chat becomes `source: "twitch"` with channel, login, display name,
-  badges, broadcaster/mod metadata, and a derived trusted-controller flag.
-- The local controller is not assumed for every Twitch message.
-- The prompt transcript renders participant lines like
-  `DisplayName: message` plus metadata.
-
-## Twitch Intake Rules
-
-Default constants in `src/App.tsx`:
-
-- Active chatter window: 120 seconds.
-- Direct-mode threshold: 10 active chatters.
-- Reply gap/cooldown: 2 seconds.
-- Twitch context window: 80 turns.
-- Default batch max wait: 30 seconds.
-
-Under the active chatter threshold, tagged Twitch messages and local participant
-messages go into the same sequential reply queue. The app waits for the current
-reply/TTS path to complete and applies the cooldown before processing the next
-queued job.
-
-Above the threshold, Twitch chat enters balanced batch mode. The app batches room
-context by message count/time while local trusted turns and commands can still
-force operator-style work.
-
-## Commands
-
-Client-side startup currently advertises these commands:
-
-```text
-!yw help
-!yw status
-!yw audio
-!yw state
-!yw state reset
-!yw refresh
-!yw channel <name>
-!yw persona <riko|neuro|hikari>
-!yw llm <model>
-!yw vrm <id>
-!yw camera close|full
-!yw anim <name|index>
-!yw tts on|off
-!yw autospeak on|off
-!yw say <text>
-!yw chat on|off
-```
-
-Server-side command prefixes default to:
-
-```text
-!yw, !yourwifey, !waifu
-```
-
-Server-side admins always include `subsect`; mods are allowed by default.
-
-## AI Provider
-
-Default app model settings:
-
-- Chat model: `gpt-5.4-nano`
-- Memory worker model: `gpt-5.4-mini`
-- Browser AI transport mode: `websocket`
-- OpenAI state mode: `conversation`
-- Temperature: `0.85`
-- Max output tokens: `300`
-
-Server provider modes:
-
-- `AI_PROVIDER=mock`
-- `AI_PROVIDER=openai-compatible`
-- `AI_PROVIDER=openai-responses`
-- `AI_PROVIDER=openai-responses-ws`
-
-The OpenAI Responses provider supports:
-
-- `/responses` HTTP calls.
-- HTTP streaming.
-- Responses WebSocket requests.
-- Conversations API state.
-- `previous_response_id` state where supported.
-- Stateless mode for memory/background work.
-- Prompt cache key and retention fields.
-- JSON schema / JSON object response formats.
-- Tavily-backed tool calls when `TAVILY_API_KEY` is configured.
-
-Conversation state is scoped by keys such as:
-
-```text
-twitch:<channel>:persona:<persona-id>
-local:persona:<persona-id>
-```
-
-Memory/background requests use separate state scope or stateless behavior so
-they do not contaminate the live chat conversation.
-
-## POML Prompting
-
-POML is real in this repo. The template is
-`src/lib/chat/templates/yourwifey-responses.poml`, and the package dependency is
-`pomljs` from `vendor/pomljs-0.0.9.tgz`.
-
-The prompt path renders:
-
-- Persona context.
-- Live task.
-- Prompt state.
-- Response priority stack.
-- Style controls.
-- Conditional local/Twitch/batch mode.
-- Relationship dynamics.
-- Tool policy.
-- Reply metadata contract.
-- TTS instructions.
-- Animation catalog.
-- Turn metadata.
-- Grillo context packet.
-- Private diary and semantic memory, when relevant.
-- Current turn transcript as a human message.
-
-The app owns state mutation, memory writes, TTS playback, and avatar execution.
-POML owns prompt layout and conditional context.
-
-## Memory System
-
-There are two memory layers right now.
-
-Legacy relationship memory:
-
-- Stored in browser localStorage.
-- Tracks relationship stage, mood, trust, attraction, respect, irritation,
-  jealousy, guard, facts, summary, diary entry, and diary history.
-- Still used for persona tone and continuity.
-
-Grillo-style memory:
-
-- Stored in browser localStorage under scoped keys.
-- Tracks memory candidates, promoted memory blocks, diary entries, and promoted
-  candidate ids.
-- Scopes by conversation/source/persona and participant key.
-- Adds strict context lanes: `background_information`, `instructions`,
-  `channel_history`, `relationship_memory`, `recalled_memories`, `thoughts`,
-  and `output_description`.
-- Has a background memory worker that uses structured JSON/tool-call shaped
-  output to read/search/write local memory state.
-- The Memory tab exposes current scope, blocks, candidates, diary entries,
-  promoted count, and recent worker state.
-
-Semantic vector memory:
-
-- Stored in browser IndexedDB when available.
-- Migrates/falls back to the older semantic memory localStorage records.
-- Calls `/ai/embeddings` to embed the current query before prompt build when the
-  active scope already has records.
-- Saves completed user/assistant turns with their embedding after each reply.
-- Searches locally in the browser with cosine similarity plus lexical and recency
-  scoring, then injects the top matches into the Grillo/POML context.
-
-Current limitation: durable server JSONL/SQLite memory is not implemented yet.
-The current Grillo repository is browser localStorage, while semantic vector
-memory is browser IndexedDB/localStorage fallback.
-
-## TTS
-
-Supported providers:
-
-- Piper in browser.
-- Fish Speech through server `/tts/stream`.
-- Inworld through server `/tts/stream`.
-
-Default app TTS settings:
-
-- Provider: Piper.
-- Auto-speak: on.
-- Simulated streaming display: on.
-- Remote TTS mode default: `live-bridge`.
-- Fish model default: `s2`.
-- Fish latency default: `balanced`.
-- Fish condition-on-previous-chunks: on.
-- Inworld model default: `inworld-tts-2`.
-- Inworld delivery mode default: `BALANCED`.
-
-Remote TTS behavior:
-
-- Fish Speech is the real live bridge. OpenAI text deltas can be streamed into a
-  single Fish realtime TTS request.
-- Inworld uses the installed SDK `stream()` path. Inworld `live-bridge` is
-  normalized to full-response mode because the current adapter is not a fake
-  bidirectional bridge.
-- Sentence-chunk mode exists for remote providers that need smaller text
-  windows.
-
-Browser audio exposes:
-
-```js
-window.__yourwifeyAudio?.resume();
-window.__yourwifeyAudio?.getStream();
-```
-
-The routelet captures the actual Chromium/WebAudio output through Pulse/PipeWire
-for FFmpeg.
-
-## VRM, Animations, And Visuals
-
-Default bundled model id is `neuro-sama`.
-
-Bundled model labels in `src/App.tsx` include:
-
-- Riko Final Fixed
-- Peak Riko
-- Hikari / Hikky C
-- Neuro-sama
-- Neuro Clown
-
-Animation support includes:
-
-- Legacy FBX idle/thinking animations.
-- Sachi VRMA animations.
-- Silly BVH animations.
-- Silly Tavern BVH manifest animations.
-
-The sequencer stores per-animation:
-
-- `enabled`
-- `experimental`
-- `weight`
-- `loopEligible`
-- `purpose`
-- `tags`
-
-Reply metadata maps AI intent to facial expression and animation:
-
-```text
-emotion, expression, motion, purpose, intensity, animation
-```
-
-Movement and pose animations are intentionally discouraged for normal replies
-unless the AI or user explicitly asks for them.
-
-Visual settings include locked/custom camera, model position/rotation/scale,
-auto blink, auto gaze, pointer-follow option, arm clip guard, crossfade duration,
-anime outline tuning, exposure, PBR material tuning, optional MToon material
-tuning, RGB color correction, and lighting controls.
-
-## Settings UI
-
-The side settings panel is the primary operator surface. Current tabs:
-
-- Avatar
-- Animation
-- Character
-- AI
-- Twitch
-- Memory
-- TTS
-
-State is persisted in browser localStorage for personas, active persona, AI/TTS
-settings, chat history, relationship memory, scoped relationship memories, UI
-state, active tab, current bundled model, Twitch channel, sequencer settings,
-and visual settings.
-
-## Environment
-
-Start from `.env.example`.
-
-Core browser/server flags:
-
-```text
-VITE_TWITCH_CHANNEL=subsect
-VITE_DIRECT_TWITCH_CHAT=true
-VITE_STREAM_BOT_WS_ENABLED=false
-VITE_AI_PROXY_ENABLED=true
-VITE_OPENAI_MODEL=gpt-5.4-nano
-VITE_AUTO_RESUME_AUDIO=false
-VITE_RUN_GAME_SDK_ENABLED=false
-
-TWITCH_MOCK=true
-TWITCH_CHANNEL=subsect
-COMMAND_ADMINS=subsect
-
-AI_PROVIDER=openai-responses
-OPENAI_MODEL=gpt-5.4-nano
-OPENAI_WS_URL=wss://api.openai.com/v1/responses
-OPENAI_STATE_MODE=conversation
-OPENAI_PROMPT_CACHE_KEY=yourwifey-stream
-OPENAI_REASONING_EFFORT=none
-OPENAI_STORE=false
-```
-
-Do not put the OpenAI API key in a `VITE_` variable. The browser calls the
-server/API proxy, and the proxy owns provider credentials.
-
-## Local Startup
+YourWifey is a React/Vite browser overlay for a live AI VTuber-style stream
+assistant. It combines:
+
+- VRM avatar rendering and animation sequencing.
+- Local chat and direct browser-side Twitch IRC intake.
+- OpenAI Responses API chat through a backend proxy.
+- Browser-local BYOK provider keys.
+- Fish Speech, Inworld, and Piper TTS paths.
+- POML prompt rendering.
+- Local relationship memory, diary, Grillo-style memory, and semantic memory.
+- Supabase-backed product/auth/cloud-sync scaffolding.
+- A VPS/routelet deployment path for live streaming experiments.
+
+It is not a finished commercial product yet. It is a working prototype/product
+shell with several real systems wired and several still-partial product pieces.
+
+## Repository State
+
+- Main working branch: `codex/byok-product-spine`
+- GitHub remote: `origin` points at `xsploit/yourwifey-stream`
+- Local target repo: `C:\Users\SUBSECT\Documents\GitHub\YourWifey-BYOK`
+- Current live fun VPS: `https://148-113-191-103.sslip.io/`
+- VPS app path: `/home/ubuntu/yourwifey-stream`
+- VPS API service: `yourwifey-ai.service` on port `8787`
+- VPS static overlay server: `serve-dist.mjs` on port `4173`
+
+Key status docs:
+
+- `docs/PRODUCTIZATION_RALPH_STATUS.md`
+- `docs/BYOK_PRODUCT_STATUS.md`
+- `docs/BYOK_PRODUCT_PLAN.md`
+- `docs/OVH_VPS_DEPLOY_RUNBOOK.md`
+- `docs/VERCEL_SUPABASE_BYOK.md`
+- `docs/grillo-memory-status.md`
+
+## Quick Commands
+
+Install:
 
 ```powershell
 npm install
-Copy-Item .env.example .env
+```
+
+Run overlay plus local AI proxy:
+
+```powershell
 npm run dev
 ```
 
-`npm run dev` starts both overlay and AI server:
-
-- Vite overlay: default Vite port.
-- AI/TTS server: `127.0.0.1:8787`.
-- Browser Twitch IRC: direct/client-side.
-- Server Twitch: mock/client-direct mode.
-
-Useful alternatives:
+Run only the overlay:
 
 ```powershell
 npm run dev:overlay
-npm run dev:ai
-npm run dev:bot:irc
-npm run preview
-npm run start:stream
 ```
 
-Use `dev:bot:irc` only when intentionally testing server-owned Twitch IRC.
+Run only the AI/TTS server:
 
-## Build And Test
+```powershell
+npm run dev:ai
+```
 
-Full build:
+Build everything:
 
 ```powershell
 npm run build
 ```
 
-This runs:
+Focused verification used most often:
+
+```powershell
+npx vitest run server/src/ai/OpenAiResponsesProvider.test.ts api/ai/chat.test.ts src/lib/product/provider-key-vault.test.ts
+git diff --check
+npm run build
+```
+
+## Current Runtime Shape
 
 ```text
-tsc && vite build
-tsc -p tsconfig.server.json
-tsc -p tsconfig.api.json
+Browser app
+  React/Vite UI
+  VRM stage
+  settings panel
+  local chat
+  browser Twitch IRC
+  browser-local provider key vault
+  IndexedDB/localStorage memory/settings
+        |
+        v
+Node AI/TTS proxy
+  /health
+  /ai/chat
+  /ai/models
+  /ai/embeddings
+  /ai/poml/render
+  /tts/voices
+  /tts/stream
+  /ws overlay socket
+        |
+        v
+Provider APIs
+  OpenAI Responses
+  OpenRouter Responses-compatible path
+  Tavily
+  Fish Speech
+  Inworld
 ```
 
-Tests:
+For the VPS, `serve-dist.mjs` serves the built `dist` folder and proxies
+`/api/ai/*`, `/api/tts/*`, and `/api/mock/*` to the Node server on `8787`.
 
-```powershell
-npx vitest run
+For Vercel-shaped deployment, the frontend serves from `dist` and serverless
+API routes live under `api/**`.
+
+## What Works Right Now
+
+### Overlay
+
+- Main editor/overlay page loads.
+- Dashboard/account/login/overlay route shell exists.
+- VRM rendering and model switching exist.
+- Character/persona switching exists.
+- Character background/persona defaults exist.
+- Animation sequencing exists with weighted categories.
+- Local chat and Twitch chat go through normalized chat turns.
+- Chat panel and settings persistence exist.
+
+### Twitch Intake
+
+- Browser-side direct Twitch IRC is the expected normal mode.
+- Server Twitch defaults to mock/client-direct mode.
+- Local chat is treated as a participant turn, not as a magic single-user path.
+- Local chat is also trusted/controller-capable.
+- Twitch metadata includes source/channel/login/display/badges/mod/broadcaster
+  where available.
+- Under the active chatter threshold, direct tagged Twitch and local messages go
+  into a sequential queue.
+- Over the threshold, Twitch can batch messages into a room-context turn.
+
+Current queue constants live in `src/App.tsx`:
+
+- Active chatter window: 120 seconds.
+- Direct-mode threshold: 10 active chatters.
+- Reply cooldown: 2 seconds.
+- Twitch context window: 80 turns.
+- Default batch max wait: 30 seconds.
+
+### OpenAI / AI
+
+- OpenAI Responses API is the primary backend path.
+- Responses WebSocket mode works again after fixing premature stream terminal
+  event handling.
+- Conversations API state is supported.
+- Conversation state is scoped by channel/persona, for example:
+  - `local:persona:hikari-chan`
+  - `twitch:subsect:persona:hikari-chan`
+- HTTP streaming mode also works.
+- Previous-response mode exists where supported.
+- Stateless mode exists for memory/background work.
+- Prompt cache fields are sent when configured.
+- `max_output_tokens` is wired from the UI max output setting to the backend
+  Responses payload.
+- `OPENAI_REASONING_EFFORT=none` means no `reasoning` object is sent.
+- Runtime compatibility handling strips unsupported `reasoning` or
+  `temperature` if the provider rejects that parameter, then remembers that
+  model capability for the process lifetime.
+- Tavily tools can be provided from the browser-local vault and routed through
+  the backend.
+
+Recent live smoke on the VPS confirmed WebSocket + conversation can return:
+
+```text
+delta: OK
+done: OK
+provider: openai-responses-ws
+stateMode: conversation
+transport: websocket
+reasoningEffort: null
 ```
 
-Useful focused tests:
+### POML Prompting
 
-```powershell
-npx vitest run src/lib/chat/chat-turn.test.ts
-npx vitest run src/lib/chat/prompt.test.ts
-npx vitest run src/lib/chat/grillo-context.test.ts
-npx vitest run src/lib/chat/grillo-memory.test.ts
-npx vitest run src/lib/chat/grillo-memory-loop.test.ts
-npx vitest run server/src/ai/OpenAiResponsesProvider.test.ts
-npx vitest run server/src/tts/RemoteTtsProvider.test.ts
+POML is real here. The prompt template is:
+
+```text
+src/lib/chat/templates/yourwifey-responses.poml
 ```
 
-Expected build warnings today:
+The installed dependency is:
 
-- `onnxruntime-web` uses eval in the bundled runtime.
-- Vite warns that some output chunks are larger than 500 kB.
-
-## VPS / Streaming Reality
-
-Vercel can host the overlay and serverless API routes, but it is not the right
-place for a long-running FFmpeg stream. Actual RTMP streaming needs a persistent
-Linux box or cloud PC with Chromium, an audio device/sink, and FFmpeg.
-
-The routelet signal flow is documented in `docs/STREAM_ROUTELET.md`.
-
-Minimal package set on Ubuntu:
-
-```bash
-sudo apt update
-sudo apt install -y ffmpeg xvfb x11-utils curl pulseaudio-utils pulseaudio
+```text
+pomljs: file:vendor/pomljs-0.0.9.tgz
 ```
 
-The routelet expects a built app, Chrome/Chromium, an overlay URL, and an RTMP
-output. For Twitch:
+The prompt path renders persona, current turn metadata, Twitch/local mode,
+relationship memory, Grillo context, diary, semantic memory, TTS policy,
+animation catalog, tool policy, and reply metadata instructions.
 
-```bash
-export TWITCH_STREAM_KEY='live_...'
-npm run stream:routelet
+Important files:
+
+- `src/lib/chat/prompt.ts`
+- `src/lib/chat/poml.ts`
+- `server/src/ai/PomlRenderer.ts`
+- `api/ai/poml/render.ts`
+
+### Memory
+
+Current memory is browser-first.
+
+Relationship memory:
+
+- Stored locally.
+- Tracks stage, mood, trust, attraction, respect, irritation, jealousy, guard,
+  facts, summary, diary entry, and diary history.
+
+Grillo-style memory:
+
+- Stored locally.
+- Has candidate memories, promoted memory blocks, diary entries, and background
+  worker/tool-loop behavior.
+
+Semantic memory:
+
+- Uses local browser storage and embeddings where available.
+- Falls back instead of blocking chat when embeddings are unavailable.
+
+This is not yet a robust multi-user cloud memory product.
+
+### TTS
+
+Piper:
+
+- Browser/local TTS path.
+- Uses web worker and local browser audio.
+
+Fish Speech:
+
+- Remote provider path exists.
+- Voice listing through `/tts/voices` works.
+- Live bridge mode streams text into backend TTS.
+- Browser supplies provider key headers from the local vault when configured.
+
+Inworld:
+
+- Remote provider path exists.
+- SDK/package is present.
+- Still needs more real-world testing for best low-latency streaming behavior.
+
+### BYOK Product Shell
+
+BYOK means provider API keys are intended to stay browser-local for v1.
+
+Current browser-local key slots include:
+
+- OpenAI
+- OpenRouter
+- Fish Speech
+- Inworld
+- Tavily
+
+The backend receives provider keys from the browser as request headers for the
+active request. Provider keys are not supposed to be stored in Supabase cloud
+settings.
+
+### Supabase / Cloud Product Scaffolding
+
+Supabase is the chosen product stack for:
+
+- Magic-link auth.
+- Profiles.
+- Workspaces.
+- Scenes.
+- Scene settings.
+- Overlay tokens.
+- Storage contract.
+
+There is a migration:
+
+```text
+supabase/migrations/20260515000100_byok_product_spine.sql
 ```
 
-Important FFmpeg map:
+Serverless BYOK routes exist under:
 
-```bash
--f x11grab -i :99.0+0,0
--f pulse -i yourwifey_stream.monitor
--map 0:v:0 -map 1:a:0
+```text
+api/byok/**
 ```
 
-## Serverless API Routes
+Cloud settings sync exists as a product path, but provider secrets remain
+local-only by design.
 
-The `api/` folder mirrors core routes for serverless deployments:
+## What Is Partial Or Not Done
+
+- This is not production-ready commercial software.
+- Stripe/payments/credits are intentionally not implemented in this BYOK fork.
+- Public OBS overlay sharing exists as signed-token route work, but token
+  lifecycle/revocation still needs more hardening.
+- Supabase product data routes exist, but more browser smoke and policy review
+  are still needed.
+- Cloud memory is not the main memory system yet.
+- Provider API keys do not have a hosted encrypted vault.
+- TTS streaming still needs more real-stream soak testing, especially Fish and
+  Inworld under long replies and queue pressure.
+- The UI is functional but still needs a serious product/design pass.
+- The VPS is a fun/live test box, not the final product deployment target.
+- Vercel is the intended product-shaped deployment target, but WebSocket-heavy
+  live workloads may still need a separate long-running worker.
+
+## OpenRouter Truth
+
+OpenRouter support exists, but it is not equivalent to OpenAI Conversations API.
+
+The OpenRouter path is treated as app-owned state:
+
+- No provider conversation object.
+- No assumption of provider-side statefulness.
+- App resends rendered POML, transcript, diary, Grillo memory, and semantic
+  memory context.
+- OpenRouter is labeled as `OpenRouter Responses (App Memory)`.
+
+Use OpenAI Responses when you want provider Conversations API behavior.
+
+## Important Settings Truth
+
+- Max output is wired to `max_output_tokens`.
+- Temperature is sent when allowed and stripped only if the provider rejects it.
+- Reasoning is disabled when configured as `none`.
+- WebSocket status in the AI tab should reflect the selected transport mode.
+- WebSocket requests are request-scoped: the socket opens per reply and is idle
+  between replies.
+- Tools display as available only when Tavily is configured through server env
+  or browser-vault header.
+
+## Environment
+
+Start from:
+
+```text
+.env.example
+```
+
+Important local/VPS values:
+
+```text
+AI_PROVIDER=openai-responses-ws
+OPENAI_MODEL=gpt-5.4-nano
+OPENAI_WS_URL=wss://api.openai.com/v1/responses
+OPENAI_REASONING_EFFORT=none
+TWITCH_MOCK=true
+BOT_PORT=8787
+TTS_PROVIDER=piper
+```
+
+Important Supabase values:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY
+SUPABASE_JWT_SECRET
+SUPABASE_STORAGE_BUCKET
+OVERLAY_SIGNING_SECRET
+```
+
+Do not add `VITE_` provider API secrets. Provider keys are user BYOK values and
+belong in the browser-local provider vault.
+
+## Core Files
+
+Frontend:
+
+- `src/App.tsx`
+- `src/components/menu/SettingsPanel.tsx`
+- `src/components/menu/tabs/*`
+- `src/lib/chat/*`
+- `src/lib/tts/*`
+- `src/lib/vrm/*`
+- `src/lib/product/*`
+
+Backend:
+
+- `server/src/index.ts`
+- `server/src/config.ts`
+- `server/src/ai/OpenAiResponsesProvider.ts`
+- `server/src/ai/TavilyTools.ts`
+- `server/src/tts/RemoteTtsProvider.ts`
+- `server/src/commands/*`
+- `server/src/twitch/*`
+
+Serverless:
 
 - `api/ai/chat.ts`
 - `api/ai/embeddings.ts`
 - `api/ai/poml/render.ts`
+- `api/byok/**`
 
-The long-running Node server in `server/src/index.ts` is still the practical
-local/VPS runtime because it also owns overlay WebSocket events, mock/server IRC,
-and remote TTS streaming.
+Deployment:
 
-## What Is Not Done Yet
+- `serve-dist.mjs`
+- `scripts/stream-routelet.sh`
+- `vercel.json`
+- `docs/OVH_VPS_DEPLOY_RUNBOOK.md`
+- `docs/VERCEL_SUPABASE_BYOK.md`
 
-- Durable server-side Grillo/vector memory repository. Current Grillo memory is
-  browser localStorage and semantic vector memory is browser IndexedDB.
-- Full database-backed multi-browser memory sync.
-- Inworld true bidirectional live bridge. Current Inworld path is SDK
-  full-response stream or sentence chunks.
-- GPU-native streaming stack. Current routelet is Chromium plus FFmpeg.
-- A perfect animation set. The app supports FBX, VRMA, and BVH assets, but asset
-  quality still varies and bad clips should be disabled or down-weighted.
+## Known Sharp Edges
 
-## Development Rules For This Repo
+- `npm run build` currently emits expected Vite warnings about
+  `onnxruntime-web` using eval and large chunks.
+- WebSocket Responses must wait for `response.completed`; lifecycle events like
+  `response.output_text.done` are not final completion.
+- Low max-output values can still cause incomplete replies, especially on
+  reasoning-style models.
+- Remote TTS and live-bridge paths can affect perceived chat latency.
+- Restarting the VPS service can hang if stale processes still hold ports
+  `8787` or `4173`; use the VPS runbook.
+- Some product docs contain older checkpoint history; this README is the
+  shortest current truth layer.
 
-- Treat this README as the factual entry point.
-- Use existing code paths before adding parallel systems.
-- Keep Twitch and local chat unified through `ChatTurn`.
-- Keep POML prompt rendering real and test rendered output, not only templates.
-- Keep OpenAI chat state scoped by source/channel/persona.
-- Keep memory worker requests isolated from live chat state.
-- Commit coherent checkpoints and run the smallest relevant verification.
+## Minimum Ship Checks
+
+Before saying a checkpoint is good:
+
+```powershell
+npx vitest run server/src/ai/OpenAiResponsesProvider.test.ts api/ai/chat.test.ts src/lib/product/provider-key-vault.test.ts
+git diff --check
+npm run build
+```
+
+For product/auth/Supabase work, also run relevant tests under:
+
+```text
+src/lib/product/*.test.ts
+api/byok/**/*.test.ts
+```
+
+For prompt/POML work, verify the actual rendered prompt path, not just the
+template file.
+
+## Current Next Work
+
+Highest-value next checks:
+
+- Browser smoke with saved OpenAI key in WebSocket + conversation mode.
+- Browser smoke for Fish/Inworld BYOK keys and long TTS replies.
+- Confirm semantic memory lookup/write after real chat.
+- Review and harden signed overlay token lifecycle.
+- Continue UI/product polish from the current theme instead of generic SaaS UI.
+- Decide whether long-running WebSocket/TTS work stays on VPS/worker while the
+  dashboard deploys on Vercel.
