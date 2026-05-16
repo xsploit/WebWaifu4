@@ -24,6 +24,7 @@ import {
 } from './tts/RemoteTtsProvider.js';
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
+import { summarizeByokRuntimeHealth } from './byokHealth.js';
 
 type OpenAiEmbeddingPayload = {
   data?: Array<{
@@ -666,6 +667,7 @@ const httpServer = createServer(async (request, response) => {
           deliveryMode: config.inworldDeliveryMode,
         },
       },
+      byok: summarizeByokRuntimeHealth(),
     });
     return;
   }
