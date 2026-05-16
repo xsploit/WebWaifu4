@@ -436,17 +436,27 @@ export class OpenAiResponsesProvider implements ChatProvider {
     }
   }
 
-  getState() {
+  getState(stateKey?: string) {
     const defaultState = this.getScopedState('default');
+    const snapshots = Array.from(this.states.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, state]) => this.getStateSnapshot(key, state));
+    const activeStateKey = stateKey ? normalizeStateKey(stateKey) : 'default';
+    const activeState =
+      snapshots.find((snapshot) => snapshot.stateKey === activeStateKey) ??
+      this.getStateSnapshot(activeStateKey, null);
     return {
       provider: this.options.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
       stateMode: this.options.stateMode,
-      conversationId: defaultState.conversationId,
-      previousResponseId: defaultState.previousResponseId,
+      activeState,
+      activeStateKey,
+      conversationId: activeState.conversationId ?? defaultState.conversationId,
+      previousResponseId: activeState.previousResponseId ?? defaultState.previousResponseId,
       promptCacheKey: this.options.promptCacheKey,
       promptCacheRetention: this.options.promptCacheRetention ?? 'in_memory',
-      cachedTokens: defaultState.cachedTokens,
-      stateKeys: Array.from(this.states.keys()).sort(),
+      cachedTokens: activeState.cachedTokens ?? defaultState.cachedTokens,
+      scopedStates: snapshots,
+      stateKeys: snapshots.map((snapshot) => snapshot.stateKey),
       store: this.options.store,
       toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
       toolsAvailable: Boolean(this.options.tavilyTools),
@@ -456,6 +466,15 @@ export class OpenAiResponsesProvider implements ChatProvider {
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
       websocketStatus: this.options.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
       websocketLifecycle: this.options.useWebSocket ? 'request-scoped' : 'disabled',
+    };
+  }
+
+  private getStateSnapshot(stateKey: string, state: OpenAiScopedState | null) {
+    return {
+      stateKey,
+      conversationId: state?.conversationId ?? null,
+      previousResponseId: state?.previousResponseId ?? null,
+      cachedTokens: state?.cachedTokens ?? 0,
     };
   }
 

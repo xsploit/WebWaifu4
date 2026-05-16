@@ -331,7 +331,6 @@ function getRuntimeChatProvider(
   const cacheKey = [
     providerName,
     runtimeConfig.aiApiBaseUrl,
-    runtimeConfig.aiModel,
     runtimeConfig.openAiStateMode,
     runtimeConfig.openAiStore ? 'store' : 'no-store',
     runtimeConfig.tavilyApiKey ? hashSecret(runtimeConfig.tavilyApiKey) : 'no-tools',
@@ -342,6 +341,7 @@ function getRuntimeChatProvider(
     runtimeProvider = createProvider(runtimeConfig);
     runtimeProviderCache.set(cacheKey, runtimeProvider);
   }
+  runtimeProvider.setModel?.(runtimeConfig.aiModel);
   return runtimeProvider;
 }
 
@@ -854,7 +854,15 @@ const httpServer = createServer(async (request, response) => {
   const runtimePath = getRuntimeApiPath(url.pathname);
 
   if (request.method === 'GET' && runtimePath === '/health') {
-    const providerState = config.providerProxyEnabled ? (provider.getState?.() ?? null) : null;
+    const requestedStateKey = url.searchParams.get('stateKey') ?? undefined;
+    const requestedModel = url.searchParams.get('model') ?? undefined;
+    const runtimeHealthProvider = getRuntimeChatProvider(
+      config,
+      request,
+      getHeaderValue(request, 'x-yourwifey-llm-provider') || config.aiProvider,
+      requestedModel ?? undefined,
+    );
+    const providerState = runtimeHealthProvider?.getState?.(requestedStateKey) ?? null;
     const runtimeTavilyApiKey = getRuntimeTavilyApiKey(config, request);
     const healthProviderState =
       providerState && runtimeTavilyApiKey
@@ -873,9 +881,11 @@ const httpServer = createServer(async (request, response) => {
       serverTwitchSource: config.twitchMock ? 'local-control' : 'irc',
       channel: chatSource.channel,
       overlayClients: overlaySocket.clientCount,
-      aiProvider: config.providerProxyEnabled ? config.aiProvider : 'disabled',
+      aiProvider: runtimeHealthProvider
+        ? (getHeaderValue(request, 'x-yourwifey-llm-provider') ?? config.aiProvider)
+        : 'disabled',
       serverProviderProxyEnabled: config.providerProxyEnabled,
-      model: config.providerProxyEnabled ? (provider.getModel?.() ?? config.aiModel) : null,
+      model: runtimeHealthProvider ? (runtimeHealthProvider.getModel?.() ?? config.aiModel) : null,
       providerState: healthProviderState,
       ttsProviders: {
         fishSpeech: {

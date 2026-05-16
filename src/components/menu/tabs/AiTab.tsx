@@ -50,10 +50,11 @@ function formatProviderSocket(providerState: AiProxyHealth['providerState']) {
 }
 
 function formatProviderStateId(providerState: AiProxyHealth['providerState']) {
+  const activeState = providerState?.activeState;
   const id =
     providerState?.stateMode === 'conversation'
-      ? providerState.conversationId
-      : providerState?.previousResponseId;
+      ? (activeState?.conversationId ?? providerState.conversationId)
+      : (activeState?.previousResponseId ?? providerState?.previousResponseId);
   if (!id) {
     return 'not created yet';
   }
@@ -198,6 +199,15 @@ export function AiTab({
         <div className="status-copy">
           State: <strong>{providerState?.stateMode ?? 'unknown'}</strong> / id:{' '}
           <strong>{formatProviderStateId(providerState)}</strong>
+        </div>
+        <div className="status-copy">
+          Active state:{' '}
+          <strong>
+            {providerState?.activeState?.stateKey ??
+              providerState?.activeStateKey ??
+              providerState?.stateKey ??
+              'default'}
+          </strong>
         </div>
         <div className="status-copy">
           Transport: <strong>{formatProviderTransport(providerState)}</strong>

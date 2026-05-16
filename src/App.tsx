@@ -348,6 +348,7 @@ type AppCompletionResponse = {
       content: string;
     };
   }>;
+  meta?: AiProxyHealth['providerState'];
 };
 
 type AiProxyStreamEvent = {
@@ -356,6 +357,7 @@ type AiProxyStreamEvent = {
   delta?: string;
   error?: string;
   mimeType?: string;
+  meta?: AiProxyHealth['providerState'];
   ok?: boolean;
   sampleRate?: number;
   text?: string;
@@ -502,11 +504,23 @@ function getAiModelsUrl(llmProvider: AiSettings['llmProvider']) {
   return url.toString();
 }
 
-function getAiHealthUrl() {
+function getAiHealthUrl({
+  model,
+  stateKey,
+}: {
+  model?: string;
+  stateKey?: string;
+} = {}) {
   const url = new URL(getAiProxyUrl());
   url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/health');
   if (!/\/health\/?$/.test(url.pathname)) {
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/health`;
+  }
+  if (stateKey?.trim()) {
+    url.searchParams.set('stateKey', stateKey.trim());
+  }
+  if (model?.trim()) {
+    url.searchParams.set('model', model.trim());
   }
   return url.toString();
 }
@@ -663,7 +677,7 @@ async function readAiProxyStream(
   response: Response,
   onTextDelta?: (delta: string) => void,
   onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void,
-): Promise<string> {
+): Promise<{ meta?: AiProxyHealth['providerState']; text: string }> {
   if (!response.body) {
     throw new Error('Stream bot AI proxy did not return a readable stream.');
   }
@@ -673,6 +687,7 @@ async function readAiProxyStream(
   let buffer = '';
   let streamedText = '';
   let finalText = '';
+  let finalMeta: AiProxyHealth['providerState'] | undefined;
 
   const handleBlock = (block: string) => {
     const data = block
@@ -708,6 +723,7 @@ async function readAiProxyStream(
     }
     if (event.type === 'done') {
       finalText = event.text?.trim() || streamedText.trim();
+      finalMeta = event.meta;
     }
   };
 
@@ -730,7 +746,10 @@ async function readAiProxyStream(
     handleBlock(buffer);
   }
 
-  return finalText || streamedText.trim();
+  return {
+    meta: finalMeta,
+    text: finalText || streamedText.trim(),
+  };
 }
 
 async function requestChatCompletion({
@@ -802,7 +821,8 @@ async function requestChatCompletion({
   }
 
   if (onTextDelta && response.headers.get('content-type')?.includes('text/event-stream')) {
-    const text = await readAiProxyStream(response, onTextDelta, onAudioChunk);
+    const streamResult = await readAiProxyStream(response, onTextDelta, onAudioChunk);
+    const text = streamResult.text;
     if (!text.trim()) {
       throw new Error('Stream bot AI proxy returned an empty response.');
     }
@@ -815,10 +835,16 @@ async function requestChatCompletion({
           },
         },
       ],
+      meta: streamResult.meta,
     };
   }
 
-  const data = (await response.json()) as { ok?: boolean; text?: string; error?: string };
+  const data = (await response.json()) as {
+    ok?: boolean;
+    text?: string;
+    error?: string;
+    meta?: AiProxyHealth['providerState'];
+  };
   if (!data.ok || !data.text?.trim()) {
     throw new Error(data.error ?? 'Stream bot AI proxy returned an empty response.');
   }
@@ -831,6 +857,7 @@ async function requestChatCompletion({
         },
       },
     ],
+    meta: data.meta,
   };
 }
 
@@ -1665,10 +1692,16 @@ function App() {
         llmProvider: aiSettingsRef.current.llmProvider,
         providerKeyVaultWorkspaceId,
       });
-      const response = await fetch(getAiHealthUrl(), {
-        cache: 'no-store',
-        headers: { ...providerHeaders, Accept: 'application/json' },
-      });
+      const response = await fetch(
+        getAiHealthUrl({
+          model: aiSettingsRef.current.model,
+          stateKey: activeRelationshipStateKeyRef.current,
+        }),
+        {
+          cache: 'no-store',
+          headers: { ...providerHeaders, Accept: 'application/json' },
+        },
+      );
       if (!response.ok) {
         throw new Error(`AI proxy health failed with HTTP ${response.status}.`);
       }
@@ -3901,6 +3934,20 @@ function App() {
           ttsBridge,
           providerKeyVaultWorkspaceId,
         });
+        if (response.meta) {
+          setAiProxyHealth((current) => ({
+            ...(current ?? {}),
+            aiProvider:
+              settings.llmProvider === 'openrouter-responses'
+                ? 'openrouter-responses'
+                : (current?.aiProvider ?? settings.llmProvider),
+            model: selectedModel,
+            providerState: {
+              ...(current?.providerState ?? {}),
+              ...response.meta,
+            },
+          }));
+        }
 
         const assistantReply = await speechPlayer.finish(response.choices[0]?.message.content);
         const assistantContent = assistantReply.text;

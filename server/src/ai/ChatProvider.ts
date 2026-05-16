@@ -49,6 +49,6 @@ export interface ChatProvider {
   ): Promise<ChatProviderResponse>;
   getModel?(): string;
   setModel?(model: string): void;
-  getState?(): Record<string, unknown>;
+  getState?(stateKey?: string): Record<string, unknown>;
   resetState?(): void;
 }

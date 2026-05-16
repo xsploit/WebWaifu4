@@ -108,12 +108,26 @@ export type AiProxyHealth = {
   model?: string;
   serverProviderProxyEnabled?: boolean;
   providerState?: {
+    activeState?: {
+      cachedTokens?: number;
+      conversationId?: string | null;
+      previousResponseId?: string | null;
+      stateKey?: string;
+    };
+    activeStateKey?: string;
     cachedTokens?: number;
     conversationId?: string | null;
     previousResponseId?: string | null;
     promptCacheKey?: string;
     promptCacheRetention?: string;
     requestedTransport?: string;
+    scopedStates?: Array<{
+      cachedTokens?: number;
+      conversationId?: string | null;
+      previousResponseId?: string | null;
+      stateKey?: string;
+    }>;
+    stateKey?: string;
     stateMode?: string;
     stateKeys?: string[];
     store?: boolean;

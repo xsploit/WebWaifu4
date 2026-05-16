@@ -890,13 +890,29 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   verified local and public dashboards serve `/assets/index-ChV6xoB0.js`, and
   verified `http://127.0.0.1:8787/health` returns `serverProviderProxyEnabled:
   false`.
+- 2026-05-16 active Responses state checkpoint: fixed the BYOK runtime status
+  path that made the AI tab report `conversation / id: not created yet` even
+  after stateful chat. Runtime BYOK providers are no longer cached per model;
+  model changes call `setModel()` on the existing provider so conversation
+  state survives the switch. `/health` now resolves the browser-key runtime
+  provider and accepts an active `stateKey`/`model`, while the frontend sends
+  the active local/persona state key and patches the AI tab from chat response
+  metadata. Provider state now exposes `activeState`, `activeStateKey`, and
+  scoped state snapshots. Verification:
+  `npx vitest run server/src/ai/OpenAiResponsesProvider.test.ts api/ai/chat.test.ts src/lib/product/provider-key-vault.test.ts`
+  -> passed, 3 files, 27 tests; `git diff --check` -> passed with line-ending
+  warnings only; `npm run build` -> passed with existing `onnxruntime-web` eval
+  and large chunk warnings. Secret scan over changed runtime files found no
+  literal provider secrets or auth tokens. Commit/deploy pending for this
+  checkpoint.
 
 ## Current Blocker Or Next Patch
 
-Next BYOK product patch: run a browser smoke with a saved OpenRouter key: local
-chat reply, diary pass, and semantic memory lookup/write. If no OpenRouter key
-is present in the browser vault, continue Fish/Inworld BYOK behavior or add an
-explicit unsupported-browser-local status for remote TTS. Supabase MCP/schema
+Next BYOK product patch: deploy the active Responses state fix, then run a
+browser smoke with a saved OpenAI key in conversation mode: local chat reply,
+AI tab active state id, Tavily tools status, diary pass, and semantic memory
+lookup/write. If OpenRouter is selected, verify the app honestly shows stateless
+app-owned memory instead of provider conversation state. Supabase MCP/schema
 audit remains queued before more database policy work. Remaining server work:
 signed overlay token rotation or revocation backend semantics.
 

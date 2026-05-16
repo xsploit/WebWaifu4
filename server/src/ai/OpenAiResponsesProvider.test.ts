@@ -921,6 +921,22 @@ describe('OpenAiResponsesProvider', () => {
       'twitch:other:persona:riko',
       'twitch:subsect:persona:riko',
     ]);
+    expect(provider.getState('twitch:subsect:persona:riko')).toMatchObject({
+      activeState: {
+        conversationId: 'conv_subsect',
+        stateKey: 'twitch:subsect:persona:riko',
+      },
+      activeStateKey: 'twitch:subsect:persona:riko',
+      conversationId: 'conv_subsect',
+    });
+    expect(provider.getState('twitch:other:persona:riko')).toMatchObject({
+      activeState: {
+        conversationId: 'conv_other',
+        stateKey: 'twitch:other:persona:riko',
+      },
+      activeStateKey: 'twitch:other:persona:riko',
+      conversationId: 'conv_other',
+    });
   });
 
   it('keeps conversation state when switching models', async () => {
