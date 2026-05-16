@@ -4171,13 +4171,18 @@ function App() {
     },
     [currentBundledModelId, handleLoadBundledModel, persistedStateSnapshot],
   );
+  const handleApplyCloudSettingsRef = useRef(handleApplyCloudSettings);
   useEffect(() => {
-    if (appRoute.kind !== 'overlay' || !overlayToken) {
+    handleApplyCloudSettingsRef.current = handleApplyCloudSettings;
+  }, [handleApplyCloudSettings]);
+  const overlaySceneId = appRoute.kind === 'overlay' ? appRoute.sceneId : '';
+  useEffect(() => {
+    if (appRoute.kind !== 'overlay' || !overlaySceneId || !overlayToken) {
       setOverlayConfigStatus('');
       return;
     }
 
-    const loadKey = `${appRoute.sceneId}:${overlayToken}`;
+    const loadKey = `${overlaySceneId}:${overlayToken}`;
     if (overlayConfigLoadRef.current === loadKey) {
       return;
     }
@@ -4186,14 +4191,14 @@ function App() {
     overlayConfigLoadRef.current = loadKey;
     setOverlayConfigStatus('Loading OBS overlay config...');
     fetchByokOverlayConfig({
-      sceneId: appRoute.sceneId,
+      sceneId: overlaySceneId,
       token: overlayToken,
     })
       .then((response) => {
         if (cancelled) {
           return;
         }
-        handleApplyCloudSettings(response.settings);
+        handleApplyCloudSettingsRef.current(response.settings);
         if (response.scene.twitchChannel) {
           setTwitchChannel(response.scene.twitchChannel);
         }
@@ -4212,7 +4217,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [appRoute, handleApplyCloudSettings, overlayToken]);
+  }, [appRoute.kind, overlaySceneId, overlayToken]);
 
   return (
     <div
