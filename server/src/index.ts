@@ -559,6 +559,14 @@ function matchByokApiRoute(url: URL): MatchedByokApiRoute | null {
   return null;
 }
 
+function getRuntimeApiPath(pathname: string) {
+  return pathname.startsWith('/api/ai/') ||
+    pathname.startsWith('/api/tts/') ||
+    pathname.startsWith('/api/mock/')
+    ? pathname.slice('/api'.length)
+    : pathname;
+}
+
 async function handleByokApiRoute(
   request: IncomingMessage,
   response: ServerResponse,
@@ -645,7 +653,9 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'GET' && url.pathname === '/health') {
+  const runtimePath = getRuntimeApiPath(url.pathname);
+
+  if (request.method === 'GET' && runtimePath === '/health') {
     writeJson(response, 200, {
       ok: true,
       twitchMode: serverTwitchMode,
@@ -676,7 +686,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'GET' && url.pathname === '/tts/voices') {
+  if (request.method === 'GET' && runtimePath === '/tts/voices') {
     if (!config.providerProxyEnabled) {
       writeJson(response, 200, {
         ok: false,
@@ -705,7 +715,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'POST' && url.pathname === '/tts/stream') {
+  if (request.method === 'POST' && runtimePath === '/tts/stream') {
     if (!config.providerProxyEnabled) {
       writeJson(response, 200, {
         ok: false,
@@ -782,7 +792,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'POST' && url.pathname === '/ai/embeddings') {
+  if (request.method === 'POST' && runtimePath === '/ai/embeddings') {
     if (!config.providerProxyEnabled) {
       writeJson(response, 200, {
         ok: false,
@@ -822,7 +832,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'POST' && url.pathname === '/ai/poml/render') {
+  if (request.method === 'POST' && runtimePath === '/ai/poml/render') {
     try {
       const body = await readRequestJson<{ variables?: unknown }>(request);
       writeJson(response, 200, await renderYourWifeyPomlResponse(body.variables));
@@ -835,7 +845,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'POST' && url.pathname === '/ai/chat') {
+  if (request.method === 'POST' && runtimePath === '/ai/chat') {
     if (!config.providerProxyEnabled) {
       writeJson(response, 200, {
         ok: false,
@@ -963,7 +973,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'POST' && url.pathname === '/mock/chat') {
+  if (request.method === 'POST' && runtimePath === '/mock/chat') {
     if (!mockSource) {
       writeJson(response, 409, {
         ok: false,
@@ -985,7 +995,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'GET' && url.pathname === '/overlay') {
+  if (request.method === 'GET' && runtimePath === '/overlay') {
     response.writeHead(302, { Location: `http://127.0.0.1:${config.overlayPort}/overlay` });
     response.end();
     return;

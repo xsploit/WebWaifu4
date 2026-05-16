@@ -32,6 +32,7 @@ function sendFile(response, filePath) {
 }
 
 function proxyApi(request, response) {
+  const upstreamPath = getUpstreamApiPath(request.url || '/');
   const upstream = createHttpRequest(
     {
       headers: {
@@ -40,7 +41,7 @@ function proxyApi(request, response) {
       },
       hostname: '127.0.0.1',
       method: request.method,
-      path: request.url,
+      path: upstreamPath,
       port: apiPort,
     },
     (upstreamResponse) => {
@@ -55,6 +56,18 @@ function proxyApi(request, response) {
     response.end(JSON.stringify({ ok: false, error: 'Local API proxy failed.' }));
   });
   request.pipe(upstream);
+}
+
+function getUpstreamApiPath(path) {
+  const url = new URL(path, 'http://127.0.0.1');
+  if (
+    url.pathname.startsWith('/api/ai/') ||
+    url.pathname.startsWith('/api/tts/') ||
+    url.pathname.startsWith('/api/mock/')
+  ) {
+    url.pathname = url.pathname.slice('/api'.length);
+  }
+  return `${url.pathname}${url.search}`;
 }
 
 createServer((request, response) => {
