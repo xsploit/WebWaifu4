@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { requestBrowserOpenAiCompletion } from './browser-openai-responses';
+import {
+  requestBrowserOpenAiCompletion,
+  requestBrowserOpenAiEmbedding,
+} from './browser-openai-responses';
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -140,5 +143,37 @@ describe('requestBrowserOpenAiCompletion', () => {
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toMatchObject({ store: false });
     expect(bodies[1]).not.toHaveProperty('previous_response_id');
+  });
+
+  it('calls OpenAI embeddings directly without putting the provider key in the body', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        data: [
+          {
+            embedding: [0.1, 0.2, 0.3],
+          },
+        ],
+      }),
+    );
+
+    const embedding = await requestBrowserOpenAiEmbedding({
+      apiKey: 'test',
+      fetchImpl,
+      input: 'remember this turn',
+    });
+
+    expect(embedding).toEqual([0.1, 0.2, 0.3]);
+    const firstCall = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    const init = firstCall[1];
+    expect(firstCall[0]).toBe('https://api.openai.com/v1/embeddings');
+    expect(init?.headers).toMatchObject({
+      Authorization: 'Bearer test',
+      'Content-Type': 'application/json',
+    });
+    expect(String(init?.body)).not.toContain('Bearer');
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      input: 'remember this turn',
+      model: 'text-embedding-3-small',
+    });
   });
 });

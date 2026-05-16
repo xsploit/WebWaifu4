@@ -39,6 +39,14 @@ export type BrowserOpenAiCompletionResponse = {
   text: string;
 };
 
+export type BrowserOpenAiEmbeddingRequest = {
+  apiBaseUrl?: string;
+  apiKey: string;
+  fetchImpl?: typeof fetch;
+  input: string;
+  model?: string;
+};
+
 type OpenAiResponsePayload = {
   error?: {
     message?: string;
@@ -52,6 +60,15 @@ type OpenAiResponsePayload = {
     type?: string;
   }>;
   output_text?: string;
+};
+
+type OpenAiEmbeddingPayload = {
+  data?: Array<{
+    embedding?: number[];
+  }>;
+  error?: {
+    message?: string;
+  };
 };
 
 type OpenAiStreamEvent = {
@@ -166,6 +183,48 @@ export async function requestBrowserOpenAiCompletion({
     },
     text,
   };
+}
+
+export async function requestBrowserOpenAiEmbedding({
+  apiBaseUrl = 'https://api.openai.com/v1',
+  apiKey,
+  fetchImpl = fetch,
+  input,
+  model = 'text-embedding-3-small',
+}: BrowserOpenAiEmbeddingRequest): Promise<number[]> {
+  const trimmedApiKey = apiKey.trim();
+  if (!trimmedApiKey) {
+    throw new Error('OpenAI BYOK key is not saved in this browser.');
+  }
+
+  const text = input.trim();
+  if (!text) {
+    throw new Error('Embedding input is empty.');
+  }
+
+  const response = await fetchImpl(`${apiBaseUrl.replace(/\/+$/, '')}/embeddings`, {
+    body: JSON.stringify({
+      input: text.slice(0, 4000),
+      model,
+    }),
+    headers: {
+      Authorization: `Bearer ${trimmedApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(message || `OpenAI Embeddings API failed with HTTP ${response.status}.`);
+  }
+
+  const data = (await response.json()) as OpenAiEmbeddingPayload;
+  const embedding = data.data?.[0]?.embedding;
+  if (!Array.isArray(embedding)) {
+    throw new Error(data.error?.message || 'OpenAI returned no embedding.');
+  }
+  return embedding;
 }
 
 function splitMessages(messages: BrowserOpenAiMessage[]) {

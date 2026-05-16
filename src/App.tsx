@@ -130,7 +130,10 @@ import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import { applyCloudSettingRecords } from './lib/product/cloud-settings';
 import { fetchByokOverlayConfig } from './lib/product/byok-api';
 import type { SyncedSettingRecord } from './lib/product/byok';
-import { requestBrowserOpenAiCompletion } from './lib/product/browser-openai-responses';
+import {
+  requestBrowserOpenAiCompletion,
+  requestBrowserOpenAiEmbedding,
+} from './lib/product/browser-openai-responses';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
 import './style.css';
 
@@ -732,10 +735,31 @@ async function requestChatCompletion({
   };
 }
 
-async function requestTextEmbedding(input: string): Promise<number[] | null> {
+async function requestTextEmbedding(
+  input: string,
+  providerKeyVaultWorkspaceId?: string,
+): Promise<number[] | null> {
   const text = input.trim();
-  if (!AI_PROXY_ENABLED || !text) {
+  if (!text) {
     return null;
+  }
+
+  if (!AI_PROXY_ENABLED) {
+    try {
+      const providerVault = createBrowserProviderKeyVault({
+        workspaceId: providerKeyVaultWorkspaceId ?? 'local-browser',
+      });
+      const apiKey = await providerVault.getSecret('openai', 'openai.apiKey');
+      if (!apiKey) {
+        return null;
+      }
+      return await requestBrowserOpenAiEmbedding({
+        apiKey,
+        input: text,
+      });
+    } catch {
+      return null;
+    }
   }
 
   const controller = new AbortController();
@@ -760,13 +784,17 @@ async function requestTextEmbedding(input: string): Promise<number[] | null> {
   }
 }
 
-async function getSemanticMemoryContext(scopeKey: string, query: string) {
+async function getSemanticMemoryContext(
+  scopeKey: string,
+  query: string,
+  providerKeyVaultWorkspaceId?: string,
+) {
   const records = await loadSemanticMemory(scopeKey);
   if (records.length === 0) {
     return '';
   }
 
-  const embedding = await requestTextEmbedding(query);
+  const embedding = await requestTextEmbedding(query, providerKeyVaultWorkspaceId);
   return buildSemanticMemoryContext(findSemanticMemoryMatchesInRecords(records, query, embedding));
 }
 
@@ -775,8 +803,12 @@ async function rememberSemanticTurn(
   userText: string,
   assistantText: string,
   persona: PersonaProfile | null,
+  providerKeyVaultWorkspaceId?: string,
 ) {
-  const embedding = await requestTextEmbedding(`${userText}\n${assistantText}`);
+  const embedding = await requestTextEmbedding(
+    `${userText}\n${assistantText}`,
+    providerKeyVaultWorkspaceId,
+  );
   await addSemanticMemoryTurn({
     assistantText,
     embedding,
@@ -3656,7 +3688,11 @@ function App() {
 
       try {
         setChatGenerating(true);
-        const semanticMemoryContext = await getSemanticMemoryContext(stateKey, userContent);
+        const semanticMemoryContext = await getSemanticMemoryContext(
+          stateKey,
+          userContent,
+          providerKeyVaultWorkspaceId,
+        );
         const grilloMemory = buildGrilloMemoryPromptAdditions({
           participantKeys: job.messages.map(getGrilloParticipantKey),
           query: userContent,
@@ -3755,7 +3791,13 @@ function App() {
           ...job.messages,
         ].slice(-24);
         scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
-        void rememberSemanticTurn(stateKey, userContent, assistantContent, persona);
+        void rememberSemanticTurn(
+          stateKey,
+          userContent,
+          assistantContent,
+          persona,
+          providerKeyVaultWorkspaceId,
+        );
         const nextGrilloMemoryState = recordGrilloMemoryTurn({
           assistantText: assistantContent,
           persona,

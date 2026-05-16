@@ -840,14 +840,28 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `http://127.0.0.1:4173/dashboard` and public
   `https://148-113-191-103.sslip.io/dashboard` returned HTTP 200, and confirmed
   the public bundle references `/assets/index-B431m29c.js`.
+- 2026-05-16 browser-local OpenAI embeddings checkpoint: extended the browser
+  OpenAI BYOK client with a direct embeddings request and wired semantic memory
+  lookup/write paths to use the browser-local `openai.apiKey` vault entry when
+  server provider proxies are disabled. If no local key is saved or embeddings
+  fail, the app keeps the existing no-embedding lexical fallback instead of
+  blocking chat. Verification:
+  `npx vitest run src/lib/product/browser-openai-responses.test.ts
+  src/lib/product/provider-key-vault.test.ts` -> passed, 2 files, 8 tests;
+  `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
+  warnings; `git diff --check` -> passed with line-ending warnings only; changed
+  file scan found no literal provider secrets or auth tokens. Deployed rebuilt
+  `dist` to the OVH VPS, restarted `serve-dist.mjs`, verified the public
+  dashboard returned HTTP 200, and confirmed the public bundle references
+  `/assets/index-BTiohzsv.js`.
 
 ## Current Blocker Or Next Patch
 
-Next BYOK product patch: add a browser smoke for saved OpenAI BYOK chat on the
-deployed app when a local key is present, then add browser-local embeddings or an
-explicit no-embedding state, and equivalent Fish/Inworld BYOK behavior. Supabase
-MCP/schema audit remains queued before more database policy work. Remaining
-server work: signed overlay token rotation or revocation backend semantics.
+Next BYOK product patch: add a browser smoke for saved OpenAI BYOK chat and
+semantic memory on the deployed app when a local key is present, then add
+equivalent Fish/Inworld BYOK behavior. Supabase MCP/schema audit remains queued
+before more database policy work. Remaining server work: signed overlay token
+rotation or revocation backend semantics.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
