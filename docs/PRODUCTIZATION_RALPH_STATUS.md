@@ -714,6 +714,15 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   Fresh signed overlay browser smoke passed with `markerCount: 1`, matching
   scene id, `stillLoading: false`, `invalid: false`, and no browser warnings or
   errors. The temporary Supabase smoke user was deleted after verification.
+- 2026-05-16 account/profile smoke checkpoint: fresh temporary Supabase user
+  signed into the deployed app through `/auth/callback`, loaded `/account` as a
+  cloud-sync account, showed the expected email/display name, and `Save profile`
+  returned `Profile saved.`. Follow-up authenticated `GET /api/byok/profile`
+  returned HTTP 200 with `displayName: Profile Smoke`. The in-app browser's
+  current typing backend could not modify the text input because its virtual
+  clipboard path failed, so this smoke proves load/save but not manual text
+  editing through browser automation. The temporary user was deleted after the
+  smoke.
 
 ## Current Blocker Or Next Patch
 
@@ -721,8 +730,8 @@ Next UI/product patch: refresh Codex so Supabase MCP tools are actually exposed,
 then use MCP to inspect the live BYOK Supabase tables/policies and record a
 proper schema/data audit before doing more Supabase work. In parallel, continue
 the product hardening lane by auditing the signed overlay/account/dashboard
-flow for remaining rough edges: sign-out cross-tab behavior, account profile
-edit smoke, route protection, and clearer production env validation.
+flow for remaining rough edges: route protection, sign-out cross-tab browser
+smoke, and clearer production env validation.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
