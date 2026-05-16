@@ -372,19 +372,53 @@ src/lib/product/byok-route-stub.test.ts src/lib/chat/storage.test.ts` -> 11
 - 2026-05-15: `git diff --check` -> passed.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: applied one `codex-work-rhythm` checkpoint for Supabase route
+  context resolution. Added `api\byok\_lib\supabase-context.ts` and
+  `api\byok\_lib\supabase-context.test.ts`; updated
+  `api\byok\_lib\route-stub.ts` to call the real context resolver and shared
+  `src\lib\product\byok-route-stub.ts` contract.
+- 2026-05-15: decision: API routes now verify bearer sessions through
+  Supabase Auth `/auth/v1/user` with the anon key, resolve workspace owner and
+  member snapshots from Supabase REST with the server-only service role key,
+  and still fail closed when server Supabase env is not admin-ready. Provider
+  keys remain outside cloud route context and synced settings.
+- 2026-05-15: updated shared product-contract imports to explicit `.js`
+  specifiers where the API NodeNext build imports them:
+  `src\lib\product\account-mode.ts`,
+  `src\lib\product\byok-route-stub.ts`,
+  `src\lib\product\server-route-ownership.ts`, and
+  `src\lib\product\supabase-env.ts`.
+- 2026-05-15: `npx vitest run api/byok/_lib/supabase-context.test.ts
+src/lib/product/byok-route-stub.test.ts
+src/lib/product/server-route-ownership.test.ts` -> 3 files, 13 tests passed.
+- 2026-05-15: first `npm run build` after the resolver exposed one NodeNext
+  test import issue in `api\byok\_lib\supabase-context.test.ts`; fixed the
+  local import to `./supabase-context.js`.
+- 2026-05-15: `npx vitest run api/byok/_lib/supabase-context.test.ts
+src/lib/product/byok.test.ts src/lib/product/provider-key-vault.test.ts
+src/lib/product/scene-export.test.ts src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts src/lib/product/supabase-schema.test.ts
+src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-shell.test.ts
+src/lib/product/supabase-auth-session.test.ts
+src/lib/product/byok-route-stub.test.ts src/lib/chat/storage.test.ts` -> 12
+  files, 58 tests passed.
+- 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  touched files.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: wire a real Supabase route context resolver for `/api/byok/*`:
-verify the bearer session with Supabase Auth, resolve workspace owner/member
-snapshots from the database, then let the existing route-stub/ownership contract
-authorize before returning profile/workspace rows. Still do not sync provider
-keys. Alternative small patch: add explicit PKCE code exchange/refresh-token
+Next patch: return real read-only profile/workspace JSON from the authorized
+BYOK API routes after route authorization passes. Keep writes as explicit
+placeholders until patch/merge semantics are designed. Still do not sync
+provider keys. Alternative small patch: add explicit PKCE code exchange/refresh
 handling if hosted Supabase Auth is configured for PKCE. Next read:
-`api\byok\_lib\route-stub.ts`, `src\lib\product\byok-route-stub.ts`,
-`src\lib\product\server-route-ownership.ts`,
-`src\lib\product\supabase-auth-session.ts`, and
-`src\lib\product\supabase-env.ts`.
+`api\byok\_lib\route-stub.ts`, `api\byok\_lib\supabase-context.ts`,
+`src\lib\product\byok-route-stub.ts`,
+`src\lib\product\server-route-ownership.ts`, and
+`supabase\migrations\20260515000100_byok_product_spine.sql`.
 
 ## Stop Conditions
 

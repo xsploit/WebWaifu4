@@ -1,4 +1,4 @@
-import type { AssetStorageProvider, AuthProvider, DatabaseProvider } from './byok';
+import type { AssetStorageProvider, AuthProvider, DatabaseProvider } from './byok.js';
 
 export type SupabaseEnvSource = Record<string, string | undefined>;
 

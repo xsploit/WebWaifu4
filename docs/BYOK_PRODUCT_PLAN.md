@@ -141,4 +141,9 @@ arrive as a later migration with a specific security design and tests.
     exist as fail-closed Vercel route scaffolds, reject secret-shaped request
     bodies, and share a tested route-stub contract that proves owner/member
     authorization runs before any future Supabase DB implementation.
-12. Add optional hosted encrypted vault only after a security review.
+12. Wire Supabase route context resolution. Done in the twelfth checkpoint:
+    serverless BYOK routes now read server Supabase env, verify bearer sessions
+    through `/auth/v1/user`, resolve workspace owner/member snapshots through
+    Supabase REST with the server-only service role key, then pass that context
+    into the shared route authorization contract before any future DB mutation.
+13. Add optional hosted encrypted vault only after a security review.

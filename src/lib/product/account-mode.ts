@@ -1,5 +1,5 @@
-import { type ProductStorageMode, type ProductUser, type ProviderKeyMode } from './byok';
-import type { SupabaseEnvStatus, SupabasePublicConfig } from './supabase-env';
+import { type ProductStorageMode, type ProductUser, type ProviderKeyMode } from './byok.js';
+import type { SupabaseEnvStatus, SupabasePublicConfig } from './supabase-env.js';
 
 export type AccountModeKind = 'guest-local-only' | 'supabase-cloud-sync';
 

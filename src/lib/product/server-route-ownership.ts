@@ -1,9 +1,9 @@
-import type { ByokAccountMode } from './account-mode';
+import type { ByokAccountMode } from './account-mode.js';
 import {
   assertOverlayTokenClaims,
   type OverlayTokenClaims,
   type SettingStorageClass,
-} from './byok';
+} from './byok.js';
 
 export type ByokRouteActor = 'supabase-user' | 'overlay-token';
 

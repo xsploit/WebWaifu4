@@ -1,12 +1,12 @@
-import type { ByokAccountMode } from './account-mode';
-import type { OverlayTokenClaims, SettingStorageClass } from './byok';
+import type { ByokAccountMode } from './account-mode.js';
+import type { OverlayTokenClaims, SettingStorageClass } from './byok.js';
 import {
   authorizeByokCloudRoute,
   getByokCloudRouteContract,
   type ByokCloudRouteId,
   type ByokRouteAccessDecision,
   type ByokWorkspaceAccessSnapshot,
-} from './server-route-ownership';
+} from './server-route-ownership.js';
 
 export type ByokRouteStubContext = {
   accountMode?: ByokAccountMode | null;
