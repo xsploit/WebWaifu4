@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAuthenticatedByokRequest,
   buildOverlayTokenRequest,
+  fetchByokOverlayConfig,
   fetchByokSettings,
   getSupabaseAccessToken,
   parseOverlayTokenClaims,
@@ -150,6 +151,49 @@ describe('BYOK API client helpers', () => {
         method: 'GET',
       },
       url: '/api/byok/overlay/scene-1/config',
+    });
+  });
+
+  it('fetches public overlay config with the scoped overlay token only', async () => {
+    const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe('/api/byok/overlay/scene-1/config');
+      expect(init).toMatchObject({
+        headers: {
+          authorization: 'Bearer signed-token',
+        },
+        method: 'GET',
+      });
+      expect(JSON.stringify(init)).not.toContain('access-token');
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          scene: {
+            activeCharacterId: '',
+            createdAt: '2026-05-15T00:00:00.000Z',
+            id: 'scene-1',
+            name: 'Main Overlay',
+            twitchChannel: 'subsect',
+            updatedAt: '2026-05-15T00:00:00.000Z',
+            workspaceId: 'workspace-1',
+          },
+          settings: [],
+          workspaceId: 'workspace-1',
+        }),
+      );
+    };
+
+    await expect(
+      fetchByokOverlayConfig({
+        fetchImpl,
+        sceneId: 'scene-1',
+        token: 'signed-token',
+      }),
+    ).resolves.toMatchObject({
+      scene: {
+        id: 'scene-1',
+      },
+      settings: [],
+      workspaceId: 'workspace-1',
     });
   });
 

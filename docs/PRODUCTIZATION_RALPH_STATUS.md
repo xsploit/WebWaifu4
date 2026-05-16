@@ -321,6 +321,19 @@ src/lib/product/byok.test.ts` -> passed, 6 files, 25 tests. `npm run build`
 src/lib/product/cloud-settings.test.ts src/lib/product/byok.test.ts` ->
   passed, 3 files, 13 tests. `npm run build` -> passed with existing
   `onnxruntime-web` eval and large chunk warnings.
+- 2026-05-15: Work-rhythm checkpoint wired signed OBS overlay URLs into the
+  browser overlay route. `/overlay/:sceneId?token=...` now fetches the
+  token-scoped public overlay config, applies returned public settings through
+  the safe cloud settings adapter, and uses the scene Twitch channel from the
+  public config. `/overlay/:sceneId` without a token remains a private/local
+  preview path.
+- 2026-05-15: Security pass for overlay hydration found no new blocker: the
+  front end sends only the scoped overlay token to the public overlay config
+  endpoint, never dashboard bearer auth; the server route still filters to
+  `public-overlay` records only.
+- 2026-05-15: `npx vitest run src/lib/product/byok-api.test.ts
+src/lib/product/cloud-settings.test.ts src/lib/product/app-route.test.ts` ->
+  passed, 3 files, 20 tests.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and

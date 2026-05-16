@@ -128,6 +128,7 @@ import {
 } from './lib/product/supabase-auth-session';
 import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import { applyCloudSettingRecords } from './lib/product/cloud-settings';
+import { fetchByokOverlayConfig } from './lib/product/byok-api';
 import type { SyncedSettingRecord } from './lib/product/byok';
 import './style.css';
 
@@ -4103,6 +4104,14 @@ function App() {
     appRoute.kind,
   );
   const overlayPageActive = appRoute.kind === 'overlay';
+  const overlayConfigLoadRef = useRef('');
+  const [overlayConfigStatus, setOverlayConfigStatus] = useState('');
+  const overlayToken = useMemo(() => {
+    if (appRoute.kind !== 'overlay' || typeof window === 'undefined') {
+      return '';
+    }
+    return new URLSearchParams(window.location.search).get('token')?.trim() ?? '';
+  }, [appRoute]);
   const persistedStateSnapshot = useMemo<PersistedChatState>(
     () => ({
       activePersonaId,
@@ -4162,6 +4171,48 @@ function App() {
     },
     [currentBundledModelId, handleLoadBundledModel, persistedStateSnapshot],
   );
+  useEffect(() => {
+    if (appRoute.kind !== 'overlay' || !overlayToken) {
+      setOverlayConfigStatus('');
+      return;
+    }
+
+    const loadKey = `${appRoute.sceneId}:${overlayToken}`;
+    if (overlayConfigLoadRef.current === loadKey) {
+      return;
+    }
+
+    let cancelled = false;
+    overlayConfigLoadRef.current = loadKey;
+    setOverlayConfigStatus('Loading OBS overlay config...');
+    fetchByokOverlayConfig({
+      sceneId: appRoute.sceneId,
+      token: overlayToken,
+    })
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        handleApplyCloudSettings(response.settings);
+        if (response.scene.twitchChannel) {
+          setTwitchChannel(response.scene.twitchChannel);
+        }
+        setOverlayConfigStatus('');
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        overlayConfigLoadRef.current = '';
+        const message = error instanceof Error ? error.message : 'OBS overlay config failed.';
+        console.error(`[BYOK Overlay] ${message}`);
+        setOverlayConfigStatus(message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appRoute, handleApplyCloudSettings, overlayToken]);
 
   return (
     <div
@@ -4198,6 +4249,10 @@ function App() {
           supabaseConfig={supabaseConfig}
           twitchChannel={twitchChannel}
         />
+      ) : null}
+
+      {overlayPageActive && overlayConfigStatus ? (
+        <div className="overlay-config-status">{overlayConfigStatus}</div>
       ) : null}
 
       {!productPageActive && !overlayPageActive ? (

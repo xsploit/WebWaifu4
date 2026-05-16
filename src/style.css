@@ -1919,6 +1919,20 @@ input[type='range']::-webkit-slider-thumb {
   display: none;
 }
 
+.overlay-config-status {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: 8px;
+  bottom: 18px;
+  color: #fecaca;
+  font-size: 0.82rem;
+  left: 18px;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 10px 12px;
+  position: fixed;
+  z-index: 36;
+}
+
 @media (max-width: 720px) {
   .product-page {
     flex-direction: column;
