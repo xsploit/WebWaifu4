@@ -631,6 +631,19 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   checks passed. Overlay process was not rebuilt because this fix only touched
   compiled BYOK API runtime. Security review: deploy preserved remote `.env`
   and `node_modules`, and smoke output did not print tokens or key material.
+- 2026-05-16: Ported the supplied Gemini/HTML dashboard references into the
+  BYOK product shell. `ProductPages` now renders a YW HUD nav, top status bar,
+  provider status rows, and launch checklist; `src\style.css` now mirrors the
+  reference dark glass/crimson HUD theme with scanline, grid background,
+  clipped controls, compact cards, and neon status LEDs. Verification:
+  `npx vitest run src/lib/product/app-route.test.ts src/lib/product/byok-api.test.ts`
+  -> passed, 2 files, 16 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` ->
+  passed with line-ending warnings only. Deployed the rebuilt `dist` to the OVH
+  VPS with a tarball upload after a wildcard `scp` attempt partially copied only
+  directories; public `https://148-113-191-103.sslip.io/dashboard` returned HTTP
+  200 and referenced the new `index-6PgvHPxW.css` asset. API route
+  `/api/byok/profile` still returns the expected unauthenticated HTTP 401.
 
 ## Current Blocker Or Next Patch
 
