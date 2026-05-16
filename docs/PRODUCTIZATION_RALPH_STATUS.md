@@ -540,7 +540,12 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   Supabase `/auth/v1/settings` -> HTTP 200; `npm run build` -> passed with
   existing `onnxruntime-web` eval and large chunk warnings; local direct
   `/api/byok/profile` and proxied `/api/byok/profile` -> expected HTTP 401 JSON
-  auth-required response instead of 404/501.
+  auth-required response instead of 404/501. VPS Caddy also had an older
+  `/api/*` strip-prefix rule; backed up `/etc/caddy/Caddyfile`, removed the
+  strip so `/api/byok/*` reaches the bot process intact, validated/reloaded
+  Caddy, and confirmed public
+  `https://148-113-191-103.sslip.io/api/byok/profile` now returns expected HTTP
+  401 `supabase-auth-required` JSON.
 
 ## Current Blocker Or Next Patch
 
