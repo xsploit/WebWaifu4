@@ -258,6 +258,16 @@ Swap the prompt and completion promise for the other lanes.
   api/byok/_lib/supabase-context.test.ts` -> passed, 6 files, 24 tests.
   `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
   warnings. `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-15: Work-rhythm UI checkpoint wired the dashboard `Sync settings`
+  button to the safe cloud settings adapter. The editor now passes the current
+  persisted-state snapshot into product pages, and dashboard sync uploads only
+  the records emitted by `buildCloudSettingRecords`; chat history and
+  relationship memory remain local-only. Status copy reports the number of safe
+  records synced.
+- 2026-05-15: `npx vitest run src/lib/product/cloud-settings.test.ts
+  src/lib/product/byok-api.test.ts` -> passed, 2 files, 7 tests. `npm run build`
+  -> passed with existing `onnxruntime-web` eval and large chunk warnings.
+  `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and

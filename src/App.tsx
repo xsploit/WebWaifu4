@@ -79,6 +79,7 @@ import type {
   AiSettings,
   AiProxyHealth,
   ChatMessage,
+  PersistedChatState,
   PersonaDraft,
   PersonaProfile,
   RelationshipMemory,
@@ -4100,6 +4101,42 @@ function App() {
     appRoute.kind,
   );
   const overlayPageActive = appRoute.kind === 'overlay';
+  const persistedStateSnapshot = useMemo<PersistedChatState>(
+    () => ({
+      activePersonaId,
+      activeTab,
+      aiSettings,
+      chatHistory,
+      currentBundledModelId,
+      personas,
+      relationshipMemories,
+      relationshipMemory,
+      sequencerSettings,
+      twitchChannel,
+      uiState: {
+        chatDraft: chatInput,
+        chatLogOpen,
+        menuOpen,
+      },
+      visualSettings,
+    }),
+    [
+      activePersonaId,
+      activeTab,
+      aiSettings,
+      chatHistory,
+      chatInput,
+      chatLogOpen,
+      currentBundledModelId,
+      menuOpen,
+      personas,
+      relationshipMemories,
+      relationshipMemory,
+      sequencerSettings,
+      twitchChannel,
+      visualSettings,
+    ],
+  );
 
   return (
     <div
@@ -4130,6 +4167,7 @@ function App() {
           authStatus={supabaseAuthStatus}
           onNavigate={handleNavigate}
           onSignOut={handleSupabaseLocalSignOut}
+          persistedState={persistedStateSnapshot}
           route={appRoute}
           supabaseConfig={supabaseConfig}
           twitchChannel={twitchChannel}
