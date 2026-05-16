@@ -791,16 +791,35 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   selected 24 hour lifetime, issued a signed `/overlay/...token=...` URL, cleared
   it from the UI, and saw zero browser warnings. The temporary Supabase user was
   deleted after verification.
+- 2026-05-16 BYOK provider-proxy boundary checkpoint: fixed and deployed commit
+  `827fb68` after verifying the user's suspicion was correct: the VPS still had
+  server-side OpenAI/Fish/Inworld provider keys available, so the BYOK UI claim
+  that provider keys were browser-local was ahead of the runtime. The browser now
+  enables the server AI proxy only when `VITE_BYOK_SERVER_PROVIDER_PROXY_ENABLED`
+  or `VITE_SERVER_PROVIDER_PROXY_ENABLED` is explicitly `true`, and the server
+  itself now rejects `/ai/chat`, `/ai/embeddings`, `/tts/stream`, and
+  `/tts/voices` unless `BYOK_SERVER_PROVIDER_PROXY_ENABLED=true` or
+  `SERVER_PROVIDER_PROXY_ENABLED=true` is set. Serverless `/api/ai/chat` and
+  `/api/ai/embeddings` have the same default-off gate. Verification:
+  `npx vitest run api/ai/chat.test.ts api/ai/embeddings.test.ts server/src/byokHealth.test.ts src/lib/product/byok-api.test.ts`
+  -> passed, 4 files, 13 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` -> passed
+  with line-ending warnings only; tracked diff scan found no concrete
+  secret/token values. Deployed rebuilt `dist`, `server/dist`, and `api-dist` to
+  the OVH VPS. Public `https://148-113-191-103.sslip.io/health` now returns
+  `aiProvider: disabled`, `serverProviderProxyEnabled: false`, `providerState:
+  null`, and remote TTS providers `configured: false`. Public `/ai/chat` returns
+  `Server AI proxy is disabled for BYOK mode.` without calling provider APIs.
 
 ## Current Blocker Or Next Patch
 
 Next UI/product patch: refresh Codex so Supabase MCP tools are actually exposed,
 then use MCP to inspect the live BYOK Supabase tables/policies and record a
 proper schema/data audit before doing more Supabase work. In parallel, continue
-the product hardening lane by auditing the remaining signed-in/account flow
-rough edges: clearer production env validation, signed overlay token rotation or
-revocation backend semantics, and a deeper product dashboard/home UI pass using
-the supplied style references once the functional account flow is locked.
+the product hardening lane by wiring the actual browser-local provider-key flow:
+key entry/status UI, local OpenAI Responses calls, browser-local embeddings or a
+clear no-embedding state, and equivalent Fish/Inworld BYOK behavior. Remaining
+server work: signed overlay token rotation or revocation backend semantics.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
