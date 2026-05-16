@@ -4178,9 +4178,17 @@ function App() {
   }, [handleApplyCloudSettings]);
   const overlaySceneId = appRoute.kind === 'overlay' ? appRoute.sceneId : '';
   useEffect(() => {
-    if (appRoute.kind !== 'overlay' || !overlaySceneId || !overlayToken) {
+    if (appRoute.kind !== 'overlay' || !overlaySceneId) {
       setOverlayConfigStatus('');
       setOverlayConfigReady(false);
+      return;
+    }
+
+    if (!overlayToken) {
+      overlayConfigLoadRef.current = '';
+      const privatePreview = overlaySceneId === 'private-preview';
+      setOverlayConfigStatus(privatePreview ? '' : 'Signed OBS overlay token required.');
+      setOverlayConfigReady(privatePreview);
       return;
     }
 

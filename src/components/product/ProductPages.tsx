@@ -262,11 +262,7 @@ function DashboardPage(
   const [pulling, setPulling] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
-  const overlayUrl =
-    profile?.bootstrap.scene.id && typeof window !== 'undefined'
-      ? new URL(`/overlay/${encodeURIComponent(profile.bootstrap.scene.id)}`, window.location.href)
-          .pathname
-      : '/overlay/private-preview';
+  const previewOverlayUrl = '/overlay/private-preview';
 
   useEffect(() => {
     if (!isCloud) {
@@ -421,7 +417,10 @@ function DashboardPage(
               <button className="product-primary" onClick={() => props.onNavigate('/')}>
                 Open editor
               </button>
-              <button className="product-secondary" onClick={() => props.onNavigate(overlayUrl)}>
+              <button
+                className="product-secondary"
+                onClick={() => props.onNavigate(previewOverlayUrl)}
+              >
                 Preview overlay
               </button>
             </div>
@@ -442,7 +441,10 @@ function DashboardPage(
             this tab.
           </p>
           <div className="product-actions product-actions-grid">
-            <button className="product-secondary" onClick={() => props.onNavigate(overlayUrl)}>
+            <button
+              className="product-secondary"
+              onClick={() => props.onNavigate(previewOverlayUrl)}
+            >
               Preview overlay
             </button>
             <button
