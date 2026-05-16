@@ -50,6 +50,15 @@ export const BYOK_CLOUD_ROUTE_CONTRACTS = [
     secretMaterialPolicy: 'forbidden',
   },
   {
+    id: 'profile.self.write',
+    method: 'PATCH',
+    path: '/api/byok/profile',
+    actor: 'supabase-user',
+    ownership: 'self',
+    resource: 'profile',
+    secretMaterialPolicy: 'forbidden',
+  },
+  {
     id: 'workspace.read',
     method: 'GET',
     path: '/api/byok/workspaces/:workspaceId',

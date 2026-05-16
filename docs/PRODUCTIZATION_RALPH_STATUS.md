@@ -9,8 +9,8 @@ architecture do not overwrite each other's scope.
 
 ## Source Of Truth
 
-- Worktree: `C:\Users\SUBSECT\Documents\Codex\2026-05-04\https-github-com-prismml-eng-bonsai\yourwifey-stream`
-- Current branch: `github-main`
+- Worktree: `C:\Users\SUBSECT\Documents\GitHub\YourWifey-BYOK`
+- Current branch: `codex/byok-product-spine`
 - Existing app source of truth: `README.md`
 - Memory status: `docs\grillo-memory-status.md`
 - Productization status: `docs\PRODUCTIZATION_RALPH_STATUS.md`
@@ -218,6 +218,27 @@ Swap the prompt and completion promise for the other lanes.
   and was fixed before rerun. `git diff --check` -> passed with line-ending
   warnings only. `npm run build` -> passed with existing `onnxruntime-web` eval
   and large chunk warnings.
+- 2026-05-15: Work-rhythm checkpoint implemented the BYOK product auth/cloud
+  sync spine. Added internal route parsing for `/`, `/login`, `/auth/callback`,
+  `/account`, `/dashboard`, and `/overlay/:sceneId`; added product pages for
+  magic-link login, callback status, dashboard, and account/profile editing;
+  converted `/api/byok/profile` and `/api/byok/workspaces/:workspaceId` from
+  authorization-only stubs into real Supabase-backed JSON routes; added
+  profile/workspace/scene bootstrap helpers with defaults `My Stream` and
+  `Main Overlay`; and added browser API helpers that attach the Supabase bearer
+  token while keeping provider keys browser-local.
+- 2026-05-15: Auth/API security pass for the checkpoint found no new blocker:
+  provider key material is still blocked by the existing cloud route secret
+  scanner, service-role credentials remain server-side in `api/byok/_lib`, CORS
+  stays allowlist/local-only, workspace writes still pass the owner guard before
+  database mutation, and product UI/API helper tests assert secret-shaped data is
+  not placed in synced request bodies.
+- 2026-05-15: `npx vitest run src/lib/product/app-route.test.ts
+  src/lib/product/byok-api.test.ts src/lib/product/byok-route-stub.test.ts
+  api/byok/_lib/supabase-context.test.ts api/byok/_lib/product-data.test.ts` ->
+  passed, 5 files, 21 tests. `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings. `git diff --check` -> passed
+  with line-ending warnings only.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and

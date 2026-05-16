@@ -1,5 +1,5 @@
-import type { SupabaseAuthIdentity } from './account-mode';
-import type { SupabasePublicConfig } from './supabase-env';
+import type { SupabaseAuthIdentity } from './account-mode.js';
+import type { SupabasePublicConfig } from './supabase-env.js';
 
 export const SUPABASE_AUTH_SESSION_STORAGE_KEY = 'yourwifey.byok.supabase.authSession.v1';
 

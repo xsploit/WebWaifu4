@@ -1,0 +1,66 @@
+import { describe, expect, it } from 'vitest';
+import { buildAuthenticatedByokRequest, getSupabaseAccessToken } from './byok-api';
+import { SUPABASE_AUTH_SESSION_STORAGE_KEY } from './supabase-auth-session';
+
+describe('BYOK API client helpers', () => {
+  it('reads the current Supabase access token from local storage', () => {
+    const storage = createStorage({
+      [SUPABASE_AUTH_SESSION_STORAGE_KEY]: JSON.stringify({
+        accessToken: 'access-token',
+        expiresAt: new Date('2030-01-01T00:00:00.000Z').toISOString(),
+        refreshToken: null,
+        tokenType: 'bearer',
+      }),
+    });
+
+    expect(getSupabaseAccessToken(storage, Date.parse('2026-05-15T00:00:00.000Z'))).toBe(
+      'access-token',
+    );
+  });
+
+  it('attaches bearer auth and JSON bodies without provider keys', () => {
+    const request = buildAuthenticatedByokRequest({
+      accessToken: 'access-token',
+      body: {
+        displayName: 'Subsect',
+      },
+      method: 'PATCH',
+      path: '/api/byok/profile',
+    });
+
+    expect(request.url).toBe('/api/byok/profile');
+    expect(request.init).toMatchObject({
+      body: '{"displayName":"Subsect"}',
+      headers: {
+        authorization: 'Bearer access-token',
+        'content-type': 'application/json',
+      },
+      method: 'PATCH',
+    });
+    expect(JSON.stringify(request)).not.toMatch(/apiKey|secret|sk-/i);
+  });
+
+  it('fails before making an unauthenticated cloud request', () => {
+    expect(() =>
+      buildAuthenticatedByokRequest({
+        accessToken: null,
+        path: '/api/byok/profile',
+      }),
+    ).toThrow('requires a signed-in Supabase session');
+  });
+});
+
+function createStorage(initial: Record<string, string>) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    removeItem(key: string) {
+      values.delete(key);
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+  };
+}

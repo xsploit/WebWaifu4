@@ -21,6 +21,13 @@ export type ByokApiRequestLike = {
 
 export type SupabaseFetch = typeof fetch;
 
+export type ResolvedByokApiRouteRequest = {
+  authUser: SupabaseAuthIdentity | null;
+  config: SupabaseServerConfig;
+  context: ByokRouteStubContext;
+  fetchFn: SupabaseFetch;
+};
+
 type SupabaseUserResponse = {
   id?: unknown;
   email?: unknown;
@@ -42,6 +49,16 @@ export async function resolveByokApiRouteContext(input: {
   request: ByokApiRequestLike;
   routeId: ByokCloudRouteId;
 }): Promise<ByokRouteStubContext | null> {
+  const resolved = await resolveByokApiRouteRequest(input);
+  return resolved?.context ?? null;
+}
+
+export async function resolveByokApiRouteRequest(input: {
+  env?: SupabaseEnvSource;
+  fetchFn?: SupabaseFetch;
+  request: ByokApiRequestLike;
+  routeId: ByokCloudRouteId;
+}): Promise<ResolvedByokApiRouteRequest | null> {
   const config = readSupabaseServerEnv(input.env ?? process.env);
   if (!config.adminReady || !config.url || !config.anonKey || !config.serviceRoleKey) {
     return null;
@@ -63,9 +80,14 @@ export async function resolveByokApiRouteContext(input: {
       : null;
 
   return {
-    accountMode,
-    workspace,
-    targetUserId: input.routeId === 'profile.self.read' ? (authUser?.id ?? null) : null,
+    authUser,
+    config,
+    fetchFn,
+    context: {
+      accountMode,
+      workspace,
+      targetUserId: input.routeId.startsWith('profile.self.') ? (authUser?.id ?? null) : null,
+    },
   };
 }
 
@@ -148,15 +170,19 @@ async function fetchWorkspaceAccessSnapshot(
   };
 }
 
-async function fetchSupabaseRest<T>(
+export async function fetchSupabaseRest<T>(
   config: SupabaseServerConfig,
   pathAndQuery: string,
   fetchFn: SupabaseFetch,
+  init?: RequestInit,
 ): Promise<T[]> {
   const response = await fetchFn(`${config.url}${pathAndQuery}`, {
+    ...init,
     headers: {
       apikey: config.serviceRoleKey ?? '',
       authorization: `Bearer ${config.serviceRoleKey ?? ''}`,
+      ...(init?.body ? { 'content-type': 'application/json' } : {}),
+      ...(init?.headers ?? {}),
     },
   });
   if (!response.ok) {

@@ -1,6 +1,9 @@
 import { createByokRouteStubResponse } from '../../../src/lib/product/byok-route-stub.js';
 import type { ByokCloudRouteId } from '../../../src/lib/product/server-route-ownership.js';
-import { resolveByokApiRouteContext } from './supabase-context.js';
+import {
+  resolveByokApiRouteRequest,
+  type ResolvedByokApiRouteRequest,
+} from './supabase-context.js';
 
 type ApiRequest = {
   body?: unknown;
@@ -15,8 +18,33 @@ type ApiResponse = {
   json: (body: unknown) => void;
 };
 
+type ByokApiRouteMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
+
+type ByokApiRouteResult = {
+  body: unknown;
+  status?: number;
+};
+
+type ByokApiRouteImplementationInput = {
+  method: ByokApiRouteMethod;
+  request: ApiRequest;
+  resolved: ResolvedByokApiRouteRequest;
+  routeId: ByokCloudRouteId;
+};
+
+type ByokApiRouteImplementation = (
+  input: ByokApiRouteImplementationInput,
+) => ByokApiRouteResult | Promise<ByokApiRouteResult>;
+
 export function createByokApiRouteStub(
-  routeIdByMethod: Partial<Record<'DELETE' | 'GET' | 'PATCH' | 'POST', ByokCloudRouteId>>,
+  routeIdByMethod: Partial<Record<ByokApiRouteMethod, ByokCloudRouteId>>,
+) {
+  return createByokApiRoute(routeIdByMethod, {});
+}
+
+export function createByokApiRoute(
+  routeIdByMethod: Partial<Record<ByokApiRouteMethod, ByokCloudRouteId>>,
+  implementations: Partial<Record<ByokApiRouteMethod, ByokApiRouteImplementation>>,
 ) {
   return async function handler(request: ApiRequest, response: ApiResponse) {
     setCorsHeaders(request, response);
@@ -38,14 +66,40 @@ export function createByokApiRouteStub(
       return;
     }
 
-    const context = await resolveByokApiRouteContext({ request, routeId });
+    const resolved = await resolveByokApiRouteRequest({ request, routeId });
     const result = createByokRouteStubResponse({
       body: request.body,
-      context,
+      context: resolved?.context ?? null,
       method,
       routeId,
     });
-    response.status(result.status).json(result.body);
+    if (result.status !== 501 || result.body.reason !== 'route-not-implemented') {
+      response.status(result.status).json(result.body);
+      return;
+    }
+
+    const implementation = implementations[method];
+    if (!implementation || !resolved) {
+      response.status(result.status).json(result.body);
+      return;
+    }
+
+    try {
+      const implemented = await implementation({
+        method,
+        request,
+        resolved,
+        routeId,
+      });
+      response.status(implemented.status ?? 200).json(implemented.body);
+    } catch (error) {
+      response.status(500).json({
+        ok: false,
+        reason: 'byok-route-failed',
+        message: error instanceof Error ? error.message : 'BYOK route failed.',
+        status: 500,
+      });
+    }
   };
 }
 

@@ -5,6 +5,7 @@ import { ChatLog } from './components/chat/ChatLog';
 import { VrmStage } from './components/VrmStage';
 import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
+import { ProductPages } from './components/product/ProductPages';
 import {
   COMMON_OPENAI_MODELS,
   DEFAULT_MEMORY_AGENT_MODEL,
@@ -119,6 +120,7 @@ import {
 } from './lib/stream/overlay-events';
 import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitch/direct-irc';
 import { resolveByokAccountMode, type SupabaseAuthIdentity } from './lib/product/account-mode';
+import { navigateToAppPath, parseAppRoute } from './lib/product/app-route';
 import {
   clearPersistedSupabaseAuthSession,
   startSupabaseAuthSessionLifecycle,
@@ -1162,6 +1164,9 @@ function App() {
   );
   const [supabaseAuthUser, setSupabaseAuthUser] = useState<SupabaseAuthIdentity | null>(null);
   const [supabaseAuthStatus, setSupabaseAuthStatus] = useState('Checking Supabase session state.');
+  const [appRoute, setAppRoute] = useState(() =>
+    parseAppRoute(typeof window === 'undefined' ? '/' : window.location),
+  );
   const accountMode = useMemo(
     () =>
       resolveByokAccountMode({
@@ -1170,6 +1175,18 @@ function App() {
       }),
     [supabaseAuthUser, supabaseConfig],
   );
+  const handleNavigate = useCallback((path: string) => {
+    setAppRoute(navigateToAppPath(path));
+  }, []);
+  useEffect(() => {
+    const handlePopState = () => {
+      setAppRoute(parseAppRoute(window.location));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
   useEffect(() => {
     const lifecycle = startSupabaseAuthSessionLifecycle({
       config: supabaseConfig,
@@ -1181,6 +1198,7 @@ function App() {
           result.cleanUrl !== window.location.href
         ) {
           window.history.replaceState(window.history.state, document.title, result.cleanUrl);
+          setAppRoute(parseAppRoute(window.location));
         }
 
         setSupabaseAuthUser(result.user);
@@ -4078,9 +4096,16 @@ function App() {
     playAssistantResponse,
   ]);
 
+  const productPageActive = ['account', 'auth-callback', 'dashboard', 'login'].includes(
+    appRoute.kind,
+  );
+  const overlayPageActive = appRoute.kind === 'overlay';
+
   return (
     <div
-      className="shell"
+      className={`shell ${productPageActive ? 'product-shell-mode' : ''} ${
+        overlayPageActive ? 'overlay-shell-mode' : ''
+      }`}
       onClick={() => {
         if (menuOpen) {
           setMenuOpen(false);
@@ -4099,211 +4124,225 @@ function App() {
         visualSettings={visualSettings}
       />
 
-      <div className="ui-layer">
-        <ChatLog
-          activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
-          botMentionTag={activePersonaMentionTag}
-          channelName={twitchChannel}
-          displayOverrides={chatDisplayOverrides}
-          history={chatHistory}
-          isGenerating={chatGenerating}
-          modeLabel={twitchModeLabel}
-          onClear={handleClearChat}
-          onToggle={() => setChatLogOpen((current) => !current)}
-          open={chatLogOpen}
+      {productPageActive ? (
+        <ProductPages
+          accountMode={accountMode}
+          authStatus={supabaseAuthStatus}
+          onNavigate={handleNavigate}
+          onSignOut={handleSupabaseLocalSignOut}
+          route={appRoute}
+          supabaseConfig={supabaseConfig}
+          twitchChannel={twitchChannel}
         />
+      ) : null}
 
-        <MenuFab
-          onToggle={() => {
-            setMenuOpen((current) => !current);
-          }}
-          open={menuOpen}
-        />
-
-        {menuOpen ? (
-          <SettingsPanel
-            accountMode={accountMode}
-            activePersona={activePersona}
-            activeTab={activeTab}
-            activeTwitchChatters={twitchActiveChatterCount}
-            aiProxyHealth={aiProxyHealth}
-            aiProxyHealthError={aiProxyHealthError}
-            aiSettings={aiSettings}
-            availableModels={availableModels}
-            batchPending={twitchBatchRef.current.length}
-            botMentionTag={activePersonaMentionTag}
-            bundledModels={BUNDLED_VRM_MODELS}
-            chatDraftLength={chatInput.length}
-            chatOverlayOpen={chatLogOpen}
-            messageCount={chatHistory.length}
-            currentBundledModelId={currentBundledModelId}
-            onClearChat={handleClearChat}
-            onClearDraft={handleClearDraft}
-            onClearMemory={handleClearMemory}
-            modelsError={modelsError}
-            modelsLoading={modelsLoading}
-            onCacheVoice={() => {
-              void handleCacheTtsVoice();
-            }}
-            onActivatePersona={(personaId) => {
-              setActivePersonaId(personaId);
-            }}
-            onClose={() => setMenuOpen(false)}
-            onDeletePersona={handleDeletePersona}
-            onImportAnimationFile={(file) => {
-              const url = URL.createObjectURL(file);
-              const format = getAnimationFormatFromFileName(file.name);
-              setSequencerSettings((current) => ({
-                ...current,
-                playlist: [
-                  ...current.playlist,
-                  {
-                    id: `custom-${Date.now()}`,
-                    name: file.name.replace(/\.(fbx|glb|gltf|vrma|bvh)$/i, ''),
-                    url,
-                    format,
-                    enabled: true,
-                    experimental: false,
-                    loopEligible: false,
-                    purpose: 'gesture',
-                    tags: ['custom'],
-                  },
-                ],
-              }));
-            }}
-            onLoadModelFile={(file) => {
-              prepareForModelSwap();
-              loadModelUrl(URL.createObjectURL(file));
-              setCurrentBundledModelId('');
-            }}
-            onLoadBundledModel={(modelId) => {
-              void handleLoadBundledModel(modelId).catch(() => {});
-            }}
-            onLoadSample={() => {
-              void handleLoadBundledModel(DEFAULT_BUNDLED_MODEL_ID).catch(() => {});
-            }}
-            onPlayAnimation={(request) => {
-              setManualPlayRequest(request);
-            }}
-            onRefreshModels={() => {
-              void loadAvailableModels();
-            }}
-            onRefreshAiProxyHealth={() => {
-              void refreshAiProxyHealth();
-            }}
-            onRefreshRemoteVoices={(provider) => {
-              for (const key of Array.from(remoteTtsVoiceFetchAttemptedRef.current)) {
-                if (key === provider || key.startsWith(`${provider}:`)) {
-                  remoteTtsVoiceFetchAttemptedRef.current.delete(key);
-                }
-              }
-              void loadRemoteTtsVoices(provider, true);
-            }}
-            onRefreshVoices={() => {
-              void loadTtsVoices();
-            }}
-            onResetContext={handleResetContext}
-            onResetTwitchState={() => {
-              if (twitchBatchTimerRef.current !== null) {
-                window.clearTimeout(twitchBatchTimerRef.current);
-                twitchBatchTimerRef.current = null;
-              }
-              twitchAiQueueRef.current = [];
-              twitchBatchRef.current = [];
-              twitchKnownUsersRef.current.clear();
-              appendSystemMessage('Twitch AI queue reset.');
-            }}
-            onRunMemoryAgent={handleRunMemoryAgentNow}
-            onSavePersona={handleSavePersona}
-            onSelectVoice={handleSelectTtsVoice}
-            onSetTwitchChannel={(channel) => {
-              const cleanChannel = channel.replace(/^#/, '').trim().toLowerCase();
-              if (!cleanChannel) {
-                return;
-              }
-              directTwitchClientRef.current?.switchChannel(cleanChannel);
-              setTwitchChannel(cleanChannel);
-              appendSystemMessage(`Twitch channel switched to #${cleanChannel}.`);
-            }}
-            onSpeakLastReply={handleSpeakLastReply}
-            onStopTts={handleStopTts}
-            onSupabaseLocalSignOut={handleSupabaseLocalSignOut}
-            onTabChange={setActiveTab}
-            onTestVoice={handleTestTtsVoice}
-            onToggleChatOverlay={setChatLogOpen}
-            open={menuOpen}
-            personas={personas}
-            grilloMemoryState={grilloMemoryState}
-            relationshipMemory={relationshipMemory}
-            memoryAgentBusy={memoryAgentBusy}
-            memoryAgentStatus={memoryAgentStatus}
-            sequencerSettings={sequencerSettings}
-            setAiSettings={setAiSettings}
-            setSequencerSettings={setSequencerSettings}
-            setVisualSettings={setVisualSettings}
-            ttsActiveVoice={activeTtsVoice}
-            ttsBusy={ttsBusy}
-            ttsCached={selectedTtsCached}
-            ttsStatus={ttsStatus}
-            ttsVoices={ttsVoices}
-            remoteTtsVoices={activeRemoteTtsVoices}
-            remoteVoicesError={remoteTtsVoicesError}
-            remoteVoicesLoading={remoteTtsVoicesLoading}
-            supabaseAuthStatus={supabaseAuthStatus}
-            supabaseConfig={supabaseConfig}
-            twitchAiModeLabel={twitchModeLabel}
-            twitchChannel={twitchChannel}
-            twitchConnectionLabel={twitchConnectionLabel}
-            twitchDirectChatEnabled={DIRECT_TWITCH_CHAT_ENABLED}
-            twitchQueueLength={twitchAiQueueRef.current.length}
-            visualSettings={visualSettings}
-            voicesError={ttsVoicesError}
-            voicesLoading={ttsVoicesLoading}
-          />
-        ) : null}
-
-        {subtitleText ? (
-          <div className="subtitle-overlay" aria-live="polite">
-            {subtitleText}
-          </div>
-        ) : null}
-
-        <button
-          className={`chat-bar-toggle ${chatBarOpen ? 'active' : ''}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            setChatBarOpen((current) => !current);
-          }}
-          title={chatBarOpen ? 'Hide local chat bar' : 'Show local chat bar'}
-          type="button"
-        >
-          <svg
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-          >
-            <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-          </svg>
-        </button>
-
-        {chatBarOpen ? (
-          <ChatBar
+      {!productPageActive && !overlayPageActive ? (
+        <div className="ui-layer">
+          <ChatLog
             activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
-            inputValue={chatInput}
+            botMentionTag={activePersonaMentionTag}
+            channelName={twitchChannel}
+            displayOverrides={chatDisplayOverrides}
+            history={chatHistory}
             isGenerating={chatGenerating}
-            messageCount={chatHistory.length}
-            model={aiSettings.model}
-            onInputChange={setChatInput}
-            onSend={() => {
-              void handleSendMessage();
-            }}
+            modeLabel={twitchModeLabel}
+            onClear={handleClearChat}
+            onToggle={() => setChatLogOpen((current) => !current)}
+            open={chatLogOpen}
           />
-        ) : null}
-      </div>
+
+          <MenuFab
+            onToggle={() => {
+              setMenuOpen((current) => !current);
+            }}
+            open={menuOpen}
+          />
+
+          {menuOpen ? (
+            <SettingsPanel
+              accountMode={accountMode}
+              activePersona={activePersona}
+              activeTab={activeTab}
+              activeTwitchChatters={twitchActiveChatterCount}
+              aiProxyHealth={aiProxyHealth}
+              aiProxyHealthError={aiProxyHealthError}
+              aiSettings={aiSettings}
+              availableModels={availableModels}
+              batchPending={twitchBatchRef.current.length}
+              botMentionTag={activePersonaMentionTag}
+              bundledModels={BUNDLED_VRM_MODELS}
+              chatDraftLength={chatInput.length}
+              chatOverlayOpen={chatLogOpen}
+              messageCount={chatHistory.length}
+              currentBundledModelId={currentBundledModelId}
+              onClearChat={handleClearChat}
+              onClearDraft={handleClearDraft}
+              onClearMemory={handleClearMemory}
+              modelsError={modelsError}
+              modelsLoading={modelsLoading}
+              onCacheVoice={() => {
+                void handleCacheTtsVoice();
+              }}
+              onActivatePersona={(personaId) => {
+                setActivePersonaId(personaId);
+              }}
+              onClose={() => setMenuOpen(false)}
+              onDeletePersona={handleDeletePersona}
+              onImportAnimationFile={(file) => {
+                const url = URL.createObjectURL(file);
+                const format = getAnimationFormatFromFileName(file.name);
+                setSequencerSettings((current) => ({
+                  ...current,
+                  playlist: [
+                    ...current.playlist,
+                    {
+                      id: `custom-${Date.now()}`,
+                      name: file.name.replace(/\.(fbx|glb|gltf|vrma|bvh)$/i, ''),
+                      url,
+                      format,
+                      enabled: true,
+                      experimental: false,
+                      loopEligible: false,
+                      purpose: 'gesture',
+                      tags: ['custom'],
+                    },
+                  ],
+                }));
+              }}
+              onLoadModelFile={(file) => {
+                prepareForModelSwap();
+                loadModelUrl(URL.createObjectURL(file));
+                setCurrentBundledModelId('');
+              }}
+              onLoadBundledModel={(modelId) => {
+                void handleLoadBundledModel(modelId).catch(() => {});
+              }}
+              onLoadSample={() => {
+                void handleLoadBundledModel(DEFAULT_BUNDLED_MODEL_ID).catch(() => {});
+              }}
+              onPlayAnimation={(request) => {
+                setManualPlayRequest(request);
+              }}
+              onRefreshModels={() => {
+                void loadAvailableModels();
+              }}
+              onRefreshAiProxyHealth={() => {
+                void refreshAiProxyHealth();
+              }}
+              onRefreshRemoteVoices={(provider) => {
+                for (const key of Array.from(remoteTtsVoiceFetchAttemptedRef.current)) {
+                  if (key === provider || key.startsWith(`${provider}:`)) {
+                    remoteTtsVoiceFetchAttemptedRef.current.delete(key);
+                  }
+                }
+                void loadRemoteTtsVoices(provider, true);
+              }}
+              onRefreshVoices={() => {
+                void loadTtsVoices();
+              }}
+              onResetContext={handleResetContext}
+              onResetTwitchState={() => {
+                if (twitchBatchTimerRef.current !== null) {
+                  window.clearTimeout(twitchBatchTimerRef.current);
+                  twitchBatchTimerRef.current = null;
+                }
+                twitchAiQueueRef.current = [];
+                twitchBatchRef.current = [];
+                twitchKnownUsersRef.current.clear();
+                appendSystemMessage('Twitch AI queue reset.');
+              }}
+              onRunMemoryAgent={handleRunMemoryAgentNow}
+              onSavePersona={handleSavePersona}
+              onSelectVoice={handleSelectTtsVoice}
+              onSetTwitchChannel={(channel) => {
+                const cleanChannel = channel.replace(/^#/, '').trim().toLowerCase();
+                if (!cleanChannel) {
+                  return;
+                }
+                directTwitchClientRef.current?.switchChannel(cleanChannel);
+                setTwitchChannel(cleanChannel);
+                appendSystemMessage(`Twitch channel switched to #${cleanChannel}.`);
+              }}
+              onSpeakLastReply={handleSpeakLastReply}
+              onStopTts={handleStopTts}
+              onSupabaseLocalSignOut={handleSupabaseLocalSignOut}
+              onTabChange={setActiveTab}
+              onTestVoice={handleTestTtsVoice}
+              onToggleChatOverlay={setChatLogOpen}
+              open={menuOpen}
+              personas={personas}
+              grilloMemoryState={grilloMemoryState}
+              relationshipMemory={relationshipMemory}
+              memoryAgentBusy={memoryAgentBusy}
+              memoryAgentStatus={memoryAgentStatus}
+              sequencerSettings={sequencerSettings}
+              setAiSettings={setAiSettings}
+              setSequencerSettings={setSequencerSettings}
+              setVisualSettings={setVisualSettings}
+              ttsActiveVoice={activeTtsVoice}
+              ttsBusy={ttsBusy}
+              ttsCached={selectedTtsCached}
+              ttsStatus={ttsStatus}
+              ttsVoices={ttsVoices}
+              remoteTtsVoices={activeRemoteTtsVoices}
+              remoteVoicesError={remoteTtsVoicesError}
+              remoteVoicesLoading={remoteTtsVoicesLoading}
+              supabaseAuthStatus={supabaseAuthStatus}
+              supabaseConfig={supabaseConfig}
+              twitchAiModeLabel={twitchModeLabel}
+              twitchChannel={twitchChannel}
+              twitchConnectionLabel={twitchConnectionLabel}
+              twitchDirectChatEnabled={DIRECT_TWITCH_CHAT_ENABLED}
+              twitchQueueLength={twitchAiQueueRef.current.length}
+              visualSettings={visualSettings}
+              voicesError={ttsVoicesError}
+              voicesLoading={ttsVoicesLoading}
+            />
+          ) : null}
+
+          {subtitleText ? (
+            <div className="subtitle-overlay" aria-live="polite">
+              {subtitleText}
+            </div>
+          ) : null}
+
+          <button
+            className={`chat-bar-toggle ${chatBarOpen ? 'active' : ''}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setChatBarOpen((current) => !current);
+            }}
+            title={chatBarOpen ? 'Hide local chat bar' : 'Show local chat bar'}
+            type="button"
+          >
+            <svg
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+            </svg>
+          </button>
+
+          {chatBarOpen ? (
+            <ChatBar
+              activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
+              inputValue={chatInput}
+              isGenerating={chatGenerating}
+              messageCount={chatHistory.length}
+              model={aiSettings.model}
+              onInputChange={setChatInput}
+              onSend={() => {
+                void handleSendMessage();
+              }}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
