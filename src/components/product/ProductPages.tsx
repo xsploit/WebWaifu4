@@ -90,9 +90,10 @@ function LoginPage(
     <ProductPageFrame
       eyebrow="Magic-link login"
       onNavigate={props.onNavigate}
+      routeKind={props.route.kind}
       title="Sign in to sync your stream setup"
     >
-      <form className="product-card" onSubmit={handleSubmit}>
+      <form className="product-card product-card-narrow" onSubmit={handleSubmit}>
         <label className="product-field">
           <span>Email</span>
           <input
@@ -107,7 +108,7 @@ function LoginPage(
         <button className="product-primary" disabled={busy} type="submit">
           {busy ? 'Sending...' : 'Send magic link'}
         </button>
-        <p>{status}</p>
+        <StatusText>{status}</StatusText>
       </form>
     </ProductPageFrame>
   );
@@ -118,10 +119,11 @@ function AuthCallbackPage(props: ProductPagesProps) {
     <ProductPageFrame
       eyebrow="Auth callback"
       onNavigate={props.onNavigate}
+      routeKind={props.route.kind}
       title="Checking your session"
     >
       <div className="product-card">
-        <p>{props.authStatus}</p>
+        <StatusText>{props.authStatus}</StatusText>
         <div className="product-actions">
           <button className="product-primary" onClick={() => props.onNavigate('/dashboard')}>
             Dashboard
@@ -179,7 +181,12 @@ function AccountPage(
   };
 
   return (
-    <ProductPageFrame eyebrow="Account" onNavigate={props.onNavigate} title="YourWifey account">
+    <ProductPageFrame
+      eyebrow="Account"
+      onNavigate={props.onNavigate}
+      routeKind={props.route.kind}
+      title="YourWifey account"
+    >
       <form className="product-card" onSubmit={handleSave}>
         <div className="product-grid">
           <Stat label="Mode" value={props.accountSummary.modeLabel} />
@@ -207,7 +214,7 @@ function AccountPage(
             Sign out locally
           </button>
         </div>
-        <p>{status}</p>
+        <StatusText>{status}</StatusText>
       </form>
     </ProductPageFrame>
   );
@@ -364,66 +371,97 @@ function DashboardPage(
   };
 
   return (
-    <ProductPageFrame eyebrow="Dashboard" onNavigate={props.onNavigate} title="Stream workspace">
-      <div className="product-card">
-        <div className="product-grid">
-          <Stat label="Workspace" value={profile?.bootstrap.workspace.name ?? 'Local editor'} />
-          <Stat label="Scene" value={profile?.bootstrap.scene.name ?? 'Main Overlay'} />
-          <Stat label="Twitch" value={`#${props.twitchChannel || 'subsect'}`} />
-          <Stat label="Sync" value={props.accountSummary.cloudSyncLabel} />
-        </div>
-        <div className="product-actions">
-          <button className="product-primary" onClick={() => props.onNavigate('/')}>
-            Open editor
-          </button>
-          <button className="product-secondary" onClick={() => props.onNavigate('/account')}>
-            Account
-          </button>
-          <button className="product-secondary" onClick={() => props.onNavigate(overlayUrl)}>
-            Preview overlay
-          </button>
-          <button
-            className="product-secondary"
-            disabled={props.accountMode.kind !== 'supabase-cloud-sync'}
-            onClick={handleIssueOverlayUrl}
-          >
-            Issue OBS URL
-          </button>
-          <button
-            className="product-secondary"
-            disabled={syncing || props.accountMode.kind !== 'supabase-cloud-sync'}
-            onClick={handleSyncSettings}
-          >
-            {syncing ? 'Syncing...' : 'Sync settings'}
-          </button>
-          <button
-            className="product-secondary"
-            disabled={pulling || props.accountMode.kind !== 'supabase-cloud-sync'}
-            onClick={handlePullSettings}
-          >
-            {pulling ? 'Loading...' : 'Load cloud'}
-          </button>
-          <button className="product-secondary" onClick={handleExportBackup}>
-            Export backup
-          </button>
-          <button className="product-secondary" onClick={() => backupInputRef.current?.click()}>
-            Import backup
-          </button>
-        </div>
-        <input
-          ref={backupInputRef}
-          accept="application/json,.json"
-          className="product-hidden-file"
-          onChange={(event) => void handleImportBackup(event.target.files?.[0])}
-          type="file"
-        />
-        {overlayShareUrl ? (
-          <label className="product-field">
-            <span>OBS overlay URL</span>
-            <input readOnly value={overlayShareUrl} />
-          </label>
-        ) : null}
-        <p>{status}</p>
+    <ProductPageFrame
+      eyebrow="Dashboard"
+      onNavigate={props.onNavigate}
+      routeKind={props.route.kind}
+      title="Stream workspace"
+    >
+      <div className="product-dashboard">
+        <section className="product-card product-card-primary">
+          <div className="product-card-header">
+            <div>
+              <span>Current scene</span>
+              <strong>{profile?.bootstrap.scene.name ?? 'Main Overlay'}</strong>
+            </div>
+            <button className="product-primary" onClick={() => props.onNavigate('/')}>
+              Open editor
+            </button>
+          </div>
+          <div className="product-grid">
+            <Stat label="Workspace" value={profile?.bootstrap.workspace.name ?? 'Local editor'} />
+            <Stat label="Twitch" value={`#${props.twitchChannel || 'subsect'}`} />
+            <Stat label="Sync" value={props.accountSummary.cloudSyncLabel} />
+          </div>
+          <StatusText>{status}</StatusText>
+        </section>
+
+        <section className="product-card">
+          <SectionTitle title="Overlay" />
+          <div className="product-actions product-actions-grid">
+            <button className="product-secondary" onClick={() => props.onNavigate(overlayUrl)}>
+              Preview overlay
+            </button>
+            <button
+              className="product-secondary"
+              disabled={props.accountMode.kind !== 'supabase-cloud-sync'}
+              onClick={handleIssueOverlayUrl}
+            >
+              Issue OBS URL
+            </button>
+          </div>
+          {overlayShareUrl ? (
+            <label className="product-field">
+              <span>OBS overlay URL</span>
+              <input readOnly value={overlayShareUrl} />
+            </label>
+          ) : null}
+        </section>
+
+        <section className="product-card">
+          <SectionTitle title="Settings" />
+          <div className="product-actions product-actions-grid">
+            <button
+              className="product-secondary"
+              disabled={syncing || props.accountMode.kind !== 'supabase-cloud-sync'}
+              onClick={handleSyncSettings}
+            >
+              {syncing ? 'Syncing...' : 'Sync settings'}
+            </button>
+            <button
+              className="product-secondary"
+              disabled={pulling || props.accountMode.kind !== 'supabase-cloud-sync'}
+              onClick={handlePullSettings}
+            >
+              {pulling ? 'Loading...' : 'Load cloud'}
+            </button>
+            <button className="product-secondary" onClick={handleExportBackup}>
+              Export backup
+            </button>
+            <button className="product-secondary" onClick={() => backupInputRef.current?.click()}>
+              Import backup
+            </button>
+          </div>
+          <input
+            ref={backupInputRef}
+            accept="application/json,.json"
+            className="product-hidden-file"
+            onChange={(event) => void handleImportBackup(event.target.files?.[0])}
+            type="file"
+          />
+        </section>
+
+        <section className="product-card">
+          <SectionTitle title="Account" />
+          <div className="product-actions product-actions-grid">
+            <button className="product-secondary" onClick={() => props.onNavigate('/account')}>
+              Account
+            </button>
+            <button className="product-secondary" onClick={() => props.onNavigate('/login')}>
+              Login
+            </button>
+          </div>
+        </section>
       </div>
     </ProductPageFrame>
   );
@@ -433,23 +471,65 @@ function ProductPageFrame(props: {
   children: ReactNode;
   eyebrow: string;
   onNavigate: (path: string) => void;
+  routeKind: AppRoute['kind'];
   title: string;
 }) {
   return (
     <div className="product-page" onClick={(event) => event.stopPropagation()}>
       <nav className="product-nav">
-        <button onClick={() => props.onNavigate('/')}>Editor</button>
-        <button onClick={() => props.onNavigate('/dashboard')}>Dashboard</button>
-        <button onClick={() => props.onNavigate('/account')}>Account</button>
-        <button onClick={() => props.onNavigate('/login')}>Login</button>
+        <div className="product-brand">
+          <strong>YourWifey</strong>
+          <span>BYOK Studio</span>
+        </div>
+        <div className="product-nav-links">
+          <NavButton active={props.routeKind === 'editor'} onClick={() => props.onNavigate('/')}>
+            Editor
+          </NavButton>
+          <NavButton
+            active={props.routeKind === 'dashboard'}
+            onClick={() => props.onNavigate('/dashboard')}
+          >
+            Dashboard
+          </NavButton>
+          <NavButton
+            active={props.routeKind === 'account'}
+            onClick={() => props.onNavigate('/account')}
+          >
+            Account
+          </NavButton>
+          <NavButton
+            active={props.routeKind === 'login'}
+            onClick={() => props.onNavigate('/login')}
+          >
+            Login
+          </NavButton>
+        </div>
       </nav>
       <main className="product-panel">
-        <p className="product-eyebrow">{props.eyebrow}</p>
-        <h1>{props.title}</h1>
+        <header className="product-header">
+          <p className="product-eyebrow">{props.eyebrow}</p>
+          <h1>{props.title}</h1>
+        </header>
         {props.children}
       </main>
     </div>
   );
+}
+
+function NavButton(props: { active: boolean; children: ReactNode; onClick: () => void }) {
+  return (
+    <button className={props.active ? 'active' : ''} onClick={props.onClick}>
+      {props.children}
+    </button>
+  );
+}
+
+function SectionTitle(props: { title: string }) {
+  return <h2 className="product-section-title">{props.title}</h2>;
+}
+
+function StatusText(props: { children: ReactNode }) {
+  return <p className="product-status-text">{props.children}</p>;
 }
 
 function Stat(props: { label: string; value: string }) {
