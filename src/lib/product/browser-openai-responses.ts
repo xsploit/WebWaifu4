@@ -24,15 +24,17 @@ export type BrowserOpenAiCompletionRequest = {
   model: string;
   onTextDelta?: (delta: string) => void;
   openAiStateMode?: 'conversation' | 'previous-response' | 'server-default' | 'stateless';
+  providerLabel?: 'browser-openai-responses' | 'browser-openrouter-responses';
   responseFormat?: BrowserOpenAiResponseFormat;
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
+  store?: boolean;
 };
 
 export type BrowserOpenAiCompletionResponse = {
   meta: {
     previousResponseId: string | null;
-    provider: 'browser-openai-responses';
+    provider: 'browser-openai-responses' | 'browser-openrouter-responses';
     stateKey: string;
     stateMode: 'previous-response' | 'stateless';
   };
@@ -45,6 +47,7 @@ export type BrowserOpenAiEmbeddingRequest = {
   fetchImpl?: typeof fetch;
   input: string;
   model?: string;
+  providerLabel?: string;
 };
 
 type OpenAiResponsePayload = {
@@ -87,6 +90,30 @@ type BrowserOpenAiState = {
 
 const browserState = new Map<string, BrowserOpenAiState>();
 
+export async function requestBrowserOpenRouterCompletion(
+  request: Omit<BrowserOpenAiCompletionRequest, 'apiBaseUrl' | 'disableState' | 'openAiStateMode'>,
+): Promise<BrowserOpenAiCompletionResponse> {
+  return requestBrowserOpenAiCompletion({
+    ...request,
+    apiBaseUrl: 'https://openrouter.ai/api/v1',
+    disableState: true,
+    openAiStateMode: 'stateless',
+    providerLabel: 'browser-openrouter-responses',
+    store: false,
+  });
+}
+
+export async function requestBrowserOpenRouterEmbedding(
+  request: Omit<BrowserOpenAiEmbeddingRequest, 'apiBaseUrl' | 'model'> & { model?: string },
+): Promise<number[]> {
+  return requestBrowserOpenAiEmbedding({
+    ...request,
+    apiBaseUrl: 'https://openrouter.ai/api/v1',
+    model: request.model ?? 'openai/text-embedding-3-small',
+    providerLabel: 'OpenRouter',
+  });
+}
+
 export async function requestBrowserOpenAiCompletion({
   apiBaseUrl = 'https://api.openai.com/v1',
   apiKey,
@@ -100,6 +127,8 @@ export async function requestBrowserOpenAiCompletion({
   responseFormat,
   stateKey = 'default',
   stateScope = 'chat',
+  providerLabel = 'browser-openai-responses',
+  store,
 }: BrowserOpenAiCompletionRequest): Promise<BrowserOpenAiCompletionResponse> {
   const trimmedApiKey = apiKey.trim();
   if (!trimmedApiKey) {
@@ -108,7 +137,8 @@ export async function requestBrowserOpenAiCompletion({
 
   const normalizedStateKey = normalizeStateKey(stateKey);
   const stateMode = normalizeBrowserStateMode(openAiStateMode);
-  const stateDisabled = disableState === true || stateScope === 'memory' || stateMode === 'stateless';
+  const stateDisabled =
+    disableState === true || stateScope === 'memory' || stateMode === 'stateless';
   const state = getBrowserState(normalizedStateKey);
   const signature = createStateSignature(model);
   if (state.signature && state.signature !== signature) {
@@ -122,7 +152,7 @@ export async function requestBrowserOpenAiCompletion({
     input: canContinuePreviousResponse && input.length > 0 ? input.slice(-1) : input,
     max_output_tokens: normalizeMaxOutputTokens(maxTokens),
     model: model.trim(),
-    store: !stateDisabled,
+    store: store ?? !stateDisabled,
   };
 
   if (instructions) {
@@ -159,7 +189,11 @@ export async function requestBrowserOpenAiCompletion({
 
   if (!response.ok) {
     const message = await response.text().catch(() => '');
-    throw new Error(message || `OpenAI Responses API failed with HTTP ${response.status}.`);
+    const apiLabel =
+      providerLabel === 'browser-openrouter-responses'
+        ? 'OpenRouter Responses API'
+        : 'OpenAI Responses API';
+    throw new Error(message || `${apiLabel} failed with HTTP ${response.status}.`);
   }
 
   const data = onTextDelta
@@ -167,7 +201,11 @@ export async function requestBrowserOpenAiCompletion({
     : ((await response.json()) as OpenAiResponsePayload);
   const text = extractResponseText(data);
   if (!text.trim()) {
-    throw new Error('OpenAI Responses API returned an empty response.');
+    const apiLabel =
+      providerLabel === 'browser-openrouter-responses'
+        ? 'OpenRouter Responses API'
+        : 'OpenAI Responses API';
+    throw new Error(`${apiLabel} returned an empty response.`);
   }
 
   if (!stateDisabled && data.id) {
@@ -177,7 +215,7 @@ export async function requestBrowserOpenAiCompletion({
   return {
     meta: {
       previousResponseId: stateDisabled ? null : state.previousResponseId,
-      provider: 'browser-openai-responses',
+      provider: providerLabel,
       stateKey: normalizedStateKey,
       stateMode,
     },
@@ -191,10 +229,11 @@ export async function requestBrowserOpenAiEmbedding({
   fetchImpl = fetch,
   input,
   model = 'text-embedding-3-small',
+  providerLabel = 'OpenAI',
 }: BrowserOpenAiEmbeddingRequest): Promise<number[]> {
   const trimmedApiKey = apiKey.trim();
   if (!trimmedApiKey) {
-    throw new Error('OpenAI BYOK key is not saved in this browser.');
+    throw new Error(`${providerLabel} BYOK key is not saved in this browser.`);
   }
 
   const text = input.trim();
@@ -216,13 +255,15 @@ export async function requestBrowserOpenAiEmbedding({
 
   if (!response.ok) {
     const message = await response.text().catch(() => '');
-    throw new Error(message || `OpenAI Embeddings API failed with HTTP ${response.status}.`);
+    throw new Error(
+      message || `${providerLabel} Embeddings API failed with HTTP ${response.status}.`,
+    );
   }
 
   const data = (await response.json()) as OpenAiEmbeddingPayload;
   const embedding = data.data?.[0]?.embedding;
   if (!Array.isArray(embedding)) {
-    throw new Error(data.error?.message || 'OpenAI returned no embedding.');
+    throw new Error(data.error?.message || `${providerLabel} returned no embedding.`);
   }
   return embedding;
 }

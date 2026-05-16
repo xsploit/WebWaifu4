@@ -58,6 +58,28 @@ export const COMMON_OPENAI_MODELS = GPT_MODEL_OPTIONS.map((model) => model.id);
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
 export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-5.4-mini';
 
+export const OPENROUTER_MODEL_OPTIONS = [
+  {
+    id: 'openai/gpt-4o-mini',
+    label: 'OpenAI GPT-4o Mini',
+    description: 'Fast OpenRouter routed model for chat and memory with good latency.',
+  },
+  {
+    id: 'openai/gpt-4o',
+    label: 'OpenAI GPT-4o',
+    description: 'Higher-quality OpenRouter routed OpenAI model.',
+  },
+  {
+    id: 'anthropic/claude-3.5-haiku',
+    label: 'Claude 3.5 Haiku',
+    description: 'Fast Anthropic option through OpenRouter for alternate style tests.',
+  },
+] as const;
+
+export const COMMON_OPENROUTER_MODELS = OPENROUTER_MODEL_OPTIONS.map((model) => model.id);
+export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
+export const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
+
 export const RIKO_PERSONA: PersonaProfile = {
   id: 'default-waifu',
   name: 'Riko',
@@ -94,6 +116,7 @@ export function createDefaultPersonas(): PersonaProfile[] {
 
 export function createDefaultAiSettings(): AiSettings {
   return {
+    llmProvider: 'openai-responses',
     model: DEFAULT_OPENAI_MODEL,
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
     aiTransportMode: 'websocket',

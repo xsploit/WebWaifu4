@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   requestBrowserOpenAiCompletion,
   requestBrowserOpenAiEmbedding,
+  requestBrowserOpenRouterCompletion,
+  requestBrowserOpenRouterEmbedding,
 } from './browser-openai-responses';
 
 function jsonResponse(body: unknown, status = 200) {
@@ -175,5 +177,91 @@ describe('requestBrowserOpenAiCompletion', () => {
       input: 'remember this turn',
       model: 'text-embedding-3-small',
     });
+  });
+
+  it('uses OpenRouter Responses as app-owned stateless conversation state', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe('https://openrouter.ai/api/v1/responses');
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return jsonResponse({
+        id: `or_resp_${bodies.length}`,
+        output_text: `openrouter ${bodies.length}`,
+      });
+    });
+
+    await requestBrowserOpenRouterCompletion({
+      apiKey: 'or-test-key',
+      fetchImpl,
+      maxTokens: 80,
+      messages: [
+        { role: 'system', content: 'rendered POML instructions' },
+        { role: 'user', content: 'first turn transcript' },
+      ],
+      model: 'openai/gpt-4o-mini',
+      stateKey: 'twitch:hikari',
+    });
+    const second = await requestBrowserOpenRouterCompletion({
+      apiKey: 'or-test-key',
+      fetchImpl,
+      maxTokens: 80,
+      messages: [
+        { role: 'system', content: 'rendered POML instructions' },
+        { role: 'user', content: 'first turn transcript' },
+        { role: 'assistant', content: 'openrouter 1' },
+        { role: 'user', content: 'second turn transcript' },
+      ],
+      model: 'openai/gpt-4o-mini',
+      stateKey: 'twitch:hikari',
+    });
+
+    expect(second.meta).toMatchObject({
+      previousResponseId: null,
+      provider: 'browser-openrouter-responses',
+      stateMode: 'stateless',
+    });
+    expect(bodies[0]).toMatchObject({
+      input: [{ role: 'user', content: 'first turn transcript' }],
+      instructions: 'rendered POML instructions',
+      model: 'openai/gpt-4o-mini',
+      store: false,
+    });
+    expect(bodies[1]).toMatchObject({
+      input: [
+        { role: 'user', content: 'first turn transcript' },
+        { role: 'assistant', content: 'openrouter 1' },
+        { role: 'user', content: 'second turn transcript' },
+      ],
+      store: false,
+    });
+    expect(bodies[1]).not.toHaveProperty('previous_response_id');
+    expect(JSON.stringify(bodies)).not.toContain('or-test-key');
+  });
+
+  it('calls OpenRouter embeddings with the routed embedding model', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        data: [
+          {
+            embedding: [0.4, 0.5],
+          },
+        ],
+      }),
+    );
+
+    const embedding = await requestBrowserOpenRouterEmbedding({
+      apiKey: 'or-test-key',
+      fetchImpl,
+      input: 'semantic query',
+    });
+
+    expect(embedding).toEqual([0.4, 0.5]);
+    const firstCall = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toBe('https://openrouter.ai/api/v1/embeddings');
+    expect(JSON.parse(String(firstCall[1]?.body))).toMatchObject({
+      input: 'semantic query',
+      model: 'openai/text-embedding-3-small',
+    });
+    expect(String(firstCall[1]?.body)).not.toContain('or-test-key');
   });
 });

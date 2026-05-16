@@ -24,10 +24,12 @@ export type RemoteTtsMode = 'live-bridge' | 'full-response' | 'sentence-chunks';
 export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
+export type LlmProvider = 'openai-responses' | 'openrouter-responses';
 export type AiTransportMode = 'server-default' | 'http-stream' | 'websocket';
 export type OpenAiStateMode = 'server-default' | 'conversation' | 'previous-response' | 'stateless';
 
 export type AiSettings = {
+  llmProvider: LlmProvider;
   model: string;
   memoryAgentModel: string;
   aiTransportMode: AiTransportMode;

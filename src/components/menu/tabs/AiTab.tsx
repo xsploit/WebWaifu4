@@ -1,5 +1,11 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { GPT_MODEL_OPTIONS } from '../../../lib/chat/defaults';
+import {
+  DEFAULT_MEMORY_AGENT_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENROUTER_MODEL,
+  GPT_MODEL_OPTIONS,
+  OPENROUTER_MODEL_OPTIONS,
+} from '../../../lib/chat/defaults';
 import type { AiProxyHealth, AiSettings } from '../../../lib/chat/types';
 import { Slider } from '../ui/Slider';
 
@@ -38,15 +44,25 @@ export function AiTab({
   onRefreshModels,
   setAiSettings,
 }: AiTabProps) {
-  const gptModelIds = new Set<string>(GPT_MODEL_OPTIONS.map((model) => model.id));
-  const customModels = availableModels.filter((model) => !gptModelIds.has(model));
+  const modelOptions =
+    aiSettings.llmProvider === 'openrouter-responses'
+      ? OPENROUTER_MODEL_OPTIONS
+      : GPT_MODEL_OPTIONS;
+  const knownModelIds = new Set<string>(modelOptions.map((model) => model.id));
+  const allKnownModelIds = new Set<string>(
+    [...GPT_MODEL_OPTIONS, ...OPENROUTER_MODEL_OPTIONS].map((model) => model.id),
+  );
+  const customModels = availableModels.filter((model) => !allKnownModelIds.has(model));
   const selectedModel =
-    GPT_MODEL_OPTIONS.find((model) => model.id === aiSettings.model) ??
+    modelOptions.find((model) => model.id === aiSettings.model) ??
     (aiSettings.model
       ? {
           id: aiSettings.model,
           label: aiSettings.model,
-          description: 'Custom model from the current environment or chat command.',
+          description:
+            aiSettings.llmProvider === 'openrouter-responses'
+              ? 'Custom OpenRouter model id. Conversation continuity is owned by the app prompt/memory layer.'
+              : 'Custom model from the current environment or chat command.',
         }
       : null);
   const providerState = aiProxyHealth?.providerState ?? null;
@@ -54,7 +70,43 @@ export function AiTab({
   return (
     <>
       <div className="control-group">
-        <div className="control-label">OpenAI GPT Model</div>
+        <div className="control-label">LLM Provider</div>
+        <select
+          className="select-tech"
+          onChange={(event) => {
+            const llmProvider = event.target.value as AiSettings['llmProvider'];
+            updateAiSettings(setAiSettings, {
+              llmProvider,
+              memoryAgentModel:
+                llmProvider === 'openrouter-responses'
+                  ? DEFAULT_OPENROUTER_MODEL
+                  : DEFAULT_MEMORY_AGENT_MODEL,
+              model:
+                llmProvider === 'openrouter-responses'
+                  ? DEFAULT_OPENROUTER_MODEL
+                  : DEFAULT_OPENAI_MODEL,
+              openAiStateMode:
+                llmProvider === 'openrouter-responses' ? 'stateless' : aiSettings.openAiStateMode,
+            });
+          }}
+          value={aiSettings.llmProvider}
+        >
+          <option value="openai-responses">OpenAI Responses</option>
+          <option value="openrouter-responses">OpenRouter Responses (App Memory)</option>
+        </select>
+        <div className="field-hint">
+          OpenRouter uses the Responses-compatible endpoint with YourWifey-owned history, diary,
+          semantic memory, and prompt compaction. OpenAI can still use Conversations or previous
+          response IDs when available.
+        </div>
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">
+          {aiSettings.llmProvider === 'openrouter-responses'
+            ? 'OpenRouter Model'
+            : 'OpenAI GPT Model'}
+        </div>
         <select
           className="select-tech"
           onChange={(event) =>
@@ -64,8 +116,14 @@ export function AiTab({
           }
           value={aiSettings.model}
         >
-          <optgroup label="GPT stream models">
-            {GPT_MODEL_OPTIONS.map((model) => (
+          <optgroup
+            label={
+              aiSettings.llmProvider === 'openrouter-responses'
+                ? 'OpenRouter routed models'
+                : 'GPT stream models'
+            }
+          >
+            {modelOptions.map((model) => (
               <option key={model.id} value={model.id}>
                 {model.label}
               </option>
@@ -81,7 +139,7 @@ export function AiTab({
             </optgroup>
           ) : null}
           {selectedModel &&
-          !gptModelIds.has(selectedModel.id) &&
+          !knownModelIds.has(selectedModel.id) &&
           !customModels.includes(selectedModel.id) ? (
             <option key={selectedModel.id} value={selectedModel.id}>
               {selectedModel.label}
@@ -124,6 +182,12 @@ export function AiTab({
           <option value="previous-response">Previous Response ID</option>
           <option value="stateless">Stateless</option>
         </select>
+        {aiSettings.llmProvider === 'openrouter-responses' ? (
+          <div className="status-copy">
+            OpenRouter state: <strong>app-owned</strong>. The request is sent stateless with the
+            rendered POML, current transcript, diary, and memory context.
+          </div>
+        ) : null}
         <div className="status-copy">
           Provider: <strong>{aiProxyHealth?.aiProvider ?? 'unknown'}</strong>
         </div>

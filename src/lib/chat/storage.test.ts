@@ -47,6 +47,7 @@ describe('chat settings persistence', () => {
       inworldDeliveryMode: 'CREATIVE',
       inworldModelId: 'inworld-tts-2',
       inworldVoiceId: 'inworld-voice',
+      llmProvider: 'openrouter-responses',
       maxTokens: 420,
       memoryAgentModel: 'gpt-5.4-mini',
       model: 'gpt-5.4',

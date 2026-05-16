@@ -8,7 +8,10 @@ import { SettingsPanel } from './components/menu/SettingsPanel';
 import { ProductPages } from './components/product/ProductPages';
 import {
   COMMON_OPENAI_MODELS,
+  COMMON_OPENROUTER_MODELS,
   DEFAULT_MEMORY_AGENT_MODEL,
+  DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+  DEFAULT_OPENROUTER_MODEL,
   DEFAULT_PERSONA,
   DEFAULT_OPENAI_MODEL,
   createDefaultAiSettings,
@@ -133,6 +136,8 @@ import type { SyncedSettingRecord } from './lib/product/byok';
 import {
   requestBrowserOpenAiCompletion,
   requestBrowserOpenAiEmbedding,
+  requestBrowserOpenRouterCompletion,
+  requestBrowserOpenRouterEmbedding,
 } from './lib/product/browser-openai-responses';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
 import './style.css';
@@ -425,11 +430,28 @@ function pickAvailableModel(
 }
 
 function sanitizeAiModels(current: AiSettings, availableModels: readonly string[]) {
-  const nextModel = pickAvailableModel(current.model, availableModels, DEFAULT_OPENAI_MODEL);
+  const providerModels = getProviderModelPool(current.llmProvider, availableModels);
+  const providerDefaults =
+    current.llmProvider === 'openrouter-responses'
+      ? {
+          models: providerModels,
+          primary: DEFAULT_OPENROUTER_MODEL,
+          memory: DEFAULT_OPENROUTER_MODEL,
+        }
+      : {
+          models: availableModels,
+          primary: DEFAULT_OPENAI_MODEL,
+          memory: DEFAULT_MEMORY_AGENT_MODEL,
+        };
+  const nextModel = pickAvailableModel(
+    current.model,
+    providerDefaults.models,
+    providerDefaults.primary,
+  );
   const nextMemoryAgentModel = pickAvailableModel(
     current.memoryAgentModel,
-    availableModels,
-    pickAvailableModel(DEFAULT_MEMORY_AGENT_MODEL, availableModels, nextModel),
+    providerDefaults.models,
+    pickAvailableModel(providerDefaults.memory, providerDefaults.models, nextModel),
   );
 
   return {
@@ -437,6 +459,15 @@ function sanitizeAiModels(current: AiSettings, availableModels: readonly string[
     model: nextModel,
     memoryAgentModel: nextMemoryAgentModel,
   };
+}
+
+function getProviderModelPool(
+  llmProvider: AiSettings['llmProvider'],
+  availableModels: readonly string[],
+) {
+  return llmProvider === 'openrouter-responses'
+    ? mergeModels(COMMON_OPENROUTER_MODELS, availableModels)
+    : mergeModels(availableModels, COMMON_OPENAI_MODELS);
 }
 
 function createChatMessage(role: ChatMessage['role'], content: string): ChatMessage {
@@ -621,6 +652,7 @@ async function requestChatCompletion({
   messages,
   mode = 'direct',
   model,
+  llmProvider = 'openai-responses',
   onAudioChunk,
   onTextDelta,
   openAiStateMode,
@@ -638,6 +670,7 @@ async function requestChatCompletion({
   messages: AppCompletionMessage[];
   mode?: 'direct' | 'batch';
   model: string;
+  llmProvider?: AiSettings['llmProvider'];
   onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
   onTextDelta?: (delta: string) => void;
   openAiStateMode?: AiSettings['openAiStateMode'];
@@ -653,19 +686,34 @@ async function requestChatCompletion({
     const providerVault = createBrowserProviderKeyVault({
       workspaceId: providerKeyVaultWorkspaceId ?? 'local-browser',
     });
-    const apiKey = await providerVault.getSecret('openai', 'openai.apiKey');
-    const browserResponse = await requestBrowserOpenAiCompletion({
-      apiKey: apiKey ?? '',
-      disableState,
-      maxTokens,
-      messages,
-      model,
-      onTextDelta,
-      openAiStateMode,
-      responseFormat,
-      stateKey,
-      stateScope,
-    });
+    const isOpenRouter = llmProvider === 'openrouter-responses';
+    const apiKey = await providerVault.getSecret(
+      isOpenRouter ? 'openrouter' : 'openai',
+      isOpenRouter ? 'openrouter.apiKey' : 'openai.apiKey',
+    );
+    const browserResponse = isOpenRouter
+      ? await requestBrowserOpenRouterCompletion({
+          apiKey: apiKey ?? '',
+          maxTokens,
+          messages,
+          model,
+          onTextDelta,
+          responseFormat,
+          stateKey,
+          stateScope,
+        })
+      : await requestBrowserOpenAiCompletion({
+          apiKey: apiKey ?? '',
+          disableState,
+          maxTokens,
+          messages,
+          model,
+          onTextDelta,
+          openAiStateMode,
+          responseFormat,
+          stateKey,
+          stateScope,
+        });
     return {
       choices: [
         {
@@ -738,6 +786,7 @@ async function requestChatCompletion({
 async function requestTextEmbedding(
   input: string,
   providerKeyVaultWorkspaceId?: string,
+  llmProvider: AiSettings['llmProvider'] = 'openai-responses',
 ): Promise<number[] | null> {
   const text = input.trim();
   if (!text) {
@@ -749,14 +798,24 @@ async function requestTextEmbedding(
       const providerVault = createBrowserProviderKeyVault({
         workspaceId: providerKeyVaultWorkspaceId ?? 'local-browser',
       });
-      const apiKey = await providerVault.getSecret('openai', 'openai.apiKey');
+      const isOpenRouter = llmProvider === 'openrouter-responses';
+      const apiKey = await providerVault.getSecret(
+        isOpenRouter ? 'openrouter' : 'openai',
+        isOpenRouter ? 'openrouter.apiKey' : 'openai.apiKey',
+      );
       if (!apiKey) {
         return null;
       }
-      return await requestBrowserOpenAiEmbedding({
-        apiKey,
-        input: text,
-      });
+      return isOpenRouter
+        ? await requestBrowserOpenRouterEmbedding({
+            apiKey,
+            input: text,
+            model: DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+          })
+        : await requestBrowserOpenAiEmbedding({
+            apiKey,
+            input: text,
+          });
     } catch {
       return null;
     }
@@ -788,13 +847,14 @@ async function getSemanticMemoryContext(
   scopeKey: string,
   query: string,
   providerKeyVaultWorkspaceId?: string,
+  llmProvider: AiSettings['llmProvider'] = 'openai-responses',
 ) {
   const records = await loadSemanticMemory(scopeKey);
   if (records.length === 0) {
     return '';
   }
 
-  const embedding = await requestTextEmbedding(query, providerKeyVaultWorkspaceId);
+  const embedding = await requestTextEmbedding(query, providerKeyVaultWorkspaceId, llmProvider);
   return buildSemanticMemoryContext(findSemanticMemoryMatchesInRecords(records, query, embedding));
 }
 
@@ -804,10 +864,12 @@ async function rememberSemanticTurn(
   assistantText: string,
   persona: PersonaProfile | null,
   providerKeyVaultWorkspaceId?: string,
+  llmProvider: AiSettings['llmProvider'] = 'openai-responses',
 ) {
   const embedding = await requestTextEmbedding(
     `${userText}\n${assistantText}`,
     providerKeyVaultWorkspaceId,
+    llmProvider,
   );
   await addSemanticMemoryTurn({
     assistantText,
@@ -2902,8 +2964,9 @@ function App() {
 
       try {
         const excludedModels = Array.from(memoryAgentFailedModelsRef.current);
+        const providerModels = getProviderModelPool(aiSettings.llmProvider, availableModels);
         const modelCandidates = getMemoryAgentModelCandidates(
-          availableModels,
+          providerModels,
           aiSettings.model,
           excludedModels,
           aiSettings.memoryAgentModel,
@@ -2922,6 +2985,7 @@ function App() {
                   maxTokens: request.maxTokens,
                   messages: request.messages,
                   model: request.model,
+                  llmProvider: aiSettings.llmProvider,
                   responseFormat: request.responseFormat,
                   stateKey: request.stateKey,
                   stateScope: request.stateScope,
@@ -2962,6 +3026,7 @@ function App() {
             try {
               const response = await requestChatCompletion({
                 model,
+                llmProvider: aiSettings.llmProvider,
                 messages: buildMemoryAgentMessages(
                   historySnapshot,
                   memorySnapshot,
@@ -3029,6 +3094,7 @@ function App() {
     [
       activePersona,
       aiSettings.aiTransportMode,
+      aiSettings.llmProvider,
       aiSettings.memoryAgentModel,
       aiSettings.model,
       availableModels,
@@ -3646,10 +3712,13 @@ function App() {
       const settings = aiSettingsRef.current;
       const persona = activePersona ?? DEFAULT_PERSONA;
       const channel = directTwitchClientRef.current?.channel ?? twitchChannel;
+      const providerModels = getProviderModelPool(settings.llmProvider, availableModelsRef.current);
       const selectedModel = pickAvailableModel(
         settings.model,
-        availableModelsRef.current,
-        DEFAULT_OPENAI_MODEL,
+        providerModels,
+        settings.llmProvider === 'openrouter-responses'
+          ? DEFAULT_OPENROUTER_MODEL
+          : DEFAULT_OPENAI_MODEL,
       );
       const targetMessage = job.messages[0];
       const prompt = buildChatAiPrompt(job, persona, channel);
@@ -3692,6 +3761,7 @@ function App() {
           stateKey,
           userContent,
           providerKeyVaultWorkspaceId,
+          settings.llmProvider,
         );
         const grilloMemory = buildGrilloMemoryPromptAdditions({
           participantKeys: job.messages.map(getGrilloParticipantKey),
@@ -3702,6 +3772,7 @@ function App() {
           activeChatters: job.activeChatterCount,
           mode: job.mode,
           model: selectedModel,
+          llmProvider: settings.llmProvider,
           messages: await buildChatCompletionMessages({
             animationCatalogContext: buildAnimationCatalogInstruction(
               sequencerSettingsRef.current.playlist,
@@ -3797,6 +3868,7 @@ function App() {
           assistantContent,
           persona,
           providerKeyVaultWorkspaceId,
+          settings.llmProvider,
         );
         const nextGrilloMemoryState = recordGrilloMemoryTurn({
           assistantText: assistantContent,

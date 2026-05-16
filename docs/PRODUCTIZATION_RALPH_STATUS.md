@@ -867,17 +867,35 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   with line-ending warnings only; changed file scan found no literal provider
   secrets or auth tokens. Deployment pending for the rebuilt `dist` bundle in
   the same checkpoint.
+- 2026-05-16 OpenRouter app-owned Responses checkpoint: wired the saved
+  browser-local `openrouter.apiKey` into chat, diary/memory worker completions,
+  and semantic memory embeddings. The OpenRouter path uses
+  `https://openrouter.ai/api/v1/responses` and
+  `https://openrouter.ai/api/v1/embeddings`, but deliberately forces app-owned
+  stateless state: `store: false`, no `previous_response_id`, full rendered POML
+  instructions, current transcript, diary, Grillo memory, and semantic memory
+  context are resent by the app. The AI settings UI now exposes an LLM Provider
+  switch with an honest `OpenRouter Responses (App Memory)` label and provider
+  model defaults. Verification:
+  `npx vitest run src/lib/product/browser-openai-responses.test.ts
+  src/lib/chat/storage.test.ts src/lib/product/byok.test.ts
+  src/lib/product/provider-key-vault.test.ts` -> passed, 4 files, 19 tests;
+  `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
+  warnings; `git diff --check` -> passed with line-ending warnings only.
+  Targeted provider-secret review: OpenRouter/OpenAI keys are read only from the
+  browser vault, sent only in `Authorization` headers, are not placed in JSON
+  bodies, and remain excluded from synced/cloud settings by the BYOK classifier.
 
 ## Current Blocker Or Next Patch
 
-Next BYOK product patch: wire OpenRouter as an app-owned-state LLM transport
-using the browser-local `openrouter.apiKey` and OpenRouter Responses endpoint
-where practical, with an honest UI state label that it does not use OpenAI
-Conversations/previous-response state. Then add a browser smoke for saved OpenAI
-BYOK chat/semantic memory when a local key is present, and continue Fish/Inworld
-BYOK behavior. Supabase MCP/schema audit remains queued before more database
-policy work. Remaining server work: signed overlay token rotation or revocation
-backend semantics.
+Next BYOK product patch: commit, push, and deploy the OpenRouter app-owned
+Responses bundle to the VPS, then run a browser smoke with a saved OpenRouter
+key: local chat reply, diary pass, and semantic memory lookup/write. If no
+OpenRouter key is present in the browser vault, continue Fish/Inworld BYOK
+behavior or add an explicit unsupported-browser-local status for remote TTS.
+Supabase MCP/schema audit remains queued before more database policy work.
+Remaining server work: signed overlay token rotation or revocation backend
+semantics.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits

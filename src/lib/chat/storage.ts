@@ -116,6 +116,8 @@ function normalizeAiSettings(value: unknown): AiSettings {
   }
 
   const source = value as Partial<AiSettings>;
+  const llmProvider =
+    source.llmProvider === 'openrouter-responses' ? source.llmProvider : defaults.llmProvider;
   const requestedModel = String(source.model ?? defaults.model);
   const normalizedModel = requestedModel === 'gpt-5-mini' ? defaults.model : requestedModel;
   const requestedMemoryAgentModel = String(
@@ -185,6 +187,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
       : defaults.remoteTtsMode;
 
   return {
+    llmProvider,
     model: normalizedModel,
     memoryAgentModel: requestedMemoryAgentModel || defaults.memoryAgentModel,
     aiTransportMode,
