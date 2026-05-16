@@ -770,6 +770,12 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `aiProvider: openai-responses-ws`, and `byok: { adminReady: true,
   publicReady: true, serviceKeyConfigured: true, overlaySigningConfigured: true,
   storageBucketConfigured: true, browserSecretLeakDetected: false, missing: [] }`.
+- 2026-05-16 cross-tab sign-out smoke checkpoint: verified the deployed app with
+  a fresh temporary Supabase user. Two browser tabs shared the signed-in session;
+  clicking `Sign out` in tab A cleared local auth state, and tab B observed the
+  storage event and dropped back to local-only mode. Smoke result:
+  `pageASignedOut: true`, `pageBObservedLocal: true`. The temporary Supabase user
+  was deleted after verification.
 
 ## Current Blocker Or Next Patch
 
@@ -777,8 +783,8 @@ Next UI/product patch: refresh Codex so Supabase MCP tools are actually exposed,
 then use MCP to inspect the live BYOK Supabase tables/policies and record a
 proper schema/data audit before doing more Supabase work. In parallel, continue
 the product hardening lane by auditing the remaining signed-in/account flow
-rough edges: sign-out cross-tab browser smoke, clearer production env
-validation, and a deeper product dashboard/home UI pass using the supplied
+rough edges: clearer production env validation, signed overlay token rotation or
+revocation UX, and a deeper product dashboard/home UI pass using the supplied
 style references once the functional account flow is locked.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
