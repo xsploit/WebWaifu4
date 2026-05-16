@@ -69,7 +69,7 @@ function LoginPage(
     if (props.accountMode.kind === 'supabase-cloud-sync') {
       props.onNavigate('/dashboard');
     }
-  }, [props]);
+  }, [props.accountMode.kind, props.onNavigate]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -88,12 +88,18 @@ function LoginPage(
 
   return (
     <ProductPageFrame
+      accountMode={props.accountMode}
       eyebrow="Magic-link login"
       onNavigate={props.onNavigate}
+      onSignOut={props.onSignOut}
       routeKind={props.route.kind}
       title="Sign in to sync your stream setup"
     >
       <form className="product-card product-card-narrow" onSubmit={handleSubmit}>
+        <p className="product-status-text product-hint">
+          We never store a password. Drop your email and we&rsquo;ll send a one-tap magic link to
+          finish signing in.
+        </p>
         <label className="product-field">
           <span>Email</span>
           <input
@@ -105,9 +111,18 @@ function LoginPage(
             value={email}
           />
         </label>
-        <button className="product-primary" disabled={busy} type="submit">
-          {busy ? 'Sending...' : 'Send magic link'}
-        </button>
+        <div className="product-actions">
+          <button className="product-primary" disabled={busy} type="submit">
+            {busy ? 'Sending...' : 'Send magic link'}
+          </button>
+          <button
+            className="product-secondary"
+            onClick={() => props.onNavigate('/dashboard')}
+            type="button"
+          >
+            Continue local-only
+          </button>
+        </div>
         <StatusText>{status}</StatusText>
       </form>
     </ProductPageFrame>
@@ -115,21 +130,29 @@ function LoginPage(
 }
 
 function AuthCallbackPage(props: ProductPagesProps) {
+  useEffect(() => {
+    if (props.accountMode.kind === 'supabase-cloud-sync') {
+      props.onNavigate('/dashboard');
+    }
+  }, [props.accountMode.kind, props.onNavigate]);
+
   return (
     <ProductPageFrame
+      accountMode={props.accountMode}
       eyebrow="Auth callback"
       onNavigate={props.onNavigate}
+      onSignOut={props.onSignOut}
       routeKind={props.route.kind}
       title="Checking your session"
     >
-      <div className="product-card">
+      <div className="product-card product-card-narrow">
         <StatusText>{props.authStatus}</StatusText>
         <div className="product-actions">
           <button className="product-primary" onClick={() => props.onNavigate('/dashboard')}>
-            Dashboard
+            Go to dashboard
           </button>
           <button className="product-secondary" onClick={() => props.onNavigate('/')}>
-            Editor
+            Back to editor
           </button>
         </div>
       </div>
@@ -182,11 +205,18 @@ function AccountPage(
 
   return (
     <ProductPageFrame
+      accountMode={props.accountMode}
       eyebrow="Account"
       onNavigate={props.onNavigate}
+      onSignOut={props.onSignOut}
       routeKind={props.route.kind}
       title="YourWifey account"
     >
+      <div className="product-actions product-actions-back">
+        <button className="product-secondary" onClick={() => props.onNavigate('/dashboard')}>
+          &larr; Back to dashboard
+        </button>
+      </div>
       <form className="product-card" onSubmit={handleSave}>
         <div className="product-grid">
           <Stat label="Mode" value={props.accountSummary.modeLabel} />
@@ -211,7 +241,7 @@ function AccountPage(
             Save profile
           </button>
           <button className="product-secondary" onClick={props.onSignOut} type="button">
-            Sign out locally
+            Sign out
           </button>
         </div>
         <StatusText>{status}</StatusText>
@@ -225,9 +255,10 @@ function DashboardPage(
     accountSummary: ReturnType<typeof describeByokAccountShell>;
   },
 ) {
+  const isCloud = props.accountMode.kind === 'supabase-cloud-sync';
   const [profile, setProfile] = useState<ByokProfileResponse | null>(null);
   const [overlayShareUrl, setOverlayShareUrl] = useState('');
-  const [status, setStatus] = useState(props.authStatus);
+  const [status, setStatus] = useState(isCloud ? props.authStatus : props.accountSummary.detail);
   const [pulling, setPulling] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
@@ -238,7 +269,7 @@ function DashboardPage(
       : '/overlay/private-preview';
 
   useEffect(() => {
-    if (props.accountMode.kind !== 'supabase-cloud-sync') {
+    if (!isCloud) {
       return;
     }
     let cancelled = false;
@@ -258,10 +289,10 @@ function DashboardPage(
     return () => {
       cancelled = true;
     };
-  }, [props.accountMode.kind]);
+  }, [isCloud]);
 
   const handleSyncSettings = async () => {
-    if (!profile?.bootstrap.workspace.id || props.accountMode.kind !== 'supabase-cloud-sync') {
+    if (!profile?.bootstrap.workspace.id || !isCloud) {
       setStatus('Sign in before syncing settings.');
       return;
     }
@@ -282,7 +313,7 @@ function DashboardPage(
   };
 
   const handlePullSettings = async () => {
-    if (!profile?.bootstrap.workspace.id || props.accountMode.kind !== 'supabase-cloud-sync') {
+    if (!profile?.bootstrap.workspace.id || !isCloud) {
       setStatus('Sign in before loading cloud settings.');
       return;
     }
@@ -301,11 +332,7 @@ function DashboardPage(
   };
 
   const handleIssueOverlayUrl = async () => {
-    if (
-      !profile?.bootstrap.workspace.id ||
-      !profile.bootstrap.scene.id ||
-      props.accountMode.kind !== 'supabase-cloud-sync'
-    ) {
+    if (!profile?.bootstrap.workspace.id || !profile.bootstrap.scene.id || !isCloud) {
       setStatus('Sign in before issuing an OBS overlay URL.');
       return;
     }
@@ -370,44 +397,60 @@ function DashboardPage(
     }
   };
 
+  const sceneName = profile?.bootstrap.scene.name ?? (isCloud ? 'Main Overlay' : 'Local scene');
+  const workspaceName =
+    profile?.bootstrap.workspace.name ?? (isCloud ? 'Personal workspace' : 'Local editor');
+
   return (
     <ProductPageFrame
-      eyebrow="Dashboard"
+      accountMode={props.accountMode}
+      eyebrow={isCloud ? 'Cloud workspace' : 'Local studio'}
       onNavigate={props.onNavigate}
+      onSignOut={props.onSignOut}
       routeKind={props.route.kind}
       title="Stream workspace"
     >
       <div className="product-dashboard">
-        <section className="product-card product-card-primary">
+        <section className="product-card product-card-primary product-hero">
           <div className="product-card-header">
             <div>
               <span>Current scene</span>
-              <strong>{profile?.bootstrap.scene.name ?? 'Main Overlay'}</strong>
+              <strong>{sceneName}</strong>
             </div>
-            <button className="product-primary" onClick={() => props.onNavigate('/')}>
-              Open editor
-            </button>
+            <div className="product-actions product-actions-hero">
+              <button className="product-primary" onClick={() => props.onNavigate('/')}>
+                Open editor
+              </button>
+              <button className="product-secondary" onClick={() => props.onNavigate(overlayUrl)}>
+                Preview overlay
+              </button>
+            </div>
           </div>
-          <div className="product-grid">
-            <Stat label="Workspace" value={profile?.bootstrap.workspace.name ?? 'Local editor'} />
+          <div className="product-grid product-grid-hero">
+            <Stat label="Workspace" value={workspaceName} />
             <Stat label="Twitch" value={`#${props.twitchChannel || 'subsect'}`} />
             <Stat label="Sync" value={props.accountSummary.cloudSyncLabel} />
+            <Stat label="Provider keys" value={props.accountSummary.providerKeyLabel} />
           </div>
           <StatusText>{status}</StatusText>
         </section>
 
         <section className="product-card">
-          <SectionTitle title="Overlay" />
+          <SectionTitle title="OBS overlay" />
+          <p className="product-status-text product-hint">
+            Drop a browser source into OBS using a signed URL. Local preview opens the overlay in
+            this tab.
+          </p>
           <div className="product-actions product-actions-grid">
             <button className="product-secondary" onClick={() => props.onNavigate(overlayUrl)}>
               Preview overlay
             </button>
             <button
               className="product-secondary"
-              disabled={props.accountMode.kind !== 'supabase-cloud-sync'}
+              disabled={!isCloud}
               onClick={handleIssueOverlayUrl}
             >
-              Issue OBS URL
+              {isCloud ? 'Issue OBS URL' : 'Sign in for OBS URL'}
             </button>
           </div>
           {overlayShareUrl ? (
@@ -419,21 +462,26 @@ function DashboardPage(
         </section>
 
         <section className="product-card">
-          <SectionTitle title="Settings" />
+          <SectionTitle title={isCloud ? 'Cloud sync & backup' : 'Backup & restore'} />
+          <p className="product-status-text product-hint">
+            {isCloud
+              ? 'Push or pull safe settings to your Supabase workspace. Memory and chat history stay on this device.'
+              : 'Export and import scene backups locally. Sign in to mirror safe settings to the cloud.'}
+          </p>
           <div className="product-actions product-actions-grid">
             <button
               className="product-secondary"
-              disabled={syncing || props.accountMode.kind !== 'supabase-cloud-sync'}
+              disabled={syncing || !isCloud}
               onClick={handleSyncSettings}
             >
-              {syncing ? 'Syncing...' : 'Sync settings'}
+              {syncing ? 'Syncing...' : 'Push to cloud'}
             </button>
             <button
               className="product-secondary"
-              disabled={pulling || props.accountMode.kind !== 'supabase-cloud-sync'}
+              disabled={pulling || !isCloud}
               onClick={handlePullSettings}
             >
-              {pulling ? 'Loading...' : 'Load cloud'}
+              {pulling ? 'Loading...' : 'Pull from cloud'}
             </button>
             <button className="product-secondary" onClick={handleExportBackup}>
               Export backup
@@ -451,29 +499,35 @@ function DashboardPage(
           />
         </section>
 
-        <section className="product-card">
-          <SectionTitle title="Account" />
-          <div className="product-actions product-actions-grid">
-            <button className="product-secondary" onClick={() => props.onNavigate('/account')}>
-              Account
-            </button>
-            <button className="product-secondary" onClick={() => props.onNavigate('/login')}>
-              Login
-            </button>
-          </div>
-        </section>
+        {!isCloud ? (
+          <section className="product-card product-card-cta">
+            <SectionTitle title="Cloud sync" />
+            <p className="product-status-text product-hint">
+              Sign in with a magic link to mirror safe settings between machines and unlock signed
+              OBS overlay URLs. No password &mdash; just a one-time email link.
+            </p>
+            <div className="product-actions">
+              <button className="product-primary" onClick={() => props.onNavigate('/login')}>
+                Sign in with magic link
+              </button>
+            </div>
+          </section>
+        ) : null}
       </div>
     </ProductPageFrame>
   );
 }
 
 function ProductPageFrame(props: {
+  accountMode: ByokAccountMode;
   children: ReactNode;
   eyebrow: string;
   onNavigate: (path: string) => void;
+  onSignOut: () => void;
   routeKind: AppRoute['kind'];
   title: string;
 }) {
+  const isCloud = props.accountMode.kind === 'supabase-cloud-sync';
   return (
     <div className="product-page" onClick={(event) => event.stopPropagation()}>
       <nav className="product-nav">
@@ -491,18 +545,38 @@ function ProductPageFrame(props: {
           >
             Dashboard
           </NavButton>
-          <NavButton
-            active={props.routeKind === 'account'}
-            onClick={() => props.onNavigate('/account')}
-          >
-            Account
-          </NavButton>
-          <NavButton
-            active={props.routeKind === 'login'}
-            onClick={() => props.onNavigate('/login')}
-          >
-            Login
-          </NavButton>
+          {isCloud ? (
+            <NavButton
+              active={props.routeKind === 'account'}
+              onClick={() => props.onNavigate('/account')}
+            >
+              Account
+            </NavButton>
+          ) : null}
+          {isCloud ? (
+            <NavButton
+              active={props.routeKind === 'overlay'}
+              onClick={() => props.onNavigate('/overlay/private-preview')}
+            >
+              Overlay
+            </NavButton>
+          ) : null}
+          {isCloud ? (
+            <NavButton active={false} onClick={props.onSignOut}>
+              Sign out
+            </NavButton>
+          ) : (
+            <NavButton
+              active={props.routeKind === 'login'}
+              onClick={() => props.onNavigate('/login')}
+            >
+              Sign in
+            </NavButton>
+          )}
+        </div>
+        <div className="product-nav-foot">
+          <span className={`product-mode-dot ${isCloud ? 'is-cloud' : 'is-local'}`} />
+          <span className="product-mode-label">{isCloud ? 'Cloud sync' : 'Local only'}</span>
         </div>
       </nav>
       <main className="product-panel">

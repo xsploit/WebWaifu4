@@ -516,11 +516,30 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   existing large chunk warnings (`index` about 1517 kB, `phonemizer` about
   1321 kB, `ort.min` about 537 kB). `git diff --check` -> passed with
   line-ending warnings only.
+- 2026-05-16: Claude UI implementation pass, Codex-reviewed and tightened.
+  Scope stayed in `src\components\product\ProductPages.tsx` and
+  `src\style.css`. Product pages now match the dark waifu/editor shell more
+  closely: neon red/pink glass panels, clipped HUD buttons, auth-aware product
+  nav, local-only dashboard launchpad, cloud CTA, polished login/account flow,
+  auto-redirecting auth callback, and no dashboard Account duplicate card.
+  Codex patched the redirect effects to avoid broad `props` dependencies and
+  added signed-in Overlay navigation. Verification:
+  `npx prettier --write src/components/product/ProductPages.tsx src/style.css`
+  -> passed; `npm run build` -> passed with existing `onnxruntime-web` eval and
+  large chunk warnings; `git diff --check` -> passed with line-ending warnings
+  only; local preview route smoke for `/`, `/dashboard`, `/login`, `/account`,
+  and `/overlay/private-preview` -> HTTP 200; Chrome headless screenshot of
+  `/dashboard` rendered the product shell correctly.
 
 ## Current Blocker Or Next Patch
 
-Next efficiency read: inspect the SSE live-bridge close path for chat queue
-stall risk. Current evidence to re-check: `server\src\index.ts` awaits
+Next UI/product patch: visually smoke the signed-in Supabase state once the
+project URL is configured locally, then decide whether `/dashboard` needs a
+lightweight scene list or whether the editor/settings panel remains the scene
+source of truth for v1.
+
+Next efficiency read remains: inspect the SSE live-bridge close path for chat
+queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
 `bridgeDone` before emitting the final `done` event for `/ai/chat`, and
 `RemoteTtsProvider` has a 45 second remote TTS timeout. If Fish generation hangs
 after the AI text is complete, the browser can keep the chat job open until the
