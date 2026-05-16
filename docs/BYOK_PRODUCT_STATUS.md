@@ -337,16 +337,54 @@ src/lib/product/supabase-auth-session.test.ts` -> passed.
   remained: onnxruntime-web eval and large bundle chunks.
 - 2026-05-15: committed `feat(byok): hydrate supabase auth sessions`.
 - 2026-05-15: pushed `codex/byok-product-spine` to `origin`.
+- 2026-05-15: attempted one more Ralph pass; it timed out while the stale
+  `.ralph-loop` state still pointed at the previous session-auth checkpoint.
+  Stopped only the stale child process tree and marked the generated state file
+  as `stale_stopped`. The tracked worktree remained clean.
+- 2026-05-15: added `src\lib\product\byok-route-stub.ts` and
+  `src\lib\product\byok-route-stub.test.ts`; added fail-closed serverless
+  scaffolds at `api\byok\profile.ts`,
+  `api\byok\workspaces\[workspaceId].ts`, and
+  `api\byok\_lib\route-stub.ts`.
+- 2026-05-15: decision: the first BYOK profile/workspace API endpoints must
+  not trust client-provided auth or workspace ownership. Until the real
+  Supabase auth/workspace resolver is wired, the serverless routes return
+  `route-context-not-wired` and still reject secret-shaped request bodies. The
+  shared route-stub contract tests prove that owner/member authorization and
+  secret rejection run before any future DB implementation.
+- 2026-05-15: `npx vitest run src/lib/product/byok-route-stub.test.ts
+src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-session.test.ts` -> 3 files, 16 tests passed.
+- 2026-05-15: first `npm run build` for route stubs exposed a NodeNext API
+  typecheck issue: importing shared extensionless app modules from `api/**`
+  forced `tsconfig.api` to compile them under NodeNext. Fixed by keeping the
+  serverless fail-closed adapter local to `api\byok\_lib\route-stub.ts` while
+  retaining the rich shared ownership contract in `src\lib\product`.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts
+src/lib/product/scene-export.test.ts src/lib/product/supabase-env.test.ts
+src/lib/product/account-mode.test.ts src/lib/product/supabase-schema.test.ts
+src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-shell.test.ts
+src/lib/product/supabase-auth-session.test.ts
+src/lib/product/byok-route-stub.test.ts src/lib/chat/storage.test.ts` -> 11
+  files, 54 tests passed.
+- 2026-05-15: `git diff --check` -> passed.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: add guarded profile/workspace API route stubs that use the existing
-route ownership contract before wiring real Supabase DB calls, or add explicit
-PKCE code exchange/refresh-token handling if hosted Supabase Auth is configured
-for PKCE. Still do not sync provider keys. Next read:
+Next patch: wire a real Supabase route context resolver for `/api/byok/*`:
+verify the bearer session with Supabase Auth, resolve workspace owner/member
+snapshots from the database, then let the existing route-stub/ownership contract
+authorize before returning profile/workspace rows. Still do not sync provider
+keys. Alternative small patch: add explicit PKCE code exchange/refresh-token
+handling if hosted Supabase Auth is configured for PKCE. Next read:
+`api\byok\_lib\route-stub.ts`, `src\lib\product\byok-route-stub.ts`,
 `src\lib\product\server-route-ownership.ts`,
-`src\lib\product\supabase-auth-session.ts`, `api\ai\chat.ts`,
-`api\ai\embeddings.ts`, and `src\lib\product\supabase-env.ts`.
+`src\lib\product\supabase-auth-session.ts`, and
+`src\lib\product\supabase-env.ts`.
 
 ## Stop Conditions
 

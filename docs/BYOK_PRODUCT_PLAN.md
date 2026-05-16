@@ -136,4 +136,9 @@ arrive as a later migration with a specific security design and tests.
     `/auth/v1/user` is fetched with the anon key plus Supabase access token, and
     PKCE-code-only callbacks remain local-only until explicit exchange support is
     added.
-11. Add optional hosted encrypted vault only after a security review.
+11. Add guarded profile/workspace API route stubs. Done in the eleventh
+    checkpoint: `/api/byok/profile` and `/api/byok/workspaces/:workspaceId`
+    exist as fail-closed Vercel route scaffolds, reject secret-shaped request
+    bodies, and share a tested route-stub contract that proves owner/member
+    authorization runs before any future Supabase DB implementation.
+12. Add optional hosted encrypted vault only after a security review.
