@@ -616,14 +616,27 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   bundle. No code changed in this checkpoint, so no `npm run build` or deploy
   was run. Security review: the smoke used ignored local env values and printed
   only statuses/error text, not access tokens or key material.
+- 2026-05-16 VPS deploy recovery checkpoint: found the correct SSH key at
+  `C:\Users\SUBSECT\.ssh\yourwifey_ovh_ed25519` and confirmed
+  `ubuntu@148.113.191.103` login. Remote app directory
+  `/home/ubuntu/yourwifey-stream` is an uploaded runtime tree, not a git
+  checkout, so deploy used a direct `api-dist` upload. Backed up the remote
+  `api-dist` into `.tmp/api-dist-backup-*`, uploaded the rebuilt local
+  `api-dist`, and restarted the bot API process. Health check
+  `http://127.0.0.1:8787/health` returned OK. Public authenticated VPS smoke
+  created a temporary Supabase auth user, signed in, called
+  `https://148-113-191-103.sslip.io/api/byok/profile`, confirmed
+  profile/workspace/scene bootstrap, called
+  `/api/byok/workspaces/:workspaceId`, and deleted the temporary user; all
+  checks passed. Overlay process was not rebuilt because this fix only touched
+  compiled BYOK API runtime. Security review: deploy preserved remote `.env`
+  and `node_modules`, and smoke output did not print tokens or key material.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: regain VPS deploy access or deploy the pushed
-`codex/byok-product-spine` branch through another known path, restart the
-overlay/bot runtime, rerun the public authenticated profile/workspace bootstrap
-smoke, then run magic-link browser smoke, callback persistence, settings
-sync/pull, and signed OBS overlay URL issuance.
+Next UI/product patch: run magic-link browser smoke against the deployed app,
+confirm callback persistence, settings sync/pull, and signed OBS overlay URL
+issuance.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
