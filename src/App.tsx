@@ -4106,6 +4106,7 @@ function App() {
   const overlayPageActive = appRoute.kind === 'overlay';
   const overlayConfigLoadRef = useRef('');
   const [overlayConfigStatus, setOverlayConfigStatus] = useState('');
+  const [overlayConfigReady, setOverlayConfigReady] = useState(false);
   const overlayToken = useMemo(() => {
     if (appRoute.kind !== 'overlay' || typeof window === 'undefined') {
       return '';
@@ -4179,6 +4180,7 @@ function App() {
   useEffect(() => {
     if (appRoute.kind !== 'overlay' || !overlaySceneId || !overlayToken) {
       setOverlayConfigStatus('');
+      setOverlayConfigReady(false);
       return;
     }
 
@@ -4190,6 +4192,7 @@ function App() {
     let cancelled = false;
     overlayConfigLoadRef.current = loadKey;
     setOverlayConfigStatus('Loading OBS overlay config...');
+    setOverlayConfigReady(false);
     fetchByokOverlayConfig({
       sceneId: overlaySceneId,
       token: overlayToken,
@@ -4203,6 +4206,7 @@ function App() {
           setTwitchChannel(response.scene.twitchChannel);
         }
         setOverlayConfigStatus('');
+        setOverlayConfigReady(true);
       })
       .catch((error) => {
         if (cancelled) {
@@ -4212,6 +4216,7 @@ function App() {
         const message = error instanceof Error ? error.message : 'OBS overlay config failed.';
         console.error(`[BYOK Overlay] ${message}`);
         setOverlayConfigStatus(message);
+        setOverlayConfigReady(false);
       });
 
     return () => {
@@ -4258,6 +4263,17 @@ function App() {
 
       {overlayPageActive && overlayConfigStatus ? (
         <div className="overlay-config-status">{overlayConfigStatus}</div>
+      ) : null}
+
+      {overlayPageActive && overlayConfigReady ? (
+        <div
+          aria-hidden="true"
+          className="overlay-ready-marker"
+          data-scene-id={overlaySceneId}
+          data-testid="obs-overlay-ready"
+        >
+          OBS overlay ready
+        </div>
       ) : null}
 
       {!productPageActive && !overlayPageActive ? (

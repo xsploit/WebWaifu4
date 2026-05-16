@@ -2239,6 +2239,17 @@ input[type='range']::-webkit-slider-thumb {
   z-index: 36;
 }
 
+.overlay-ready-marker {
+  clip-path: inset(50%);
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: fixed;
+  white-space: nowrap;
+  width: 1px;
+}
+
 .product-page {
   --product-bg-deep: #080707;
   --product-panel-bg: rgba(18, 12, 12, 0.86);
