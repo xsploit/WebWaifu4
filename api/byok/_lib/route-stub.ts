@@ -19,7 +19,7 @@ export function createByokApiRouteStub(
   routeIdByMethod: Partial<Record<'DELETE' | 'GET' | 'PATCH' | 'POST', ByokCloudRouteId>>,
 ) {
   return async function handler(request: ApiRequest, response: ApiResponse) {
-    setCorsHeaders(response);
+    setCorsHeaders(request, response);
 
     if (request.method === 'OPTIONS') {
       response.status(204).json({});
@@ -49,8 +49,76 @@ export function createByokApiRouteStub(
   };
 }
 
-function setCorsHeaders(response: ApiResponse) {
-  response.setHeader('Access-Control-Allow-Origin', '*');
+export function resolveByokCorsOrigin(input: {
+  env?: Record<string, string | undefined>;
+  origin?: string;
+}) {
+  const origin = input.origin?.trim();
+  const allowedOrigins = readAllowedOrigins(input.env ?? process.env);
+
+  if (origin && isLocalDevelopmentOrigin(origin)) {
+    return origin;
+  }
+
+  if (origin && allowedOrigins.includes(origin)) {
+    return origin;
+  }
+
+  return allowedOrigins[0] ?? 'null';
+}
+
+function setCorsHeaders(request: ApiRequest, response: ApiResponse) {
+  response.setHeader(
+    'Access-Control-Allow-Origin',
+    resolveByokCorsOrigin({ origin: readHeader(request, 'origin') }),
+  );
   response.setHeader('Access-Control-Allow-Methods', 'GET,PATCH,POST,DELETE,OPTIONS');
   response.setHeader('Access-Control-Allow-Headers', 'authorization,content-type');
+  response.setHeader('Vary', 'Origin');
+}
+
+function readAllowedOrigins(env: Record<string, string | undefined>) {
+  return [
+    ...splitOriginList(env['BYOK_CORS_ALLOWED_ORIGINS']),
+    normalizeOrigin(env['APP_ORIGIN']),
+    normalizeOrigin(env['PUBLIC_APP_ORIGIN']),
+    normalizeOrigin(env['VITE_PUBLIC_APP_ORIGIN']),
+    normalizeOrigin(env['VERCEL_URL']),
+    normalizeOrigin(env['VERCEL_PROJECT_PRODUCTION_URL']),
+  ].filter((origin): origin is string => Boolean(origin));
+}
+
+function splitOriginList(value: string | undefined) {
+  return (value ?? '')
+    .split(',')
+    .map((item) => normalizeOrigin(item))
+    .filter((origin): origin is string => Boolean(origin));
+}
+
+function normalizeOrigin(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalDevelopmentOrigin(origin: string) {
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin);
+}
+
+function readHeader(request: ApiRequest, name: string) {
+  const lowerName = name.toLowerCase();
+  for (const [key, value] of Object.entries(request.headers ?? {})) {
+    if (key.toLowerCase() !== lowerName) {
+      continue;
+    }
+    return Array.isArray(value) ? value[0] : value;
+  }
+  return undefined;
 }

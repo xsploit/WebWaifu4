@@ -4,10 +4,12 @@ import {
   SUPABASE_AUTH_SESSION_STORAGE_KEY,
   buildSupabaseUserRequest,
   clearPersistedSupabaseAuthSession,
+  getSupabaseAuthSessionExpiryDelayMs,
   hydrateSupabaseAuthSession,
   loadPersistedSupabaseAuthSession,
   parseSupabaseAuthCallbackUrl,
   persistSupabaseAuthSession,
+  startSupabaseAuthSessionLifecycle,
 } from './supabase-auth-session';
 
 function createStorage() {
@@ -209,5 +211,79 @@ describe('Supabase auth session hydration', () => {
       ok: false,
       reason: 'missing-access-token',
     });
+  });
+
+  it('calculates expiry delay so the app can re-hydrate stale sessions', () => {
+    expect(
+      getSupabaseAuthSessionExpiryDelayMs(
+        {
+          accessToken: 'access-123',
+          expiresAt: '2026-05-15T12:00:10.000Z',
+          refreshToken: null,
+          tokenType: 'bearer',
+        },
+        Date.parse('2026-05-15T12:00:00.000Z'),
+      ),
+    ).toBe(10_000);
+
+    expect(
+      getSupabaseAuthSessionExpiryDelayMs(
+        {
+          accessToken: 'access-123',
+          expiresAt: '2026-05-15T11:59:59.000Z',
+          refreshToken: null,
+          tokenType: 'bearer',
+        },
+        Date.parse('2026-05-15T12:00:00.000Z'),
+      ),
+    ).toBe(0);
+  });
+
+  it('watches storage changes so cross-tab logout updates account mode', async () => {
+    const storage = createStorage();
+    const listeners = new Map<string, (event: Event) => void>();
+    persistSupabaseAuthSession(
+      {
+        accessToken: 'access-123',
+        expiresAt: '2026-05-15T13:00:00.000Z',
+        refreshToken: null,
+        tokenType: 'bearer',
+      },
+      storage,
+    );
+    const fetchImpl = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          id: 'user-1',
+          email: 'streamer@example.com',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    const results: string[] = [];
+
+    const lifecycle = startSupabaseAuthSessionLifecycle({
+      config: configuredSupabase,
+      fetchImpl,
+      nowMs: () => Date.parse('2026-05-15T12:00:00.000Z'),
+      onResult: (result) => results.push(result.status),
+      storage,
+      windowTarget: {
+        addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+          listeners.set(type, listener as (event: Event) => void);
+        },
+        removeEventListener(type: string) {
+          listeners.delete(type);
+        },
+      },
+    });
+
+    await vi.waitFor(() => expect(results).toEqual(['authenticated']));
+    clearPersistedSupabaseAuthSession(storage);
+    listeners.get('storage')?.({ key: SUPABASE_AUTH_SESSION_STORAGE_KEY } as StorageEvent);
+
+    await vi.waitFor(() => expect(results).toEqual(['authenticated', 'no-session']));
+    lifecycle.stop();
+    expect(listeners.has('storage')).toBe(false);
   });
 });

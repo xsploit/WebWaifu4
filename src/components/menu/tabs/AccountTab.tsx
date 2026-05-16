@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { ByokAccountMode } from '../../../lib/product/account-mode';
 import {
   describeByokAccountShell,
@@ -36,8 +36,16 @@ export function AccountTab({
   const [email, setEmail] = useState(accountMode.user?.email ?? '');
   const [loginStatus, setLoginStatus] = useState(summary.detail);
   const [sending, setSending] = useState(false);
+  const mountedRef = useRef(true);
   const normalizedEmail = normalizeAccountEmail(email);
   const loginAvailable = accountMode.loginAvailable && supabaseConfig.status === 'configured';
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     setLoginStatus(authStatus || summary.detail);
@@ -56,9 +64,13 @@ export function AccountTab({
         email,
         redirectTo: getBrowserRedirectUrl(),
       });
-      setLoginStatus(result.message);
+      if (mountedRef.current) {
+        setLoginStatus(result.message);
+      }
     } finally {
-      setSending(false);
+      if (mountedRef.current) {
+        setSending(false);
+      }
     }
   }
 

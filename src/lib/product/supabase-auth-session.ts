@@ -56,6 +56,11 @@ export type SupabaseAuthHydrationResult =
     };
 
 type SupabaseAuthStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
+type SupabaseAuthLifecycleWindow = Pick<Window, 'addEventListener' | 'removeEventListener'>;
+
+export type SupabaseAuthSessionLifecycle = {
+  stop: () => void;
+};
 
 const CALLBACK_PARAM_NAMES = [
   'access_token',
@@ -139,6 +144,101 @@ export function clearPersistedSupabaseAuthSession(
   storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
 ) {
   storage?.removeItem(SUPABASE_AUTH_SESSION_STORAGE_KEY);
+}
+
+export function getSupabaseAuthSessionExpiryDelayMs(
+  session: SupabaseAuthSession | null,
+  nowMs = Date.now(),
+) {
+  if (!session?.expiresAt) {
+    return null;
+  }
+
+  const expiresAtMs = Date.parse(session.expiresAt);
+  if (!Number.isFinite(expiresAtMs)) {
+    return null;
+  }
+
+  return Math.max(0, expiresAtMs - nowMs);
+}
+
+export function startSupabaseAuthSessionLifecycle(input: {
+  config: SupabasePublicConfig;
+  fetchImpl?: typeof fetch;
+  href?: string;
+  nowMs?: () => number;
+  onResult: (result: SupabaseAuthHydrationResult) => void;
+  onStatus?: (message: string) => void;
+  storage?: SupabaseAuthStorage | null;
+  windowTarget?: SupabaseAuthLifecycleWindow | null;
+}): SupabaseAuthSessionLifecycle {
+  const storage = input.storage ?? getBrowserSupabaseAuthStorage();
+  const windowTarget =
+    input.windowTarget ??
+    (typeof window === 'undefined' ? null : (window as SupabaseAuthLifecycleWindow));
+  const now = () => input.nowMs?.() ?? Date.now();
+  let stopped = false;
+  let callbackHref: string | undefined = input.href;
+  let expiryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearExpiryTimer = () => {
+    if (expiryTimer) {
+      clearTimeout(expiryTimer);
+      expiryTimer = null;
+    }
+  };
+
+  const scheduleExpiryHydration = () => {
+    clearExpiryTimer();
+    const session = loadPersistedSupabaseAuthSession(storage, now());
+    const delay = getSupabaseAuthSessionExpiryDelayMs(session, now());
+    if (delay === null) {
+      return;
+    }
+
+    expiryTimer = setTimeout(() => {
+      void hydrateOnce();
+    }, delay);
+  };
+
+  const hydrateOnce = async () => {
+    if (stopped) {
+      return;
+    }
+
+    input.onStatus?.('Checking Supabase session state.');
+    const result = await hydrateSupabaseAuthSession({
+      config: input.config,
+      fetchImpl: input.fetchImpl,
+      href: callbackHref,
+      nowMs: now(),
+      storage,
+    });
+    callbackHref = undefined;
+    if (stopped) {
+      return;
+    }
+
+    input.onResult(result);
+    scheduleExpiryHydration();
+  };
+
+  const handleStorageEvent = (event: Event) => {
+    if ((event as StorageEvent).key === SUPABASE_AUTH_SESSION_STORAGE_KEY) {
+      void hydrateOnce();
+    }
+  };
+
+  windowTarget?.addEventListener('storage', handleStorageEvent);
+  void hydrateOnce();
+
+  return {
+    stop() {
+      stopped = true;
+      clearExpiryTimer();
+      windowTarget?.removeEventListener('storage', handleStorageEvent);
+    },
+  };
 }
 
 export function isSupabaseAuthSessionExpired(session: SupabaseAuthSession, nowMs = Date.now()) {

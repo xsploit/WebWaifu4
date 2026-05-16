@@ -5,6 +5,7 @@ import {
   resolveByokApiRouteContext,
   type SupabaseFetch,
 } from './supabase-context.js';
+import { resolveByokCorsOrigin } from './route-stub.js';
 
 const serverEnv = {
   SUPABASE_URL: 'https://project-ref.supabase.co',
@@ -126,6 +127,34 @@ describe('BYOK Supabase route context', () => {
         'workspaceId',
       ),
     ).toBe('workspace-1');
+  });
+
+  it('uses an explicit CORS allowlist instead of wildcarding BYOK bearer routes', () => {
+    expect(
+      resolveByokCorsOrigin({
+        env: {
+          BYOK_CORS_ALLOWED_ORIGINS:
+            'https://overlay.example.test, https://studio.example.test/settings',
+        },
+        origin: 'https://overlay.example.test',
+      }),
+    ).toBe('https://overlay.example.test');
+
+    expect(
+      resolveByokCorsOrigin({
+        env: {
+          BYOK_CORS_ALLOWED_ORIGINS: 'https://overlay.example.test',
+        },
+        origin: 'https://evil.example.test',
+      }),
+    ).toBe('https://overlay.example.test');
+
+    expect(
+      resolveByokCorsOrigin({
+        env: {},
+        origin: 'http://localhost:4173',
+      }),
+    ).toBe('http://localhost:4173');
   });
 });
 

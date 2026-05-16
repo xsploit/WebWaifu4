@@ -121,7 +121,7 @@ import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitc
 import { resolveByokAccountMode, type SupabaseAuthIdentity } from './lib/product/account-mode';
 import {
   clearPersistedSupabaseAuthSession,
-  hydrateSupabaseAuthSession,
+  startSupabaseAuthSessionLifecycle,
 } from './lib/product/supabase-auth-session';
 import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import './style.css';
@@ -1171,30 +1171,26 @@ function App() {
     [supabaseAuthUser, supabaseConfig],
   );
   useEffect(() => {
-    let cancelled = false;
-
-    void hydrateSupabaseAuthSession({
+    const lifecycle = startSupabaseAuthSessionLifecycle({
       config: supabaseConfig,
       href: typeof window === 'undefined' ? undefined : window.location.href,
-    }).then((result) => {
-      if (cancelled) {
-        return;
-      }
+      onResult(result) {
+        if (
+          result.cleanUrl &&
+          typeof window !== 'undefined' &&
+          result.cleanUrl !== window.location.href
+        ) {
+          window.history.replaceState(window.history.state, document.title, result.cleanUrl);
+        }
 
-      if (
-        result.cleanUrl &&
-        typeof window !== 'undefined' &&
-        result.cleanUrl !== window.location.href
-      ) {
-        window.history.replaceState(window.history.state, document.title, result.cleanUrl);
-      }
-
-      setSupabaseAuthUser(result.user);
-      setSupabaseAuthStatus(result.message);
+        setSupabaseAuthUser(result.user);
+        setSupabaseAuthStatus(result.message);
+      },
+      onStatus: setSupabaseAuthStatus,
     });
 
     return () => {
-      cancelled = true;
+      lifecycle.stop();
     };
   }, [supabaseConfig]);
 

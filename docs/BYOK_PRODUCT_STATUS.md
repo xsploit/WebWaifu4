@@ -407,6 +407,36 @@ src/lib/product/byok-route-stub.test.ts src/lib/chat/storage.test.ts` -> 12
   touched files.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-15: applied one `codex-work-rhythm` checkpoint for the Claude auth
+  review fixes. Added a Supabase auth session lifecycle watcher that rehydrates
+  on expiry and cross-tab storage changes, and wired `src\App.tsx` through that
+  watcher instead of one-shot hydration.
+- 2026-05-15: tightened BYOK API CORS from wildcard to explicit allowlist
+  resolution via `BYOK_CORS_ALLOWED_ORIGINS`, app origin env vars, Vercel origin
+  env vars, and localhost dev origins. Added `Vary: Origin`.
+- 2026-05-15: normalized workspace missing and workspace denied failures to the
+  same `workspace-access-denied` response, and guarded the Account tab magic
+  link submit path against state updates after unmount.
+- 2026-05-15: `npx vitest run src/lib/product/supabase-auth-session.test.ts
+api/byok/_lib/supabase-context.test.ts src/lib/product/server-route-ownership.test.ts
+src/lib/product/byok-route-stub.test.ts` -> 4 files, 23 tests passed after
+  fixing the lifecycle test clock.
+- 2026-05-15: `npx vitest run src/lib/product/byok.test.ts
+src/lib/product/provider-key-vault.test.ts src/lib/product/scene-export.test.ts
+src/lib/product/supabase-env.test.ts src/lib/product/account-mode.test.ts
+src/lib/product/supabase-schema.test.ts src/lib/product/server-route-ownership.test.ts
+src/lib/product/supabase-auth-shell.test.ts src/lib/product/supabase-auth-session.test.ts
+src/lib/product/byok-route-stub.test.ts src/lib/chat/storage.test.ts
+api/byok/_lib/supabase-context.test.ts` -> 12 files, 61 tests passed.
+- 2026-05-15: `npx prettier --check src/App.tsx
+src/components/menu/tabs/AccountTab.tsx src/lib/product/supabase-auth-session.ts
+src/lib/product/supabase-auth-session.test.ts src/lib/product/server-route-ownership.ts
+api/byok/_lib/route-stub.ts api/byok/_lib/supabase-context.test.ts
+docs/BYOK_PRODUCT_STATUS.md` -> passed.
+- 2026-05-15: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  touched files.
+- 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
 
 ## Current Blocker Or Next Patch
 

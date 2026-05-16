@@ -267,8 +267,8 @@ export function authorizeByokCloudRoute(input: ByokRouteAccessInput): ByokRouteA
     return deny(
       contract,
       403,
-      'workspace-snapshot-required',
-      'Workspace ownership must be resolved before the route can run.',
+      'workspace-access-denied',
+      'Workspace is unavailable or access is denied for this route.',
     );
   }
 
@@ -285,7 +285,7 @@ export function authorizeByokCloudRoute(input: ByokRouteAccessInput): ByokRouteA
     contract,
     403,
     'workspace-access-denied',
-    'Signed-in user does not own the workspace required by this route.',
+    'Workspace is unavailable or access is denied for this route.',
   );
 }
 
