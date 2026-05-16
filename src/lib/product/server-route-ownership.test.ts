@@ -144,6 +144,23 @@ describe('BYOK cloud route ownership contracts', () => {
           key: 'aiSettings',
           storageClass: 'synced-private',
           valueJson: JSON.stringify({
+            maxTokens: 640,
+            model: 'gpt-5-nano',
+          }),
+        },
+      }),
+    ).toMatchObject({ allowed: true });
+
+    expect(
+      authorizeByokCloudRoute({
+        routeId: 'synced-setting.write',
+        accountMode: ownerMode,
+        workspace,
+        settingStorageClass: 'synced-private',
+        body: {
+          key: 'aiSettings',
+          storageClass: 'synced-private',
+          valueJson: JSON.stringify({
             provider: {
               apiKey: 'sk-test-1234567890',
             },

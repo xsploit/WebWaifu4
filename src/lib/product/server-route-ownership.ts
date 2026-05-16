@@ -223,9 +223,6 @@ export type ByokRouteAccessDecision =
       findings?: string[];
     };
 
-const FORBIDDEN_ROUTE_SECRET_KEY_PATTERN =
-  /(?:api[_-]?key|apikey|secret|password|service[_-]?role|jwt|token|credential)/i;
-
 export function getByokCloudRouteContract(routeId: ByokCloudRouteId): ByokCloudRouteContract {
   const contract = BYOK_CLOUD_ROUTE_CONTRACTS.find((item) => item.id === routeId);
   if (!contract) {
@@ -337,13 +334,37 @@ export function findForbiddenCloudRouteSecretPaths(value: unknown, path = 'body'
   const findings: string[] = [];
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const childPath = `${path}.${key}`;
-    if (FORBIDDEN_ROUTE_SECRET_KEY_PATTERN.test(key)) {
+    if (isForbiddenCloudRouteSecretKey(key)) {
       findings.push(childPath);
       continue;
     }
     findings.push(...findForbiddenCloudRouteSecretPaths(child, childPath));
   }
   return findings;
+}
+
+function isForbiddenCloudRouteSecretKey(key: string) {
+  const normalized = key.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!normalized) {
+    return false;
+  }
+  if (
+    normalized === 'apikey' ||
+    normalized.endsWith('apikey') ||
+    normalized === 'secret' ||
+    normalized.endsWith('secret') ||
+    normalized === 'password' ||
+    normalized.endsWith('password') ||
+    normalized.includes('servicerole') ||
+    normalized === 'jwt' ||
+    normalized.endsWith('jwt') ||
+    normalized === 'token' ||
+    normalized.endsWith('token') ||
+    normalized.includes('credential')
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function authorizeOverlayRoute(
