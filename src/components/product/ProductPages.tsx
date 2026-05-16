@@ -3,12 +3,14 @@ import type { ByokAccountMode } from '../../lib/product/account-mode';
 import type { AppRoute } from '../../lib/product/app-route';
 import {
   fetchByokProfile,
+  fetchByokSettings,
   patchByokSetting,
   patchByokProfile,
   type ByokProfileResponse,
 } from '../../lib/product/byok-api';
 import { buildCloudSettingRecords } from '../../lib/product/cloud-settings';
 import type { PersistedChatState } from '../../lib/chat/types';
+import type { SyncedSettingRecord } from '../../lib/product/byok';
 import {
   describeByokAccountShell,
   requestSupabaseMagicLink,
@@ -19,6 +21,7 @@ type ProductPagesProps = {
   accountMode: ByokAccountMode;
   authStatus: string;
   onNavigate: (path: string) => void;
+  onApplyCloudSettings: (records: SyncedSettingRecord[]) => void;
   onSignOut: () => void;
   persistedState: PersistedChatState;
   route: AppRoute;
@@ -211,6 +214,7 @@ function DashboardPage(
 ) {
   const [profile, setProfile] = useState<ByokProfileResponse | null>(null);
   const [status, setStatus] = useState(props.authStatus);
+  const [pulling, setPulling] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const overlayUrl =
     profile?.bootstrap.scene.id && typeof window !== 'undefined'
@@ -262,6 +266,25 @@ function DashboardPage(
     }
   };
 
+  const handlePullSettings = async () => {
+    if (!profile?.bootstrap.workspace.id || props.accountMode.kind !== 'supabase-cloud-sync') {
+      setStatus('Sign in before loading cloud settings.');
+      return;
+    }
+    setPulling(true);
+    try {
+      const response = await fetchByokSettings({
+        workspaceId: profile.bootstrap.workspace.id,
+      });
+      props.onApplyCloudSettings(response.settings);
+      setStatus(`Loaded ${response.settings.length} cloud settings into the editor.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Cloud settings load failed.');
+    } finally {
+      setPulling(false);
+    }
+  };
+
   return (
     <ProductPageFrame eyebrow="Dashboard" onNavigate={props.onNavigate} title="Stream workspace">
       <div className="product-card">
@@ -287,6 +310,13 @@ function DashboardPage(
             onClick={handleSyncSettings}
           >
             {syncing ? 'Syncing...' : 'Sync settings'}
+          </button>
+          <button
+            className="product-secondary"
+            disabled={pulling || props.accountMode.kind !== 'supabase-cloud-sync'}
+            onClick={handlePullSettings}
+          >
+            {pulling ? 'Loading...' : 'Load cloud'}
           </button>
         </div>
         <p>{status}</p>

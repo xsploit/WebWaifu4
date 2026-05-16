@@ -127,6 +127,8 @@ import {
   startSupabaseAuthSessionLifecycle,
 } from './lib/product/supabase-auth-session';
 import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
+import { applyCloudSettingRecords } from './lib/product/cloud-settings';
+import type { SyncedSettingRecord } from './lib/product/byok';
 import './style.css';
 
 type SafeAreaInsets = {
@@ -4137,6 +4139,29 @@ function App() {
       visualSettings,
     ],
   );
+  const handleApplyCloudSettings = useCallback(
+    (records: SyncedSettingRecord[]) => {
+      const next = applyCloudSettingRecords(persistedStateSnapshot, records);
+      setPersonas(next.personas);
+      setActivePersonaId(next.activePersonaId);
+      setAiSettings(next.aiSettings);
+      setChatInput(next.uiState.chatDraft);
+      setChatLogOpen(next.uiState.chatLogOpen);
+      setCurrentBundledModelId(next.currentBundledModelId);
+      setSequencerSettings(next.sequencerSettings);
+      setTwitchChannel(next.twitchChannel);
+      setVisualSettings(next.visualSettings);
+
+      if (
+        next.currentBundledModelId &&
+        next.currentBundledModelId !== currentBundledModelId &&
+        BUNDLED_VRM_MODELS.some((model) => model.id === next.currentBundledModelId)
+      ) {
+        void handleLoadBundledModel(next.currentBundledModelId).catch(() => {});
+      }
+    },
+    [currentBundledModelId, handleLoadBundledModel, persistedStateSnapshot],
+  );
 
   return (
     <div
@@ -4165,6 +4190,7 @@ function App() {
         <ProductPages
           accountMode={accountMode}
           authStatus={supabaseAuthStatus}
+          onApplyCloudSettings={handleApplyCloudSettings}
           onNavigate={handleNavigate}
           onSignOut={handleSupabaseLocalSignOut}
           persistedState={persistedStateSnapshot}

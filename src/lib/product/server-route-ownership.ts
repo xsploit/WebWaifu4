@@ -104,6 +104,16 @@ export const BYOK_CLOUD_ROUTE_CONTRACTS = [
     secretMaterialPolicy: 'forbidden',
   },
   {
+    id: 'synced-setting.list',
+    method: 'GET',
+    path: '/api/byok/workspaces/:workspaceId/settings',
+    actor: 'supabase-user',
+    ownership: 'workspace-reader',
+    resource: 'synced-setting',
+    allowedSettingStorageClasses: ['public-overlay', 'synced-private'],
+    secretMaterialPolicy: 'forbidden',
+  },
+  {
     id: 'synced-setting.read',
     method: 'GET',
     path: '/api/byok/workspaces/:workspaceId/settings/:settingId',

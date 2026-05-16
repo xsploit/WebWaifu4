@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from '../chat/defaults';
-import type { PersistedChatState } from '../chat/types';
+import type { AiSettings, PersistedChatState, PersonaProfile, UiState } from '../chat/types';
+import type { SequencerSettings, VisualSettings } from '../menu/types';
 import type { SyncedSettingRecord } from './byok';
 import { assertSettingCanSync, classifyByokSetting, normalizeSettingKey } from './byok';
 
@@ -104,6 +105,88 @@ export function buildCloudSettingPatchBody(record: SyncedSettingRecord) {
   };
 }
 
+export function applyCloudSettingRecords(
+  state: PersistedChatState,
+  records: readonly SyncedSettingRecord[],
+): PersistedChatState {
+  const next: PersistedChatState = {
+    ...state,
+    aiSettings: { ...state.aiSettings },
+    personas: state.personas.map((persona) => ({ ...persona })),
+    sequencerSettings: {
+      ...state.sequencerSettings,
+      playlist: state.sequencerSettings.playlist.map((entry) => ({ ...entry })),
+    },
+    uiState: { ...state.uiState },
+    visualSettings: { ...state.visualSettings },
+  };
+
+  for (const record of records) {
+    if (!isSafeCloudSyncKey(record.key)) {
+      continue;
+    }
+    assertSettingCanSync(record);
+    const value = safeJson(record.valueJson);
+    if (value === undefined) {
+      continue;
+    }
+
+    switch (record.key) {
+      case 'personas': {
+        const personas = normalizePersonas(value);
+        if (personas.length > 0) {
+          next.personas = personas;
+          if (!personas.some((persona) => persona.id === next.activePersonaId)) {
+            next.activePersonaId = personas[0]?.id ?? next.activePersonaId;
+          }
+        }
+        break;
+      }
+      case 'character.personaId':
+        if (typeof value === 'string' && value.trim()) {
+          next.activePersonaId = value.trim();
+        }
+        break;
+      case 'aiSettings':
+        if (isPlainObject(value)) {
+          next.aiSettings = { ...next.aiSettings, ...(value as Partial<AiSettings>) };
+        }
+        break;
+      case 'uiState':
+        next.uiState = normalizeUiState(value, next.uiState);
+        break;
+      case 'character.vrmModelId':
+        if (typeof value === 'string' && value.trim()) {
+          next.currentBundledModelId = value.trim();
+        }
+        break;
+      case 'scene.twitchChannel':
+        if (typeof value === 'string') {
+          next.twitchChannel = value.trim().toLowerCase().replace(/^#/, '');
+        }
+        break;
+      case 'sequencerSettings':
+        if (isPlainObject(value)) {
+          next.sequencerSettings = {
+            ...next.sequencerSettings,
+            ...(value as Partial<SequencerSettings>),
+          };
+        }
+        break;
+      case 'visualSettings':
+        if (isPlainObject(value)) {
+          next.visualSettings = {
+            ...next.visualSettings,
+            ...(value as Partial<VisualSettings>),
+          };
+        }
+        break;
+    }
+  }
+
+  return next;
+}
+
 export function cloudSettingId(key: string) {
   return normalizeSettingKey(key).replace(/[^a-zA-Z0-9._-]/g, '_');
 }
@@ -111,4 +194,54 @@ export function cloudSettingId(key: string) {
 export function isSafeCloudSyncKey(key: string): key is CloudSyncSettingKey {
   const normalized = key.trim();
   return SAFE_STATE_TO_CLOUD_SETTINGS.some((entry) => entry.key === normalized);
+}
+
+function safeJson(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function isPlainObject(value: unknown) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizePersonas(value: unknown): PersonaProfile[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+      const source = item as Partial<PersonaProfile>;
+      if (typeof source.id !== 'string' || typeof source.name !== 'string') {
+        return null;
+      }
+      return {
+        description: String(source.description ?? ''),
+        id: source.id,
+        name: source.name,
+        systemPrompt: String(source.systemPrompt ?? ''),
+        userNickname: String(source.userNickname ?? ''),
+      } satisfies PersonaProfile;
+    })
+    .filter((persona): persona is PersonaProfile => Boolean(persona));
+}
+
+function normalizeUiState(value: unknown, fallback: UiState): UiState {
+  if (!isPlainObject(value)) {
+    return fallback;
+  }
+  const source = value as Partial<UiState>;
+  return {
+    chatDraft:
+      typeof source.chatDraft === 'string' ? source.chatDraft.slice(0, 4000) : fallback.chatDraft,
+    chatLogOpen:
+      typeof source.chatLogOpen === 'boolean' ? source.chatLogOpen : fallback.chatLogOpen,
+    menuOpen: false,
+  };
 }

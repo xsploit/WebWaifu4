@@ -292,6 +292,21 @@ export async function fetchSyncedSetting(input: {
   return normalizeSyncedSetting(rows[0], input.workspaceId);
 }
 
+export async function fetchSyncedSettings(input: {
+  config: SupabaseServerConfig;
+  fetchFn: SupabaseFetch;
+  workspaceId: string;
+}) {
+  const rows = await fetchSupabaseRest<SyncedSettingRow>(
+    input.config,
+    `/rest/v1/synced_settings?workspace_id=eq.${encodeURIComponent(input.workspaceId)}&select=${SYNCED_SETTING_SELECT}&order=updated_at.desc`,
+    input.fetchFn,
+  );
+  return rows
+    .map((row) => normalizeSyncedSetting(row, input.workspaceId))
+    .filter((record): record is SyncedSettingRecord => Boolean(record));
+}
+
 export async function upsertSyncedSetting(input: {
   body: unknown;
   config: SupabaseServerConfig;

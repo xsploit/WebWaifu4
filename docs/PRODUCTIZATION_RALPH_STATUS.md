@@ -268,6 +268,22 @@ Swap the prompt and completion promise for the other lanes.
   src/lib/product/byok-api.test.ts` -> passed, 2 files, 7 tests. `npm run build`
   -> passed with existing `onnxruntime-web` eval and large chunk warnings.
   `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-15: Work-rhythm checkpoint closed the cloud settings restore loop.
+  Added `GET /api/byok/workspaces/:workspaceId/settings` to list synced settings,
+  added client fetch helpers, and added `applyCloudSettingRecords` so Dashboard
+  can load cloud settings back into the editor. Restore applies only the safe
+  BYOK setting allowlist and keeps relationship memory/chat history local-only.
+  If a synced bundled VRM model id changes, the editor triggers the bundled
+  model loader after applying the state snapshot.
+- 2026-05-15: Security pass for restore found no new blocker: list/read routes
+  require workspace reader access, writes still require owner access, cloud
+  records pass `assertSettingCanSync`, and restore ignores non-allowlisted keys.
+- 2026-05-15: `npx vitest run src/lib/product/cloud-settings.test.ts
+  src/lib/product/byok-api.test.ts src/lib/product/byok.test.ts
+  src/lib/product/byok-route-stub.test.ts api/byok/_lib/product-data.test.ts
+  api/byok/_lib/supabase-context.test.ts` -> passed, 6 files, 26 tests.
+  `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
+  warnings. `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and

@@ -6,6 +6,7 @@ import {
 } from '../chat/defaults';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
 import {
+  applyCloudSettingRecords,
   buildCloudSettingPatchBody,
   buildCloudSettingRecords,
   LOCAL_ONLY_PERSISTED_SETTING_KEYS,
@@ -59,6 +60,31 @@ describe('cloud settings adapter', () => {
       storageClass: 'synced-private',
       valueJson: record!.valueJson,
     });
+  });
+
+  it('applies only safe cloud records back to persisted editor state', () => {
+    const state = createState();
+    const next = applyCloudSettingRecords(state, [
+      {
+        id: 'scene.twitchChannel',
+        key: 'scene.twitchChannel',
+        storageClass: 'public-overlay',
+        updatedAt: '2026-05-15T12:00:00.000Z',
+        valueJson: '"newchannel"',
+        workspaceId: 'workspace-1',
+      },
+      {
+        id: 'relationshipMemory',
+        key: 'relationshipMemory',
+        storageClass: 'synced-private',
+        updatedAt: '2026-05-15T12:00:00.000Z',
+        valueJson: '{"facts":["should not load"]}',
+        workspaceId: 'workspace-1',
+      },
+    ]);
+
+    expect(next.twitchChannel).toBe('newchannel');
+    expect(next.relationshipMemory.facts).toEqual(['local-only fact']);
   });
 });
 

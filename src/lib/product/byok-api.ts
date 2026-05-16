@@ -48,6 +48,11 @@ export type ByokSettingResponse = {
   setting: SyncedSettingRecord;
 };
 
+export type ByokSettingsResponse = {
+  ok: true;
+  settings: SyncedSettingRecord[];
+};
+
 export type ByokApiError = {
   ok: false;
   status: number;
@@ -176,6 +181,18 @@ export async function fetchByokSetting(input: {
     path: `/api/byok/workspaces/${encodeURIComponent(input.workspaceId)}/settings/${encodeURIComponent(input.settingId)}`,
   });
   return fetchByokJson<ByokSettingResponse>(request, input.fetchImpl);
+}
+
+export async function fetchByokSettings(input: {
+  accessToken?: string | null;
+  fetchImpl?: typeof fetch;
+  workspaceId: string;
+}) {
+  const request = buildAuthenticatedByokRequest({
+    accessToken: input.accessToken,
+    path: `/api/byok/workspaces/${encodeURIComponent(input.workspaceId)}/settings`,
+  });
+  return fetchByokJson<ByokSettingsResponse>(request, input.fetchImpl);
 }
 
 export async function patchByokSetting(input: {

@@ -5,6 +5,7 @@ import {
   ensureDefaultScene,
   ensureDefaultWorkspace,
   fetchSyncedSetting,
+  fetchSyncedSettings,
   upsertSyncedSetting,
 } from './product-data.js';
 import type { SupabaseFetch } from './supabase-context.js';
@@ -167,6 +168,14 @@ describe('BYOK product data bootstrap', () => {
       id: 'visualSettings',
       valueJson: '{}',
     });
+
+    await expect(
+      fetchSyncedSettings({
+        config,
+        fetchFn,
+        workspaceId: 'workspace-1',
+      }),
+    ).resolves.toHaveLength(1);
 
     await expect(
       upsertSyncedSetting({

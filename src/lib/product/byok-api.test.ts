@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAuthenticatedByokRequest,
+  fetchByokSettings,
   getSupabaseAccessToken,
   patchByokSetting,
 } from './byok-api';
@@ -93,6 +94,43 @@ describe('BYOK API client helpers', () => {
       setting: {
         id: 'visualSettings',
       },
+    });
+  });
+
+  it('fetches workspace cloud settings as a list', async () => {
+    const fetchImpl = async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(url)).toBe('/api/byok/workspaces/workspace-1/settings');
+      expect(init?.method).toBe('GET');
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          settings: [
+            {
+              id: 'scene.twitchChannel',
+              key: 'scene.twitchChannel',
+              storageClass: 'public-overlay',
+              updatedAt: '2026-05-15T00:00:00.000Z',
+              valueJson: '"subsect"',
+              workspaceId: 'workspace-1',
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    };
+
+    await expect(
+      fetchByokSettings({
+        accessToken: 'access-token',
+        fetchImpl,
+        workspaceId: 'workspace-1',
+      }),
+    ).resolves.toMatchObject({
+      settings: [
+        {
+          key: 'scene.twitchChannel',
+        },
+      ],
     });
   });
 });
