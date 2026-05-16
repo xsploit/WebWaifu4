@@ -644,12 +644,52 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   directories; public `https://148-113-191-103.sslip.io/dashboard` returned HTTP
   200 and referenced the new `index-6PgvHPxW.css` asset. API route
   `/api/byok/profile` still returns the expected unauthenticated HTTP 401.
+- 2026-05-16 auth UX smoke checkpoint: fixed and deployed three live blockers
+  found during the deployed browser smoke. First, `/auth/callback` and
+  `/overlay/:sceneId` were blank because Vite emitted `./assets/...` URLs that
+  resolved as `/auth/assets/...` or `/overlay/assets/...` on nested routes;
+  commit `4c8347f` changes `vite.config.ts` to root asset URLs and the rebuilt
+  `dist` was deployed to the OVH VPS. Second, cloud sync rejected safe
+  `aiSettings.maxTokens` as secret material; commit `9b1d7db` narrows the
+  route secret-key detector so real `apiKey`/`accessToken`/`clientSecret`
+  shapes are still blocked while safe tuning keys pass, then rebuilt
+  `server/dist` and `api-dist` were deployed and the API was restarted from
+  `/home/ubuntu/yourwifey-stream` so remote `.env` loading stayed intact. Third,
+  Supabase `synced_settings.id` is UUID, but the UI used string IDs such as
+  `aiSettings`; commit `d2c2b8a` now emits deterministic UUID setting IDs and
+  the rebuilt `dist` was deployed.
+
+  Smoke results: Supabase OTP/magic-link request against a throwaway account
+  was blocked by Supabase HTTP 429, so full inbox-link delivery remains
+  rate-limited. A real callback/session URL for the same throwaway account
+  redirected into `/dashboard` and persisted signed-in cloud state. Dashboard
+  smoke passed: `Push to cloud` reported `Synced 8 safe settings`, `Pull from
+  cloud` reported `Loaded 8 cloud settings into the editor`, and `Issue OBS URL`
+  produced a signed `/overlay/:sceneId?token=...` URL expiring
+  `2026-06-15T05:10:06.274Z`. Direct overlay config API probe with that token
+  returned HTTP 200 with `settingsCount: 5`, `sceneName: Main Overlay`, and
+  `twitchChannel: subsect`; however, the overlay page itself still displayed
+  `Loading OBS overlay config...`, so the next UI/product blocker is the overlay
+  route's client-side config-effect completion/render path. The temporary
+  Supabase smoke user was deleted after the run. Verification:
+  `npx vitest run src/lib/product/app-route.test.ts src/lib/product/supabase-auth-session.test.ts src/lib/product/byok-api.test.ts`
+  -> passed, 3 files, 25 tests;
+  `npx vitest run src/lib/product/server-route-ownership.test.ts src/lib/product/cloud-settings.test.ts src/lib/product/byok-api.test.ts`
+  -> passed, 3 files, 17 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` ->
+  passed with line-ending warnings only. Security review: tracked diffs were
+  scanned for concrete Supabase/OpenAI/Fish/Inworld token values before commit,
+  provider keys still stay browser-local, and the throwaway auth user cleanup
+  invalidated the smoke account.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: run magic-link browser smoke against the deployed app,
-confirm callback persistence, settings sync/pull, and signed OBS overlay URL
-issuance.
+Next UI/product patch: debug the signed `/overlay/:sceneId?token=...` page
+client-side loading state. The token-authenticated config API returns HTTP 200,
+but the overlay page still shows `Loading OBS overlay config...`; start by
+instrumenting or testing the `fetchByokOverlayConfig` effect around
+`src\App.tsx` and verifying whether `handleApplyCloudSettings` or route state
+is preventing `setOverlayConfigStatus('')` from rendering.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
