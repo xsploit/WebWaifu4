@@ -7,8 +7,6 @@ import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
 import { ProductPages } from './components/product/ProductPages';
 import {
-  COMMON_OPENAI_MODELS,
-  COMMON_OPENROUTER_MODELS,
   DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
@@ -284,11 +282,6 @@ const STREAM_BOT_WS_ENABLED =
   import.meta.env['VITE_STREAM_BOT_WS_ENABLED'] === 'true' ||
   import.meta.env['VITE_OVERLAY_WS_ENABLED'] === 'true';
 const DIRECT_COMMAND_PREFIXES = ['!yw', '!yourwifey', '!waifu'];
-const CONFIGURED_OPENAI_MODEL = (
-  import.meta.env['VITE_OPENAI_MODEL'] ||
-  import.meta.env['VITE_AI_MODEL'] ||
-  ''
-).trim();
 const AI_PROXY_URL = (import.meta.env['VITE_AI_PROXY_URL'] || '').trim();
 const BROWSER_URL_PARAMS =
   typeof window === 'undefined'
@@ -374,6 +367,13 @@ type AppEmbeddingResponse = {
   ok?: boolean;
 };
 
+type AppModelsResponse = {
+  error?: string;
+  models?: string[];
+  ok?: boolean;
+  provider?: string;
+};
+
 type StreamingSpeechPlayer = {
   finish: (finalText?: string) => Promise<AssistantReplyParseResult>;
   pushAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
@@ -453,9 +453,8 @@ function getProviderModelPool(
   llmProvider: AiSettings['llmProvider'],
   availableModels: readonly string[],
 ) {
-  return llmProvider === 'openrouter-responses'
-    ? mergeModels(COMMON_OPENROUTER_MODELS, availableModels)
-    : mergeModels(availableModels, COMMON_OPENAI_MODELS);
+  void llmProvider;
+  return [...availableModels];
 }
 
 function createChatMessage(role: ChatMessage['role'], content: string): ChatMessage {
@@ -490,6 +489,16 @@ function getAiEmbeddingUrl() {
   if (!/\/embeddings\/?$/.test(url.pathname)) {
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/embeddings`;
   }
+  return url.toString();
+}
+
+function getAiModelsUrl(llmProvider: AiSettings['llmProvider']) {
+  const url = new URL(getAiProxyUrl());
+  url.pathname = url.pathname.replace(/\/chat\/?$/, '/models');
+  if (!/\/models\/?$/.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/models`;
+  }
+  url.searchParams.set('provider', llmProvider);
   return url.toString();
 }
 
@@ -1396,7 +1405,7 @@ function App() {
   const [relationshipMemories, setRelationshipMemories] = useState<
     Record<string, RelationshipMemory>
   >({});
-  const [availableModels, setAvailableModels] = useState<string[]>(() => [...COMMON_OPENAI_MODELS]);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [aiProxyHealth, setAiProxyHealth] = useState<AiProxyHealth | null>(null);
@@ -1436,7 +1445,7 @@ function App() {
   const relationshipMemoryRef = useRef<RelationshipMemory>(createDefaultRelationshipMemory());
   const relationshipMemoriesRef = useRef<Record<string, RelationshipMemory>>({});
   const aiSettingsRef = useRef<AiSettings>(createDefaultAiSettings());
-  const availableModelsRef = useRef<string[]>([...COMMON_OPENAI_MODELS]);
+  const availableModelsRef = useRef<string[]>([]);
   const sequencerSettingsRef = useRef(createDefaultSequencerSettings());
   const directTwitchClientRef = useRef<DirectTwitchIrcClient | null>(null);
   const directTwitchCommandHandlerRef = useRef<(message: CommandChatMessage) => boolean>(
@@ -1612,25 +1621,34 @@ function App() {
     setModelsError(null);
 
     try {
-      const proxyModels = mergeModels(
-        CONFIGURED_OPENAI_MODEL ? [CONFIGURED_OPENAI_MODEL] : [],
-        COMMON_OPENAI_MODELS,
+      const llmProvider = aiSettingsRef.current.llmProvider;
+      const headers = await buildBackendProviderHeaders({
+        llmProvider,
+        providerKeyVaultWorkspaceId,
+      });
+      const response = await fetch(getAiModelsUrl(llmProvider), {
+        cache: 'no-store',
+        headers,
+      });
+      if (!response.ok) {
+        throw new Error(`Provider models failed with HTTP ${response.status}.`);
+      }
+      const data = (await response.json()) as AppModelsResponse;
+      if (!data.ok) {
+        throw new Error(data.error || 'Provider model list failed.');
+      }
+      const providerModels = mergeModels(data.models ?? []);
+      setAvailableModels(providerModels);
+      setAiSettings((current) =>
+        current.llmProvider === llmProvider ? sanitizeAiModels(current, providerModels) : current,
       );
-      setAvailableModels(proxyModels);
-      setAiSettings((current) => sanitizeAiModels(current, proxyModels));
     } catch (error) {
       const message = getAiErrorMessage(error, 'models');
       setModelsError(message);
-      const fallbackModels = mergeModels(
-        CONFIGURED_OPENAI_MODEL ? [CONFIGURED_OPENAI_MODEL] : [],
-        COMMON_OPENAI_MODELS,
-      );
-      setAvailableModels(fallbackModels);
-      setAiSettings((current) => sanitizeAiModels(current, fallbackModels));
     } finally {
       setModelsLoading(false);
     }
-  }, []);
+  }, [providerKeyVaultWorkspaceId]);
 
   const refreshAiProxyHealth = useCallback(async () => {
     try {
@@ -2617,15 +2635,7 @@ function App() {
 
       setPersonas(persistedState.personas);
       setActivePersonaId(persistedState.activePersonaId);
-      setAiSettings(
-        CONFIGURED_OPENAI_MODEL
-          ? {
-              ...persistedState.aiSettings,
-              memoryAgentModel: CONFIGURED_OPENAI_MODEL,
-              model: CONFIGURED_OPENAI_MODEL,
-            }
-          : persistedState.aiSettings,
-      );
+      setAiSettings(persistedState.aiSettings);
       setChatHistory(trimChatHistory(persistedState.chatHistory));
       setRelationshipMemory(
         hydratedRelationshipMemories[hydratedLocalStateKey] ?? persistedState.relationshipMemory,
@@ -2671,6 +2681,14 @@ function App() {
       window.clearInterval(interval);
     };
   }, [menuOpen, refreshAiProxyHealth]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+
+    void loadAvailableModels();
+  }, [aiSettings.llmProvider, hydrated, loadAvailableModels]);
 
   useEffect(() => {
     if (!personas.some((persona) => persona.id === activePersonaId)) {

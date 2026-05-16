@@ -33,6 +33,16 @@ type OpenAiEmbeddingPayload = {
   }>;
 };
 
+type ProviderModelsPayload = {
+  data?: Array<{
+    id?: string;
+    [key: string]: unknown;
+  }>;
+  error?: {
+    message?: string;
+  };
+};
+
 type ByokApiHandlerRequest = {
   body?: unknown;
   headers?: Record<string, string | string[] | undefined>;
@@ -341,6 +351,62 @@ function getRuntimeEmbeddingConfig(
     aiApiKey: apiKey,
     providerProxyEnabled: true,
   };
+}
+
+function getRuntimeProviderConfig(
+  baseConfig: StreamBotConfig,
+  request: IncomingMessage,
+  llmProvider: unknown,
+) {
+  const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const providerName = normalizeRuntimeLlmProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
+  );
+  if (!apiKey && providerName === 'openrouter-responses') {
+    return {
+      ...baseConfig,
+      aiApiBaseUrl: 'https://openrouter.ai/api/v1',
+      aiApiKey: '',
+      providerProxyEnabled: true,
+    };
+  }
+  if (!apiKey && !baseConfig.providerProxyEnabled) {
+    return null;
+  }
+
+  return {
+    ...baseConfig,
+    aiApiBaseUrl:
+      providerName === 'openrouter-responses'
+        ? 'https://openrouter.ai/api/v1'
+        : baseConfig.aiApiBaseUrl,
+    aiApiKey: apiKey || baseConfig.aiApiKey,
+    providerProxyEnabled: true,
+  };
+}
+
+async function listProviderModels(config: StreamBotConfig) {
+  const url = `${config.aiApiBaseUrl.replace(/\/+$/, '')}/models`;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (config.aiApiKey) {
+    headers.Authorization = `Bearer ${config.aiApiKey}`;
+  }
+  const response = await fetch(url, {
+    headers,
+    method: 'GET',
+  });
+  const data = (await response.json().catch(() => ({}))) as ProviderModelsPayload;
+  if (!response.ok) {
+    throw new Error(
+      data.error?.message || `Provider model list failed with HTTP ${response.status}.`,
+    );
+  }
+
+  return (data.data ?? [])
+    .map((model) => (typeof model.id === 'string' ? model.id.trim() : ''))
+    .filter(Boolean);
 }
 
 function getRuntimeTtsConfig(
@@ -957,6 +1023,40 @@ const httpServer = createServer(async (request, response) => {
       writeJson(response, 200, {
         ok: false,
         error: error instanceof Error ? error.message : 'POML render failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && runtimePath === '/ai/models') {
+    try {
+      const providerName = normalizeRuntimeLlmProvider(url.searchParams.get('provider'));
+      const modelConfig = getRuntimeProviderConfig(config, request, providerName);
+      const canUsePublicOpenRouterModels = providerName === 'openrouter-responses';
+      if (!modelConfig?.aiApiKey && !canUsePublicOpenRouterModels) {
+        writeJson(response, 200, { ok: false, error: 'AI provider key is not configured.' });
+        return;
+      }
+
+      const models = await listProviderModels(
+        modelConfig ??
+          ({
+            ...config,
+            aiApiBaseUrl: 'https://openrouter.ai/api/v1',
+            aiApiKey: '',
+            providerProxyEnabled: true,
+          } as StreamBotConfig),
+      );
+      writeJson(response, 200, {
+        ok: true,
+        models,
+        provider: providerName,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Provider model list failed.',
+        models: [],
       });
     }
     return;

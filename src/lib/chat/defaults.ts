@@ -16,67 +16,8 @@ export const STORAGE_KEYS = {
   visualSettings: 'yourwifey.visualSettings.v1',
 } as const;
 
-export const GPT_MODEL_OPTIONS = [
-  {
-    id: 'gpt-5.4-nano',
-    label: 'GPT-5.4 Nano',
-    description: 'Lowest-latency GPT choice for Twitch chat and browser TTS.',
-  },
-  {
-    id: 'gpt-5.4-mini',
-    label: 'GPT-5.4 Mini',
-    description: 'Fast balanced GPT model for better replies without huge delay.',
-  },
-  {
-    id: 'gpt-5.4',
-    label: 'GPT-5.4',
-    description: 'Stronger GPT model for quality when speed matters less.',
-  },
-  {
-    id: 'gpt-5.5',
-    label: 'GPT-5.5',
-    description: 'Flagship GPT model for complex reasoning and coding.',
-  },
-  {
-    id: 'gpt-5-nano',
-    label: 'GPT-5 Nano',
-    description: 'Older nano fallback kept for existing env/config compatibility.',
-  },
-  {
-    id: 'gpt-5',
-    label: 'GPT-5',
-    description: 'Older flagship fallback kept for existing env/config compatibility.',
-  },
-  {
-    id: 'gpt-4.1',
-    label: 'GPT-4.1',
-    description: 'Fast non-reasoning fallback if GPT-5 latency is too high.',
-  },
-] as const;
-
-export const COMMON_OPENAI_MODELS = GPT_MODEL_OPTIONS.map((model) => model.id);
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
 export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-5.4-mini';
-
-export const OPENROUTER_MODEL_OPTIONS = [
-  {
-    id: 'openai/gpt-4o-mini',
-    label: 'OpenAI GPT-4o Mini',
-    description: 'Fast OpenRouter routed model for chat and memory with good latency.',
-  },
-  {
-    id: 'openai/gpt-4o',
-    label: 'OpenAI GPT-4o',
-    description: 'Higher-quality OpenRouter routed OpenAI model.',
-  },
-  {
-    id: 'anthropic/claude-3.5-haiku',
-    label: 'Claude 3.5 Haiku',
-    description: 'Fast Anthropic option through OpenRouter for alternate style tests.',
-  },
-] as const;
-
-export const COMMON_OPENROUTER_MODELS = OPENROUTER_MODEL_OPTIONS.map((model) => model.id);
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
 export const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 

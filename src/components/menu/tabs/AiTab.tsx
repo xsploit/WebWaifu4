@@ -1,11 +1,4 @@
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  DEFAULT_MEMORY_AGENT_MODEL,
-  DEFAULT_OPENAI_MODEL,
-  DEFAULT_OPENROUTER_MODEL,
-  GPT_MODEL_OPTIONS,
-  OPENROUTER_MODEL_OPTIONS,
-} from '../../../lib/chat/defaults';
 import type { AiProxyHealth, AiSettings } from '../../../lib/chat/types';
 import { Slider } from '../ui/Slider';
 
@@ -44,27 +37,10 @@ export function AiTab({
   onRefreshModels,
   setAiSettings,
 }: AiTabProps) {
-  const modelOptions =
-    aiSettings.llmProvider === 'openrouter-responses'
-      ? OPENROUTER_MODEL_OPTIONS
-      : GPT_MODEL_OPTIONS;
-  const knownModelIds = new Set<string>(modelOptions.map((model) => model.id));
-  const allKnownModelIds = new Set<string>(
-    [...GPT_MODEL_OPTIONS, ...OPENROUTER_MODEL_OPTIONS].map((model) => model.id),
-  );
-  const customModels = availableModels.filter((model) => !allKnownModelIds.has(model));
-  const selectedModel =
-    modelOptions.find((model) => model.id === aiSettings.model) ??
-    (aiSettings.model
-      ? {
-          id: aiSettings.model,
-          label: aiSettings.model,
-          description:
-            aiSettings.llmProvider === 'openrouter-responses'
-              ? 'Custom OpenRouter model id. Conversation continuity is owned by the app prompt/memory layer.'
-              : 'Custom model from the current environment or chat command.',
-        }
-      : null);
+  const selectedModel = aiSettings.model.trim();
+  const modelOptions = selectedModel
+    ? Array.from(new Set([...availableModels, selectedModel]))
+    : availableModels;
   const providerState = aiProxyHealth?.providerState ?? null;
 
   return (
@@ -77,14 +53,8 @@ export function AiTab({
             const llmProvider = event.target.value as AiSettings['llmProvider'];
             updateAiSettings(setAiSettings, {
               llmProvider,
-              memoryAgentModel:
-                llmProvider === 'openrouter-responses'
-                  ? DEFAULT_OPENROUTER_MODEL
-                  : DEFAULT_MEMORY_AGENT_MODEL,
-              model:
-                llmProvider === 'openrouter-responses'
-                  ? DEFAULT_OPENROUTER_MODEL
-                  : DEFAULT_OPENAI_MODEL,
+              memoryAgentModel: '',
+              model: '',
               openAiStateMode:
                 llmProvider === 'openrouter-responses' ? 'stateless' : aiSettings.openAiStateMode,
             });
@@ -116,37 +86,23 @@ export function AiTab({
           }
           value={aiSettings.model}
         >
-          <optgroup
-            label={
-              aiSettings.llmProvider === 'openrouter-responses'
-                ? 'OpenRouter routed models'
-                : 'GPT stream models'
-            }
-          >
-            {modelOptions.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label}
-              </option>
-            ))}
-          </optgroup>
-          {customModels.length > 0 ? (
-            <optgroup label="Configured / custom">
-              {customModels.map((model) => (
+          {modelOptions.length > 0 ? (
+            <optgroup label="Provider API models">
+              {modelOptions.map((model) => (
                 <option key={model} value={model}>
                   {model}
                 </option>
               ))}
             </optgroup>
           ) : null}
-          {selectedModel &&
-          !knownModelIds.has(selectedModel.id) &&
-          !customModels.includes(selectedModel.id) ? (
-            <option key={selectedModel.id} value={selectedModel.id}>
-              {selectedModel.label}
-            </option>
+          {modelOptions.length === 0 ? (
+            <option value="">Refresh models from provider</option>
           ) : null}
         </select>
-        {selectedModel ? <div className="field-hint">{selectedModel.description}</div> : null}
+        <div className="field-hint">
+          Models are loaded directly from the selected provider API through the backend. The list is
+          not curated or filtered by YourWifey.
+        </div>
         <button className="btn-tech secondary" onClick={onRefreshModels} type="button">
           {modelsLoading ? 'Refreshing...' : 'Refresh Models'}
         </button>
