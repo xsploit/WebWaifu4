@@ -111,6 +111,60 @@ function createStreamingFetcher(calls: FetchCall[]) {
   }) as typeof fetch;
 }
 
+function createStreamingLifecycleFetcher(calls: FetchCall[]) {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+    });
+
+    const body = [
+      {
+        type: 'response.output_item.added',
+        item: { id: 'msg_1', type: 'message', role: 'assistant', content: [] },
+      },
+      { type: 'response.content_part.added' },
+      {
+        type: 'response.output_text.delta',
+        delta: 'OK',
+      },
+      { type: 'response.output_text.done' },
+      { type: 'response.content_part.done' },
+      {
+        type: 'response.output_item.done',
+        item: {
+          id: 'msg_1',
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'OK' }],
+        },
+      },
+      {
+        type: 'response.completed',
+        response: {
+          id: 'resp_stream_lifecycle',
+          output: [
+            {
+              id: 'msg_1',
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: 'OK' }],
+            },
+          ],
+          usage: { input_tokens_details: { cached_tokens: 12 } },
+        },
+      },
+    ]
+      .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+      .join('');
+
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+  }) as typeof fetch;
+}
+
 function createToolCallingFetcher(calls: FetchCall[]) {
   let responseIndex = 0;
   const responses = [
@@ -1092,6 +1146,36 @@ describe('OpenAiResponsesProvider', () => {
     expect(response.meta).toMatchObject({
       cachedTokens: 64,
       previousResponseId: 'resp_stream',
+    });
+  });
+
+  it('does not treat output item lifecycle events as terminal stream events', async () => {
+    const calls: FetchCall[] = [];
+    const deltas: string[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'previous-response',
+      promptCacheKey: 'yourwifey-stream-test',
+      store: true,
+      useWebSocket: false,
+      fetcher: createStreamingLifecycleFetcher(calls),
+    });
+
+    const response = await provider.completeStream(createRequest('stream lifecycle'), {
+      onTextDelta: (delta) => {
+        deltas.push(delta);
+      },
+    });
+
+    expect(deltas).toEqual(['OK']);
+    expect(response.text).toBe('OK');
+    expect(response.meta).toMatchObject({
+      cachedTokens: 12,
+      previousResponseId: 'resp_stream_lifecycle',
     });
   });
 });

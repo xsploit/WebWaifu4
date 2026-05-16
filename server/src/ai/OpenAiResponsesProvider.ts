@@ -261,13 +261,7 @@ function applyStreamText(
 }
 
 function isTerminalStreamEvent(type: string | undefined) {
-  return (
-    type === 'response.completed' ||
-    type === 'response.incomplete' ||
-    type === 'response.output_text.done' ||
-    type === 'response.content_part.done' ||
-    type === 'response.output_item.done'
-  );
+  return type === 'response.completed' || type === 'response.incomplete';
 }
 
 function getCachedTokenCount(payload: OpenAiResponsePayload) {
