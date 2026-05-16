@@ -742,6 +742,11 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
+  if (!isServerAiProxyEnabled()) {
+    response.status(200).json({ ok: false, error: 'Server AI proxy is disabled for BYOK mode.' });
+    return;
+  }
+
   const apiKey = process.env['OPENAI_API_KEY'] || process.env['AI_API_KEY'];
   if (!apiKey) {
     response.status(200).json({ ok: false, error: 'OPENAI_API_KEY is not configured.' });
@@ -1017,4 +1022,11 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       toolsUsed: toolResult.toolsUsed,
     },
   });
+}
+
+function isServerAiProxyEnabled() {
+  return (
+    process.env['BYOK_SERVER_PROVIDER_PROXY_ENABLED'] === 'true' ||
+    process.env['SERVER_PROVIDER_PROXY_ENABLED'] === 'true'
+  );
 }

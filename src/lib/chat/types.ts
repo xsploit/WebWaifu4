@@ -104,6 +104,7 @@ export type RelationshipMemory = {
 export type AiProxyHealth = {
   aiProvider?: string;
   model?: string;
+  serverProviderProxyEnabled?: boolean;
   providerState?: {
     cachedTokens?: number;
     previousResponseId?: string | null;

@@ -56,6 +56,9 @@ type MatchedByokApiRoute = {
 };
 
 function createProvider(config: StreamBotConfig): ChatProvider {
+  if (!config.providerProxyEnabled) {
+    return new MockChatProvider();
+  }
   if (config.aiProvider === 'openai-responses' || config.aiProvider === 'openai-responses-ws') {
     if (!config.aiApiKey) {
       throw new Error(`${config.aiProvider} requires OPENAI_API_KEY or AI_API_KEY.`);
@@ -649,19 +652,20 @@ const httpServer = createServer(async (request, response) => {
       serverTwitchSource: config.twitchMock ? 'local-control' : 'irc',
       channel: chatSource.channel,
       overlayClients: overlaySocket.clientCount,
-      aiProvider: config.aiProvider,
-      model: provider.getModel?.() ?? config.aiModel,
-      providerState: provider.getState?.() ?? null,
+      aiProvider: config.providerProxyEnabled ? config.aiProvider : 'disabled',
+      serverProviderProxyEnabled: config.providerProxyEnabled,
+      model: config.providerProxyEnabled ? (provider.getModel?.() ?? config.aiModel) : null,
+      providerState: config.providerProxyEnabled ? (provider.getState?.() ?? null) : null,
       ttsProviders: {
         fishSpeech: {
-          configured: Boolean(config.fishSpeechApiKey),
+          configured: config.providerProxyEnabled && Boolean(config.fishSpeechApiKey),
           defaultVoice: Boolean(config.fishSpeechVoiceId),
           model: config.fishSpeechModel,
           latency: config.fishSpeechLatency,
           conditionOnPreviousChunks: config.fishSpeechConditionOnPreviousChunks,
         },
         inworld: {
-          configured: Boolean(config.inworldApiKey),
+          configured: config.providerProxyEnabled && Boolean(config.inworldApiKey),
           defaultVoice: Boolean(config.inworldVoiceId),
           model: config.inworldModelId,
           deliveryMode: config.inworldDeliveryMode,
@@ -673,6 +677,14 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/tts/voices') {
+    if (!config.providerProxyEnabled) {
+      writeJson(response, 200, {
+        ok: false,
+        error: 'Server provider proxy is disabled for BYOK mode.',
+        voices: [],
+      });
+      return;
+    }
     try {
       const providerName = normalizeRemoteTtsProvider(url.searchParams.get('provider'));
       const voices = await listRemoteTtsVoices(config, providerName, {
@@ -694,6 +706,13 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && url.pathname === '/tts/stream') {
+    if (!config.providerProxyEnabled) {
+      writeJson(response, 200, {
+        ok: false,
+        error: 'Server provider proxy is disabled for BYOK mode.',
+      });
+      return;
+    }
     try {
       const body = await readRequestJson<{
         provider?: unknown;
@@ -764,6 +783,13 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && url.pathname === '/ai/embeddings') {
+    if (!config.providerProxyEnabled) {
+      writeJson(response, 200, {
+        ok: false,
+        error: 'Server AI proxy is disabled for BYOK mode.',
+      });
+      return;
+    }
     try {
       if (!config.aiApiKey) {
         writeJson(response, 200, { ok: false, error: 'OPENAI_API_KEY is not configured.' });
@@ -810,6 +836,13 @@ const httpServer = createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && url.pathname === '/ai/chat') {
+    if (!config.providerProxyEnabled) {
+      writeJson(response, 200, {
+        ok: false,
+        error: 'Server AI proxy is disabled for BYOK mode.',
+      });
+      return;
+    }
     try {
       const body = await readRequestJson<{
         mode?: 'direct' | 'batch';

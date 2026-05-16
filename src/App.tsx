@@ -286,8 +286,12 @@ const CONFIGURED_OPENAI_MODEL = (
   ''
 ).trim();
 const AI_PROXY_URL = (import.meta.env['VITE_AI_PROXY_URL'] || '').trim();
+const SERVER_PROVIDER_PROXY_ALLOWED =
+  import.meta.env['VITE_BYOK_SERVER_PROVIDER_PROXY_ENABLED'] === 'true' ||
+  import.meta.env['VITE_SERVER_PROVIDER_PROXY_ENABLED'] === 'true';
 const AI_PROXY_ENABLED =
-  import.meta.env['VITE_AI_PROXY_ENABLED'] === 'true' || Boolean(AI_PROXY_URL);
+  SERVER_PROVIDER_PROXY_ALLOWED &&
+  (import.meta.env['VITE_AI_PROXY_ENABLED'] === 'true' || Boolean(AI_PROXY_URL));
 const BROWSER_URL_PARAMS =
   typeof window === 'undefined'
     ? new URLSearchParams()

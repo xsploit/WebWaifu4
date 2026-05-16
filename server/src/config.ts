@@ -51,6 +51,7 @@ export type StreamBotConfig = {
   inworldDeliveryMode: 'STABLE' | 'BALANCED' | 'CREATIVE';
   inworldSampleRate: number;
   inworldBufferCharThreshold: number;
+  providerProxyEnabled: boolean;
   overlayPort: number;
   botPort: number;
 };
@@ -277,6 +278,9 @@ export function loadConfig(): StreamBotConfig {
     inworldDeliveryMode: parseInworldDeliveryMode(),
     inworldSampleRate: numberFromEnv('INWORLD_TTS_SAMPLE_RATE', 22050),
     inworldBufferCharThreshold: numberFromEnv('INWORLD_TTS_BUFFER_CHARS', 90),
+    providerProxyEnabled:
+      booleanFromEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', false) ||
+      booleanFromEnv('SERVER_PROVIDER_PROXY_ENABLED', false),
     overlayPort: numberFromEnv('OVERLAY_PORT', 5173),
     botPort: numberFromEnv('BOT_PORT', 8787),
   };
