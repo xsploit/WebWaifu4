@@ -700,15 +700,29 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   URL, loaded `/overlay/:sceneId?token=...`, and confirmed the page no longer
   displayed loading or invalid-token text; the temporary user was deleted after
   the smoke.
+- 2026-05-16 overlay health marker checkpoint: added an invisible DOM-ready
+  marker for signed OBS overlay routes in commit `6fc46f6`. The overlay still
+  renders cleanly for OBS, but successful config load now emits
+  `data-testid="obs-overlay-ready"` with the loaded scene id, giving browser
+  smoke tests and operators a concrete health signal instead of relying on an
+  empty DOM. Verification:
+  `npx vitest run src/lib/product/app-route.test.ts src/lib/product/byok-api.test.ts src/lib/product/cloud-settings.test.ts`
+  -> passed, 3 files, 20 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` ->
+  passed with line-ending warnings only. Deployed rebuilt `dist` to the OVH VPS
+  and verified public assets `index-wPAcj9D0.js` / `index-DzqHIr0q.css`.
+  Fresh signed overlay browser smoke passed with `markerCount: 1`, matching
+  scene id, `stillLoading: false`, `invalid: false`, and no browser warnings or
+  errors. The temporary Supabase smoke user was deleted after verification.
 
 ## Current Blocker Or Next Patch
 
 Next UI/product patch: refresh Codex so Supabase MCP tools are actually exposed,
 then use MCP to inspect the live BYOK Supabase tables/policies and record a
-proper schema/data audit before doing more Supabase work. After that, smoke the
-overlay route visually in OBS/browser context and decide whether an empty DOM is
-expected for the pure overlay canvas stage or whether it needs an explicit
-ready/health marker for operator confidence.
+proper schema/data audit before doing more Supabase work. In parallel, continue
+the product hardening lane by auditing the signed overlay/account/dashboard
+flow for remaining rough edges: sign-out cross-tab behavior, account profile
+edit smoke, route protection, and clearer production env validation.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
