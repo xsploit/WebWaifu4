@@ -1915,6 +1915,10 @@ input[type='range']::-webkit-slider-thumb {
   gap: 10px;
 }
 
+.product-hidden-file {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .product-page {
     flex-direction: column;

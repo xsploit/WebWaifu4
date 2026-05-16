@@ -33,18 +33,22 @@ so parallel lane launches can collide on the state file.
 
 ## Product Stack Decision
 
-Initial recommendation until code proves otherwise:
+Current BYOK fork decision:
 
-- Auth: Clerk for dashboard login, session management, and user/org identity.
-- Billing: Stripe Checkout, Customer Portal, and signed webhooks.
-- Database: Postgres with a typed TS ORM. Prefer Drizzle unless a future lane
-  proves Prisma is a better fit for this repo.
-- Credits: append-only ledger plus usage events, not only a mutable balance.
-- Overlay access: signed overlay tokens scoped to user/project/scene, not full
+- Auth: Supabase magic-link for dashboard login and browser session state.
+- Database: Supabase Postgres for profiles, workspaces, scenes, and safe
+  non-secret settings.
+- Storage mode: users can stay local-only or use cloud sync for safe settings.
+- Provider API keys: browser-local only for v1; cloud stores descriptors/settings,
+  never provider key values.
+- Billing: out of scope for the BYOK MVP. If paid managed credits return later,
+  use Stripe Checkout, Customer Portal, signed webhooks, and an append-only
+  usage ledger instead of only a mutable balance.
+- Overlay access: signed overlay tokens scoped to workspace/scene, not full
   dashboard sessions.
-- Provider accounting: normalize OpenAI, Fish Speech, Inworld, Tavily, and future
-  tools into one usage-event model with estimated cost, actual cost when known,
-  and configurable markup.
+- Provider accounting: future managed mode should normalize OpenAI, Fish Speech,
+  Inworld, Tavily, and future tools into one usage-event model with estimated
+  cost, actual cost when known, and configurable markup.
 
 Do not add these dependencies in a drive-by way. The commercial lane should first
 land a minimal schema/config/design checkpoint, then implement one vertical slice.
@@ -213,7 +217,7 @@ Swap the prompt and completion promise for the other lanes.
   `relationshipMemories` while only exposing the memory when the committed key
   matches the active key (`src\App.tsx`, `src\lib\chat\scoped-relationship-memory.ts`).
 - 2026-05-14: `npx vitest run src/lib/chat/scoped-relationship-memory.test.ts
-  src/lib/chat/storage.test.ts src/lib/chat/grillo-memory-loop.test.ts` ->
+src/lib/chat/storage.test.ts src/lib/chat/grillo-memory-loop.test.ts` ->
   passed, 3 files, 7 tests. First run failed on a missing test-file close paren
   and was fixed before rerun. `git diff --check` -> passed with line-ending
   warnings only. `npm run build` -> passed with existing `onnxruntime-web` eval
@@ -234,8 +238,8 @@ Swap the prompt and completion promise for the other lanes.
   database mutation, and product UI/API helper tests assert secret-shaped data is
   not placed in synced request bodies.
 - 2026-05-15: `npx vitest run src/lib/product/app-route.test.ts
-  src/lib/product/byok-api.test.ts src/lib/product/byok-route-stub.test.ts
-  api/byok/_lib/supabase-context.test.ts api/byok/_lib/product-data.test.ts` ->
+src/lib/product/byok-api.test.ts src/lib/product/byok-route-stub.test.ts
+api/byok/_lib/supabase-context.test.ts api/byok/_lib/product-data.test.ts` ->
   passed, 5 files, 21 tests. `npm run build` -> passed with existing
   `onnxruntime-web` eval and large chunk warnings. `git diff --check` -> passed
   with line-ending warnings only.
@@ -253,9 +257,9 @@ Swap the prompt and completion promise for the other lanes.
   requires workspace reader/owner access, and allowed storage classes are limited
   to `public-overlay` plus `synced-private`.
 - 2026-05-15: `npx vitest run src/lib/product/cloud-settings.test.ts
-  src/lib/product/byok-api.test.ts src/lib/product/byok.test.ts
-  src/lib/product/byok-route-stub.test.ts api/byok/_lib/product-data.test.ts
-  api/byok/_lib/supabase-context.test.ts` -> passed, 6 files, 24 tests.
+src/lib/product/byok-api.test.ts src/lib/product/byok.test.ts
+src/lib/product/byok-route-stub.test.ts api/byok/_lib/product-data.test.ts
+api/byok/_lib/supabase-context.test.ts` -> passed, 6 files, 24 tests.
   `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
   warnings. `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-15: Work-rhythm UI checkpoint wired the dashboard `Sync settings`
@@ -265,7 +269,7 @@ Swap the prompt and completion promise for the other lanes.
   relationship memory remain local-only. Status copy reports the number of safe
   records synced.
 - 2026-05-15: `npx vitest run src/lib/product/cloud-settings.test.ts
-  src/lib/product/byok-api.test.ts` -> passed, 2 files, 7 tests. `npm run build`
+src/lib/product/byok-api.test.ts` -> passed, 2 files, 7 tests. `npm run build`
   -> passed with existing `onnxruntime-web` eval and large chunk warnings.
   `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-15: Work-rhythm checkpoint closed the cloud settings restore loop.
@@ -279,15 +283,15 @@ Swap the prompt and completion promise for the other lanes.
   require workspace reader access, writes still require owner access, cloud
   records pass `assertSettingCanSync`, and restore ignores non-allowlisted keys.
 - 2026-05-15: `npx vitest run src/lib/product/cloud-settings.test.ts
-  src/lib/product/byok-api.test.ts src/lib/product/byok.test.ts
-  src/lib/product/byok-route-stub.test.ts api/byok/_lib/product-data.test.ts
-  api/byok/_lib/supabase-context.test.ts` -> passed, 6 files, 26 tests.
+src/lib/product/byok-api.test.ts src/lib/product/byok.test.ts
+src/lib/product/byok-route-stub.test.ts api/byok/_lib/product-data.test.ts
+api/byok/_lib/supabase-context.test.ts` -> passed, 6 files, 26 tests.
   `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
   warnings. `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-15: Work-rhythm checkpoint added scoped OBS overlay sharing
   groundwork. Dashboard can issue a signed OBS overlay URL for the default
   scene. Added `POST
-  /api/byok/workspaces/:workspaceId/scenes/:sceneId/overlay-tokens` for owner
+/api/byok/workspaces/:workspaceId/scenes/:sceneId/overlay-tokens` for owner
   token issuance and `GET /api/byok/overlay/:sceneId/config` for token-scoped
   public overlay config. Tokens are HMAC-signed server-side, default to 30 days,
   and carry only workspace/scene/scope/expiry claims.
@@ -298,11 +302,25 @@ Swap the prompt and completion promise for the other lanes.
   `OVERLAY_SIGNING_SECRET` when configured, falling back to existing server-only
   secrets.
 - 2026-05-15: `npx vitest run api/byok/_lib/overlay-token.test.ts
-  api/byok/_lib/product-data.test.ts api/byok/_lib/supabase-context.test.ts
-  src/lib/product/byok-api.test.ts src/lib/product/byok-route-stub.test.ts
-  src/lib/product/byok.test.ts` -> passed, 6 files, 25 tests. `npm run build`
+api/byok/_lib/product-data.test.ts api/byok/_lib/supabase-context.test.ts
+src/lib/product/byok-api.test.ts src/lib/product/byok-route-stub.test.ts
+src/lib/product/byok.test.ts` -> passed, 6 files, 25 tests. `npm run build`
   -> passed with existing `onnxruntime-web` eval and large chunk warnings.
   `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-15: Work-rhythm checkpoint added safe scene backup import/export.
+  Dashboard now has `Export backup` and `Import backup` controls; exported
+  files contain only the same safe setting records used by cloud sync. Import
+  validates the backup shape before applying records through the existing safe
+  cloud settings path. Chat history and relationship memory are counted/reported
+  but never included in the backup payload.
+- 2026-05-15: Security pass for scene backup found no new blocker: backup import
+  filters by app/version, safe setting key allowlist, and allowed storage
+  classes before applying records. The serializer does not include chat history,
+  relationship facts, provider key fields, or secret-shaped API key values.
+- 2026-05-15: `npx vitest run src/lib/product/scene-backup.test.ts
+src/lib/product/cloud-settings.test.ts src/lib/product/byok.test.ts` ->
+  passed, 3 files, 13 tests. `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and
@@ -331,7 +349,7 @@ Swap the prompt and completion promise for the other lanes.
   simulates `call_search_b` receiving arguments before its `call_id` and asserts
   both `alpha` and `beta` Tavily queries plus both function outputs.
 - 2026-05-14: `npx vitest run api/ai/chat.test.ts
-  server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 2 files, 19 tests.
+server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 2 files, 19 tests.
   `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
   warnings. `git diff --check` -> passed with line-ending warnings only.
 - 2026-05-14: Efficiency iteration inspected `README.md`,
@@ -426,7 +444,7 @@ Swap the prompt and completion promise for the other lanes.
   `AudioContext` proving a second live PCM chunk is scheduled before the first
   chunk fires `onended`.
 - 2026-05-14: `npx vitest run src/lib/tts/manager.test.ts
-  server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
+server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `npm run build` -> passed with existing `onnxruntime-web` eval warning and
   existing large chunk warnings (`index` about 1517 kB, `phonemizer` about
   1321 kB, `ort.min` about 537 kB). `git diff --check` -> passed with

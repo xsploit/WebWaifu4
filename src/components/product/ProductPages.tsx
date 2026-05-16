@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ByokAccountMode } from '../../lib/product/account-mode';
 import type { AppRoute } from '../../lib/product/app-route';
 import {
@@ -11,6 +11,11 @@ import {
 } from '../../lib/product/byok-api';
 import { buildCloudSettingRecords } from '../../lib/product/cloud-settings';
 import type { PersistedChatState } from '../../lib/chat/types';
+import {
+  createSceneBackup,
+  parseSceneBackup,
+  serializeSceneBackup,
+} from '../../lib/product/scene-backup';
 import type { SyncedSettingRecord } from '../../lib/product/byok';
 import {
   describeByokAccountShell,
@@ -218,6 +223,7 @@ function DashboardPage(
   const [status, setStatus] = useState(props.authStatus);
   const [pulling, setPulling] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
   const overlayUrl =
     profile?.bootstrap.scene.id && typeof window !== 'undefined'
       ? new URL(`/overlay/${encodeURIComponent(profile.bootstrap.scene.id)}`, window.location.href)
@@ -312,6 +318,51 @@ function DashboardPage(
     }
   };
 
+  const handleExportBackup = () => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      setStatus('Scene backup export needs a browser.');
+      return;
+    }
+    const backup = createSceneBackup({
+      sceneId: profile?.bootstrap.scene.id,
+      state: props.persistedState,
+      workspaceId: profile?.bootstrap.workspace.id,
+    });
+    const blob = new Blob([serializeSceneBackup(backup)], {
+      type: 'application/json',
+    });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = `yourwifey-scene-${backup.sceneId ?? 'local'}-${backup.exportedAt.slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
+    setStatus(
+      `Exported ${backup.safeSettings.length} safe settings. Chat history and relationship memory stayed local.`,
+    );
+  };
+
+  const handleImportBackup = async (file: File | null | undefined) => {
+    if (!file) {
+      return;
+    }
+    try {
+      const backup = parseSceneBackup(await file.text());
+      props.onApplyCloudSettings(backup.safeSettings);
+      setStatus(
+        `Imported ${backup.safeSettings.length} safe settings from ${backup.exportedAt}. Chat history and relationship memory were not included.`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Scene backup import failed.');
+    } finally {
+      if (backupInputRef.current) {
+        backupInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <ProductPageFrame eyebrow="Dashboard" onNavigate={props.onNavigate} title="Stream workspace">
       <div className="product-card">
@@ -352,7 +403,20 @@ function DashboardPage(
           >
             {pulling ? 'Loading...' : 'Load cloud'}
           </button>
+          <button className="product-secondary" onClick={handleExportBackup}>
+            Export backup
+          </button>
+          <button className="product-secondary" onClick={() => backupInputRef.current?.click()}>
+            Import backup
+          </button>
         </div>
+        <input
+          ref={backupInputRef}
+          accept="application/json,.json"
+          className="product-hidden-file"
+          onChange={(event) => void handleImportBackup(event.target.files?.[0])}
+          type="file"
+        />
         {overlayShareUrl ? (
           <label className="product-field">
             <span>OBS overlay URL</span>
