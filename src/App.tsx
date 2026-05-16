@@ -130,6 +130,8 @@ import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import { applyCloudSettingRecords } from './lib/product/cloud-settings';
 import { fetchByokOverlayConfig } from './lib/product/byok-api';
 import type { SyncedSettingRecord } from './lib/product/byok';
+import { requestBrowserOpenAiCompletion } from './lib/product/browser-openai-responses';
+import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
 import './style.css';
 
 type SafeAreaInsets = {
@@ -625,6 +627,7 @@ async function requestChatCompletion({
   temperature,
   transportMode,
   ttsBridge,
+  providerKeyVaultWorkspaceId,
 }: {
   activeChatters?: number;
   disableState?: boolean;
@@ -641,9 +644,34 @@ async function requestChatCompletion({
   temperature: number;
   transportMode?: AiSettings['aiTransportMode'];
   ttsBridge?: RemoteTtsRequest;
+  providerKeyVaultWorkspaceId?: string;
 }): Promise<AppCompletionResponse> {
   if (!AI_PROXY_ENABLED) {
-    throw new Error('AI proxy is disabled. Start the local/server AI backend to chat.');
+    const providerVault = createBrowserProviderKeyVault({
+      workspaceId: providerKeyVaultWorkspaceId ?? 'local-browser',
+    });
+    const apiKey = await providerVault.getSecret('openai', 'openai.apiKey');
+    const browserResponse = await requestBrowserOpenAiCompletion({
+      apiKey: apiKey ?? '',
+      disableState,
+      maxTokens,
+      messages,
+      model,
+      onTextDelta,
+      openAiStateMode,
+      responseFormat,
+      stateKey,
+      stateScope,
+    });
+    return {
+      choices: [
+        {
+          message: {
+            content: browserResponse.text,
+          },
+        },
+      ],
+    };
   }
 
   const response = await fetch(getAiProxyUrl(), {
@@ -1182,6 +1210,11 @@ function App() {
         supabaseConfig,
       }),
     [supabaseAuthUser, supabaseConfig],
+  );
+  const providerKeyVaultWorkspaceId = useMemo(
+    () =>
+      accountMode.kind === 'supabase-cloud-sync' ? `user:${accountMode.user.id}` : 'local-browser',
+    [accountMode],
   );
   const handleNavigate = useCallback((path: string) => {
     setAppRoute(navigateToAppPath(path));
@@ -2862,6 +2895,7 @@ function App() {
                   stateScope: request.stateScope,
                   temperature: request.temperature,
                   transportMode: aiSettings.aiTransportMode,
+                  providerKeyVaultWorkspaceId,
                 });
                 return response.choices[0]?.message.content?.trim() ?? '';
               },
@@ -2908,6 +2942,7 @@ function App() {
                 disableState: true,
                 transportMode: aiSettings.aiTransportMode,
                 temperature: 0.35,
+                providerKeyVaultWorkspaceId,
               });
 
               if (memoryAgentRunRef.current !== scheduledRun) {
@@ -2967,6 +3002,7 @@ function App() {
       availableModels,
       commitScopedRelationshipMemory,
       getScopedRelationshipMemory,
+      providerKeyVaultWorkspaceId,
       refreshGrilloMemoryState,
       twitchChannel,
     ],
@@ -3686,6 +3722,7 @@ function App() {
           temperature: settings.temperature,
           transportMode: settings.aiTransportMode,
           ttsBridge,
+          providerKeyVaultWorkspaceId,
         });
 
         const assistantReply = await speechPlayer.finish(response.choices[0]?.message.content);
@@ -3754,6 +3791,7 @@ function App() {
       createStreamingAssistantPlayer,
       getScopedRelationshipMemory,
       playAssistantMetadataAnimation,
+      providerKeyVaultWorkspaceId,
       scheduleRelationshipMemoryRefresh,
       activeRelationshipStateKey,
       twitchChannel,
