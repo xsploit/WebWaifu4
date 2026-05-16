@@ -2633,11 +2633,23 @@ input[type='range']::-webkit-slider-thumb {
   transform: translateY(-1px);
 }
 
-.product-field input {
+.product-field input,
+.product-field select {
   background: rgba(0, 0, 0, 0.42);
   border-color: var(--product-border);
   border-radius: 0;
+  color: var(--text-main);
   font-family: var(--product-font-mono);
+}
+
+.product-field select {
+  min-height: 40px;
+}
+
+.product-url-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .product-status-text {

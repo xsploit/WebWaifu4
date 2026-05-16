@@ -257,6 +257,7 @@ function DashboardPage(
 ) {
   const isCloud = props.accountMode.kind === 'supabase-cloud-sync';
   const [profile, setProfile] = useState<ByokProfileResponse | null>(null);
+  const [overlayExpiresInHours, setOverlayExpiresInHours] = useState(24 * 30);
   const [overlayShareUrl, setOverlayShareUrl] = useState('');
   const [status, setStatus] = useState(isCloud ? props.authStatus : props.accountSummary.detail);
   const [pulling, setPulling] = useState(false);
@@ -335,6 +336,7 @@ function DashboardPage(
 
     try {
       const response = await issueByokOverlayToken({
+        expiresInHours: overlayExpiresInHours,
         sceneId: profile.bootstrap.scene.id,
         workspaceId: profile.bootstrap.workspace.id,
       });
@@ -345,6 +347,19 @@ function DashboardPage(
       setStatus(`OBS overlay URL issued. Expires ${response.expiresAt ?? 'later'}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Overlay URL issue failed.');
+    }
+  };
+
+  const handleCopyOverlayUrl = async () => {
+    if (!overlayShareUrl) {
+      setStatus('Issue an OBS overlay URL before copying.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(overlayShareUrl);
+      setStatus('OBS overlay URL copied.');
+    } catch {
+      setStatus('Copy failed. Select the OBS overlay URL field and copy it manually.');
     }
   };
 
@@ -440,6 +455,19 @@ function DashboardPage(
             Drop a browser source into OBS using a signed URL. Local preview opens the overlay in
             this tab.
           </p>
+          <label className="product-field">
+            <span>Signed URL lifetime</span>
+            <select
+              disabled={!isCloud}
+              onChange={(event) => setOverlayExpiresInHours(Number(event.target.value))}
+              value={overlayExpiresInHours}
+            >
+              <option value={24}>24 hours</option>
+              <option value={24 * 7}>7 days</option>
+              <option value={24 * 30}>30 days</option>
+              <option value={24 * 90}>90 days</option>
+            </select>
+          </label>
           <div className="product-actions product-actions-grid">
             <button
               className="product-secondary"
@@ -456,10 +484,20 @@ function DashboardPage(
             </button>
           </div>
           {overlayShareUrl ? (
-            <label className="product-field">
-              <span>OBS overlay URL</span>
-              <input readOnly value={overlayShareUrl} />
-            </label>
+            <div className="product-url-box">
+              <label className="product-field">
+                <span>OBS overlay URL</span>
+                <input readOnly value={overlayShareUrl} />
+              </label>
+              <div className="product-actions product-actions-grid">
+                <button className="product-secondary" onClick={handleCopyOverlayUrl}>
+                  Copy URL
+                </button>
+                <button className="product-secondary" onClick={() => setOverlayShareUrl('')}>
+                  Clear URL
+                </button>
+              </div>
+            </div>
           ) : null}
         </section>
 
