@@ -562,14 +562,34 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   deploy was required. Security review: checked staged/tracked diff for
   `sb_secret`, `sb_publishable`, and provider-secret strings before commit;
   only ignored `.env`/`.env.local` contain configured key values.
+- 2026-05-16: Supabase MCP was added to Codex and authenticated for project
+  `btjccsyoevbczmamoamt`. Configured
+  `C:\Users\SUBSECT\.codex\config.toml` with
+  `remote_mcp_client_enabled = true`, ran `codex mcp add supabase --url ...`,
+  and completed `codex mcp login supabase`; `codex mcp list` / `codex mcp get
+  supabase` show the remote MCP server enabled with OAuth auth. Current Codex
+  session did not expose Supabase MCP tools until a tool/session reload, so the
+  migration was applied through the authenticated Supabase dashboard SQL editor.
+- 2026-05-16: Applied
+  `supabase\migrations\20260515000100_byok_product_spine.sql` in the Supabase
+  SQL editor for project `btjccsyoevbczmamoamt`. Server-side Node REST probe
+  with the configured ignored `.env.local` admin key now returns HTTP 200 for
+  all expected BYOK tables: `profiles`, `workspaces`, `workspace_members`,
+  `scenes`, `characters`, `synced_settings`,
+  `provider_secret_descriptors`, `overlay_tokens`, `memory_entries`, and
+  `assets`. Public VPS route smoke
+  `https://148-113-191-103.sslip.io/api/byok/profile` returns expected HTTP
+  401 `supabase-auth-required`, proving the route is live and now blocked only
+  by auth instead of missing tables. Verification:
+  `npx vitest run` over all `src\lib\product\*.test.ts` and
+  `api\byok\_lib\*.test.ts` -> passed, 17 files, 88 tests; `npm run build` ->
+  passed with existing `onnxruntime-web` eval and large chunk warnings.
 
 ## Current Blocker Or Next Patch
 
-Next UI/product patch: apply
-`supabase\migrations\20260515000100_byok_product_spine.sql` in the Supabase SQL
-editor/CLI for project `btjccsyoevbczmamoamt`, then rerun the Node table probe,
-magic-link sign-in smoke, `/api/byok/profile`, settings sync/pull, and signed
-OBS overlay URL issuance.
+Next UI/product patch: run the magic-link sign-in smoke against the deployed
+app, confirm callback persistence, bootstrap profile/workspace/scene creation,
+settings sync/pull, and signed OBS overlay URL issuance.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
