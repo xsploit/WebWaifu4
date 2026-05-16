@@ -1,5 +1,7 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ByokAccountMode } from '../../../lib/product/account-mode';
+import type { ProviderKind, ProviderSecretDescriptor } from '../../../lib/product/byok';
+import { createBrowserProviderKeyVault } from '../../../lib/product/provider-key-vault';
 import {
   describeByokAccountShell,
   normalizeAccountEmail,
@@ -14,6 +16,19 @@ type AccountTabProps = {
   supabaseConfig: SupabasePublicConfig;
 };
 
+type LocalProviderKeyConfig = {
+  keyName: string;
+  label: string;
+  provider: ProviderKind;
+};
+
+const LOCAL_PROVIDER_KEYS: LocalProviderKeyConfig[] = [
+  { provider: 'openai', keyName: 'openai.apiKey', label: 'OpenAI' },
+  { provider: 'fish_speech', keyName: 'fishSpeech.apiKey', label: 'Fish Speech' },
+  { provider: 'inworld', keyName: 'inworld.apiKey', label: 'Inworld' },
+  { provider: 'tavily', keyName: 'tavily.apiKey', label: 'Tavily' },
+];
+
 function getBrowserRedirectUrl() {
   if (typeof window === 'undefined') {
     return undefined;
@@ -24,6 +39,23 @@ function getBrowserRedirectUrl() {
 
 function formatList(values: readonly string[]) {
   return values.length > 0 ? values.join(', ') : 'none';
+}
+
+function getProviderVaultWorkspaceId(accountMode: ByokAccountMode) {
+  if (accountMode.kind === 'supabase-cloud-sync') {
+    return `user:${accountMode.user.id}`;
+  }
+  return 'local-browser';
+}
+
+function findProviderDescriptor(
+  descriptors: ProviderSecretDescriptor[],
+  config: LocalProviderKeyConfig,
+) {
+  return descriptors.find(
+    (descriptor) =>
+      descriptor.provider === config.provider && descriptor.keyName === config.keyName,
+  );
 }
 
 export function AccountTab({
@@ -37,8 +69,32 @@ export function AccountTab({
   const [loginStatus, setLoginStatus] = useState(summary.detail);
   const [sending, setSending] = useState(false);
   const mountedRef = useRef(true);
+  const providerVaultWorkspaceId = useMemo(
+    () => getProviderVaultWorkspaceId(accountMode),
+    [accountMode],
+  );
+  const providerVault = useMemo(
+    () =>
+      createBrowserProviderKeyVault({
+        mode: accountMode.providerKeyMode,
+        workspaceId: providerVaultWorkspaceId,
+      }),
+    [accountMode.providerKeyMode, providerVaultWorkspaceId],
+  );
+  const [providerInputs, setProviderInputs] = useState<Record<string, string>>({});
+  const [providerDescriptors, setProviderDescriptors] = useState<ProviderSecretDescriptor[]>([]);
+  const [providerStatus, setProviderStatus] = useState(
+    'Provider keys stay in this browser only.',
+  );
   const normalizedEmail = normalizeAccountEmail(email);
   const loginAvailable = accountMode.loginAvailable && supabaseConfig.status === 'configured';
+
+  const refreshProviderDescriptors = useCallback(async () => {
+    const descriptors = await providerVault.listSecretDescriptors();
+    if (mountedRef.current) {
+      setProviderDescriptors(descriptors);
+    }
+  }, [providerVault]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -50,6 +106,10 @@ export function AccountTab({
   useEffect(() => {
     setLoginStatus(authStatus || summary.detail);
   }, [authStatus, summary.detail]);
+
+  useEffect(() => {
+    void refreshProviderDescriptors();
+  }, [refreshProviderDescriptors]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +132,44 @@ export function AccountTab({
         setSending(false);
       }
     }
+  }
+
+  async function handleSaveProviderKey(config: LocalProviderKeyConfig) {
+    const secret = providerInputs[config.keyName]?.trim() ?? '';
+    if (!secret) {
+      setProviderStatus(`${config.label} key is empty.`);
+      return;
+    }
+
+    try {
+      const descriptor = await providerVault.setSecret({
+        provider: config.provider,
+        keyName: config.keyName,
+        secret,
+      });
+      if (!mountedRef.current) {
+        return;
+      }
+      setProviderInputs((previous) => ({ ...previous, [config.keyName]: '' }));
+      setProviderStatus(`${config.label} saved as ${descriptor.redactedLabel}.`);
+      await refreshProviderDescriptors();
+    } catch (error) {
+      if (mountedRef.current) {
+        setProviderStatus(
+          error instanceof Error ? error.message : `Could not save ${config.label} key.`,
+        );
+      }
+    }
+  }
+
+  async function handleDeleteProviderKey(config: LocalProviderKeyConfig) {
+    await providerVault.deleteSecret(config.provider, config.keyName);
+    if (!mountedRef.current) {
+      return;
+    }
+    setProviderInputs((previous) => ({ ...previous, [config.keyName]: '' }));
+    setProviderStatus(`${config.label} key removed from this browser.`);
+    await refreshProviderDescriptors();
   }
 
   return (
@@ -130,6 +228,61 @@ export function AccountTab({
         </div>
         <div className="status-copy">{loginStatus}</div>
       </form>
+
+      <div className="control-group">
+        <div className="control-label">Browser Provider Keys</div>
+        <div className="field-hint">
+          These keys are saved only in this browser vault for BYOK mode. Cloud sync stores status
+          descriptors only, never the secret values.
+        </div>
+        <div className="provider-key-list">
+          {LOCAL_PROVIDER_KEYS.map((config) => {
+            const descriptor = findProviderDescriptor(providerDescriptors, config);
+            const inputValue = providerInputs[config.keyName] ?? '';
+            return (
+              <div className="provider-key-row" key={config.keyName}>
+                <div className="provider-key-heading">
+                  <span>{config.label}</span>
+                  <strong>{descriptor?.redactedLabel ?? 'not set'}</strong>
+                </div>
+                <input
+                  autoComplete="off"
+                  className="input-tech"
+                  onChange={(event) =>
+                    setProviderInputs((previous) => ({
+                      ...previous,
+                      [config.keyName]: event.target.value,
+                    }))
+                  }
+                  placeholder={`Paste ${config.label} key`}
+                  spellCheck={false}
+                  type="password"
+                  value={inputValue}
+                />
+                <div className="btn-row provider-key-actions">
+                  <button
+                    className="btn-tech secondary"
+                    disabled={!inputValue.trim()}
+                    onClick={() => void handleSaveProviderKey(config)}
+                    type="button"
+                  >
+                    Save Key
+                  </button>
+                  <button
+                    className="btn-tech secondary"
+                    disabled={!descriptor}
+                    onClick={() => void handleDeleteProviderKey(config)}
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="status-copy">{providerStatus}</div>
+      </div>
 
       <div className="control-group">
         <div className="control-label">Cloud Sync Config</div>
