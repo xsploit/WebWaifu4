@@ -885,17 +885,20 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   Targeted provider-secret review: OpenRouter/OpenAI keys are read only from the
   browser vault, sent only in `Authorization` headers, are not placed in JSON
   bodies, and remain excluded from synced/cloud settings by the BYOK classifier.
+  Commit `ce0f1e1` was pushed to `origin/codex/byok-product-spine`. Deployed the
+  rebuilt `dist` to the OVH VPS, restarted `serve-dist.mjs` on PID `2255009`,
+  verified local and public dashboards serve `/assets/index-ChV6xoB0.js`, and
+  verified `http://127.0.0.1:8787/health` returns `serverProviderProxyEnabled:
+  false`.
 
 ## Current Blocker Or Next Patch
 
-Next BYOK product patch: commit, push, and deploy the OpenRouter app-owned
-Responses bundle to the VPS, then run a browser smoke with a saved OpenRouter
-key: local chat reply, diary pass, and semantic memory lookup/write. If no
-OpenRouter key is present in the browser vault, continue Fish/Inworld BYOK
-behavior or add an explicit unsupported-browser-local status for remote TTS.
-Supabase MCP/schema audit remains queued before more database policy work.
-Remaining server work: signed overlay token rotation or revocation backend
-semantics.
+Next BYOK product patch: run a browser smoke with a saved OpenRouter key: local
+chat reply, diary pass, and semantic memory lookup/write. If no OpenRouter key
+is present in the browser vault, continue Fish/Inworld BYOK behavior or add an
+explicit unsupported-browser-local status for remote TTS. Supabase MCP/schema
+audit remains queued before more database policy work. Remaining server work:
+signed overlay token rotation or revocation backend semantics.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits
