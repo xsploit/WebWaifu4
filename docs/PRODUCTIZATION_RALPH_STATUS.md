@@ -358,6 +358,11 @@ src/lib/product/supabase-env.test.ts src/lib/product/byok.test.ts` -> passed,
 src/lib/product/byok.test.ts src/lib/product/server-route-ownership.test.ts
 api/byok/_lib/overlay-token.test.ts api/byok/_lib/supabase-context.test.ts
 src/lib/product/byok-api.test.ts` -> passed, 6 files, 33 tests.
+- 2026-05-15: Hosted deployment checkpoint added `vercel.json` with the pinned
+  build command/output directory and SPA rewrites for product routes. This keeps
+  direct refresh/open of `/login`, `/auth/callback`, `/account`, `/dashboard`,
+  and `/overlay/:sceneId` from falling through to a hosted 404 while preserving
+  `/api/byok/*` as serverless API routes.
 - 2026-05-14: Code-review iteration inspected `README.md`,
   `docs\PRODUCTIZATION_RALPH_STATUS.md`, `docs\grillo-memory-status.md`,
   `docs\STREAM_ROUTELET.md`, `git status --short` (clean), and

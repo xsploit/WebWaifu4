@@ -65,6 +65,10 @@ Serverless APIs live under:
 api/byok/*
 ```
 
+`vercel.json` pins the build command, `dist` output directory, and SPA rewrites
+for `/login`, `/auth/callback`, `/account`, `/dashboard`, and
+`/overlay/:sceneId`.
+
 The local/VPS bot server still exists for streaming and power-user workflows,
 but the BYOK account/cloud-sync path is Vercel-shaped.
 
