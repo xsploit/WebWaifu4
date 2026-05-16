@@ -854,14 +854,30 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   `dist` to the OVH VPS, restarted `serve-dist.mjs`, verified the public
   dashboard returned HTTP 200, and confirmed the public bundle references
   `/assets/index-BTiohzsv.js`.
+- 2026-05-16 OpenRouter BYOK key checkpoint: added OpenRouter as a first-class
+  provider key type and Account-tab browser-local key slot. `openrouter.apiKey`
+  is now classified as a provider secret, exported descriptors stay redacted,
+  and the key appears beside OpenAI/Fish/Inworld/Tavily in the browser vault UI.
+  This only adds the safe key source; the transport wiring remains a follow-up
+  because OpenRouter Responses is provider-stateless and must use app-owned
+  memory/state. Verification:
+  `npx vitest run src/lib/product/byok.test.ts src/lib/product/provider-key-vault.test.ts`
+  -> passed, 2 files, 11 tests; `npm run build` -> passed with existing
+  `onnxruntime-web` eval and large chunk warnings; `git diff --check` -> passed
+  with line-ending warnings only; changed file scan found no literal provider
+  secrets or auth tokens. Deployment pending for the rebuilt `dist` bundle in
+  the same checkpoint.
 
 ## Current Blocker Or Next Patch
 
-Next BYOK product patch: add a browser smoke for saved OpenAI BYOK chat and
-semantic memory on the deployed app when a local key is present, then add
-equivalent Fish/Inworld BYOK behavior. Supabase MCP/schema audit remains queued
-before more database policy work. Remaining server work: signed overlay token
-rotation or revocation backend semantics.
+Next BYOK product patch: wire OpenRouter as an app-owned-state LLM transport
+using the browser-local `openrouter.apiKey` and OpenRouter Responses endpoint
+where practical, with an honest UI state label that it does not use OpenAI
+Conversations/previous-response state. Then add a browser smoke for saved OpenAI
+BYOK chat/semantic memory when a local key is present, and continue Fish/Inworld
+BYOK behavior. Supabase MCP/schema audit remains queued before more database
+policy work. Remaining server work: signed overlay token rotation or revocation
+backend semantics.
 
 Next efficiency read remains: inspect the SSE live-bridge close path for chat
 queue stall risk. Current evidence to re-check: `server\src\index.ts` awaits

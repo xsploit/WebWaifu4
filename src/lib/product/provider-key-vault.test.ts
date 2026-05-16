@@ -76,6 +76,32 @@ describe('provider key vault', () => {
     expect(await vault.getSecret('fish_speech', 'fishSpeech.apiKey')).toBe('fish-new-secret');
   });
 
+  it('stores OpenRouter keys as local-only provider secrets', async () => {
+    const storage = createStorage();
+    const vault = createBrowserProviderKeyVault({
+      workspaceId: 'workspace-1',
+      storage,
+    });
+
+    const descriptor = await vault.setSecret({
+      provider: 'openrouter',
+      keyName: 'openrouter.apiKey',
+      secret: 'or-test-secret-123456',
+      now: '2026-05-15T12:00:00.000Z',
+    });
+
+    expect(descriptor).toMatchObject({
+      id: 'workspace-1:openrouter:openrouter.apiKey',
+      keyName: 'openrouter.apiKey',
+      provider: 'openrouter',
+      redactedLabel: 'or-tes...3456',
+    });
+    expect(await vault.getSecret('openrouter', 'openrouter.apiKey')).toBe('or-test-secret-123456');
+    expect(JSON.stringify(exportProviderSecretDescriptorsForSync([descriptor]))).not.toContain(
+      'or-test-secret-123456',
+    );
+  });
+
   it('deletes secret material and removes the descriptor from the local index', async () => {
     const storage = createStorage();
     const vault = createBrowserProviderKeyVault({

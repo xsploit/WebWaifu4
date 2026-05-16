@@ -8,7 +8,13 @@ export type ProductStorageMode = 'local-only' | 'cloud-sync';
 
 export type ProviderKeyMode = 'local-indexeddb' | 'hosted-encrypted-vault';
 
-export type ProviderKind = 'openai' | 'fish_speech' | 'inworld' | 'tavily' | 'custom';
+export type ProviderKind =
+  | 'openai'
+  | 'openrouter'
+  | 'fish_speech'
+  | 'inworld'
+  | 'tavily'
+  | 'custom';
 
 export type SettingStorageClass =
   | 'public-overlay'
@@ -103,6 +109,7 @@ export type OverlayTokenClaims = {
 
 export const PROVIDER_SECRET_ENV_NAMES: Record<ProviderKind, readonly string[]> = {
   openai: ['OPENAI_API_KEY'],
+  openrouter: ['OPENROUTER_API_KEY'],
   fish_speech: ['FISH_AUDIO_API_KEY', 'FISH_SPEECH_API_KEY'],
   inworld: ['INWORLD_API_KEY'],
   tavily: ['TAVILY_API_KEY'],
@@ -121,6 +128,7 @@ export const BYOK_STACK_DECISION: ProductStackDecision = {
 
 const LOCAL_SECRET_SETTING_KEYS = new Set([
   'openai.apiKey',
+  'openrouter.apiKey',
   'fishSpeech.apiKey',
   'inworld.apiKey',
   'tavily.apiKey',

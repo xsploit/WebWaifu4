@@ -26,6 +26,10 @@ describe('BYOK product contracts', () => {
   it('keeps provider keys out of synced settings by default', () => {
     expect(classifyByokSetting('openai.apiKey', 'local-indexeddb')).toBe('local-secret');
     expect(classifyByokSetting('openai.apiKey', 'hosted-encrypted-vault')).toBe('hosted-secret');
+    expect(classifyByokSetting('openrouter.apiKey', 'local-indexeddb')).toBe('local-secret');
+    expect(classifyByokSetting('openrouter.apiKey', 'hosted-encrypted-vault')).toBe(
+      'hosted-secret',
+    );
     expect(classifyByokSetting('visualSettings', 'local-indexeddb')).toBe('public-overlay');
     expect(classifyByokSetting('aiSettings.model', 'local-indexeddb')).toBe('synced-private');
     expect(classifyByokSetting('auth.supabaseServiceRoleKey', 'local-indexeddb')).toBe(
