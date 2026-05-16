@@ -835,8 +835,11 @@ server/src/tts/RemoteTtsProvider.test.ts` -> passed, 2 files, 3 tests.
   src/lib/product/provider-key-vault.test.ts` -> passed, 2 files, 7 tests;
   `npm run build` -> passed with existing `onnxruntime-web` eval and large chunk
   warnings; `git diff --check` -> passed with line-ending warnings only; changed
-  file scan found no literal provider secrets or auth tokens. Deployment pending
-  for the rebuilt `dist` bundle in the same checkpoint.
+  file scan found no literal provider secrets or auth tokens. Deployed rebuilt
+  `dist` to the OVH VPS, restarted `serve-dist.mjs`, verified local
+  `http://127.0.0.1:4173/dashboard` and public
+  `https://148-113-191-103.sslip.io/dashboard` returned HTTP 200, and confirmed
+  the public bundle references `/assets/index-B431m29c.js`.
 
 ## Current Blocker Or Next Patch
 
