@@ -94,6 +94,93 @@ describe('serverless AI chat route', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('uses browser-vault OpenAI and Tavily keys when the server proxy env is disabled', async () => {
+    vi.stubEnv('OPENAI_MODEL', 'gpt-5.5');
+    vi.stubEnv('OPENAI_STATE_MODE', 'stateless');
+
+    const openAiCalls: FetchCall[] = [];
+    const tavilyCalls: FetchCall[] = [];
+    let openAiResponseIndex = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      if (url === 'https://api.tavily.com/search') {
+        tavilyCalls.push({ url, body });
+        return new Response(JSON.stringify({ answer: 'fresh result', results: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      openAiCalls.push({ url, body });
+      if (openAiResponseIndex++ === 0) {
+        return new Response(
+          JSON.stringify({
+            id: 'resp_tool',
+            output: [
+              {
+                type: 'function_call',
+                call_id: 'call_search',
+                name: 'web_search',
+                arguments: JSON.stringify({ query: 'vtuber news', max_results: 1 }),
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: 'resp_final',
+          output_text: 'Tool result used.',
+          usage: { input_tokens_details: { cached_tokens: 3 } },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    }) as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          'x-yourwifey-llm-provider-key': 'browser-openai-key',
+          'x-yourwifey-tavily-provider-key': 'browser-tavily-key',
+        },
+        body: {
+          messages: [
+            { role: 'system', content: 'Use tools when useful.' },
+            { role: 'user', content: 'search this' },
+          ],
+          stateKey: 'test:browser-tool-key',
+        },
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.jsonBody).toMatchObject({
+      ok: true,
+      text: 'Tool result used.',
+      meta: {
+        toolsAvailable: true,
+        toolsUsed: ['web_search'],
+      },
+    });
+    expect(openAiCalls).toHaveLength(2);
+    expect(tavilyCalls).toHaveLength(1);
+    expect(tavilyCalls[0]?.body).toMatchObject({ query: 'vtuber news' });
+  });
+
   it('keeps streamed tool-call arguments when call_id arrives after argument events', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-openai');
     vi.stubEnv('OPENAI_MODEL', 'gpt-5.5');

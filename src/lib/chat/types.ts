@@ -109,14 +109,22 @@ export type AiProxyHealth = {
   serverProviderProxyEnabled?: boolean;
   providerState?: {
     cachedTokens?: number;
+    conversationId?: string | null;
     previousResponseId?: string | null;
     promptCacheKey?: string;
     promptCacheRetention?: string;
+    requestedTransport?: string;
     stateMode?: string;
+    stateKeys?: string[];
     store?: boolean;
     toolNames?: string[];
     toolsAvailable?: boolean;
+    toolsSource?: string;
+    transport?: string;
+    websocketConfigured?: boolean;
     websocketConnected?: boolean;
+    websocketLifecycle?: string;
+    websocketStatus?: string;
   } | null;
   ttsProviders?: {
     fishSpeech?: {

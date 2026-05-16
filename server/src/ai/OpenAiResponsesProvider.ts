@@ -107,6 +107,24 @@ type OpenAiRequestRuntime = {
   useWebSocket: boolean;
 };
 
+function getWebSocketStatus(ws: WebSocket | null) {
+  if (!ws) {
+    return 'idle';
+  }
+  switch (ws.readyState) {
+    case WebSocket.CONNECTING:
+      return 'connecting';
+    case WebSocket.OPEN:
+      return 'connected';
+    case WebSocket.CLOSING:
+      return 'closing';
+    case WebSocket.CLOSED:
+      return 'closed';
+    default:
+      return 'unknown';
+  }
+}
+
 type StreamingFunctionCallState = {
   callsById: Map<string, OpenAiFunctionCall>;
   callsByOutputIndex: Map<number, OpenAiFunctionCall>;
@@ -432,7 +450,12 @@ export class OpenAiResponsesProvider implements ChatProvider {
       store: this.options.store,
       toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
       toolsAvailable: Boolean(this.options.tavilyTools),
+      requestedTransport: 'server-default',
+      transport: this.options.useWebSocket ? 'websocket' : 'http-stream',
+      websocketConfigured: this.options.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
+      websocketStatus: this.options.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
+      websocketLifecycle: this.options.useWebSocket ? 'request-scoped' : 'disabled',
     };
   }
 
@@ -579,7 +602,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
         : null,
       toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
       toolsAvailable: Boolean(this.options.tavilyTools),
+      websocketConfigured: runtime.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
+      websocketStatus: runtime.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
+      websocketLifecycle: runtime.useWebSocket ? 'request-scoped' : 'disabled',
     };
   }
 

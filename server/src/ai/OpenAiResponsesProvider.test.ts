@@ -250,6 +250,32 @@ function createStreamingToolCallingFetcher(calls: FetchCall[]) {
 }
 
 describe('OpenAiResponsesProvider', () => {
+  it('reports websocket transport as request scoped when idle', () => {
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      store: true,
+      reasoningEffort: 'none',
+      useWebSocket: true,
+      webSocketUrl: 'wss://api.openai.com/v1/responses',
+      fetcher: createFetcher([]),
+    });
+
+    expect(provider.getState()).toMatchObject({
+      provider: 'openai-responses-ws',
+      requestedTransport: 'server-default',
+      transport: 'websocket',
+      websocketConfigured: true,
+      websocketConnected: false,
+      websocketLifecycle: 'request-scoped',
+      websocketStatus: 'idle',
+    });
+  });
+
   it('passes request generation settings into Responses API payloads', async () => {
     const calls: FetchCall[] = [];
     const provider = new OpenAiResponsesProvider({

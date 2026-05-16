@@ -637,6 +637,15 @@ async function buildBackendProviderHeaders({
     headers['x-yourwifey-llm-provider-key'] = apiKey;
   }
 
+  const tavilyApiKey = await getBrowserProviderApiKey({
+    keyName: 'tavily.apiKey',
+    provider: 'tavily',
+    providerKeyVaultWorkspaceId,
+  });
+  if (tavilyApiKey) {
+    headers['x-yourwifey-tavily-provider-key'] = tavilyApiKey;
+  }
+
   if (ttsBridge?.provider) {
     const ttsApiKey = await getBrowserRemoteTtsApiKey(
       ttsBridge.provider,
@@ -1652,9 +1661,13 @@ function App() {
 
   const refreshAiProxyHealth = useCallback(async () => {
     try {
+      const providerHeaders = await buildBackendProviderHeaders({
+        llmProvider: aiSettingsRef.current.llmProvider,
+        providerKeyVaultWorkspaceId,
+      });
       const response = await fetch(getAiHealthUrl(), {
         cache: 'no-store',
-        headers: { Accept: 'application/json' },
+        headers: { ...providerHeaders, Accept: 'application/json' },
       });
       if (!response.ok) {
         throw new Error(`AI proxy health failed with HTTP ${response.status}.`);
@@ -1670,7 +1683,7 @@ function App() {
         error instanceof Error ? error.message : 'AI proxy health check failed.',
       );
     }
-  }, []);
+  }, [providerKeyVaultWorkspaceId]);
 
   const stopTtsPlayback = useCallback(() => {
     ttsManager.stop();

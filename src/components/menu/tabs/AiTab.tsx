@@ -25,6 +25,54 @@ function updateAiSettings(
   }));
 }
 
+function formatProviderTransport(providerState: AiProxyHealth['providerState']) {
+  const transport =
+    providerState?.transport === 'websocket'
+      ? 'Responses WebSocket'
+      : providerState?.transport === 'http-stream'
+        ? 'HTTP stream'
+        : 'unknown';
+  if (providerState?.websocketLifecycle === 'request-scoped') {
+    return `${transport} (opens per reply)`;
+  }
+  return transport;
+}
+
+function formatProviderSocket(providerState: AiProxyHealth['providerState']) {
+  if (!providerState?.websocketConfigured) {
+    return 'disabled';
+  }
+  const status = providerState.websocketStatus ?? 'idle';
+  if (providerState.websocketLifecycle === 'request-scoped' && status === 'idle') {
+    return 'idle between replies';
+  }
+  return status;
+}
+
+function formatProviderStateId(providerState: AiProxyHealth['providerState']) {
+  const id =
+    providerState?.stateMode === 'conversation'
+      ? providerState.conversationId
+      : providerState?.previousResponseId;
+  if (!id) {
+    return 'not created yet';
+  }
+  return `${id.slice(0, 14)}...`;
+}
+
+function describeProviderState(providerState: AiProxyHealth['providerState']) {
+  switch (providerState?.stateMode) {
+    case 'conversation':
+      return 'Conversation mode creates an OpenAI conversation after the first stateful reply for this channel/persona. Fresh POML instructions still go with each turn.';
+    case 'previous-response':
+      return 'Previous-response mode tracks the latest response id per channel/persona when the backend can chain it.';
+    case 'stateless':
+      return 'Stateless mode does not keep provider-side state, but the app still sends diary, semantic memory, and current transcript context.';
+    default:
+      return 'The backend reports the active provider state after transport refresh.';
+  }
+}
+
 export function AiTab({
   activePersonaName,
   aiProxyHealth,
@@ -148,25 +196,33 @@ export function AiTab({
           Provider: <strong>{aiProxyHealth?.aiProvider ?? 'unknown'}</strong>
         </div>
         <div className="status-copy">
-          State: <strong>{providerState?.stateMode ?? 'unknown'}</strong> / WS:{' '}
-          <strong>{providerState?.websocketConnected ? 'connected' : 'not connected'}</strong>
+          State: <strong>{providerState?.stateMode ?? 'unknown'}</strong> / id:{' '}
+          <strong>{formatProviderStateId(providerState)}</strong>
         </div>
         <div className="status-copy">
-          Cache: <strong>{providerState?.promptCacheKey ?? 'none'}</strong> / cached tokens:{' '}
-          <strong>{providerState?.cachedTokens ?? 0}</strong>
+          Transport: <strong>{formatProviderTransport(providerState)}</strong>
+        </div>
+        <div className="status-copy">
+          Socket: <strong>{formatProviderSocket(providerState)}</strong>
+        </div>
+        <div className="status-copy">
+          Prompt cache: <strong>{providerState?.promptCacheKey ?? 'none'}</strong> / last cached
+          tokens: <strong>{providerState?.cachedTokens ?? 0}</strong>
         </div>
         <div className="status-copy">
           Tools:{' '}
           <strong>
             {providerState?.toolsAvailable
-              ? providerState.toolNames?.join(', ') || 'available'
+              ? `${providerState.toolNames?.join(', ') || 'available'}${
+                  providerState.toolsSource ? ` (${providerState.toolsSource})` : ''
+                }`
               : 'not configured'}
           </strong>
         </div>
+        <div className="field-hint">{describeProviderState(providerState)}</div>
         <div className="field-hint">
-          Previous Response keeps the latest response id per channel. Conversation mode uses the
-          OpenAI conversation object when the backend supports it. Stateless still receives memory
-          and diary context from the app.
+          Cached tokens are the last value reported by the provider. A zero here means no cached
+          token usage has been reported yet, not that prompt caching is disabled.
         </div>
         <button className="btn-tech secondary" onClick={onRefreshAiProxyHealth} type="button">
           Refresh Transport

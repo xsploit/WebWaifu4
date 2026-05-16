@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
 import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
+import { TAVILY_OPENAI_TOOLS } from './ai/TavilyTools.js';
 import type {
   ChatProvider,
   ChatProviderMessage,
@@ -67,7 +68,7 @@ type MatchedByokApiRoute = {
 };
 
 const CORS_REQUEST_HEADERS =
-  'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key';
+  'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
 
 function createProvider(config: StreamBotConfig): ChatProvider {
   if (!config.providerProxyEnabled) {
@@ -275,6 +276,10 @@ function getHeaderSecret(request: IncomingMessage, name: string) {
   return getHeaderValue(request, name)?.trim() ?? '';
 }
 
+function getRuntimeTavilyApiKey(baseConfig: StreamBotConfig, request: IncomingMessage) {
+  return getHeaderSecret(request, 'x-yourwifey-tavily-provider-key') || baseConfig.tavilyApiKey;
+}
+
 function normalizeRuntimeLlmProvider(value: unknown) {
   return value === 'openrouter-responses' ? 'openrouter-responses' : 'openai-responses';
 }
@@ -290,22 +295,32 @@ function getRuntimeChatProvider(
   model?: string,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
-  if (!apiKey) {
+  const tavilyApiKey = getRuntimeTavilyApiKey(baseConfig, request);
+  const hasBrowserTavilyKey = Boolean(getHeaderSecret(request, 'x-yourwifey-tavily-provider-key'));
+  if (!apiKey && !hasBrowserTavilyKey) {
     return baseConfig.providerProxyEnabled ? provider : null;
+  }
+  const effectiveApiKey = apiKey || baseConfig.aiApiKey;
+  if (!effectiveApiKey) {
+    return null;
   }
 
   const providerName = normalizeRuntimeLlmProvider(
     getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
   );
+  if (!apiKey && providerName === 'openrouter-responses') {
+    return null;
+  }
   const runtimeConfig: StreamBotConfig = {
     ...baseConfig,
     aiApiBaseUrl:
       providerName === 'openrouter-responses'
         ? 'https://openrouter.ai/api/v1'
         : baseConfig.aiApiBaseUrl,
-    aiApiKey: apiKey,
+    aiApiKey: effectiveApiKey,
     aiModel: model?.trim() || baseConfig.aiModel,
     aiProvider: 'openai-responses',
+    tavilyApiKey,
     openAiStateMode:
       providerName === 'openrouter-responses' ? 'stateless' : baseConfig.openAiStateMode,
     openAiStore: providerName === 'openrouter-responses' ? false : baseConfig.openAiStore,
@@ -319,7 +334,8 @@ function getRuntimeChatProvider(
     runtimeConfig.aiModel,
     runtimeConfig.openAiStateMode,
     runtimeConfig.openAiStore ? 'store' : 'no-store',
-    hashSecret(apiKey),
+    runtimeConfig.tavilyApiKey ? hashSecret(runtimeConfig.tavilyApiKey) : 'no-tools',
+    hashSecret(effectiveApiKey),
   ].join('|');
   let runtimeProvider = runtimeProviderCache.get(cacheKey);
   if (!runtimeProvider) {
@@ -838,6 +854,19 @@ const httpServer = createServer(async (request, response) => {
   const runtimePath = getRuntimeApiPath(url.pathname);
 
   if (request.method === 'GET' && runtimePath === '/health') {
+    const providerState = config.providerProxyEnabled ? (provider.getState?.() ?? null) : null;
+    const runtimeTavilyApiKey = getRuntimeTavilyApiKey(config, request);
+    const healthProviderState =
+      providerState && runtimeTavilyApiKey
+        ? {
+            ...providerState,
+            toolNames: TAVILY_OPENAI_TOOLS.map((tool) => tool.name),
+            toolsAvailable: true,
+            toolsSource: getHeaderSecret(request, 'x-yourwifey-tavily-provider-key')
+              ? 'browser-vault'
+              : 'server-env',
+          }
+        : providerState;
     writeJson(response, 200, {
       ok: true,
       twitchMode: serverTwitchMode,
@@ -847,7 +876,7 @@ const httpServer = createServer(async (request, response) => {
       aiProvider: config.providerProxyEnabled ? config.aiProvider : 'disabled',
       serverProviderProxyEnabled: config.providerProxyEnabled,
       model: config.providerProxyEnabled ? (provider.getModel?.() ?? config.aiModel) : null,
-      providerState: config.providerProxyEnabled ? (provider.getState?.() ?? null) : null,
+      providerState: healthProviderState,
       ttsProviders: {
         fishSpeech: {
           configured: config.providerProxyEnabled && Boolean(config.fishSpeechApiKey),

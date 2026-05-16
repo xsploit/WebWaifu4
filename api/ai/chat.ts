@@ -9,6 +9,7 @@ import {
 type ApiRequest = {
   method?: string;
   body?: unknown;
+  headers?: Record<string, string | string[] | undefined>;
 };
 
 type ApiResponse = {
@@ -284,8 +285,8 @@ function isFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
 function isStreamingFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      (value as Record<string, unknown>)['type'] === 'function_call',
+    typeof value === 'object' &&
+    (value as Record<string, unknown>)['type'] === 'function_call',
   );
 }
 
@@ -484,6 +485,15 @@ function getOpenAiHeaders(apiKey: string) {
   return headers;
 }
 
+function getHeaderValue(request: ApiRequest, name: string) {
+  const value = request.headers?.[name.toLowerCase()] ?? request.headers?.[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getHeaderSecret(request: ApiRequest, name: string) {
+  return getHeaderValue(request, name)?.trim() ?? '';
+}
+
 function numberFromEnv(name: string, fallback: number) {
   const raw = process.env[name];
   if (!raw) {
@@ -493,8 +503,10 @@ function numberFromEnv(name: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function getTavilyTools(): TavilyToolOptions | null {
-  const apiKey = process.env['TAVILY_API_KEY']?.trim();
+function getTavilyTools(request: ApiRequest): TavilyToolOptions | null {
+  const apiKey =
+    getHeaderSecret(request, 'x-yourwifey-tavily-provider-key') ||
+    process.env['TAVILY_API_KEY']?.trim();
   if (!apiKey) {
     return null;
   }
@@ -730,7 +742,10 @@ async function readOpenAiStream(
 export default async function handler(request: ApiRequest, response: ApiResponse) {
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'content-type');
+  response.setHeader(
+    'Access-Control-Allow-Headers',
+    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tavily-provider-key',
+  );
 
   if (request.method === 'OPTIONS') {
     response.status(204).json({});
@@ -742,12 +757,13 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  if (!isServerAiProxyEnabled()) {
+  const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  if (!browserLlmApiKey && !isServerAiProxyEnabled()) {
     response.status(200).json({ ok: false, error: 'Server AI proxy is disabled for BYOK mode.' });
     return;
   }
 
-  const apiKey = process.env['OPENAI_API_KEY'] || process.env['AI_API_KEY'];
+  const apiKey = browserLlmApiKey || process.env['OPENAI_API_KEY'] || process.env['AI_API_KEY'];
   if (!apiKey) {
     response.status(200).json({ ok: false, error: 'OPENAI_API_KEY is not configured.' });
     return;
@@ -787,7 +803,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   const responseFormat = normalizeResponseFormat(body.responseFormat);
   const state = getRouteState(stateKey);
   const promptCacheKey = process.env['OPENAI_PROMPT_CACHE_KEY']?.trim() || '';
-  const tavilyTools = getTavilyTools();
+  const tavilyTools = getTavilyTools(request);
   const canUsePreviousResponse = !stateDisabled && stateMode === 'previous-response' && store;
   const signature = createStateSignature(model, promptCacheKey);
   if (!stateDisabled) {
