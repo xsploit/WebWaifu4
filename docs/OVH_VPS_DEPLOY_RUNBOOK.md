@@ -128,9 +128,9 @@ Expected unauthenticated result: HTTP `401` with
 
 Authenticated BYOK smoke should create a temporary Supabase auth user, sign in,
 call the public VPS `/api/byok/profile`, verify profile/workspace/scene
-bootstrap, read the workspace, and delete the temporary user. Use the existing
-Node smoke pattern recorded in `docs/PRODUCTIZATION_RALPH_STATUS.md`; do not
-print tokens or key values.
+bootstrap, read the workspace, and delete the temporary user. Keep the smoke
+script local or in `scripts/` if it becomes reusable; do not print tokens or key
+values.
 
 ## Known 2026-05-16 Fix
 

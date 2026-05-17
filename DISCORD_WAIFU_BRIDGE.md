@@ -5,6 +5,7 @@
 `YourWifey` is the better base for the actual "waifu in Discord" experience.
 
 Use this repo as:
+
 - the avatar shell
 - the VRM renderer
 - the Piper/TTS playback layer
@@ -12,6 +13,7 @@ Use this repo as:
 - the local persona/chat sandbox
 
 Use `dvb` as:
+
 - the Discord bot
 - the Discord message/voice ingestion layer
 - the server/channel/user context layer
@@ -34,8 +36,7 @@ This repo already has the important pieces:
   - [src/lib/tts/manager.ts](C:/Users/SUBSECT/Documents/GitHub/YourWifey/src/lib/tts/manager.ts)
 - Persona defaults including Neuro-sama:
   - [src/lib/chat/defaults.ts](C:/Users/SUBSECT/Documents/GitHub/YourWifey/src/lib/chat/defaults.ts)
-- Existing local demos for LM Studio + Piper:
-  - [lmstudio-piper-chat-demo.js](C:/Users/SUBSECT/Documents/GitHub/YourWifey/lmstudio-piper-chat-demo.js)
+- Existing Piper TTS test harness:
   - [piper-tts-test.js](C:/Users/SUBSECT/Documents/GitHub/YourWifey/piper-tts-test.js)
 
 That means the face layer already exists here. Rebuilding it in `dvb` would be backwards.
@@ -45,6 +46,7 @@ That means the face layer already exists here. Rebuilding it in `dvb` would be b
 ### `YourWifey`
 
 Responsible for:
+
 - rendering the avatar
 - playing TTS audio
 - driving mouth/lipsync/animation
@@ -55,6 +57,7 @@ Responsible for:
 ### `dvb`
 
 Responsible for:
+
 - Discord DMs, mentions, threads, channels, voice
 - guild/user/channel/message lookup
 - autonomy, heartbeat, memory, moderation policy
@@ -66,6 +69,7 @@ Responsible for:
 The missing piece is a websocket/event bridge between the two.
 
 `dvb` sends events like:
+
 - `scope_activated`
 - `user_message`
 - `assistant_text_delta`
@@ -77,6 +81,7 @@ The missing piece is a websocket/event bridge between the two.
 - `heartbeat_event`
 
 `YourWifey` sends events like:
+
 - `ui_ready`
 - `avatar_loaded`
 - `tts_started`
@@ -88,6 +93,7 @@ The missing piece is a websocket/event bridge between the two.
 ### Mode 1: Standalone desktop/browser waifu
 
 `YourWifey` can already operate as a local app-like experience:
+
 - local chat UI
 - local model selection
 - local Piper TTS
@@ -97,6 +103,7 @@ The missing piece is a websocket/event bridge between the two.
 ### Mode 2: Discord Activity waifu
 
 Put `YourWifey` inside the Discord Activity iframe and let `dvb` feed it:
+
 - Discord user talks in chat or voice
 - `dvb` receives the event
 - Codex/agent produces the response
@@ -105,6 +112,7 @@ Put `YourWifey` inside the Discord Activity iframe and let `dvb` feed it:
 ### Mode 3: Stream/VTuber overlay
 
 Use `YourWifey` as the visible front-end while `dvb` stays invisible:
+
 - OBS/browser source
 - Discord as the control/input layer
 - avatar as the visible personality
@@ -112,6 +120,7 @@ Use `YourWifey` as the visible front-end while `dvb` stays invisible:
 ## What To Reuse Immediately
 
 Keep these from `YourWifey`:
+
 - `VrmStage`
 - Piper manager
 - lipsync
@@ -120,6 +129,7 @@ Keep these from `YourWifey`:
 - Neuro-sama bundled model option
 
 Keep these from `dvb`:
+
 - Discord ingestion
 - Codex threads and scope model
 - heartbeat/autonomy
@@ -130,6 +140,7 @@ Keep these from `dvb`:
 ## What Not To Do
 
 Do not:
+
 - rebuild VRM rendering inside `dvb`
 - make the panel the main user-facing experience
 - duplicate Piper/lipsync code in both repos

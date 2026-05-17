@@ -8,8 +8,9 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 
 - Worktree: `C:\Users\SUBSECT\Documents\Codex\2026-05-04\https-github-com-prismml-eng-bonsai\yourwifey-stream`
 - Reference: `C:\Users\SUBSECT\Downloads\ClosedRouter\grillo_next`
-- Prompt: `plugins\ralph-wiggum-loop\prompts\yourwifey-grillo-memory-next.prompt.md`
-- Completion promise: `YOURWIFEY_GRILLO_MEMORY_COMPLETE`
+- Historical loop prompt and completion-promise files were removed from the
+  public repo; this document is now only the Grillo memory implementation
+  status.
 
 ## Current State
 
@@ -29,7 +30,8 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-13 22:16: `npx vitest run src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts` -> passed, 9 tests.
 - 2026-05-13 22:17: `git diff --check` -> passed.
 - 2026-05-13 22:17: `npx vitest run src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 24 tests.
-- 2026-05-13 22:17: `.\plugins\ralph-wiggum-loop\scripts\run-codex-ralph-loop.ps1 -PromptFile .\plugins\ralph-wiggum-loop\prompts\yourwifey-grillo-memory-next.prompt.md -MaxIterations 1 -DryRun` -> passed, resolved workdir/prompt/logs.
+- 2026-05-13 22:17: local loop dry run -> passed, resolved
+  workdir/prompt/logs. The loop files were later removed from the public repo.
 - 2026-05-13 22:18: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 - 2026-05-13 22:34: `npx vitest run src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts server/src/ai/OpenAiResponsesProvider.test.ts` -> passed, 27 tests.
 - 2026-05-13 22:34: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.

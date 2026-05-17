@@ -312,31 +312,9 @@ settings. Provider API keys remain local-only in the BYOK model.
 
 Planning and status docs:
 
-- `docs/PRODUCTIZATION_RALPH_STATUS.md`
 - `docs/BYOK_PRODUCT_STATUS.md`
 - `docs/BYOK_PRODUCT_PLAN.md`
 - `docs/grillo-memory-status.md`
-
-## Automation Workflow
-
-The repo includes a bounded Codex/Ralph workflow plugin for repeatable
-checkpoint loops:
-
-```text
-plugins/ralph-wiggum-loop/
-```
-
-It contains:
-
-- `scripts/run-codex-ralph-loop.ps1` for one-shot or bounded Codex exec loops.
-- Lane prompts for polish, code review, efficiency, commercial planning, BYOK
-  product work, and Grillo memory work.
-- A plugin manifest in `.codex-plugin/plugin.json`.
-- Operator documentation in `plugins/ralph-wiggum-loop/README.md`.
-
-Runtime loop logs and state live in `.ralph-loop/`. That folder is intentionally
-ignored because it contains per-machine run output, stuck-run state, and local
-iteration logs rather than source-of-truth project files.
 
 ## Verification
 
