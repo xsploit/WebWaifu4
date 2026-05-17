@@ -12,6 +12,9 @@ import type { SupabasePublicConfig } from '../../../lib/product/supabase-env';
 type AccountTabProps = {
   accountMode: ByokAccountMode;
   authStatus: string;
+  localTransferStatus: string;
+  onExportLocalBackup: () => void;
+  onImportLocalBackup: (file: File) => void;
   onSignOut: () => void;
   supabaseConfig: SupabasePublicConfig;
 };
@@ -62,6 +65,9 @@ function findProviderDescriptor(
 export function AccountTab({
   accountMode,
   authStatus,
+  localTransferStatus,
+  onExportLocalBackup,
+  onImportLocalBackup,
   onSignOut,
   supabaseConfig,
 }: AccountTabProps) {
@@ -84,9 +90,8 @@ export function AccountTab({
   );
   const [providerInputs, setProviderInputs] = useState<Record<string, string>>({});
   const [providerDescriptors, setProviderDescriptors] = useState<ProviderSecretDescriptor[]>([]);
-  const [providerStatus, setProviderStatus] = useState(
-    'Provider keys stay in this browser only.',
-  );
+  const [providerStatus, setProviderStatus] = useState('Provider keys stay in this browser only.');
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedEmail = normalizeAccountEmail(email);
   const loginAvailable = accountMode.loginAvailable && supabaseConfig.status === 'configured';
 
@@ -283,6 +288,44 @@ export function AccountTab({
           })}
         </div>
         <div className="status-copy">{providerStatus}</div>
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">Local Transfer Backup</div>
+        <div className="field-hint">
+          Export a 1:1 JSON backup for another streaming PC. It includes local app settings,
+          provider keys, chat and memory state, and saved custom VRM files.
+        </div>
+        <div className="btn-row">
+          <button
+            className="btn-tech secondary"
+            onClick={() => void onExportLocalBackup()}
+            type="button"
+          >
+            Export JSON Backup
+          </button>
+          <button
+            className="btn-tech secondary"
+            onClick={() => importInputRef.current?.click()}
+            type="button"
+          >
+            Import JSON Backup
+          </button>
+        </div>
+        <input
+          ref={importInputRef}
+          accept="application/json,.json"
+          className="visually-hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (file) {
+              void onImportLocalBackup(file);
+            }
+          }}
+          type="file"
+        />
+        <div className="status-copy">{localTransferStatus}</div>
       </div>
 
       <div className="control-group">

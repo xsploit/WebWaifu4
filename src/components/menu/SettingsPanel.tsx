@@ -47,6 +47,7 @@ type SettingsPanelProps = {
   messageCount: number;
   currentBundledModelId: string;
   currentCustomVrmModelId: string;
+  localTransferStatus: string;
   onClose: () => void;
   onDeletePersona: (id: string) => void;
   onActivatePersona: (id: string) => void;
@@ -60,6 +61,8 @@ type SettingsPanelProps = {
   onLoadModelFile: (file: File) => void;
   onLoadSavedVrmModel: (modelId: string) => void;
   onLoadSample: () => void;
+  onExportLocalBackup: () => void;
+  onImportLocalBackup: (file: File) => void;
   onPlayAnimation: (request: ManualPlayRequest) => void;
   onRefreshModels: () => void;
   onRefreshAiProxyHealth: () => void;
@@ -140,6 +143,7 @@ export function SettingsPanel({
   messageCount,
   currentBundledModelId,
   currentCustomVrmModelId,
+  localTransferStatus,
   onCacheVoice,
   onClearChat,
   onClearDraft,
@@ -153,6 +157,8 @@ export function SettingsPanel({
   onLoadModelFile,
   onLoadSavedVrmModel,
   onLoadSample,
+  onExportLocalBackup,
+  onImportLocalBackup,
   onPlayAnimation,
   onRefreshModels,
   onRefreshAiProxyHealth,
@@ -212,6 +218,9 @@ export function SettingsPanel({
       <AccountTab
         accountMode={accountMode}
         authStatus={supabaseAuthStatus}
+        localTransferStatus={localTransferStatus}
+        onExportLocalBackup={onExportLocalBackup}
+        onImportLocalBackup={onImportLocalBackup}
         onSignOut={onSupabaseLocalSignOut}
         supabaseConfig={supabaseConfig}
       />

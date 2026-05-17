@@ -122,6 +122,35 @@ describe('provider key vault', () => {
     expect(JSON.stringify(storage.dump())).not.toContain('inworld-secret');
   });
 
+  it('exports and imports full local-transfer secrets into the current vault workspace', async () => {
+    const source = createBrowserProviderKeyVault({
+      workspaceId: 'source-workspace',
+      storage: createStorage(),
+    });
+    await source.setSecret({
+      provider: 'openai',
+      keyName: 'openai.apiKey',
+      secret: 'sk-source-secret',
+      now: '2026-05-15T12:00:00.000Z',
+    });
+
+    const target = createBrowserProviderKeyVault({
+      workspaceId: 'target-workspace',
+      storage: createStorage(),
+    });
+    const imported = await target.importSecrets(
+      await source.exportSecrets(),
+      '2026-05-15T12:10:00.000Z',
+    );
+
+    expect(imported[0]).toMatchObject({
+      id: 'target-workspace:openai:openai.apiKey',
+      workspaceId: 'target-workspace',
+      redactedLabel: 'sk-sou...cret',
+    });
+    expect(await target.getSecret('openai', 'openai.apiKey')).toBe('sk-source-secret');
+  });
+
   it('fails closed when browser storage is unavailable', async () => {
     const vault = createBrowserProviderKeyVault({
       workspaceId: 'workspace-1',

@@ -9,6 +9,16 @@ type StoredVrmModel = SavedVrmModelSummary & {
   blob: Blob;
 };
 
+export type SavedVrmModelImport = {
+  blob: Blob;
+  createdAt?: number;
+  id?: string;
+  name: string;
+  originalFileName: string;
+  type?: string;
+  updatedAt?: number;
+};
+
 function createVrmModelId() {
   const suffix =
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -97,15 +107,39 @@ export async function saveVrmModelFile(file: File): Promise<SavedVrmModelSummary
   validateVrmFile(file);
 
   const now = Date.now();
-  const model: StoredVrmModel = {
+  return saveVrmModelBlob({
     blob: file,
     createdAt: now,
     id: createVrmModelId(),
     name: cleanVrmModelName(file.name),
     originalFileName: file.name,
-    size: file.size,
     type: file.type || 'model/vrm',
     updatedAt: now,
+  });
+}
+
+export async function saveVrmModelBlob(input: SavedVrmModelImport): Promise<SavedVrmModelSummary> {
+  if (!input.id && !/\.vrm$/iu.test(input.originalFileName.trim())) {
+    throw new Error('Choose a .vrm file.');
+  }
+  if (!input.blob.size) {
+    throw new Error('The selected VRM file is empty.');
+  }
+  if (input.blob.size > MAX_VRM_SIZE_BYTES) {
+    throw new Error('VRM file is too large for the browser library.');
+  }
+
+  const now = Date.now();
+  const originalFileName = input.originalFileName.trim() || 'custom.vrm';
+  const model: StoredVrmModel = {
+    blob: input.blob,
+    createdAt: input.createdAt ?? now,
+    id: input.id?.trim() || createVrmModelId(),
+    name: input.name.trim().slice(0, 80) || cleanVrmModelName(originalFileName),
+    originalFileName,
+    size: input.blob.size,
+    type: input.type || input.blob.type || 'model/vrm',
+    updatedAt: input.updatedAt ?? now,
   };
 
   await runStoreRequest<IDBValidKey>('readwrite', (store) => store.put(model));

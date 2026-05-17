@@ -18,7 +18,9 @@ export type ProviderKeyVaultStorage = {
 
 export type ProviderKeyVault = {
   deleteSecret(provider: ProviderKind, keyName: string): Promise<void>;
+  exportSecrets(): Promise<ProviderSecretRecord[]>;
   getSecret(provider: ProviderKind, keyName: string): Promise<string | null>;
+  importSecrets(records: ProviderSecretRecord[], now?: string): Promise<ProviderSecretDescriptor[]>;
   listSecretDescriptors(): Promise<ProviderSecretDescriptor[]>;
   setSecret(input: {
     provider: ProviderKind;
@@ -53,12 +55,38 @@ export function createBrowserProviderKeyVault(input: {
       );
     },
 
+    async exportSecrets() {
+      if (!storage) {
+        return [];
+      }
+      return readIndex(storage)
+        .map((id) => readSecretRecord(storage, id))
+        .filter((record): record is ProviderSecretRecord => Boolean(record))
+        .map((record) => ({ ...record }))
+        .sort((a, b) => a.provider.localeCompare(b.provider) || a.keyName.localeCompare(b.keyName));
+    },
+
     async getSecret(provider, keyName) {
       if (!storage) {
         return null;
       }
       const record = readSecretRecord(storage, buildSecretId(workspaceId, provider, keyName));
       return record?.secret ?? null;
+    },
+
+    async importSecrets(records, now) {
+      const descriptors: ProviderSecretDescriptor[] = [];
+      for (const record of records) {
+        descriptors.push(
+          await this.setSecret({
+            provider: normalizeProviderKind(record.provider),
+            keyName: record.keyName,
+            secret: record.secret,
+            now: now || record.updatedAt || undefined,
+          }),
+        );
+      }
+      return descriptors;
     },
 
     async listSecretDescriptors() {
@@ -106,6 +134,20 @@ export function createBrowserProviderKeyVault(input: {
       return stripSecret(record);
     },
   };
+}
+
+function normalizeProviderKind(provider: unknown): ProviderKind {
+  switch (provider) {
+    case 'openai':
+    case 'openrouter':
+    case 'fish_speech':
+    case 'inworld':
+    case 'tavily':
+    case 'custom':
+      return provider;
+    default:
+      return 'custom';
+  }
 }
 
 export function exportProviderSecretDescriptorsForSync(

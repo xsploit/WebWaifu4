@@ -100,6 +100,7 @@ import {
   deleteSavedVrmModel,
   getSavedVrmModelBlob,
   listSavedVrmModels,
+  saveVrmModelBlob,
   saveVrmModelFile,
 } from './lib/vrm/custom-vrm-library';
 import {
@@ -139,6 +140,13 @@ import { applyCloudSettingRecords } from './lib/product/cloud-settings';
 import { fetchByokOverlayConfig } from './lib/product/byok-api';
 import type { ProviderKind, SyncedSettingRecord } from './lib/product/byok';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
+import {
+  base64ToBlob,
+  blobToBase64,
+  createLocalTransferBackup,
+  parseLocalTransferBackup,
+  serializeLocalTransferBackup,
+} from './lib/product/local-transfer-backup';
 import './style.css';
 
 type SafeAreaInsets = {
@@ -1438,6 +1446,7 @@ function App() {
   const [currentCustomVrmModelId, setCurrentCustomVrmModelId] = useState('');
   const [savedVrmModels, setSavedVrmModels] = useState<SavedVrmModelSummary[]>([]);
   const [savedVrmStatus, setSavedVrmStatus] = useState('');
+  const [localTransferStatus, setLocalTransferStatus] = useState('Local transfer backup is ready.');
   const [manualPlayRequest, setManualPlayRequest] = useState<ManualPlayRequest | null>(null);
   const [facialExpressionRequest, setFacialExpressionRequest] =
     useState<FacialExpressionRequest | null>(null);
@@ -4535,6 +4544,121 @@ function App() {
       visualSettings,
     ],
   );
+  const handleExportLocalTransferBackup = useCallback(async () => {
+    setLocalTransferStatus('Preparing local transfer backup...');
+    const providerVault = createBrowserProviderKeyVault({
+      mode: accountMode.providerKeyMode,
+      workspaceId: providerKeyVaultWorkspaceId,
+    });
+    const models = await listSavedVrmModels();
+    const savedModelBackups = await Promise.all(
+      models.map(async (model) => {
+        const blob = await getSavedVrmModelBlob(model.id);
+        return {
+          ...model,
+          dataBase64: await blobToBase64(blob),
+        };
+      }),
+    );
+    const backup = createLocalTransferBackup({
+      providerSecrets: await providerVault.exportSecrets(),
+      savedVrmModels: savedModelBackups,
+      state: persistedStateSnapshot,
+    });
+    const fileName = `yourwifey-local-backup-${backup.exportedAt
+      .replace(/[:.]/g, '-')
+      .slice(0, 19)}.json`;
+    const backupBlob = new Blob([serializeLocalTransferBackup(backup)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(backupBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setLocalTransferStatus(
+      `Exported ${fileName} with ${backup.providerSecrets.length} keys and ${backup.savedVrmModels.length} saved VRMs.`,
+    );
+  }, [accountMode.providerKeyMode, persistedStateSnapshot, providerKeyVaultWorkspaceId]);
+
+  const handleImportLocalTransferBackup = useCallback(
+    async (file: File) => {
+      setLocalTransferStatus(`Importing ${file.name}...`);
+      const backup = parseLocalTransferBackup(await file.text());
+      const providerVault = createBrowserProviderKeyVault({
+        mode: accountMode.providerKeyMode,
+        workspaceId: providerKeyVaultWorkspaceId,
+      });
+      await providerVault.importSecrets(backup.providerSecrets);
+
+      for (const model of backup.savedVrmModels) {
+        await saveVrmModelBlob({
+          blob: base64ToBlob(model.dataBase64, model.type),
+          createdAt: model.createdAt,
+          id: model.id,
+          name: model.name,
+          originalFileName: model.originalFileName,
+          type: model.type,
+          updatedAt: model.updatedAt,
+        });
+      }
+
+      const next = backup.state;
+      await savePersistedChatState(next);
+      setPersonas(next.personas);
+      setActivePersonaId(next.activePersonaId);
+      setAiSettings(next.aiSettings);
+      setChatHistory(next.chatHistory);
+      setRelationshipMemory(next.relationshipMemory);
+      setRelationshipMemories(next.relationshipMemories);
+      setChatInput(next.uiState.chatDraft);
+      setChatLogOpen(next.uiState.chatLogOpen);
+      setActiveTab(next.activeTab);
+      setCurrentBundledModelId(next.currentBundledModelId);
+      setCurrentCustomVrmModelId(next.currentCustomVrmModelId);
+      setTwitchChannel(next.twitchChannel);
+      setSequencerSettings(next.sequencerSettings);
+      setVisualSettings(next.visualSettings);
+
+      const models = await refreshSavedVrmModels();
+      if (
+        next.currentCustomVrmModelId &&
+        models.some((model) => model.id === next.currentCustomVrmModelId)
+      ) {
+        prepareForModelSwap();
+        const blob = await getSavedVrmModelBlob(next.currentCustomVrmModelId);
+        loadModelUrl(URL.createObjectURL(blob));
+        setCurrentBundledModelId('');
+        setCurrentCustomVrmModelId(next.currentCustomVrmModelId);
+      } else if (
+        next.currentBundledModelId &&
+        BUNDLED_VRM_MODELS.some((model) => model.id === next.currentBundledModelId)
+      ) {
+        await handleLoadBundledModel(next.currentBundledModelId);
+      }
+
+      setSavedVrmStatus(
+        backup.savedVrmModels.length
+          ? `Imported ${backup.savedVrmModels.length} saved VRM model(s).`
+          : savedVrmStatus,
+      );
+      setLocalTransferStatus(
+        `Imported ${backup.providerSecrets.length} keys, ${backup.savedVrmModels.length} saved VRMs, and app settings from ${file.name}.`,
+      );
+    },
+    [
+      accountMode.providerKeyMode,
+      handleLoadBundledModel,
+      prepareForModelSwap,
+      providerKeyVaultWorkspaceId,
+      refreshSavedVrmModels,
+      savedVrmStatus,
+    ],
+  );
   const handleApplyCloudSettings = useCallback(
     (records: SyncedSettingRecord[]) => {
       const next = applyCloudSettingRecords(persistedStateSnapshot, records);
@@ -4711,6 +4835,7 @@ function App() {
               messageCount={chatHistory.length}
               currentBundledModelId={currentBundledModelId}
               currentCustomVrmModelId={currentCustomVrmModelId}
+              localTransferStatus={localTransferStatus}
               onClearChat={handleClearChat}
               onClearDraft={handleClearDraft}
               onClearMemory={handleClearMemory}
@@ -4771,6 +4896,20 @@ function App() {
               }}
               onLoadSample={() => {
                 void handleLoadBundledModel(DEFAULT_BUNDLED_MODEL_ID).catch(() => {});
+              }}
+              onExportLocalBackup={() => {
+                void handleExportLocalTransferBackup().catch((error) => {
+                  setLocalTransferStatus(
+                    error instanceof Error ? error.message : 'Could not export local backup.',
+                  );
+                });
+              }}
+              onImportLocalBackup={(file) => {
+                void handleImportLocalTransferBackup(file).catch((error) => {
+                  setLocalTransferStatus(
+                    error instanceof Error ? error.message : 'Could not import local backup.',
+                  );
+                });
               }}
               onPlayAnimation={(request) => {
                 setManualPlayRequest(request);

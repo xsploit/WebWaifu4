@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'vitest';
+import { createDefaultAiSettings, createDefaultRelationshipMemory } from '../chat/defaults';
+import type { PersistedChatState } from '../chat/types';
+import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
+import {
+  base64ToBlob,
+  blobToBase64,
+  createLocalTransferBackup,
+  parseLocalTransferBackup,
+  serializeLocalTransferBackup,
+} from './local-transfer-backup';
+
+function createState(): PersistedChatState {
+  return {
+    activePersonaId: 'hikari-chan',
+    activeTab: 'account',
+    aiSettings: createDefaultAiSettings(),
+    chatHistory: [],
+    currentBundledModelId: '',
+    currentCustomVrmModelId: 'custom-vrm-test',
+    personas: [
+      {
+        id: 'hikari-chan',
+        name: 'Hikari',
+        description: '',
+        systemPrompt: 'test persona',
+        userNickname: '',
+      },
+    ],
+    relationshipMemories: {},
+    relationshipMemory: createDefaultRelationshipMemory(),
+    sequencerSettings: createDefaultSequencerSettings(),
+    twitchChannel: 'subsect',
+    uiState: {
+      chatDraft: '',
+      chatLogOpen: true,
+      menuOpen: false,
+    },
+    visualSettings: createDefaultVisualSettings(),
+  };
+}
+
+describe('local transfer backup', () => {
+  it('round-trips settings, provider secrets, and saved VRM metadata', () => {
+    const backup = createLocalTransferBackup({
+      exportedAt: '2026-05-17T12:00:00.000Z',
+      providerSecrets: [
+        {
+          id: 'old:openai:openai.apiKey',
+          workspaceId: 'old',
+          provider: 'openai',
+          keyName: 'openai.apiKey',
+          mode: 'local-indexeddb',
+          redactedLabel: 'sk-tes...1234',
+          createdAt: '2026-05-17T11:00:00.000Z',
+          updatedAt: '2026-05-17T11:00:00.000Z',
+          secret: 'sk-test-1234',
+        },
+      ],
+      savedVrmModels: [
+        {
+          id: 'custom-vrm-test',
+          name: 'Hikari Custom',
+          originalFileName: 'hikari.vrm',
+          size: 3,
+          type: 'model/vrm',
+          createdAt: 1,
+          updatedAt: 2,
+          dataBase64: 'AQID',
+        },
+      ],
+      state: createState(),
+    });
+
+    const parsed = parseLocalTransferBackup(serializeLocalTransferBackup(backup));
+
+    expect(parsed.state.activePersonaId).toBe('hikari-chan');
+    expect(parsed.providerSecrets[0]?.secret).toBe('sk-test-1234');
+    expect(parsed.savedVrmModels[0]?.id).toBe('custom-vrm-test');
+    expect(parsed.includes.providerSecrets).toBe(true);
+    expect(parsed.includes.savedVrmModels).toBe(true);
+  });
+
+  it('rejects unrelated JSON files', () => {
+    expect(() => parseLocalTransferBackup('{"app":"other"}')).toThrow(
+      'Choose a YourWifey local transfer backup JSON file.',
+    );
+  });
+
+  it('converts VRM blobs to backup-safe base64 and back', async () => {
+    const original = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'model/vrm' });
+    const encoded = await blobToBase64(original);
+    const restored = base64ToBlob(encoded, 'model/vrm');
+
+    expect(Array.from(new Uint8Array(await restored.arrayBuffer()))).toEqual([1, 2, 3, 4]);
+    expect(restored.type).toBe('model/vrm');
+  });
+});
