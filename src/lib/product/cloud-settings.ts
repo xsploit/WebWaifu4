@@ -62,6 +62,7 @@ const SAFE_STATE_TO_CLOUD_SETTINGS = [
 
 export const LOCAL_ONLY_PERSISTED_SETTING_KEYS = [
   STORAGE_KEYS.chatHistory,
+  STORAGE_KEYS.currentCustomVrmModelId,
   STORAGE_KEYS.relationshipMemory,
   STORAGE_KEYS.relationshipMemories,
 ] as const;
@@ -158,6 +159,7 @@ export function applyCloudSettingRecords(
       case 'character.vrmModelId':
         if (typeof value === 'string' && value.trim()) {
           next.currentBundledModelId = value.trim();
+          next.currentCustomVrmModelId = '';
         }
         break;
       case 'scene.twitchChannel':
@@ -277,10 +279,5 @@ function cyrb128(value: string) {
   h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
   h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
   h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
-  return [
-    (h1 ^ h2 ^ h3 ^ h4) >>> 0,
-    (h2 ^ h1) >>> 0,
-    (h3 ^ h1) >>> 0,
-    (h4 ^ h1) >>> 0,
-  ];
+  return [(h1 ^ h2 ^ h3 ^ h4) >>> 0, (h2 ^ h1) >>> 0, (h3 ^ h1) >>> 0, (h4 ^ h1) >>> 0];
 }

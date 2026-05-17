@@ -754,6 +754,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     uiState: createDefaultUiState(),
     activeTab: 'vrm',
     currentBundledModelId: 'neuro-sama',
+    currentCustomVrmModelId: '',
     twitchChannel: '',
     sequencerSettings: createDefaultSequencerSettings(),
     visualSettings: createDefaultVisualSettings(),
@@ -770,6 +771,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       uiStateRaw,
       activeTabRaw,
       currentBundledModelIdRaw,
+      currentCustomVrmModelIdRaw,
       twitchChannelRaw,
       sequencerSettingsRaw,
       visualSettingsRaw,
@@ -783,6 +785,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       getPersistedItem(STORAGE_KEYS.uiState),
       getPersistedItem(STORAGE_KEYS.activeTab),
       getPersistedItem(STORAGE_KEYS.currentBundledModelId),
+      getPersistedItem(STORAGE_KEYS.currentCustomVrmModelId),
       getPersistedItem(STORAGE_KEYS.twitchChannel),
       getPersistedItem(STORAGE_KEYS.sequencerSettings),
       getPersistedItem(STORAGE_KEYS.visualSettings),
@@ -807,6 +810,11 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       typeof currentBundledModelIdRaw === 'string' && currentBundledModelIdRaw.trim().length > 0
         ? currentBundledModelIdRaw
         : defaults.currentBundledModelId;
+    const currentCustomVrmModelId =
+      typeof currentCustomVrmModelIdRaw === 'string' &&
+      /^custom-vrm-[a-z0-9-]+$/i.test(currentCustomVrmModelIdRaw.trim())
+        ? currentCustomVrmModelIdRaw.trim()
+        : '';
     const twitchChannel = normalizeTwitchChannel(twitchChannelRaw);
     const sequencerSettings = normalizeSequencerSettings(safeParse(sequencerSettingsRaw, null));
     const visualSettings = normalizeVisualSettings(safeParse(visualSettingsRaw, null));
@@ -831,6 +839,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       uiState,
       activeTab,
       currentBundledModelId,
+      currentCustomVrmModelId,
       twitchChannel,
       sequencerSettings,
       visualSettings,
@@ -857,6 +866,7 @@ export async function savePersistedChatState(state: PersistedChatState) {
     [STORAGE_KEYS.uiState, JSON.stringify(state.uiState)],
     [STORAGE_KEYS.activeTab, state.activeTab],
     [STORAGE_KEYS.currentBundledModelId, state.currentBundledModelId],
+    [STORAGE_KEYS.currentCustomVrmModelId, state.currentCustomVrmModelId],
     [STORAGE_KEYS.twitchChannel, normalizeTwitchChannel(state.twitchChannel)],
     [
       STORAGE_KEYS.sequencerSettings,

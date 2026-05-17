@@ -171,6 +171,7 @@ export type PersistedChatState = {
   uiState: UiState;
   activeTab: SettingsTabId;
   currentBundledModelId: string;
+  currentCustomVrmModelId: string;
   twitchChannel: string;
   sequencerSettings: SequencerSettings;
   visualSettings: VisualSettings;

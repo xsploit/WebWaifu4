@@ -64,6 +64,7 @@ function createState(): PersistedChatState {
       },
     ],
     currentBundledModelId: 'neuro-sama',
+    currentCustomVrmModelId: '',
     personas: createDefaultPersonas(),
     relationshipMemories: {},
     relationshipMemory: {

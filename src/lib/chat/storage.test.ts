@@ -149,6 +149,7 @@ describe('chat settings persistence', () => {
         },
       ],
       currentBundledModelId: 'hikari-chan',
+      currentCustomVrmModelId: 'custom-vrm-test-avatar',
       personas,
       relationshipMemories: {
         'local:persona:neuro-sama': {
@@ -188,6 +189,7 @@ describe('chat settings persistence', () => {
     expect(loaded.sequencerSettings.playlist).toHaveLength(sequencerSettings.playlist.length);
     expect(loaded.activeTab).toBe('tts');
     expect(loaded.currentBundledModelId).toBe('hikari-chan');
+    expect(loaded.currentCustomVrmModelId).toBe('custom-vrm-test-avatar');
     expect(loaded.twitchChannel).toBe('cohhcarnage');
     expect(loaded.uiState).toEqual({
       ...state.uiState,

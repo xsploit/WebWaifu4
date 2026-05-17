@@ -49,6 +49,7 @@ describe('cloud settings adapter', () => {
   it('marks memory and chat history as local-only for now', () => {
     expect(LOCAL_ONLY_PERSISTED_SETTING_KEYS).toEqual([
       'yourwifey.chatHistory.v1',
+      'yourwifey.currentCustomVrmModelId.v1',
       'yourwifey.relationshipMemory.v1',
       'yourwifey.relationshipMemories.v1',
     ]);
@@ -109,6 +110,7 @@ function createState(): PersistedChatState {
       },
     ],
     currentBundledModelId: 'neuro-sama',
+    currentCustomVrmModelId: '',
     personas: createDefaultPersonas(),
     relationshipMemories: {},
     relationshipMemory: {

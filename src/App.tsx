@@ -91,10 +91,17 @@ import type {
   BundledVrmOption,
   FacialExpressionRequest,
   ManualPlayRequest,
+  SavedVrmModelSummary,
   SettingsTabId,
   VisualSettings,
 } from './lib/menu/types';
 import { fetchGameAssetBlob } from './lib/cdn/assets';
+import {
+  deleteSavedVrmModel,
+  getSavedVrmModelBlob,
+  listSavedVrmModels,
+  saveVrmModelFile,
+} from './lib/vrm/custom-vrm-library';
 import {
   CUSTOM_RIKO_PIPER_VOICES,
   HIKARI_PIPER_VOICE_KEY,
@@ -1428,6 +1435,9 @@ function App() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [currentBundledModelId, setCurrentBundledModelId] =
     useState<string>(DEFAULT_BUNDLED_MODEL_ID);
+  const [currentCustomVrmModelId, setCurrentCustomVrmModelId] = useState('');
+  const [savedVrmModels, setSavedVrmModels] = useState<SavedVrmModelSummary[]>([]);
+  const [savedVrmStatus, setSavedVrmStatus] = useState('');
   const [manualPlayRequest, setManualPlayRequest] = useState<ManualPlayRequest | null>(null);
   const [facialExpressionRequest, setFacialExpressionRequest] =
     useState<FacialExpressionRequest | null>(null);
@@ -2705,6 +2715,7 @@ function App() {
       setActiveTab(persistedState.activeTab);
       setTwitchChannel(hydratedTwitchChannel);
       setCurrentBundledModelId(persistedState.currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID);
+      setCurrentCustomVrmModelId(persistedState.currentCustomVrmModelId);
       setSequencerSettings(persistedState.sequencerSettings);
       setVisualSettings(
         ROUTELET_MODE
@@ -2781,6 +2792,7 @@ function App() {
           },
           activeTab,
           currentBundledModelId,
+          currentCustomVrmModelId,
           twitchChannel,
           sequencerSettings,
           visualSettings,
@@ -2816,6 +2828,7 @@ function App() {
     chatHistory,
     chatInput,
     chatLogOpen,
+    currentCustomVrmModelId,
     currentBundledModelId,
     hydrated,
     menuOpen,
@@ -2955,6 +2968,19 @@ function App() {
     ttsVoicesLoading,
   ]);
 
+  const refreshSavedVrmModels = useCallback(async () => {
+    try {
+      const models = await listSavedVrmModels();
+      setSavedVrmModels(models);
+      return models;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Saved VRM library unavailable.';
+      setSavedVrmStatus(message);
+      console.warn('[VRM] Failed to list saved models:', error);
+      return [];
+    }
+  }, []);
+
   const loadModelUrl = (nextUrl: string | null) => {
     setModelUrl((current) => {
       if (
@@ -2994,8 +3020,59 @@ function App() {
       }
       loadModelUrl(cachedUrl);
       setCurrentBundledModelId(bundledModel.id);
+      setCurrentCustomVrmModelId('');
+      setSavedVrmStatus(`Loaded ${bundledModel.label}.`);
     },
     [prepareForModelSwap],
+  );
+
+  const handleLoadSavedVrmModel = useCallback(
+    async (modelId: string) => {
+      const model = savedVrmModels.find((entry) => entry.id === modelId);
+      prepareForModelSwap();
+      const blob = await getSavedVrmModelBlob(modelId);
+      const url = URL.createObjectURL(blob);
+      loadModelUrl(url);
+      setCurrentBundledModelId('');
+      setCurrentCustomVrmModelId(modelId);
+      setSavedVrmStatus(`Loaded saved VRM: ${model?.name ?? 'Custom VRM'}.`);
+    },
+    [prepareForModelSwap, savedVrmModels],
+  );
+
+  const handleSaveAndLoadVrmFile = useCallback(
+    async (file: File) => {
+      prepareForModelSwap();
+      setSavedVrmStatus(`Saving ${file.name}...`);
+      const savedModel = await saveVrmModelFile(file);
+      const models = await refreshSavedVrmModels();
+      const savedName = models.find((model) => model.id === savedModel.id)?.name ?? savedModel.name;
+      const blob = await getSavedVrmModelBlob(savedModel.id);
+      const url = URL.createObjectURL(blob);
+      loadModelUrl(url);
+      setCurrentBundledModelId('');
+      setCurrentCustomVrmModelId(savedModel.id);
+      setSavedVrmStatus(`Saved and loaded ${savedName}.`);
+    },
+    [prepareForModelSwap, refreshSavedVrmModels],
+  );
+
+  const handleDeleteSavedVrmModel = useCallback(
+    async (modelId: string) => {
+      const model = savedVrmModels.find((entry) => entry.id === modelId);
+      await deleteSavedVrmModel(modelId);
+      const models = await refreshSavedVrmModels();
+      if (currentCustomVrmModelId === modelId) {
+        setCurrentCustomVrmModelId('');
+        void handleLoadBundledModel(DEFAULT_BUNDLED_MODEL_ID).catch((error) => {
+          console.error('[VRM] Failed to restore default avatar after delete:', error);
+        });
+      }
+      setSavedVrmStatus(
+        `Deleted ${model?.name ?? 'saved VRM'}.${models.length ? '' : ' Library is empty.'}`,
+      );
+    },
+    [currentCustomVrmModelId, handleLoadBundledModel, refreshSavedVrmModels, savedVrmModels],
   );
 
   useEffect(() => {
@@ -3004,12 +3081,29 @@ function App() {
     }
 
     didHydrateAvatarRef.current = true;
-    void handleLoadBundledModel(currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID).catch(
-      (error) => {
-        console.error('[App] Failed to load hydrated avatar asset:', error);
-      },
-    );
-  }, [currentBundledModelId, handleLoadBundledModel, hydrated]);
+    void (async () => {
+      const models = await refreshSavedVrmModels();
+      if (currentCustomVrmModelId && models.some((model) => model.id === currentCustomVrmModelId)) {
+        await handleLoadSavedVrmModel(currentCustomVrmModelId);
+        return;
+      }
+      if (currentCustomVrmModelId) {
+        setSavedVrmStatus('Saved VRM missing. Loading default avatar.');
+        setCurrentCustomVrmModelId('');
+      }
+      await handleLoadBundledModel(currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID);
+    })().catch((error) => {
+      console.error('[App] Failed to load hydrated avatar asset:', error);
+      setSavedVrmStatus(error instanceof Error ? error.message : 'Avatar load failed.');
+    });
+  }, [
+    currentBundledModelId,
+    currentCustomVrmModelId,
+    handleLoadBundledModel,
+    handleLoadSavedVrmModel,
+    hydrated,
+    refreshSavedVrmModels,
+  ]);
 
   const handleSavePersona = useCallback((draft: PersonaDraft, personaId?: string) => {
     const nextId = personaId ?? `persona-${Date.now()}`;
@@ -3350,6 +3444,10 @@ function App() {
 
     stopTtsPlayback();
 
+    if (currentCustomVrmModelId) {
+      return;
+    }
+
     if (currentBundledModelId !== activePersonaScenePreset.bundledModelId) {
       void handleLoadBundledModel(activePersonaScenePreset.bundledModelId).catch((error) => {
         console.error('[App] Failed to apply persona scene preset:', error);
@@ -3363,6 +3461,7 @@ function App() {
     activePersonaScenePreset,
     appendSystemMessage,
     currentBundledModelId,
+    currentCustomVrmModelId,
     handleLoadBundledModel,
     hydrated,
     stopTtsPlayback,
@@ -4405,6 +4504,7 @@ function App() {
       aiSettings,
       chatHistory,
       currentBundledModelId,
+      currentCustomVrmModelId,
       personas,
       relationshipMemories,
       relationshipMemory,
@@ -4425,6 +4525,7 @@ function App() {
       chatInput,
       chatLogOpen,
       currentBundledModelId,
+      currentCustomVrmModelId,
       menuOpen,
       personas,
       relationshipMemories,
@@ -4443,6 +4544,7 @@ function App() {
       setChatInput(next.uiState.chatDraft);
       setChatLogOpen(next.uiState.chatLogOpen);
       setCurrentBundledModelId(next.currentBundledModelId);
+      setCurrentCustomVrmModelId(next.currentCustomVrmModelId);
       setSequencerSettings(next.sequencerSettings);
       setTwitchChannel(next.twitchChannel);
       setVisualSettings(next.visualSettings);
@@ -4608,6 +4710,7 @@ function App() {
               chatOverlayOpen={chatLogOpen}
               messageCount={chatHistory.length}
               currentBundledModelId={currentBundledModelId}
+              currentCustomVrmModelId={currentCustomVrmModelId}
               onClearChat={handleClearChat}
               onClearDraft={handleClearDraft}
               onClearMemory={handleClearMemory}
@@ -4642,13 +4745,29 @@ function App() {
                   ],
                 }));
               }}
+              onDeleteSavedVrmModel={(modelId) => {
+                void handleDeleteSavedVrmModel(modelId).catch((error) => {
+                  const message = error instanceof Error ? error.message : 'Delete failed.';
+                  console.error('[VRM] Failed to delete saved model:', error);
+                  setSavedVrmStatus(message);
+                });
+              }}
               onLoadModelFile={(file) => {
-                prepareForModelSwap();
-                loadModelUrl(URL.createObjectURL(file));
-                setCurrentBundledModelId('');
+                void handleSaveAndLoadVrmFile(file).catch((error) => {
+                  const message = error instanceof Error ? error.message : 'VRM save failed.';
+                  console.error('[VRM] Failed to save uploaded model:', error);
+                  setSavedVrmStatus(message);
+                });
               }}
               onLoadBundledModel={(modelId) => {
                 void handleLoadBundledModel(modelId).catch(() => {});
+              }}
+              onLoadSavedVrmModel={(modelId) => {
+                void handleLoadSavedVrmModel(modelId).catch((error) => {
+                  const message = error instanceof Error ? error.message : 'Saved VRM load failed.';
+                  console.error('[VRM] Failed to load saved model:', error);
+                  setSavedVrmStatus(message);
+                });
               }}
               onLoadSample={() => {
                 void handleLoadBundledModel(DEFAULT_BUNDLED_MODEL_ID).catch(() => {});
@@ -4658,6 +4777,9 @@ function App() {
               }}
               onRefreshModels={() => {
                 void loadAvailableModels();
+              }}
+              onRefreshSavedVrmModels={() => {
+                void refreshSavedVrmModels();
               }}
               onRefreshAiProxyHealth={() => {
                 void refreshAiProxyHealth();
@@ -4704,6 +4826,8 @@ function App() {
               onToggleChatOverlay={setChatLogOpen}
               open={menuOpen}
               personas={personas}
+              savedVrmModels={savedVrmModels}
+              savedVrmStatus={savedVrmStatus}
               grilloMemoryState={grilloMemoryState}
               relationshipMemory={relationshipMemory}
               memoryAgentBusy={memoryAgentBusy}

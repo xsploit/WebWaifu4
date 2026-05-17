@@ -10,6 +10,7 @@ import type {
 import type {
   BundledVrmOption,
   ManualPlayRequest,
+  SavedVrmModelSummary,
   SequencerSettings,
   SettingsTabId,
   VisualSettings,
@@ -45,6 +46,7 @@ type SettingsPanelProps = {
   chatOverlayOpen: boolean;
   messageCount: number;
   currentBundledModelId: string;
+  currentCustomVrmModelId: string;
   onClose: () => void;
   onDeletePersona: (id: string) => void;
   onActivatePersona: (id: string) => void;
@@ -53,12 +55,15 @@ type SettingsPanelProps = {
   onClearChat: () => void;
   onClearDraft: () => void;
   onClearMemory: () => void;
+  onDeleteSavedVrmModel: (modelId: string) => void;
   onLoadBundledModel: (modelId: string) => void;
   onLoadModelFile: (file: File) => void;
+  onLoadSavedVrmModel: (modelId: string) => void;
   onLoadSample: () => void;
   onPlayAnimation: (request: ManualPlayRequest) => void;
   onRefreshModels: () => void;
   onRefreshAiProxyHealth: () => void;
+  onRefreshSavedVrmModels: () => void;
   onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
   onResetContext: () => void;
@@ -75,6 +80,8 @@ type SettingsPanelProps = {
   onToggleChatOverlay: (open: boolean) => void;
   open: boolean;
   personas: PersonaProfile[];
+  savedVrmModels: SavedVrmModelSummary[];
+  savedVrmStatus: string;
   grilloMemoryState: GrilloMemoryState;
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
@@ -132,20 +139,24 @@ export function SettingsPanel({
   chatOverlayOpen,
   messageCount,
   currentBundledModelId,
+  currentCustomVrmModelId,
   onCacheVoice,
   onClearChat,
   onClearDraft,
   onClearMemory,
   onClose,
   onDeletePersona,
+  onDeleteSavedVrmModel,
   onActivatePersona,
   onImportAnimationFile,
   onLoadBundledModel,
   onLoadModelFile,
+  onLoadSavedVrmModel,
   onLoadSample,
   onPlayAnimation,
   onRefreshModels,
   onRefreshAiProxyHealth,
+  onRefreshSavedVrmModels,
   onRefreshRemoteVoices,
   onRefreshVoices,
   onResetContext,
@@ -162,6 +173,8 @@ export function SettingsPanel({
   onToggleChatOverlay,
   open,
   personas,
+  savedVrmModels,
+  savedVrmStatus,
   grilloMemoryState,
   relationshipMemory,
   memoryAgentBusy,
@@ -291,9 +304,15 @@ export function SettingsPanel({
       <VrmTab
         bundledModels={bundledModels}
         currentBundledModelId={currentBundledModelId}
+        currentCustomVrmModelId={currentCustomVrmModelId}
+        onDeleteSavedVrmModel={onDeleteSavedVrmModel}
         onLoadBundledModel={onLoadBundledModel}
         onLoadModelFile={onLoadModelFile}
+        onLoadSavedVrmModel={onLoadSavedVrmModel}
         onLoadSample={onLoadSample}
+        onRefreshSavedVrmModels={onRefreshSavedVrmModels}
+        savedModels={savedVrmModels}
+        savedStatus={savedVrmStatus}
         setVisualSettings={setVisualSettings}
         visualSettings={visualSettings}
       />

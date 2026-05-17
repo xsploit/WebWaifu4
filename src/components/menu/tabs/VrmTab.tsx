@@ -1,15 +1,25 @@
 import { useId, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { BundledVrmOption, VisualSettings } from '../../../lib/menu/types';
+import type {
+  BundledVrmOption,
+  SavedVrmModelSummary,
+  VisualSettings,
+} from '../../../lib/menu/types';
 import { Slider } from '../ui/Slider';
 import { Toggle } from '../ui/Toggle';
 
 type VrmTabProps = {
   bundledModels: BundledVrmOption[];
   currentBundledModelId: string;
+  currentCustomVrmModelId: string;
+  onDeleteSavedVrmModel: (modelId: string) => void;
   onLoadBundledModel: (modelId: string) => void;
   onLoadModelFile: (file: File) => void;
+  onLoadSavedVrmModel: (modelId: string) => void;
   onLoadSample: () => void;
+  onRefreshSavedVrmModels: () => void;
+  savedModels: SavedVrmModelSummary[];
+  savedStatus: string;
   setVisualSettings: Dispatch<SetStateAction<VisualSettings>>;
   visualSettings: VisualSettings;
 };
@@ -49,9 +59,15 @@ function ColorField({
 export function VrmTab({
   bundledModels,
   currentBundledModelId,
+  currentCustomVrmModelId,
+  onDeleteSavedVrmModel,
   onLoadBundledModel,
   onLoadModelFile,
+  onLoadSavedVrmModel,
   onLoadSample,
+  onRefreshSavedVrmModels,
+  savedModels,
+  savedStatus,
   setVisualSettings,
   visualSettings,
 }: VrmTabProps) {
@@ -59,6 +75,7 @@ export function VrmTab({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
   const selectedBundledModelId = currentBundledModelId;
+  const selectedSavedModelId = currentCustomVrmModelId;
 
   return (
     <>
@@ -84,6 +101,45 @@ export function VrmTab({
           Pick a bundled character, then use Load Default Avatar or Load Model if the stage needs a
           forced refresh.
         </div>
+        <div className="control-label">Saved VRM Library</div>
+        <select
+          className="select-tech"
+          onChange={(event) => {
+            if (event.target.value) {
+              onLoadSavedVrmModel(event.target.value);
+            }
+          }}
+          value={selectedSavedModelId}
+        >
+          <option value="">No saved custom VRM selected</option>
+          {savedModels.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.name}
+            </option>
+          ))}
+        </select>
+        <div className="field-hint">
+          {savedModels.length
+            ? `${savedModels.length} saved custom VRM${savedModels.length === 1 ? '' : 's'} available after refresh.`
+            : 'Uploaded VRMs are saved in this browser and can be reused after refresh.'}
+        </div>
+        <div className="btn-row">
+          <button className="btn-tech secondary" onClick={onRefreshSavedVrmModels} type="button">
+            Refresh Saved
+          </button>
+          <button
+            className="btn-tech secondary"
+            disabled={!selectedSavedModelId}
+            onClick={() => {
+              if (selectedSavedModelId) {
+                onDeleteSavedVrmModel(selectedSavedModelId);
+              }
+            }}
+            type="button"
+          >
+            Delete Saved
+          </button>
+        </div>
         <button
           className="file-drop-area"
           onClick={() => fileInputRef.current?.click()}
@@ -107,8 +163,11 @@ export function VrmTab({
           type="file"
         />
         <div className="field-hint">
-          {selectedFileName ? `Selected file: ${selectedFileName}` : 'Pick any local .vrm file.'}
+          {selectedFileName
+            ? `Saved upload: ${selectedFileName}`
+            : 'Pick any local .vrm file. It is saved to the browser library.'}
         </div>
+        {savedStatus ? <div className="status-copy">{savedStatus}</div> : null}
         <button className="btn-tech secondary" onClick={onLoadSample} type="button">
           Load Default Avatar
         </button>

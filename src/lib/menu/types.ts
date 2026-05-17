@@ -18,6 +18,16 @@ export type BundledVrmOption = {
   assetPath: string;
 };
 
+export type SavedVrmModelSummary = {
+  createdAt: number;
+  id: string;
+  name: string;
+  originalFileName: string;
+  size: number;
+  type: string;
+  updatedAt: number;
+};
+
 export type AnimationFormat = 'fbx' | 'glb' | 'gltf' | 'vrma' | 'bvh';
 
 export type AnimationPurpose = 'ambient' | 'gesture' | 'emotion' | 'movement' | 'pose';
