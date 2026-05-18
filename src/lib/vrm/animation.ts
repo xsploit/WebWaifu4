@@ -192,6 +192,7 @@ const fbxAssetCache = new Map<string, Promise<THREE.Group>>();
 const bvhAssetCache = new Map<string, ReturnType<typeof bvhLoader.loadAsync>>();
 const vrmaAssetCache = new Map<string, ReturnType<typeof vrmaLoader.loadAsync>>();
 const sniffedFormatCache = new Map<string, Promise<AnimationFormat | null>>();
+const retargetedClipCache = new WeakMap<VRM, Map<string, Promise<THREE.AnimationClip | null>>>();
 
 bvhLoader.animateBonePositions = false;
 vrmaLoader.register((parser) => new VRMAnimationLoaderPlugin(parser));
@@ -803,6 +804,31 @@ async function loadGltfAnimation(url: string, vrm: VRM): Promise<THREE.Animation
 }
 
 export async function loadVrmAnimationClip(
+  entry: Pick<AnimationEntry, 'url' | 'format'>,
+  vrm: VRM,
+): Promise<THREE.AnimationClip | null> {
+  const normalizedUrl = normalizeAnimationUrl(entry.url);
+  const cacheKey = `${entry.format ?? 'auto'}:${normalizedUrl}`;
+  let clipsForVrm = retargetedClipCache.get(vrm);
+  if (!clipsForVrm) {
+    clipsForVrm = new Map();
+    retargetedClipCache.set(vrm, clipsForVrm);
+  }
+
+  const cached = clipsForVrm.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const pending = loadVrmAnimationClipUncached(entry, vrm).catch((error) => {
+    clipsForVrm?.delete(cacheKey);
+    throw error;
+  });
+  clipsForVrm.set(cacheKey, pending);
+  return pending;
+}
+
+async function loadVrmAnimationClipUncached(
   entry: Pick<AnimationEntry, 'url' | 'format'>,
   vrm: VRM,
 ): Promise<THREE.AnimationClip | null> {

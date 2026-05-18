@@ -22,7 +22,7 @@ import { applyMaterialSettings, disposeVrm, loadVrm, setRealisticMode } from '..
 import { updateLipSync, resetLipSync } from '../lib/vrm/lipsync';
 import { initPostProcessing, resizePostProcessing } from '../lib/vrm/postprocessing';
 import type { PostProcessingRefs } from '../lib/vrm/postprocessing';
-import { AnimationSequencer } from '../lib/vrm/sequencer';
+import { AnimationSequencer, isBaseLoopAnimation } from '../lib/vrm/sequencer';
 import { getTtsManager, type TtsManager } from '../lib/tts/manager';
 
 type VrmStageProps = {
@@ -97,6 +97,17 @@ type GazeRuntimeState = {
   hasLeftEyeOverlay: boolean;
   hasRightEyeOverlay: boolean;
   euler: THREE.Euler;
+};
+
+type ArmGuardBoneRefs = {
+  chest: THREE.Object3D | null | undefined;
+  hips: THREE.Object3D | null | undefined;
+  leftHand: THREE.Object3D | null | undefined;
+  leftLowerArm: THREE.Object3D | null | undefined;
+  leftUpperArm: THREE.Object3D | null | undefined;
+  rightHand: THREE.Object3D | null | undefined;
+  rightLowerArm: THREE.Object3D | null | undefined;
+  rightUpperArm: THREE.Object3D | null | undefined;
 };
 
 const SCALE_LIMITS = {
@@ -237,6 +248,7 @@ const armGuardParentWorld = new THREE.Quaternion();
 const armGuardParentInverse = new THREE.Quaternion();
 const armGuardLocalDelta = new THREE.Quaternion();
 const vrmBaseRotations = new WeakMap<THREE.Object3D, THREE.Quaternion>();
+const armGuardBoneCache = new WeakMap<VRM, ArmGuardBoneRefs>();
 
 function clampCameraVerticalOffset(value: number) {
   return THREE.MathUtils.clamp(
@@ -977,12 +989,9 @@ function updateArmClipGuard(vrm: VRM, settings: VisualSettings) {
     return;
   }
 
-  const humanoid = vrm.humanoid;
-  const hips = humanoid.getNormalizedBoneNode('hips');
-  const chest =
-    humanoid.getNormalizedBoneNode('upperChest') ??
-    humanoid.getNormalizedBoneNode('chest') ??
-    humanoid.getNormalizedBoneNode('spine');
+  const bones = getArmGuardBoneRefs(vrm);
+  const hips = bones.hips;
+  const chest = bones.chest;
   if (!getBoneWorldPosition(hips, armGuardHips) || !getBoneWorldPosition(chest, armGuardChest)) {
     return;
   }
@@ -991,17 +1000,17 @@ function updateArmClipGuard(vrm: VRM, settings: VisualSettings) {
   const torsoRadius = THREE.MathUtils.clamp(settings.armClipTorsoRadius, 0.08, 0.55) * sceneScale;
   const changedLeft = guardArmSide(
     vrm,
-    humanoid.getNormalizedBoneNode('leftUpperArm'),
-    humanoid.getNormalizedBoneNode('leftLowerArm'),
-    humanoid.getNormalizedBoneNode('leftHand'),
+    bones.leftUpperArm,
+    bones.leftLowerArm,
+    bones.leftHand,
     torsoRadius,
     strength,
   );
   const changedRight = guardArmSide(
     vrm,
-    humanoid.getNormalizedBoneNode('rightUpperArm'),
-    humanoid.getNormalizedBoneNode('rightLowerArm'),
-    humanoid.getNormalizedBoneNode('rightHand'),
+    bones.rightUpperArm,
+    bones.rightLowerArm,
+    bones.rightHand,
     torsoRadius,
     strength,
   );
@@ -1009,6 +1018,30 @@ function updateArmClipGuard(vrm: VRM, settings: VisualSettings) {
   if (changedLeft || changedRight) {
     vrm.humanoid.update();
   }
+}
+
+function getArmGuardBoneRefs(vrm: VRM) {
+  const cached = armGuardBoneCache.get(vrm);
+  if (cached) {
+    return cached;
+  }
+
+  const humanoid = vrm.humanoid;
+  const refs: ArmGuardBoneRefs = {
+    chest:
+      humanoid.getNormalizedBoneNode('upperChest') ??
+      humanoid.getNormalizedBoneNode('chest') ??
+      humanoid.getNormalizedBoneNode('spine'),
+    hips: humanoid.getNormalizedBoneNode('hips'),
+    leftHand: humanoid.getNormalizedBoneNode('leftHand'),
+    leftLowerArm: humanoid.getNormalizedBoneNode('leftLowerArm'),
+    leftUpperArm: humanoid.getNormalizedBoneNode('leftUpperArm'),
+    rightHand: humanoid.getNormalizedBoneNode('rightHand'),
+    rightLowerArm: humanoid.getNormalizedBoneNode('rightLowerArm'),
+    rightUpperArm: humanoid.getNormalizedBoneNode('rightUpperArm'),
+  };
+  armGuardBoneCache.set(vrm, refs);
+  return refs;
 }
 
 function isTtsPlaybackActive(ttsManager: TtsManager) {
@@ -1301,6 +1334,8 @@ export function VrmStage({
   const lastManualPlayNonceRef = useRef<number | null>(null);
   const sequencerRef = useRef<AnimationSequencer | null>(null);
   const autoStartTimerRef = useRef<number | null>(null);
+  const reactionFinishTimerRef = useRef<number | null>(null);
+  const reactionRequestRef = useRef(0);
   const vrmRef = useRef<VRM | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const facialExpressionRuntimeRef = useRef(createFacialExpressionRuntimeState());
@@ -1387,14 +1422,20 @@ export function VrmStage({
   }, [mixer]);
 
   const playAnimation = useCallback(
-    (entry: AnimationEntry, index: number) => {
+    (entry: AnimationEntry, index: number, kind: ManualPlayRequest['kind'] = 'base') => {
       const currentVrm = vrmRef.current;
       if (!currentVrm) {
         return;
       }
 
+      const isReaction =
+        kind === 'reaction' || entry.loopEligible === false || entry.purpose !== 'ambient';
       const requestId = animationRequestRef.current + 1;
       animationRequestRef.current = requestId;
+      if (isReaction) {
+        reactionRequestRef.current += 1;
+        sequencerRef.current?.pause();
+      }
 
       void loadVrmAnimationClip(entry, currentVrm)
         .then((clip) => {
@@ -1415,6 +1456,7 @@ export function VrmStage({
             setMixer(nextMixer);
           }
 
+          const action = nextMixer.clipAction(clip);
           setSequencerSettings((current) =>
             current.currentIndex === index
               ? current
@@ -1423,18 +1465,61 @@ export function VrmStage({
                   currentIndex: index,
                 },
           );
-          crossfadeToAction(
-            nextMixer.clipAction(clip),
-            visualSettings.crossfadeDuration,
-            sequencerSettings.speed,
-            {
-              clampWhenFinished: entry.loopEligible === false,
-              loop: entry.loopEligible !== false,
-            },
-          );
+          crossfadeToAction(action, visualSettings.crossfadeDuration, sequencerSettings.speed, {
+            clampWhenFinished: isReaction || entry.loopEligible === false,
+            loop: !isReaction && entry.loopEligible !== false,
+          });
+          if (isReaction) {
+            const reactionId = reactionRequestRef.current;
+            if (reactionFinishTimerRef.current !== null) {
+              window.clearTimeout(reactionFinishTimerRef.current);
+              reactionFinishTimerRef.current = null;
+            }
+
+            const finishReaction = () => {
+              if (reactionRequestRef.current !== reactionId) {
+                return;
+              }
+              setSequencerSettings((current) =>
+                current.currentIndex === index
+                  ? {
+                      ...current,
+                      currentIndex: -1,
+                    }
+                  : current,
+              );
+              sequencerRef.current?.resume(220);
+            };
+            const onFinished = (event: { action: THREE.AnimationAction }) => {
+              if (event.action !== action) {
+                return;
+              }
+              nextMixer.removeEventListener('finished', onFinished);
+              if (reactionFinishTimerRef.current !== null) {
+                window.clearTimeout(reactionFinishTimerRef.current);
+                reactionFinishTimerRef.current = null;
+              }
+              finishReaction();
+            };
+
+            nextMixer.addEventListener('finished', onFinished);
+            const playbackSeconds =
+              Math.max(0.1, clip.duration) / Math.max(0.1, sequencerSettings.speed);
+            reactionFinishTimerRef.current = window.setTimeout(
+              () => {
+                nextMixer.removeEventListener('finished', onFinished);
+                reactionFinishTimerRef.current = null;
+                finishReaction();
+              },
+              Math.ceil((playbackSeconds + visualSettings.crossfadeDuration + 0.35) * 1000),
+            );
+          }
         })
         .catch((nextError) => {
           console.error('[VrmStage] Failed to load animation:', nextError);
+          if (isReaction) {
+            sequencerRef.current?.resume(220);
+          }
         });
     },
     [sequencerSettings.speed, setSequencerSettings, visualSettings.crossfadeDuration],
@@ -1452,6 +1537,11 @@ export function VrmStage({
     mixerRef.current = null;
     setVrm(null);
     setMixer(null);
+    reactionRequestRef.current += 1;
+    if (reactionFinishTimerRef.current !== null) {
+      window.clearTimeout(reactionFinishTimerRef.current);
+      reactionFinishTimerRef.current = null;
+    }
     if (autoStartTimerRef.current !== null) {
       window.clearTimeout(autoStartTimerRef.current);
       autoStartTimerRef.current = null;
@@ -1491,7 +1581,7 @@ export function VrmStage({
           }
 
           setSequencerSettings((current) => {
-            const hasEnabledEntries = current.playlist.some((entry) => entry.enabled);
+            const hasEnabledEntries = current.playlist.some(isBaseLoopAnimation);
             if (!hasEnabledEntries) {
               return current;
             }
@@ -1516,7 +1606,12 @@ export function VrmStage({
     return () => {
       disposed = true;
       animationRequestRef.current += 1;
+      reactionRequestRef.current += 1;
       lastManualPlayNonceRef.current = null;
+      if (reactionFinishTimerRef.current !== null) {
+        window.clearTimeout(reactionFinishTimerRef.current);
+        reactionFinishTimerRef.current = null;
+      }
       if (autoStartTimerRef.current !== null) {
         window.clearTimeout(autoStartTimerRef.current);
         autoStartTimerRef.current = null;
@@ -1590,7 +1685,7 @@ export function VrmStage({
     }
 
     lastManualPlayNonceRef.current = manualPlayRequest.nonce;
-    playAnimation(entry, manualPlayRequest.index);
+    playAnimation(entry, manualPlayRequest.index, manualPlayRequest.kind);
   }, [manualPlayRequest, playAnimation, sequencerSettings.playlist, vrm]);
 
   useEffect(() => {
@@ -1611,7 +1706,7 @@ export function VrmStage({
     }
 
     const sequencer = sequencerRef.current;
-    const enabledEntries = sequencerSettings.playlist.filter((entry) => entry.enabled);
+    const enabledEntries = sequencerSettings.playlist.filter(isBaseLoopAnimation);
     if (enabledEntries.length === 0) {
       sequencer.stop(false);
       setSequencerSettings((current) =>

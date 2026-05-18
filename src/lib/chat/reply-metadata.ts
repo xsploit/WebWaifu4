@@ -12,6 +12,7 @@ export type AssistantEmotion =
   | 'confused'
   | 'thinking'
   | 'surprised'
+  | 'angry'
   | 'annoyed'
   | 'embarrassed'
   | 'grateful'
@@ -46,6 +47,7 @@ export type AssistantMotion =
   | 'listen'
   | 'shy'
   | 'surprise'
+  | 'angry'
   | 'annoyed'
   | 'confused';
 
@@ -74,6 +76,7 @@ const EMOTIONS = new Set<AssistantEmotion>([
   'confused',
   'thinking',
   'surprised',
+  'angry',
   'annoyed',
   'embarrassed',
   'grateful',
@@ -97,6 +100,7 @@ const MOTIONS = new Set<AssistantMotion>([
   'listen',
   'shy',
   'surprise',
+  'angry',
   'annoyed',
   'confused',
 ]);
@@ -125,6 +129,7 @@ const EMOTION_EXPRESSION_MAP: Record<AssistantEmotion, AssistantFacialExpression
   confused: 'confused',
   thinking: 'thinking',
   surprised: 'surprised',
+  angry: 'angry',
   annoyed: 'angry',
   embarrassed: 'embarrassed',
   grateful: 'caring',
@@ -148,6 +153,7 @@ const MOTION_ANIMATION_KEYWORDS: Record<AssistantMotion, string[]> = {
   listen: ['idle', 'stand', 'waiting'],
   shy: ['embarrassment', 'nervous', 'shy'],
   surprise: ['surprise', 'attention', 'react'],
+  angry: ['anger', 'annoyance', 'disapproval'],
   annoyed: ['annoyance', 'anger', 'disapproval'],
   confused: ['confusion', 'curiosity', 'point'],
 };
@@ -161,6 +167,7 @@ const EMOTION_ANIMATION_KEYWORDS: Record<AssistantEmotion, string[]> = {
   confused: ['confusion', 'curiosity'],
   thinking: ['thinking', 'hima', 'waiting'],
   surprised: ['surprise', 'attention'],
+  angry: ['anger', 'annoyance', 'disapproval'],
   annoyed: ['annoyance', 'disapproval'],
   embarrassed: ['embarrassment', 'nervous'],
   grateful: ['gratitude', 'approval', 'caring', 'wave'],
@@ -227,7 +234,10 @@ export function stripAssistantReplyMetadata(text: string): AssistantReplyParseRe
     return { metadata: null, text: cleanupReplyText(text) };
   }
 
-  const closeIndex = text.indexOf(ASSISTANT_REPLY_META_CLOSE, openIndex + ASSISTANT_REPLY_META_OPEN.length);
+  const closeIndex = text.indexOf(
+    ASSISTANT_REPLY_META_CLOSE,
+    openIndex + ASSISTANT_REPLY_META_OPEN.length,
+  );
   if (closeIndex === -1) {
     return { metadata: null, text: cleanupReplyText(text.slice(0, openIndex)) };
   }
@@ -309,14 +319,12 @@ export function resolveAnimationIndexForReplyMetadata(
     return explicitIndex;
   }
 
-  const motionKeywords = [
-    metadata.motion,
-    ...MOTION_ANIMATION_KEYWORDS[metadata.motion],
-  ].map(normalizeAnimationSearchText);
-  const emotionKeywords = [
-    metadata.emotion,
-    ...EMOTION_ANIMATION_KEYWORDS[metadata.emotion],
-  ].map(normalizeAnimationSearchText);
+  const motionKeywords = [metadata.motion, ...MOTION_ANIMATION_KEYWORDS[metadata.motion]].map(
+    normalizeAnimationSearchText,
+  );
+  const emotionKeywords = [metadata.emotion, ...EMOTION_ANIMATION_KEYWORDS[metadata.emotion]].map(
+    normalizeAnimationSearchText,
+  );
 
   const candidates = playlist
     .map((entry, index) => ({
@@ -452,7 +460,10 @@ function getPurposeScore(entry: AnimationEntry, metadata: AssistantReplyMetadata
   if (entry.purpose === 'emotion' && metadata.motion !== 'idle') {
     return 3;
   }
-  if (entry.purpose === 'gesture' && ['greeting', 'wave', 'point', 'explain'].includes(metadata.motion)) {
+  if (
+    entry.purpose === 'gesture' &&
+    ['greeting', 'wave', 'point', 'explain'].includes(metadata.motion)
+  ) {
     return 3;
   }
   if (entry.purpose === 'ambient' && ['idle', 'talk', 'listen'].includes(metadata.motion)) {
@@ -461,7 +472,10 @@ function getPurposeScore(entry: AnimationEntry, metadata: AssistantReplyMetadata
   return 0;
 }
 
-function resolveExplicitAnimationIndex(metadata: AssistantReplyMetadata, playlist: AnimationEntry[]) {
+function resolveExplicitAnimationIndex(
+  metadata: AssistantReplyMetadata,
+  playlist: AnimationEntry[],
+) {
   const requested = normalizeAnimationSearchText(metadata.animation ?? '');
   if (!requested) {
     return -1;
@@ -526,10 +540,10 @@ function resolveAnimationSelectionWeight(
   metadata: AssistantReplyMetadata,
   score: number,
 ) {
-  const weight = typeof entry.weight === 'number' && Number.isFinite(entry.weight) ? entry.weight : 0.8;
+  const weight =
+    typeof entry.weight === 'number' && Number.isFinite(entry.weight) ? entry.weight : 0.8;
   const purposePenalty =
-    (entry.purpose === 'movement' || entry.purpose === 'pose') &&
-    metadata.purpose !== entry.purpose
+    (entry.purpose === 'movement' || entry.purpose === 'pose') && metadata.purpose !== entry.purpose
       ? 0.2
       : 1;
   return Math.max(0.001, weight * purposePenalty * Math.max(0.1, score));

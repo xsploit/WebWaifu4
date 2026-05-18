@@ -37,6 +37,20 @@ describe('assistant reply metadata', () => {
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('angry');
   });
 
+  it('accepts first-class angry metadata and maps it to angry face', () => {
+    const parsed = stripAssistantReplyMetadata(
+      `${ASSISTANT_REPLY_META_OPEN}{"emotion":"angry","motion":"angry","purpose":"emotion","intensity":"high","animation":""}${ASSISTANT_REPLY_META_CLOSE}`,
+    );
+
+    expect(parsed.metadata).toMatchObject({
+      emotion: 'angry',
+      expression: 'angry',
+      motion: 'angry',
+      purpose: 'emotion',
+    });
+    expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('angry');
+  });
+
   it('maps emotional metadata to enabled emotion animations', () => {
     const playlist: AnimationEntry[] = [
       {

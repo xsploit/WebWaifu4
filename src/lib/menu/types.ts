@@ -121,6 +121,7 @@ export type SequencerSettings = {
 
 export type ManualPlayRequest = {
   index: number;
+  kind?: 'base' | 'reaction';
   nonce: number;
 };
 

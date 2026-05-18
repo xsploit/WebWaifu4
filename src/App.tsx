@@ -3369,6 +3369,10 @@ function App() {
   }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
+    if (!metadata) {
+      return;
+    }
+
     const expression = resolveFacialExpressionForReplyMetadata(metadata);
     setFacialExpressionRequest({
       durationMs: resolveFacialExpressionDurationMsForReplyMetadata(metadata),
@@ -3387,6 +3391,7 @@ function App() {
 
     setManualPlayRequest({
       index,
+      kind: 'reaction',
       nonce: Date.now(),
     });
   }, []);

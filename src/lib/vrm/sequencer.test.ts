@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ANIMATIONS } from './sequencer';
+import { DEFAULT_ANIMATIONS, isBaseLoopAnimation } from './sequencer';
 
 describe('animation sequencer catalog', () => {
   it('title-cases generated Silly Tavern animation names for the settings playlist', () => {
@@ -10,5 +10,31 @@ describe('animation sequencer catalog', () => {
     expect(
       DEFAULT_ANIMATIONS.find((entry) => entry.id === 'silly-tavern-dance-gangnam-style')?.name,
     ).toBe('Silly Dance Gangnam Style');
+  });
+
+  it('keeps autoplay limited to safe ambient idle and talk clips', () => {
+    expect(
+      isBaseLoopAnimation(DEFAULT_ANIMATIONS.find((entry) => entry.id === 'sachi-idle01')!),
+    ).toBe(true);
+    expect(
+      isBaseLoopAnimation(DEFAULT_ANIMATIONS.find((entry) => entry.id === 'sachi-ruru01')!),
+    ).toBe(true);
+    expect(
+      isBaseLoopAnimation(DEFAULT_ANIMATIONS.find((entry) => entry.id === 'sachi-happy01')!),
+    ).toBe(false);
+    expect(
+      isBaseLoopAnimation(DEFAULT_ANIMATIONS.find((entry) => entry.id === 'sachi-wave01')!),
+    ).toBe(false);
+    expect(
+      isBaseLoopAnimation(DEFAULT_ANIMATIONS.find((entry) => entry.id === 'sachi-unwalk1')!),
+    ).toBe(false);
+  });
+
+  it('enables emotion reactions without making them autoplay candidates', () => {
+    const annoyance = DEFAULT_ANIMATIONS.find((entry) => entry.id === 'silly-annoyance');
+
+    expect(annoyance?.enabled).toBe(true);
+    expect(annoyance?.purpose).toBe('emotion');
+    expect(isBaseLoopAnimation(annoyance!)).toBe(false);
   });
 });
