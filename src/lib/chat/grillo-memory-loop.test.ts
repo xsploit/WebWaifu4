@@ -269,4 +269,69 @@ describe('Grillo memory worker loop', () => {
     expect(result.toolCalls[0]?.name).toBe('core.worker_candidate_write');
     expect(state.candidates[0]?.summary).toBe('Subsect wants agentic memory tools');
   });
+
+  it('bridges worker semantic search and archival insert into the app memory index', async () => {
+    const scopeKey = 'local:persona:hikari';
+    const inserted: string[] = [];
+    let calls = 0;
+    const result = await runGrilloMemoryWorkerLoop({
+      complete: async () => {
+        calls += 1;
+        if (calls > 1) {
+          return JSON.stringify({
+            candidate: null,
+            diary: null,
+            done: true,
+            memory: null,
+            notes: 'semantic tools finished',
+            relationship: null,
+            toolCalls: [],
+          });
+        }
+        return JSON.stringify({
+          candidate: null,
+          diary: null,
+          done: false,
+          memory: null,
+          notes: 'use semantic bridge',
+          relationship: null,
+          toolCalls: [
+            {
+              args: { limit: 3, query: 'stream memory' },
+              name: 'core.worker_memory_search',
+            },
+            {
+              args: { text: 'Subby wants stream memory indexed for recall.' },
+              name: 'core.worker_memory_insert_archival',
+            },
+          ],
+        });
+      },
+      history: [],
+      maxRounds: 2,
+      model: 'gpt-test',
+      persona: DEFAULT_PERSONA,
+      relationshipMemory: createDefaultRelationshipMemory(),
+      scopeKey,
+      semanticMemory: {
+        insert: async (text) => {
+          inserted.push(text);
+          return { id: 'semantic-1', ok: true, totalIndexed: 1 };
+        },
+        search: async () => [{ score: 0.91, text: 'semantic memory match' }],
+      },
+      turns: [createTurn({ source: 'local', channel: 'local', login: 'subby' })],
+    });
+
+    expect(result.sideEffects.archivalWrites).toBe(1);
+    expect(inserted).toEqual(['Subby wants stream memory indexed for recall.']);
+    expect(result.toolCalls[0]?.result).toMatchObject({
+      ok: true,
+      results: expect.arrayContaining([{ score: 0.91, text: 'semantic memory match' }]),
+    });
+    expect(result.toolCalls[1]?.result).toMatchObject({
+      ok: true,
+      semantic: { id: 'semantic-1', ok: true, totalIndexed: 1 },
+    });
+  });
 });

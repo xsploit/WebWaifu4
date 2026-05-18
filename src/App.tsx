@@ -3278,6 +3278,33 @@ function App() {
               model,
               persona: activePersona ?? DEFAULT_PERSONA,
               relationshipMemory: memorySnapshot,
+              semanticMemory: {
+                insert: async (text) => {
+                  await rememberSemanticTurn(
+                    stateKey,
+                    text,
+                    '',
+                    activePersona ?? DEFAULT_PERSONA,
+                    providerKeyVaultWorkspaceId,
+                    aiSettings.llmProvider,
+                  );
+                  return { ok: true };
+                },
+                search: async (query, limit) => {
+                  const records = await loadSemanticMemory(stateKey);
+                  const embedding = await requestTextEmbedding(
+                    query,
+                    providerKeyVaultWorkspaceId,
+                    aiSettings.llmProvider,
+                  );
+                  return findSemanticMemoryMatchesInRecords(records, query, embedding, limit).map(
+                    (match) => ({
+                      score: match.score,
+                      text: `[semantic:${match.scopeKey}] ${match.text.replace(/\s+/g, ' ').trim()}`,
+                    }),
+                  );
+                },
+              },
               scopeKey: stateKey,
               turns: recentTurns,
             });

@@ -12,6 +12,7 @@ import {
   type GrilloMemoryBlock,
   type GrilloMemoryCandidate,
 } from './grillo-memory';
+import type { GrilloScoredItem } from './grillo-context';
 import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
 import { buildWorkerDebriefPlan } from '../grillo/worker-debrief';
 
@@ -86,7 +87,13 @@ type RunGrilloMemoryWorkerLoopOptions = {
   persona: PersonaProfile | null;
   relationshipMemory: RelationshipMemory;
   scopeKey: string;
+  semanticMemory?: GrilloSemanticMemoryBridge;
   turns: ChatTurn[];
+};
+
+type GrilloSemanticMemoryBridge = {
+  insert?: (text: string) => Promise<{ id?: string; ok: boolean; totalIndexed?: number }>;
+  search?: (query: string, limit: number) => Promise<GrilloScoredItem[]>;
 };
 
 type ParsedWorkerResponse = {
@@ -195,6 +202,7 @@ export async function runGrilloMemoryWorkerLoop({
   model,
   persona,
   relationshipMemory,
+  semanticMemory,
   scopeKey,
   turns,
 }: RunGrilloMemoryWorkerLoopOptions): Promise<GrilloWorkerLoopResult> {
@@ -249,9 +257,10 @@ export async function runGrilloMemoryWorkerLoop({
     });
 
     for (const call of allCalls) {
-      const result = executeGrilloWorkerTool({
+      const result = await executeGrilloWorkerTool({
         call,
         participantKeys,
+        semanticMemory,
         scopeKey,
         sideEffects,
         turns,
@@ -394,15 +403,17 @@ function buildInitialWorkerMessages({
   ];
 }
 
-function executeGrilloWorkerTool({
+async function executeGrilloWorkerTool({
   call,
   participantKeys,
+  semanticMemory,
   scopeKey,
   sideEffects,
   turns,
 }: {
   call: GrilloWorkerToolCall;
   participantKeys: string[];
+  semanticMemory?: GrilloSemanticMemoryBridge;
   scopeKey: string;
   sideEffects: GrilloWorkerLoopResult['sideEffects'];
   turns: ChatTurn[];
@@ -412,7 +423,7 @@ function executeGrilloWorkerTool({
       return toolMemoryRead(scopeKey, participantKeys, call.args);
     }
     if (call.name === 'core.worker_memory_search') {
-      return toolMemorySearch(scopeKey, participantKeys, call.args);
+      return await toolMemorySearch(scopeKey, participantKeys, call.args, semanticMemory);
     }
     if (call.name === 'core.worker_candidate_list') {
       return toolCandidateList(scopeKey, participantKeys, call.args);
@@ -439,7 +450,13 @@ function executeGrilloWorkerTool({
       return result;
     }
     if (call.name === 'core.worker_memory_insert_archival') {
-      const result = toolArchivalWrite(scopeKey, participantKeys, turns, call.args);
+      const result = await toolArchivalWrite(
+        scopeKey,
+        participantKeys,
+        turns,
+        call.args,
+        semanticMemory,
+      );
       if (result.ok) {
         sideEffects.archivalWrites += 1;
       }
@@ -484,6 +501,7 @@ function toolMemorySearch(
   scopeKey: string,
   participantKeys: string[],
   args: Record<string, unknown>,
+  semanticMemory?: GrilloSemanticMemoryBridge,
 ) {
   const query = String(args['query'] ?? '').trim();
   const limit = clampInt(Number(args['limit'] ?? 5), 1, 20);
@@ -497,10 +515,15 @@ function toolMemorySearch(
     query,
     scopeKey,
   });
-  return {
+  return Promise.resolve(semanticMemory?.search?.(query, limit) ?? [])
+    .catch(() => [])
+    .then((semanticResults) => ({
     ok: true,
-    results: additions.recalledMemories,
-  };
+      results: dedupeScoredResults([...additions.recalledMemories, ...semanticResults]).slice(
+        0,
+        limit,
+      ),
+    }));
 }
 
 function toolCandidateList(
@@ -694,6 +717,7 @@ function toolArchivalWrite(
   participantKeys: string[],
   turns: ChatTurn[],
   args: Record<string, unknown>,
+  semanticMemory?: GrilloSemanticMemoryBridge,
 ) {
   const text = String(args['text'] ?? '')
     .replace(/\s+/g, ' ')
@@ -702,12 +726,21 @@ function toolArchivalWrite(
     return { ok: false, error: 'text is required' };
   }
 
-  return toolCandidateWrite(scopeKey, participantKeys, turns, {
+  const candidate = toolCandidateWrite(scopeKey, participantKeys, turns, {
     confidence: 0.62,
     content: text,
     summary: text.slice(0, 220),
     type: 'thread',
   });
+  return Promise.resolve(semanticMemory?.insert?.(text))
+    .catch((error) => ({
+      error: error instanceof Error ? error.message : 'semantic insert failed',
+      ok: false,
+    }))
+    .then((semantic) => ({
+      ...candidate,
+      semantic,
+    }));
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -893,6 +926,23 @@ function normalizeDiaryEmotions(value: unknown): GrilloDiaryEntry['emotions'] {
     })
     .filter((item): item is { intensity: number; name: string } => Boolean(item))
     .slice(0, 8);
+}
+
+function dedupeScoredResults(items: GrilloScoredItem[]) {
+  const seen = new Set<string>();
+  const output: GrilloScoredItem[] = [];
+  items
+    .filter((item) => item.text.trim())
+    .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+    .forEach((item) => {
+      const key = item.text.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      output.push(item);
+    });
+  return output;
 }
 
 function dedupe(values: string[]) {
