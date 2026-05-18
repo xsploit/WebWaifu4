@@ -146,6 +146,7 @@ export function createAssistantMetadataStreamFilter() {
   let buffer = '';
   let suppressing = false;
   let metadataBuffer = '';
+  let hiddenTextLength = 0;
 
   return {
     push(delta: string) {
@@ -157,11 +158,13 @@ export function createAssistantMetadataStreamFilter() {
           const closeIndex = buffer.indexOf(ASSISTANT_REPLY_META_CLOSE);
           if (closeIndex === -1) {
             metadataBuffer += buffer;
+            hiddenTextLength += buffer.length;
             buffer = '';
             break;
           }
 
           metadataBuffer += buffer.slice(0, closeIndex);
+          hiddenTextLength += closeIndex;
           buffer = buffer.slice(closeIndex + ASSISTANT_REPLY_META_CLOSE.length);
           suppressing = false;
           continue;
@@ -191,6 +194,14 @@ export function createAssistantMetadataStreamFilter() {
       return {
         metadata: parsed.metadata ?? normalizeReplyMetadata(metadataBuffer),
         text: parsed.text,
+      };
+    },
+    debug() {
+      return {
+        bufferLength: buffer.length,
+        hiddenTextLength,
+        metadataBufferLength: metadataBuffer.length,
+        suppressing,
       };
     },
   };

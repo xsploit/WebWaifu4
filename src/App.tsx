@@ -1957,6 +1957,8 @@ function App() {
       let liveSubtitlePumpTimer: number | null = null;
       let finalDisplayPending = false;
       let pendingText = '';
+      let rawDeltaText = '';
+      let staleDeltaCount = 0;
       let sawDelta = false;
       let queuedSpeech = false;
       let liveBridgeSink: RemotePcmPushStream | null = null;
@@ -2131,7 +2133,12 @@ function App() {
       };
 
       const pushDelta = (delta: string) => {
-        if (!delta || isStale()) {
+        if (!delta) {
+          return;
+        }
+        rawDeltaText += delta;
+        if (isStale()) {
+          staleDeltaCount += 1;
           return;
         }
 
@@ -2153,8 +2160,48 @@ function App() {
       };
 
       const finish = async (finalText?: string) => {
+        const rawFinalText = finalText ?? fullText;
         const parsedReply = metadataFilter.finish(finalText ?? fullText);
         const normalizedFinal = parsedReply.text;
+        const metaOpenIndex = rawFinalText.indexOf('<yw-meta>');
+        const metaCloseIndex = rawFinalText.indexOf('</yw-meta>');
+        const staleAtFinish = isStale();
+        const streamDebug = {
+          chunkTtsRequests,
+          displayLength: displayText.length,
+          label,
+          liveBridgeTts,
+          metaBalanced:
+            metaOpenIndex === -1 ||
+            (metaCloseIndex > metaOpenIndex && metaCloseIndex !== -1),
+          metaCloseIndex,
+          metaOpenIndex,
+          messageId: assistantMessage.id,
+          normalizedFinalLength: normalizedFinal.length,
+          normalizedTail: normalizedFinal.slice(-160),
+          queuedDisplayLength: queuedDisplayText.length,
+          rawDeltaLength: rawDeltaText.length,
+          rawDeltaTail: rawDeltaText.slice(-160),
+          rawFinalLength: rawFinalText.length,
+          rawFinalTail: rawFinalText.slice(-160),
+          run: thisRun,
+          sawDelta,
+          staleAtFinish,
+          staleDeltaCount,
+          ttsProvider,
+          visibleFullLength: fullText.length,
+          ...metadataFilter.debug(),
+        };
+        if (
+          staleAtFinish ||
+          staleDeltaCount > 0 ||
+          streamDebug.metaBalanced === false ||
+          (rawFinalText && normalizedFinal && rawFinalText.length - normalizedFinal.length > 80)
+        ) {
+          console.warn('[AI Stream Debug] suspicious assistant stream finish', streamDebug);
+        } else {
+          console.info('[AI Stream Debug] assistant stream finish', streamDebug);
+        }
         if (!isStale() && normalizedFinal && normalizedFinal !== fullText.trim()) {
           if (!sawDelta) {
             fullText = normalizedFinal;
