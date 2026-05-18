@@ -1464,6 +1464,7 @@ function App() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState(() => createDefaultUiState().chatDraft);
   const [chatGenerating, setChatGenerating] = useState(false);
+  const [assistantReplyLocked, setAssistantReplyLocked] = useState(false);
   const [chatDisplayOverrides, setChatDisplayOverrides] = useState<Record<string, string>>({});
   const [twitchChannel, setTwitchChannel] = useState(DIRECT_TWITCH_CHANNEL);
   const [twitchConnectionLabel, setTwitchConnectionLabel] = useState(
@@ -1511,6 +1512,7 @@ function App() {
   const ttsWarmVoicesRef = useRef<Set<string>>(new Set());
   const remoteTtsVoiceFetchAttemptedRef = useRef<Set<string>>(new Set());
   const assistantRenderRunRef = useRef(0);
+  const assistantReplyLockedRef = useRef(false);
   const chatRequestRunRef = useRef(0);
   const chatHistoryRef = useRef<ChatMessage[]>([]);
   const relationshipMemoryRef = useRef<RelationshipMemory>(createDefaultRelationshipMemory());
@@ -1546,6 +1548,11 @@ function App() {
   const memoryAgentFailedModelsRef = useRef<Set<string>>(new Set());
   const grilloRecentTurnsByStateKeyRef = useRef<Record<string, ChatTurn[]>>({});
   const ttsManager = useMemo(() => getTtsManager(), []);
+
+  const setAssistantReplyLock = useCallback((locked: boolean) => {
+    assistantReplyLockedRef.current = locked;
+    setAssistantReplyLocked(locked);
+  }, []);
 
   const activePersona = useMemo(
     () => personas.find((persona) => persona.id === activePersonaId) ?? personas[0] ?? null,
@@ -1776,6 +1783,7 @@ function App() {
       assistantRenderRunRef.current += 1;
       chatRequestRunRef.current += 1;
       memoryAgentRunRef.current += 1;
+      setAssistantReplyLock(false);
       if (memoryAgentTimeoutRef.current !== null) {
         window.clearTimeout(memoryAgentTimeoutRef.current);
         memoryAgentTimeoutRef.current = null;
@@ -1785,7 +1793,7 @@ function App() {
         stopTtsPlayback();
       }
     },
-    [stopTtsPlayback],
+    [setAssistantReplyLock, stopTtsPlayback],
   );
 
   const refreshStoredTtsVoices = useCallback(async () => {
@@ -3455,6 +3463,9 @@ function App() {
       if (!message) {
         return;
       }
+      if (assistantReplyLockedRef.current) {
+        return;
+      }
 
       const persona = activePersona ?? DEFAULT_PERSONA;
       const turn = createLocalChatTurn({ persona, text: message });
@@ -4037,6 +4048,7 @@ function App() {
       });
 
       try {
+        setAssistantReplyLock(true);
         setChatGenerating(true);
         const semanticMemoryContext = await getSemanticMemoryContext(
           stateKey,
@@ -4192,6 +4204,7 @@ function App() {
         appendSystemMessage(`[Chat] AI reply failed: ${message}`);
       } finally {
         setChatGenerating(false);
+        setAssistantReplyLock(false);
       }
     },
     [
@@ -4203,6 +4216,7 @@ function App() {
       playAssistantMetadataAnimation,
       providerKeyVaultWorkspaceId,
       scheduleRelationshipMemoryRefresh,
+      setAssistantReplyLock,
       activeRelationshipStateKey,
       twitchChannel,
     ],
@@ -4862,7 +4876,7 @@ function App() {
             channelName={twitchChannel}
             displayOverrides={chatDisplayOverrides}
             history={chatHistory}
-            isGenerating={chatGenerating}
+            isGenerating={chatGenerating || assistantReplyLocked}
             modeLabel={twitchModeLabel}
             onClear={handleClearChat}
             onToggle={() => setChatLogOpen((current) => !current)}
@@ -5087,7 +5101,7 @@ function App() {
             <ChatBar
               activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
               inputValue={chatInput}
-              isGenerating={chatGenerating}
+              isGenerating={chatGenerating || assistantReplyLocked}
               messageCount={chatHistory.length}
               model={aiSettings.model}
               onInputChange={setChatInput}

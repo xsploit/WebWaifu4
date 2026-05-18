@@ -20,6 +20,7 @@ export function ChatBar({
   onSend,
 }: ChatBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const sendLocked = isGenerating;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -58,6 +59,9 @@ export function ChatBar({
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
+                if (sendLocked) {
+                  return;
+                }
                 onSend();
               }
             }}
@@ -68,12 +72,13 @@ export function ChatBar({
 
           <div className="chat-actions">
             <button
-              className={`icon-btn primary ${isGenerating ? 'active' : ''}`}
+              className={`icon-btn primary ${sendLocked ? 'active' : ''}`}
+              disabled={sendLocked}
               onClick={onSend}
-              title={isGenerating ? 'Queue message' : 'Send'}
+              title={sendLocked ? 'Wait for the current reply to finish' : 'Send'}
               type="button"
             >
-              {isGenerating ? (
+              {sendLocked ? (
                 <span className="chat-spinner" />
               ) : (
                 <svg
