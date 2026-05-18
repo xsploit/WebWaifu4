@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AnimationEntry } from '../menu/types';
+import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
 import {
   ASSISTANT_REPLY_META_CLOSE,
   ASSISTANT_REPLY_META_OPEN,
@@ -87,6 +88,58 @@ describe('assistant reply metadata', () => {
         playlist,
       ),
     ).toBe(1);
+  });
+
+  it('maps every supported emotion to an equivalent enabled animation when the catalog has one', () => {
+    const emotionCases = [
+      ['amused', 'happy', ['amusement', 'happy', 'joy']],
+      ['happy', 'happy', ['happy', 'joy']],
+      ['excited', 'happy', ['excitement', 'happy']],
+      ['curious', 'thinking', ['curiosity', 'thinking']],
+      ['confused', 'confused', ['confusion', 'curiosity']],
+      ['thinking', 'thinking', ['thinking', 'hima', 'waiting']],
+      ['surprised', 'surprised', ['surprise', 'attention']],
+      ['angry', 'angry', ['anger', 'annoyance', 'disapproval']],
+      ['annoyed', 'angry', ['annoyance', 'anger', 'disapproval']],
+      ['embarrassed', 'embarrassed', ['embarrassment', 'nervous']],
+      ['grateful', 'caring', ['gratitude', 'approval', 'caring']],
+      ['optimistic', 'happy', ['optimism', 'approval']],
+      ['proud', 'happy', ['pride', 'approval']],
+      ['nervous', 'embarrassed', ['nervous', 'nervousness', 'embarrassment']],
+      ['sad', 'sad', ['sadness', 'disappointment']],
+      ['caring', 'caring', ['caring', 'approval', 'gratitude']],
+    ] as const;
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.42);
+
+    try {
+      for (const [emotion, expression, expectedKeywords] of emotionCases) {
+        const index = resolveAnimationIndexForReplyMetadata(
+          {
+            animation: '',
+            emotion,
+            expression,
+            intensity: 'medium',
+            motion: emotion,
+            purpose: 'emotion',
+          },
+          DEFAULT_ANIMATIONS,
+        );
+        const selected = DEFAULT_ANIMATIONS[index];
+        const haystack =
+          `${selected?.id ?? ''} ${selected?.name ?? ''} ${(selected?.tags ?? []).join(' ')}`.toLowerCase();
+
+        expect(index, emotion).toBeGreaterThanOrEqual(0);
+        expect(selected?.enabled, emotion).toBe(true);
+        expect(selected?.purpose, emotion).not.toBe('movement');
+        expect(selected?.purpose, emotion).not.toBe('pose');
+        expect(
+          expectedKeywords.some((keyword) => haystack.includes(keyword)),
+          `${emotion} selected ${selected?.id}`,
+        ).toBe(true);
+      }
+    } finally {
+      random.mockRestore();
+    }
   });
 
   it('does not advertise or select disabled animation entries', () => {

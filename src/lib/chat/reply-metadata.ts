@@ -47,9 +47,7 @@ export type AssistantMotion =
   | 'listen'
   | 'shy'
   | 'surprise'
-  | 'angry'
-  | 'annoyed'
-  | 'confused';
+  | AssistantEmotion;
 
 export type AssistantMotionIntensity = 'low' | 'medium' | 'high';
 
@@ -100,9 +98,22 @@ const MOTIONS = new Set<AssistantMotion>([
   'listen',
   'shy',
   'surprise',
+  'neutral',
+  'amused',
+  'happy',
+  'excited',
+  'curious',
+  'surprised',
   'angry',
   'annoyed',
   'confused',
+  'embarrassed',
+  'grateful',
+  'optimistic',
+  'proud',
+  'nervous',
+  'sad',
+  'caring',
 ]);
 
 const INTENSITIES = new Set<AssistantMotionIntensity>(['low', 'medium', 'high']);
@@ -153,9 +164,22 @@ const MOTION_ANIMATION_KEYWORDS: Record<AssistantMotion, string[]> = {
   listen: ['idle', 'stand', 'waiting'],
   shy: ['embarrassment', 'nervous', 'shy'],
   surprise: ['surprise', 'attention', 'react'],
+  neutral: ['idle', 'stand', 'neutral'],
+  amused: ['amusement', 'happy', 'joy', 'laugh'],
+  happy: ['happy', 'joy', 'amusement'],
+  excited: ['excitement', 'happy', 'joy'],
+  curious: ['curiosity', 'thinking', 'hima'],
+  surprised: ['surprise', 'attention', 'react'],
   angry: ['anger', 'annoyance', 'disapproval'],
   annoyed: ['annoyance', 'anger', 'disapproval'],
   confused: ['confusion', 'curiosity', 'point'],
+  embarrassed: ['embarrassment', 'nervous', 'shy'],
+  grateful: ['gratitude', 'approval', 'caring'],
+  optimistic: ['optimism', 'approval', 'happy'],
+  proud: ['pride', 'approval', 'happy'],
+  nervous: ['nervousness', 'embarrassment', 'shy'],
+  sad: ['sadness', 'disappointment'],
+  caring: ['caring', 'approval', 'gratitude'],
 };
 
 const EMOTION_ANIMATION_KEYWORDS: Record<AssistantEmotion, string[]> = {
@@ -337,22 +361,20 @@ export function resolveAnimationIndexForReplyMetadata(
     .filter((candidate) => candidate.entry.enabled)
     .map((candidate) => ({
       ...candidate,
-      score:
-        getPurposeScore(candidate.entry, metadata) +
-        scoreAnimationKeywords(candidate.haystack, motionKeywords, 1) +
-        scoreAnimationKeywords(candidate.haystack, emotionKeywords, 2) +
-        (candidate.entry.purpose === 'emotion' &&
-        emotionKeywords.some((keyword) => keyword && candidate.haystack.includes(keyword))
-          ? 8
-          : 0),
+      ...getAnimationSemanticScores(candidate, metadata, motionKeywords, emotionKeywords),
     }))
-    .filter((candidate) => candidate.score > 0);
+    .filter((candidate) => candidate.score > 0 && candidate.semanticScore > 0);
 
   if (candidates.length === 0) {
     return -1;
   }
 
-  const weights = candidates.map((candidate) => {
+  const maxScore = Math.max(...candidates.map((candidate) => candidate.score));
+  const strongestCandidates = candidates.filter((candidate) => {
+    return candidate.score >= Math.max(1, maxScore * 0.5);
+  });
+
+  const weights = strongestCandidates.map((candidate) => {
     return {
       ...candidate,
       weight: resolveAnimationSelectionWeight(candidate.entry, metadata, candidate.score),
@@ -364,7 +386,7 @@ export function resolveAnimationIndexForReplyMetadata(
     return selected.index;
   }
 
-  candidates.sort((a, b) => {
+  strongestCandidates.sort((a, b) => {
     const aEnabled = a.entry.enabled ? 1 : 0;
     const bEnabled = b.entry.enabled ? 1 : 0;
     if (aEnabled !== bEnabled) return bEnabled - aEnabled;
@@ -378,7 +400,7 @@ export function resolveAnimationIndexForReplyMetadata(
     return a.index - b.index;
   });
 
-  return candidates[0]?.index ?? -1;
+  return strongestCandidates[0]?.index ?? -1;
 }
 
 function normalizeReplyMetadata(rawJson: string): AssistantReplyMetadata | null {
@@ -394,7 +416,7 @@ function normalizeReplyMetadata(rawJson: string): AssistantReplyMetadata | null 
       EXPRESSIONS,
       inferExpressionForEmotion(emotion),
     );
-    const motion = normalizeSetValue(parsed['motion'], MOTIONS, 'talk');
+    const motion = normalizeSetValue(parsed['motion'], MOTIONS, emotion);
     const purpose = normalizeSetValue(parsed['purpose'], PURPOSES, inferPurposeForMotion(motion));
     const intensity = normalizeSetValue(parsed['intensity'], INTENSITIES, 'low');
     const animation = typeof parsed['animation'] === 'string' ? parsed['animation'].trim() : '';
@@ -519,6 +541,26 @@ function scoreAnimationKeywords(haystack: string, keywords: string[], multiplier
     }
     return score + Math.max(1, keywords.length - keywordIndex) * multiplier;
   }, 0);
+}
+
+function getAnimationSemanticScores(
+  candidate: { entry: AnimationEntry; haystack: string },
+  metadata: AssistantReplyMetadata,
+  motionKeywords: string[],
+  emotionKeywords: string[],
+) {
+  const motionScore = scoreAnimationKeywords(candidate.haystack, motionKeywords, 1);
+  const emotionScore = scoreAnimationKeywords(candidate.haystack, emotionKeywords, 2);
+  const exactEmotionBoost =
+    candidate.entry.purpose === 'emotion' &&
+    emotionKeywords.some((keyword) => keyword && candidate.haystack.includes(keyword))
+      ? 8
+      : 0;
+  const semanticScore = motionScore + emotionScore + exactEmotionBoost;
+  return {
+    semanticScore,
+    score: getPurposeScore(candidate.entry, metadata) + semanticScore,
+  };
 }
 
 function inferPurposeForMotion(motion: AssistantMotion): AnimationPurpose {
