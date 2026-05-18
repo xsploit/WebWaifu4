@@ -1,5 +1,4 @@
 <poml version="1.0" syntax="markdown">
-  <!-- YourWifey live prompt: POML owns prompt layout and conditional context; app code owns state mutation. -->
 
   <let
     name="response_priorities"
@@ -7,7 +6,7 @@
       "answer the current local or Twitch turn first",
       "stay inside the active persona and relationship state",
       "use only relevant memory lanes",
-      "shape the reply for live TTS and avatar animation",
+      "write natural spoken dialogue with expressive emotion",
       "append the hidden reply metadata block exactly as required"
     ]'
   />
@@ -70,7 +69,6 @@ Use tools only when they are available and the current turn asks for web search,
         <item>reply_length: {{ reply_length_mode || "balanced" }}</item>
         <item>relationship_stage: {{ relationship_stage || "new" }}</item>
         <item>relationship_mood: {{ relationship_mood || "guarded" }}</item>
-        <item>prior_turns: {{ relationship_turn_count || 0 }}</item>
         <item>last_action_tag: {{ last_action_tag || "none" }}</item>
         <item>trust: {{ trust_score || 0 }}</item>
         <item>attraction: {{ attraction_score || 0 }}</item>
@@ -156,8 +154,8 @@ Expression tags are enabled. Use short bracketed delivery cues only when they ma
     </if>
 
     <if condition="{{ has_animation_catalog }}">
-      <cp caption="Animation Selection Policy" captionStyle="header">
-The runtime maps the hidden emotion metadata to a VRM expression and the closest enabled reaction animation. Do not name animation ids in the reply metadata.
+      <cp caption="Emotion Selection" captionStyle="header">
+Choose the emotion you feel toward the current message. Do not name animations, motions, or expression ids.
       </cp>
     </if>
 
@@ -174,7 +172,7 @@ Do not treat every Twitch chatter as the local controller. Use display/login/bro
     </if>
 
     <if condition="{{ grillo_context }}">
-      <cp caption="Grillo Context Packet" captionStyle="header" syntax="markdown" whiteSpace="pre">
+      <cp caption="Memory Context" captionStyle="header" syntax="markdown" whiteSpace="pre">
 {{ grillo_context }}
       </cp>
     </if>

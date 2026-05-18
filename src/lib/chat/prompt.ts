@@ -33,7 +33,6 @@ type BuildChatCompletionMessagesOptions = {
 };
 
 function serializeTurnMetadataContext({
-  animationCatalogContext,
   history,
   persona,
   relationshipMemory,
@@ -43,7 +42,6 @@ function serializeTurnMetadataContext({
   ttsProvider,
   diaryContext,
 }: {
-  animationCatalogContext: string;
   diaryContext: string;
   history: ChatMessage[];
   persona: PersonaProfile | null;
@@ -57,16 +55,13 @@ function serializeTurnMetadataContext({
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
   const lastUserMessage = [...history].reverse().find((message) => message.role === 'user');
   const metadata: Record<string, PromptTurnContextValue> = {
-    animationCatalog: animationCatalogContext.trim() ? 'present' : 'absent',
     currentTimeIso: now.toISOString(),
-    historyWindowMessages: history.filter((message) => message.role !== 'system').length,
     localTime: now.toLocaleString(undefined, {
       dateStyle: 'medium',
       timeStyle: 'medium',
       timeZone: timezone === 'unknown' ? undefined : timezone,
     }),
     memoryStage: relationshipMemory.relationshipStage,
-    memoryTurnCount: relationshipMemory.turnCount,
     privateDiary: diaryContext ? 'included' : relationshipMemory.diaryEntry ? 'withheld' : 'none',
     personaId: persona?.id,
     personaName: persona?.name,
@@ -165,7 +160,6 @@ function buildDynamicPromptState({
     persona_name: persona?.name.trim() || 'YourWifey',
     relationship_mood: relationshipMood,
     relationship_stage: relationshipStage,
-    relationship_turn_count: relationshipMemory.turnCount,
     respect_score: relationshipMemory.respect,
     reply_length_instruction: getReplyLengthInstruction(replyLength),
     reply_length_mode: replyLength,
@@ -371,7 +365,6 @@ export async function buildChatCompletionMessages({
     replyMetadataInstruction: buildReplyMetadataInstruction(),
     semanticMemoryContext: '',
     turnMetadataContext: serializeTurnMetadataContext({
-      animationCatalogContext,
       diaryContext,
       history,
       persona,

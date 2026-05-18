@@ -33,7 +33,7 @@ describe('POML-backed chat prompt', () => {
     expect(YOURWIFEY_POML_TEMPLATE).toContain('<let');
     expect(YOURWIFEY_POML_TEMPLATE).toContain('name="response_priorities"');
     expect(YOURWIFEY_POML_TEMPLATE).toContain('caption="Relationship Dynamics"');
-    expect(YOURWIFEY_POML_TEMPLATE).toContain('caption="Grillo Context Packet"');
+    expect(YOURWIFEY_POML_TEMPLATE).toContain('caption="Memory Context"');
     expect(YOURWIFEY_POML_TEMPLATE).toContain('<human-msg name="current-turn"');
   });
 
@@ -50,7 +50,7 @@ describe('POML-backed chat prompt', () => {
         {
           id: 'user-1',
           role: 'user',
-          content: 'Hey Hikari, remember I like POML.',
+          content: 'Hey Hikari, remember I like prompt templates.',
           createdAt: 2,
         },
         {
@@ -67,14 +67,14 @@ describe('POML-backed chat prompt', () => {
       },
       relationshipMemory: {
         ...createDefaultRelationshipMemory(),
-        facts: ['likes POML'],
+        facts: ['likes prompt templates'],
         lastActionTag: 'compliment',
         mood: 'teasing',
         relationshipStage: 'familiar',
         summary: 'The user is trying to make prompt templates less cursed.',
         turnCount: 9,
       },
-      semanticMemoryContext: 'Prior note: use OpenAI Responses state keys carefully.',
+      semanticMemoryContext: 'Prior note: keep conversation state stable across turns.',
       turnContext: {
         channel: 'subsect',
         intakePolicy: 'activeChatters > 10; @mentions disabled; batch every 10 messages',
@@ -107,6 +107,15 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).not.toContain('POML renders the prompt');
     expect(systemMessage.content).not.toContain('external runtime services');
     expect(systemMessage.content).not.toContain('browser state');
+    expect(systemMessage.content).not.toContain('OpenAI Responses API');
+    expect(systemMessage.content).not.toContain('host_context');
+    expect(systemMessage.content).not.toContain('animationCatalog');
+    expect(systemMessage.content).not.toContain('historyWindowMessages');
+    expect(systemMessage.content).not.toContain('memoryTurnCount');
+    expect(systemMessage.content).not.toContain('prior_turns');
+    expect(systemMessage.content).not.toContain('shape the reply for live TTS and avatar animation');
+    expect(systemMessage.content).not.toContain('runtime maps');
+    expect(systemMessage.content).not.toContain('Do not name animation ids');
     expect(systemMessage.content).toContain('You are Hikari');
     expect(systemMessage.content).toContain('Subsect');
     expect(systemMessage.content).toContain('Speech expression tags are enabled');
@@ -118,7 +127,7 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('direct tagged reply or a balanced batch response');
     expect(systemMessage.content).toContain('<yw-meta>');
     expect(systemMessage.content).toContain('Available animation: little-wave [wave-01]');
-    expect(systemMessage.content).toContain('# Animation Selection Policy');
+    expect(systemMessage.content).toContain('# Emotion Selection');
     expect(systemMessage.content.indexOf('# Live Response Task')).toBeLessThan(
       systemMessage.content.indexOf('# Persona'),
     );
@@ -128,19 +137,18 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content.indexOf('# Reply Metadata Contract')).toBeLessThan(
       systemMessage.content.indexOf('# Persona'),
     );
-    expect(systemMessage.content).toContain('# Grillo Context Packet');
+    expect(systemMessage.content).toContain('# Memory Context');
+    expect(systemMessage.content).not.toContain('turns=9');
     expect(systemMessage.content).toContain('## relationship_memory');
-    expect(systemMessage.content).toContain('known_facts=["likes POML"]');
+    expect(systemMessage.content).toContain('known_facts=["likes prompt templates"]');
     expect(systemMessage.content).toContain('## recalled_memories');
-    expect(systemMessage.content).toContain(
-      'Prior note: use OpenAI Responses state keys carefully.',
-    );
+    expect(systemMessage.content).toContain('Prior note: keep conversation state stable across turns.');
     expect(systemMessage.content).toContain('# Semantic Memory Usage');
     expect(systemMessage.content).not.toContain('{{');
     expect(messages.slice(1)).toEqual([
       {
         role: 'user',
-        content: 'Hey Hikari, remember I like POML.',
+        content: 'Hey Hikari, remember I like prompt templates.',
       },
       {
         role: 'assistant',
@@ -305,7 +313,7 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('# Relationship Dynamics');
     expect(systemMessage.content).toContain('New relationship');
     expect(systemMessage.content).toContain('# Turn Metadata');
-    expect(systemMessage.content).toContain('# Grillo Context Packet');
+    expect(systemMessage.content).toContain('# Memory Context');
     expect(systemMessage.content).not.toContain('# Speech and TTS');
     expect(systemMessage.content).not.toContain('# Avatar Animation Catalog');
     expect(systemMessage.content).not.toContain('# Relationship Memory');

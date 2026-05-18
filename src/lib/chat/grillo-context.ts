@@ -100,14 +100,13 @@ export function buildGrilloContextSections({
       `conversation_scope: ${conversationScope}`,
       `turn_source: ${turnSource || 'unknown'}`,
       `current_speaker: ${currentSpeaker}`,
-      `host_context: browser stream overlay using OpenAI Responses; no platform host SDK context is assumed.`,
     ],
     instructions: [
-      'Keep context lane ownership strict: channel_history is transcript, relationship_memory is stable participant state, recalled_memories are semantic matches, and thoughts are private diary/reflection.',
+      'Use channel_history as transcript, relationship_memory as stable participant context, recalled_memories as semantic matches, and thoughts as private diary/reflection.',
       'Do not replay global cross-channel transcript. Use only the current channel/source/persona scope supplied in this packet.',
       'If memory conflicts with the current turn or speaker metadata, trust the current turn first.',
       'Local chat is a participant transcript turn, but trusted/controller metadata may permit commands or stronger operator intent.',
-      'Growth should come from validated memory/profile updates, not from rewriting the persona prompt mid-turn.',
+      'Do not rewrite the persona from memory; use memory only as context for this reply.',
     ],
     channel_history: channelHistory.slice(-18).map(formatGrilloChatTurn),
     relationship_memory: [
@@ -259,7 +258,7 @@ export function buildGrilloContextPromptBlock(options: BuildGrilloContextSection
 
 function buildRelationshipLane(memory: RelationshipMemory) {
   return [
-    `stage=${memory.relationshipStage} mood=${memory.mood} turns=${memory.turnCount} last_seen=${memory.lastSeenAt ? new Date(memory.lastSeenAt).toISOString() : 'never'}`,
+    `stage=${memory.relationshipStage} mood=${memory.mood} last_seen=${memory.lastSeenAt ? new Date(memory.lastSeenAt).toISOString() : 'never'}`,
     `scores=${JSON.stringify({
       trust: memory.trust,
       attraction: memory.attraction,

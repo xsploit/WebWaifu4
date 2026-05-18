@@ -59,8 +59,10 @@ describe('Grillo context packet', () => {
     });
 
     expect(sections.background_information).toContain('interface_path: twitch/subsect');
-    expect(sections.instructions.join('\n')).toContain('Keep context lane ownership strict');
+    expect(sections.background_information.join('\n')).not.toContain('host_context');
+    expect(sections.instructions.join('\n')).toContain('Use channel_history as transcript');
     expect(sections.channel_history.join('\n')).toContain('OtherViewer: that was funny');
+    expect(sections.relationship_memory.join('\n')).not.toContain('turns=12');
     expect(sections.relationship_memory.join('\n')).toContain(
       'known_facts=["likes scoped memory"]',
     );
