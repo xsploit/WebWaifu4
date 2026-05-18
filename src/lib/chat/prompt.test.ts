@@ -91,7 +91,7 @@ describe('POML-backed chat prompt', () => {
     }
 
     expect(systemMessage.role).toBe('system');
-    expect(systemMessage.content).toContain('OpenAI Responses API');
+    expect(systemMessage.content).toContain('live YourWifey stream avatar');
     expect(systemMessage.content).toContain('# Prompt State');
     expect(systemMessage.content).toContain('relationship_mood: teasing');
     expect(systemMessage.content).toContain('# Response Priority Stack');
@@ -102,7 +102,11 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('# Relationship Dynamics');
     expect(systemMessage.content).toContain('Familiar relationship');
     expect(systemMessage.content).toContain('Guarded state');
-    expect(systemMessage.content).toContain('# Tool Policy');
+    expect(systemMessage.content).toContain('# Tool Use');
+    expect(systemMessage.content).toContain('Use tools only when they are available');
+    expect(systemMessage.content).not.toContain('POML renders the prompt');
+    expect(systemMessage.content).not.toContain('external runtime services');
+    expect(systemMessage.content).not.toContain('browser state');
     expect(systemMessage.content).toContain('You are Hikari');
     expect(systemMessage.content).toContain('Subsect');
     expect(systemMessage.content).toContain('Speech expression tags are enabled');
@@ -118,7 +122,7 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content.indexOf('# Live Response Task')).toBeLessThan(
       systemMessage.content.indexOf('# Persona'),
     );
-    expect(systemMessage.content.indexOf('# Tool Policy')).toBeLessThan(
+    expect(systemMessage.content.indexOf('# Tool Use')).toBeLessThan(
       systemMessage.content.indexOf('# Persona'),
     );
     expect(systemMessage.content.indexOf('# Reply Metadata Contract')).toBeLessThan(
@@ -296,7 +300,7 @@ describe('POML-backed chat prompt', () => {
       throw new Error('Expected a POML-rendered system message.');
     }
 
-    expect(systemMessage.content).toContain('# Tool Policy');
+    expect(systemMessage.content).toContain('# Tool Use');
     expect(systemMessage.content).toContain('# Prompt State');
     expect(systemMessage.content).toContain('# Relationship Dynamics');
     expect(systemMessage.content).toContain('New relationship');
