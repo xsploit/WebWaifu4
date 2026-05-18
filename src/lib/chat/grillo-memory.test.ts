@@ -49,7 +49,7 @@ describe('Grillo memory store', () => {
     vi.unstubAllGlobals();
   });
 
-  it('writes candidates, diary entries, and promoted memory blocks per scope', () => {
+  it('writes candidates and promoted memory blocks per scope without fake diary receipts', () => {
     const scopeKey = 'twitch:subsect:persona:hikari';
     recordGrilloMemoryTurn({
       assistantText: 'Obviously, I will remember that.',
@@ -67,11 +67,56 @@ describe('Grillo memory store', () => {
     });
 
     expect(state.candidates).toHaveLength(2);
-    expect(state.diaryEntries).toHaveLength(2);
+    expect(state.diaryEntries).toHaveLength(0);
     expect(state.blocks).toHaveLength(1);
     expect(state.blocks[0]?.blockName).toBe('preferences');
     expect(state.blocks[0]?.items).toContain('Subsect likes scoped memory');
     expect(state.promotedCandidateIds).toHaveLength(2);
+  });
+
+  it('filters old mechanical per-reply diary receipts on load', () => {
+    const scopeKey = 'local:persona:hikari';
+    const storage = window.localStorage;
+    storage.setItem(
+      `yourwifey:grillo-memory:v1:${scopeKey}`,
+      JSON.stringify({
+        blocks: [],
+        candidates: [],
+        diaryEntries: [
+          {
+            beatType: 'relationship',
+            createdAt: Date.parse('2026-05-13T09:00:00.000Z'),
+            diaryId: 'old-noise',
+            participantKey: 'local:local:subby',
+            personalThought: 'I noticed Subby: hi and answered as Hikari: hey.',
+            scopeKey,
+            sourceTurnIds: ['turn-1'],
+            summary: 'Processed 1 turn: Subby: hi',
+            tags: ['local'],
+          },
+          {
+            beatType: 'relationship',
+            createdAt: Date.parse('2026-05-13T09:01:00.000Z'),
+            diaryId: 'real-reflection',
+            participantKey: 'local:local:subby',
+            personalThought: 'I felt warmer toward Subby after he trusted me with the stream plan.',
+            scopeKey,
+            sourceTurnIds: ['turn-2'],
+            summary: 'Subby trusted Hikari with a stream setup decision.',
+            tags: ['trust'],
+          },
+        ],
+        promotedCandidateIds: [],
+        scopeKey,
+        updatedAt: Date.parse('2026-05-13T09:01:00.000Z'),
+        version: 1,
+      }),
+    );
+
+    const state = loadGrilloMemoryState(scopeKey);
+
+    expect(state.diaryEntries).toHaveLength(1);
+    expect(state.diaryEntries[0]?.diaryId).toBe('real-reflection');
   });
 
   it('keeps participant and channel scopes isolated in prompt additions', () => {

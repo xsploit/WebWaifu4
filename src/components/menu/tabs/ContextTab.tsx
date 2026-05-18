@@ -79,8 +79,8 @@ export function ContextTab({
           {modelsLoading ? 'Refreshing...' : 'Refresh Models'}
         </button>
         <div className="field-hint">
-          Controls the background Grillo memory worker. It uses structured JSON, calls local memory
-          tools, then falls back to the legacy diary merge only when needed.
+          Controls the background memory worker. It writes durable memories, reflective diary
+          thoughts, and the relationship profile used in future replies.
         </div>
         <div className="btn-row">
           <button
@@ -97,7 +97,7 @@ export function ContextTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Grillo Memory Store</div>
+        <div className="control-label">Memory Store</div>
         <div className="memory-kv-grid">
           <div className="status-copy">
             Scope: <strong>{grilloMemoryState.scopeKey}</strong>
@@ -120,7 +120,8 @@ export function ContextTab({
         </div>
         <div className="field-hint">
           This is the current persona/source memory scope. Twitch and local chat can have different
-          stores.
+          stores. Candidate memories can update every reply; diary thoughts are written by the
+          worker only when there is something worth reflecting on.
         </div>
       </div>
 
@@ -171,7 +172,7 @@ export function ContextTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Recent Diary Thoughts</div>
+        <div className="control-label">Reflective Diary</div>
         {recentDiary.length > 0 ? (
           <div className="memory-list">
             {recentDiary.map((entry) => (
@@ -186,12 +187,12 @@ export function ContextTab({
             ))}
           </div>
         ) : (
-          <div className="status-copy">No Grillo diary thoughts yet.</div>
+          <div className="status-copy">No reflective diary thoughts yet.</div>
         )}
       </div>
 
       <div className="control-group">
-        <div className="control-label">Current Context</div>
+        <div className="control-label">Relationship Profile</div>
         <div className="status-copy">
           Messages: <strong>{messageCount}</strong>
         </div>
@@ -211,7 +212,7 @@ export function ContextTab({
           Prior turns: <strong>{relationshipMemory.turnCount}</strong>
         </div>
         <div className="status-copy">
-          Last diary pass: <strong>{relationshipMemory.lastDiaryTurnCount}</strong>
+          Last worker pass: <strong>{relationshipMemory.lastDiaryTurnCount}</strong>
         </div>
       </div>
 
@@ -241,7 +242,7 @@ export function ContextTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Persistent Memory</div>
+        <div className="control-label">Profile Summary</div>
         <pre className="context-preview">
           {relationshipMemory.summary
             ? relationshipMemory.summary
@@ -250,7 +251,7 @@ export function ContextTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Private Diary</div>
+        <div className="control-label">Latest Reflection Snapshot</div>
         <pre className="context-preview">
           {relationshipMemory.diaryEntry
             ? relationshipMemory.diaryEntry
@@ -277,8 +278,8 @@ export function ContextTab({
           </button>
         </div>
         <div className="field-hint">
-          Reset All Context clears chat history, draft text, legacy relationship memory, Grillo
-          memory, pending assistant playback, and any in-flight reply for the current session.
+          Reset All Context clears chat history, draft text, relationship profile, memory store,
+          pending assistant playback, and any in-flight reply for the current session.
         </div>
       </div>
     </>

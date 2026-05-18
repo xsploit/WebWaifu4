@@ -173,19 +173,15 @@ export function clearGrilloMemoryState(scopeKey: string) {
 }
 
 export function recordGrilloMemoryTurn({
-  assistantText,
   now = Date.now(),
-  persona,
   scopeKey,
   turns,
 }: RecordGrilloMemoryTurnOptions): GrilloMemoryState {
   const state = loadGrilloMemoryState(scopeKey);
   const candidates = turns.flatMap((turn) => extractCandidatesFromTurn(turn, scopeKey, now));
-  const diaryEntries = buildDiaryEntries({ assistantText, now, persona, scopeKey, turns });
   const nextState = compactState({
     ...state,
     candidates: [...state.candidates, ...candidates],
-    diaryEntries: [...state.diaryEntries, ...diaryEntries],
     updatedAt: now,
   });
   const promoted = promoteGrilloCandidates(nextState);
@@ -395,48 +391,6 @@ function extractCandidatesFromTurn(turn: ChatTurn, scopeKey: string, now: number
   return candidates;
 }
 
-function buildDiaryEntries({
-  assistantText,
-  now,
-  persona,
-  scopeKey,
-  turns,
-}: RecordGrilloMemoryTurnOptions & { now: number }) {
-  if (turns.length === 0) {
-    return [];
-  }
-
-  const participantKey =
-    turns.length === 1 ? getGrilloParticipantKey(turns[0] as ChatTurn) : `${scopeKey}:batch`;
-  const speakerSummary = turns
-    .slice(0, 4)
-    .map((turn) => `${turn.displayName}: ${turn.text.replace(/\s+/g, ' ').trim()}`)
-    .join(' | ')
-    .slice(0, 360);
-  const personaName = persona?.name?.trim() || 'the avatar';
-  const assistantDigest = assistantText.replace(/\s+/g, ' ').trim().slice(0, 220);
-  const summary = `Processed ${turns.length} ${turns.length === 1 ? 'turn' : 'turns'}: ${speakerSummary}`;
-  const personalThought = `I noticed ${speakerSummary || 'the chat'} and answered as ${personaName}${assistantDigest ? `: ${assistantDigest}` : '.'}`;
-
-  return [
-    {
-      beatType: turns.length === 1 ? 'relationship' : 'extraction',
-      createdAt: now,
-      diaryId: `${scopeKey}:diary:${now}:${hashText(summary).toString(36)}`,
-      participantKey,
-      personalThought: personalThought.slice(0, 320),
-      scopeKey,
-      sourceTurnIds: turns.map((turn) => turn.id),
-      summary: summary.slice(0, 320),
-      tags: dedupe([
-        turns.some((turn) => turn.source === 'twitch') ? 'twitch' : 'local',
-        turns.length > 1 ? 'batch' : 'direct',
-        personaName.toLowerCase(),
-      ]),
-    } satisfies GrilloDiaryEntry,
-  ];
-}
-
 function scoreRecallItems(
   items: Array<{ createdAt: number; id: string; text: string }>,
   query: string,
@@ -479,7 +433,7 @@ function compactState(state: GrilloMemoryState): GrilloMemoryState {
     ...state,
     blocks: state.blocks.slice(-MAX_BLOCKS),
     candidates: state.candidates.slice(-MAX_CANDIDATES),
-    diaryEntries: state.diaryEntries.slice(-MAX_DIARY),
+    diaryEntries: state.diaryEntries.filter(isReflectiveDiaryEntry).slice(-MAX_DIARY),
     promotedCandidateIds: state.promotedCandidateIds.slice(-MAX_CANDIDATES),
   };
 }
@@ -642,7 +596,7 @@ function normalizeDiaryEntry(value: unknown): GrilloDiaryEntry | null {
     return null;
   }
 
-  return {
+  const entry: GrilloDiaryEntry = {
     beatType:
       source.beatType === 'self_reflection' || source.beatType === 'relationship'
         ? source.beatType
@@ -658,6 +612,14 @@ function normalizeDiaryEntry(value: unknown): GrilloDiaryEntry | null {
     summary: String(source.summary).slice(0, 320),
     tags: Array.isArray(source.tags) ? dedupe(source.tags.map(String)).slice(0, 12) : [],
   };
+
+  return isReflectiveDiaryEntry(entry) ? entry : null;
+}
+
+function isReflectiveDiaryEntry(entry: GrilloDiaryEntry) {
+  const summary = entry.summary.replace(/\s+/g, ' ').trim().toLowerCase();
+  const personalThought = entry.personalThought.replace(/\s+/g, ' ').trim().toLowerCase();
+  return !(summary.startsWith('processed ') && personalThought.startsWith('i noticed '));
 }
 
 function normalizeCandidateType(value: unknown): GrilloCandidateType {

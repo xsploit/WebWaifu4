@@ -1303,10 +1303,10 @@ function getMemoryProgressStatus(memory: RelationshipMemory) {
   const turnsSinceDiary = memory.turnCount - memory.lastDiaryTurnCount;
   const remainingTurns = Math.max(0, MEMORY_AGENT_INTERVAL_TURNS - turnsSinceDiary);
   if (remainingTurns === 0) {
-    return 'Memory updated. Diary pass queued.';
+    return 'Memory updated. Worker pass queued.';
   }
 
-  return `Memory updated. Diary pass in ${remainingTurns} turn${remainingTurns === 1 ? '' : 's'}.`;
+  return `Memory updated. Worker pass in ${remainingTurns} turn${remainingTurns === 1 ? '' : 's'}.`;
 }
 
 function getAiErrorMessage(error: unknown, context: 'chat' | 'models' = 'chat') {
@@ -3238,7 +3238,7 @@ function App() {
 
       setMemoryAgentBusy(true);
       setMemoryAgentStatus(
-        reason === 'manual' ? 'Running diary pass...' : 'Running background diary pass...',
+        reason === 'manual' ? 'Running memory worker...' : 'Running background memory worker...',
       );
 
       try {
@@ -3345,7 +3345,7 @@ function App() {
           if (lastError) {
             throw lastError;
           }
-          setMemoryAgentStatus('Diary pass returned no JSON.');
+          setMemoryAgentStatus('Memory worker returned no JSON.');
           return;
         }
 
@@ -3361,9 +3361,9 @@ function App() {
         }
 
         commitScopedRelationshipMemory(stateKey, mergedMemory);
-        setMemoryAgentStatus('Diary updated.');
+        setMemoryAgentStatus('Memory worker updated.');
       } catch (error) {
-        setMemoryAgentStatus('Diary pass failed.');
+        setMemoryAgentStatus('Memory worker failed.');
       } finally {
         if (memoryAgentRunRef.current === scheduledRun) {
           setMemoryAgentBusy(false);
