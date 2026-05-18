@@ -134,6 +134,59 @@ describe('Grillo memory worker loop', () => {
     expect(state.diaryEntries[0]?.personalThought).toContain('actually act');
   });
 
+  it('persists enriched diary fields from the original Grillo worker contract', async () => {
+    const scopeKey = 'local:persona:hikari';
+    await runGrilloMemoryWorkerLoop({
+      complete: async () =>
+        JSON.stringify({
+          candidate: null,
+          diary: {
+            content: 'sup',
+            context_tags: ['greeting', 'vibe'],
+            emotions: [{ intensity: 7, name: 'happy' }],
+            interaction_summary: 'Casual greeting exchange.',
+            involved_users: ['Subby'],
+            personal_thought: 'I felt relaxed because Subby opened with an easy greeting.',
+            summary: 'Subby greeted casually.',
+            tags: ['chat_interaction', 'casual'],
+            user_message: 'yo',
+            beat_type: 'chat_interaction',
+          },
+          done: true,
+          relationship: null,
+        }),
+      history: [],
+      model: 'gpt-test',
+      persona: DEFAULT_PERSONA,
+      relationshipMemory: createDefaultRelationshipMemory(),
+      scopeKey,
+      turns: [
+        createTurn({
+          channel: 'local',
+          displayName: 'Subby',
+          isLocal: true,
+          login: 'subby',
+          source: 'local',
+          text: 'yo',
+        }),
+      ],
+    });
+
+    const state = loadGrilloMemoryState(scopeKey);
+    expect(state.diaryEntries).toHaveLength(1);
+    expect(state.diaryEntries[0]).toMatchObject({
+      beatType: 'chat_interaction',
+      content: 'sup',
+      contextTags: ['greeting', 'vibe'],
+      interactionSummary: 'Casual greeting exchange.',
+      involvedUsers: ['Subby'],
+      personalThought: 'I felt relaxed because Subby opened with an easy greeting.',
+      summary: 'Subby greeted casually.',
+      userMessage: 'yo',
+    });
+    expect(state.diaryEntries[0]?.emotions?.[0]).toEqual({ intensity: 7, name: 'happy' });
+  });
+
   it('writes consolidated memory blocks through worker_memory_write', async () => {
     const scopeKey = 'local:persona:hikari';
     const result = await runGrilloMemoryWorkerLoop({

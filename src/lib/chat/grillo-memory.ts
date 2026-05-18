@@ -43,15 +43,21 @@ export type GrilloMemoryBlock = {
 };
 
 export type GrilloDiaryEntry = {
-  beatType: 'extraction' | 'relationship' | 'self_reflection';
+  beatType: string;
+  content?: string;
+  contextTags?: string[];
   createdAt: number;
   diaryId: string;
+  emotions?: Array<{ intensity: number; name: string }>;
+  interactionSummary?: string;
+  involvedUsers?: string[];
   participantKey: string;
   personalThought: string;
   scopeKey: string;
   sourceTurnIds: string[];
   summary: string;
   tags: string[];
+  userMessage?: string;
 };
 
 export type GrilloMemoryState = {
@@ -231,7 +237,7 @@ export function buildGrilloMemoryPromptAdditions({
         .map((entry) => ({
           createdAt: entry.createdAt,
           id: entry.diaryId,
-          text: `[diary ${entry.participantKey}] ${entry.summary} | ${entry.personalThought}`,
+          text: formatDiaryRecall(entry),
         })),
     ],
     query,
@@ -240,7 +246,7 @@ export function buildGrilloMemoryPromptAdditions({
   const diaryThoughts = state.diaryEntries
     .filter((entry) => includeParticipant(entry.participantKey))
     .slice(-4)
-    .map((entry) => `${new Date(entry.createdAt).toISOString()} ${entry.personalThought}`);
+    .map((entry) => formatDiaryThought(entry));
 
   return {
     diaryThoughts,
@@ -438,6 +444,41 @@ function compactState(state: GrilloMemoryState): GrilloMemoryState {
   };
 }
 
+function formatDiaryRecall(entry: GrilloDiaryEntry) {
+  const emotionText = formatEmotions(entry.emotions);
+  const tags = dedupe([...(entry.tags ?? []), ...(entry.contextTags ?? [])]);
+  return [
+    `[diary ${entry.participantKey}] ${entry.summary}`,
+    entry.interactionSummary ? `interaction: ${entry.interactionSummary}` : '',
+    entry.userMessage ? `speaker said: ${entry.userMessage}` : '',
+    entry.personalThought ? `thought: ${entry.personalThought}` : '',
+    emotionText ? `emotions: ${emotionText}` : '',
+    tags.length ? `tags: ${tags.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function formatDiaryThought(entry: GrilloDiaryEntry) {
+  const emotionText = formatEmotions(entry.emotions);
+  return [
+    new Date(entry.createdAt).toISOString(),
+    entry.personalThought,
+    emotionText ? `(felt ${emotionText})` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function formatEmotions(emotions: GrilloDiaryEntry['emotions']) {
+  if (!Array.isArray(emotions) || emotions.length === 0) {
+    return '';
+  }
+  return emotions
+    .map((emotion) => `${emotion.name}:${Math.round(emotion.intensity)}/10`)
+    .join(', ');
+}
+
 function mergeGrilloMemoryStates(
   current: GrilloMemoryState,
   incoming: GrilloMemoryState,
@@ -591,29 +632,73 @@ function normalizeDiaryEntry(value: unknown): GrilloDiaryEntry | null {
     return null;
   }
 
-  const source = value as Partial<GrilloDiaryEntry>;
-  if (!source.diaryId || !source.scopeKey || !source.participantKey || !source.summary) {
+  const source = value as Partial<GrilloDiaryEntry> & Record<string, unknown>;
+  const diaryId = source.diaryId ?? source['diary_id'];
+  const participantKey = source.participantKey ?? source['participant_key'];
+  const scopeKey = source.scopeKey ?? source['scope_key'];
+  if (!diaryId || !scopeKey || !participantKey || !source.summary) {
     return null;
   }
+  const beatType = String(source.beatType ?? source['beat_type'] ?? 'extraction')
+    .replace(/\s+/g, '_')
+    .trim()
+    .slice(0, 80);
 
   const entry: GrilloDiaryEntry = {
-    beatType:
-      source.beatType === 'self_reflection' || source.beatType === 'relationship'
-        ? source.beatType
-        : 'extraction',
+    beatType: beatType || 'extraction',
+    content: normalizeOptionalString(source.content, 600),
+    contextTags: normalizeStringArray(source.contextTags ?? source['context_tags'], 12),
     createdAt: normalizeTimestamp(source.createdAt),
-    diaryId: String(source.diaryId),
-    participantKey: String(source.participantKey),
-    personalThought: String(source.personalThought ?? '').slice(0, 320),
-    scopeKey: String(source.scopeKey),
-    sourceTurnIds: Array.isArray(source.sourceTurnIds)
-      ? source.sourceTurnIds.map(String).filter(Boolean)
-      : [],
+    diaryId: String(diaryId),
+    emotions: normalizeDiaryEmotions(source.emotions),
+    interactionSummary: normalizeOptionalString(
+      source.interactionSummary ?? source['interaction_summary'],
+      320,
+    ),
+    involvedUsers: normalizeStringArray(source.involvedUsers ?? source['involved_users'], 12),
+    participantKey: String(participantKey),
+    personalThought: String(source.personalThought ?? source['personal_thought'] ?? '').slice(
+      0,
+      320,
+    ),
+    scopeKey: String(scopeKey),
+    sourceTurnIds: normalizeStringArray(source.sourceTurnIds ?? source['source_turn_ids'], 50),
     summary: String(source.summary).slice(0, 320),
-    tags: Array.isArray(source.tags) ? dedupe(source.tags.map(String)).slice(0, 12) : [],
+    tags: normalizeStringArray(source.tags, 12),
+    userMessage: normalizeOptionalString(source.userMessage ?? source['user_message'], 600),
   };
 
   return isReflectiveDiaryEntry(entry) ? entry : null;
+}
+
+function normalizeOptionalString(value: unknown, maxLength: number) {
+  const normalized = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+  return normalized || undefined;
+}
+
+function normalizeStringArray(value: unknown, maxItems: number) {
+  return Array.isArray(value) ? dedupe(value.map(String)).slice(0, maxItems) : [];
+}
+
+function normalizeDiaryEmotions(value: unknown): GrilloDiaryEntry['emotions'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      const source = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      const name = String(source['name'] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 64);
+      const intensity = clampNumber(Number(source['intensity'] ?? 0), 0, 10);
+      return name ? { intensity, name } : null;
+    })
+    .filter((item): item is { intensity: number; name: string } => Boolean(item))
+    .slice(0, 8);
 }
 
 function isReflectiveDiaryEntry(entry: GrilloDiaryEntry) {
@@ -717,6 +802,13 @@ function clamp01(value: number) {
     return 0;
   }
   return Math.max(0, Math.min(1, value));
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }
 
 function hashText(value: string) {

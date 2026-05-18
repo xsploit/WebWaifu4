@@ -182,7 +182,24 @@ export function ContextTab({
                   <span>{new Date(entry.createdAt).toLocaleString()}</span>
                 </div>
                 <div className="status-copy">{entry.summary}</div>
+                {entry.interactionSummary ? (
+                  <div className="status-copy">{entry.interactionSummary}</div>
+                ) : null}
                 <pre className="context-preview compact">{entry.personalThought}</pre>
+                {entry.emotions?.length || entry.contextTags?.length ? (
+                  <div className="memory-pill-row">
+                    {entry.emotions?.map((emotion) => (
+                      <span className="memory-pill" key={`${entry.diaryId}:${emotion.name}`}>
+                        {emotion.name} {Math.round(emotion.intensity)}/10
+                      </span>
+                    ))}
+                    {entry.contextTags?.map((tag) => (
+                      <span className="memory-pill" key={`${entry.diaryId}:${tag}`}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

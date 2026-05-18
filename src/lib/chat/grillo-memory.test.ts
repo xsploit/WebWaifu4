@@ -96,14 +96,20 @@ describe('Grillo memory store', () => {
           },
           {
             beatType: 'relationship',
+            content: 'That stream plan feels solid.',
+            contextTags: ['stream', 'trust'],
             createdAt: Date.parse('2026-05-13T09:01:00.000Z'),
             diaryId: 'real-reflection',
+            emotions: [{ intensity: 6, name: 'warm' }],
+            interactionSummary: 'Subby trusted the avatar with a stream setup decision.',
+            involvedUsers: ['Subby'],
             participantKey: 'local:local:subby',
             personalThought: 'I felt warmer toward Subby after he trusted me with the stream plan.',
             scopeKey,
             sourceTurnIds: ['turn-2'],
             summary: 'Subby trusted Hikari with a stream setup decision.',
             tags: ['trust'],
+            userMessage: 'I trust you with the stream plan.',
           },
         ],
         promotedCandidateIds: [],
@@ -117,6 +123,8 @@ describe('Grillo memory store', () => {
 
     expect(state.diaryEntries).toHaveLength(1);
     expect(state.diaryEntries[0]?.diaryId).toBe('real-reflection');
+    expect(state.diaryEntries[0]?.contextTags).toContain('stream');
+    expect(state.diaryEntries[0]?.emotions?.[0]).toEqual({ intensity: 6, name: 'warm' });
   });
 
   it('keeps participant and channel scopes isolated in prompt additions', () => {

@@ -344,7 +344,7 @@ function buildInitialWorkerMessages({
         '- core.worker_memory_search args: {"query": string, "limit"?: number}',
         '- core.worker_candidate_list args: {"limit"?: number, "type_filter"?: "preference|fact|goal|boundary|bond_signal|thread"}',
         '- core.worker_candidate_write args: {"type": string, "content": string, "summary": string, "confidence": number, "tags"?: string[], "origin_turn_id"?: string}',
-        '- core.worker_diary_write args: {"summary": string, "personal_thought": string, "tags": string[], "beat_type"?: string}',
+        '- core.worker_diary_write args: {"summary": string, "personal_thought": string, "tags": string[], "content"?: string, "interaction_summary"?: string, "user_message"?: string, "context_tags"?: string[], "involved_users"?: string[], "emotions"?: [{"name": string, "intensity": 0-10}], "beat_type"?: string}',
         '- core.worker_memory_write args: {"block_name": string, "items": string[], "operation": "merge|replace", "reason"?: string, "source_candidate_ids"?: string[]}',
         '- core.worker_memory_insert_archival args: {"text": string, "metadata"?: object}',
         '',
@@ -579,6 +579,9 @@ function toolDiaryWrite(
   turns: ChatTurn[],
   args: Record<string, unknown>,
 ) {
+  const content = normalizeToolText(args['content'], 600);
+  const interactionSummary = normalizeToolText(args['interaction_summary'], 320);
+  const userMessage = normalizeToolText(args['user_message'], 600);
   const summary = String(args['summary'] ?? '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -588,21 +591,34 @@ function toolDiaryWrite(
     .trim()
     .slice(0, 320);
   const tags = toStringArray(args['tags']).slice(0, 12);
+  const contextTags = toStringArray(args['context_tags']).slice(0, 12);
+  const involvedUsers = toStringArray(args['involved_users']).slice(0, 12);
+  const emotions = normalizeDiaryEmotions(args['emotions']);
   if (!summary || !personalThought) {
     return { ok: false, error: 'summary and personal_thought are required' };
   }
 
   const now = Date.now();
+  const beatType = String(args['beat_type'] ?? '')
+    .replace(/\s+/g, '_')
+    .trim()
+    .slice(0, 80);
   const entry: GrilloDiaryEntry = {
-    beatType: args['beat_type'] === 'relationship' ? 'relationship' : 'self_reflection',
+    beatType: beatType || 'self_reflection',
+    content,
+    contextTags,
     createdAt: now,
     diaryId: `${scopeKey}:worker-diary:${now}:${hashText(summary).toString(36)}`,
+    emotions,
+    interactionSummary,
+    involvedUsers,
     participantKey: participantKeys[0] ?? `${scopeKey}:background`,
     personalThought,
     scopeKey,
     sourceTurnIds: turns.map((turn) => turn.id),
     summary,
     tags,
+    userMessage,
   };
   const state = loadGrilloMemoryState(scopeKey);
   saveGrilloMemoryState({
@@ -840,6 +856,32 @@ function toStringArray(value: unknown) {
     .filter(Boolean);
 }
 
+function normalizeToolText(value: unknown, maxLength: number) {
+  const normalized = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+  return normalized || undefined;
+}
+
+function normalizeDiaryEmotions(value: unknown): GrilloDiaryEntry['emotions'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      const source = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      const name = String(source['name'] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 64);
+      const intensity = clampNumber(Number(source['intensity'] ?? 0), 0, 10);
+      return name ? { intensity, name } : null;
+    })
+    .filter((item): item is { intensity: number; name: string } => Boolean(item))
+    .slice(0, 8);
+}
+
 function dedupe(values: string[]) {
   const seen = new Set<string>();
   const output: string[] = [];
@@ -867,6 +909,13 @@ function clampInt(value: number, min: number, max: number) {
     return min;
   }
   return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }
 
 function hashText(value: string) {
