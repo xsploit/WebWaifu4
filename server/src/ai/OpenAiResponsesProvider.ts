@@ -62,9 +62,19 @@ type OpenAiResponsePayload = {
     arguments?: string;
     content?: Array<{
       type?: string;
-      text?: string;
+      text?: unknown;
+      output_text?: unknown;
+      refusal?: unknown;
     }>;
   }>;
+  status?: string;
+  error?: {
+    message?: string;
+    code?: string;
+  };
+  incomplete_details?: {
+    reason?: string;
+  };
   usage?: {
     input_tokens_details?: {
       cached_tokens?: number;
@@ -168,7 +178,12 @@ function extractResponseText(payload: OpenAiResponsePayload) {
 
   const text = payload.output
     ?.flatMap((item) => item.content ?? [])
-    .map((content) => content.text?.trim() ?? '')
+    .map(
+      (content) =>
+        readTextValue(content.text) ||
+        readTextValue(content.output_text) ||
+        readTextValue(content.refusal),
+    )
     .filter(Boolean)
     .join(' ')
     .trim();
@@ -264,6 +279,25 @@ function applyStreamText(
 
 function isTerminalStreamEvent(type: string | undefined) {
   return type === 'response.completed' || type === 'response.incomplete';
+}
+
+function getEmptyResponseErrorMessage(payload: OpenAiResponsePayload) {
+  if (payload.error?.message) {
+    return `OpenAI Responses API failed: ${payload.error.message}`;
+  }
+
+  if (payload.status && payload.status !== 'completed') {
+    const reason = payload.incomplete_details?.reason;
+    return `OpenAI Responses API finished with status ${payload.status}${
+      reason ? ` (${reason})` : ''
+    } before producing text.`;
+  }
+
+  if (payload.incomplete_details?.reason) {
+    return `OpenAI Responses API returned an incomplete response (${payload.incomplete_details.reason}) before producing text.`;
+  }
+
+  return 'OpenAI Responses API returned an empty response.';
 }
 
 function getCachedTokenCount(payload: OpenAiResponsePayload) {
@@ -425,6 +459,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
   private readonly unsupportedParamsByModel = new Map<string, Set<UnsupportedOpenAiParam>>();
   private ws: WebSocket | null = null;
   private wsReady: Promise<WebSocket> | null = null;
+  private wsQueue: Promise<void> = Promise.resolve();
   private readonly fetcher: typeof fetch;
 
   constructor(private readonly options: OpenAiResponsesProviderOptions) {
@@ -481,7 +516,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       websocketConfigured: runtime.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
       websocketStatus: runtime.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
-      websocketLifecycle: runtime.useWebSocket ? 'request-scoped' : 'disabled',
+      websocketLifecycle: runtime.useWebSocket ? 'persistent' : 'disabled',
     };
   }
 
@@ -523,7 +558,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
     const text = extractResponseText(result.response);
 
     if (!text) {
-      throw new Error('OpenAI Responses API returned an empty response.');
+      throw new Error(getEmptyResponseErrorMessage(result.response));
     }
 
     this.recordResponseState(result.response, request, runtime);
@@ -551,7 +586,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
     const text = extractResponseText(result.response);
 
     if (!text) {
-      throw new Error('OpenAI Responses API returned an empty response.');
+      throw new Error(getEmptyResponseErrorMessage(result.response));
     }
 
     this.recordResponseState(result.response, request, runtime);
@@ -666,7 +701,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       websocketConfigured: runtime.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
       websocketStatus: runtime.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
-      websocketLifecycle: runtime.useWebSocket ? 'request-scoped' : 'disabled',
+      websocketLifecycle: runtime.useWebSocket ? 'persistent' : 'disabled',
     };
   }
 
@@ -1050,131 +1085,152 @@ export class OpenAiResponsesProvider implements ChatProvider {
     payload: Record<string, unknown>,
     onTextDelta?: (delta: string) => void,
   ): Promise<OpenAiResponsePayload> {
-    const socket = await this.createRequestWebSocket();
+    return this.enqueueWebSocketRequest(async () => {
+      const socket = await this.createRequestWebSocket();
 
-    return new Promise<OpenAiResponsePayload>((resolve, reject) => {
-      let text = '';
-      let settled = false;
-      const functionCalls = createStreamingFunctionCallState();
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error('OpenAI Responses WebSocket request timed out.'));
-      }, this.options.requestTimeoutMs ?? 120000);
+      return new Promise<OpenAiResponsePayload>((resolve, reject) => {
+        let text = '';
+        let settled = false;
+        const functionCalls = createStreamingFunctionCallState();
+        const timeout = setTimeout(() => {
+          fail(new Error('OpenAI Responses WebSocket request timed out.'), true);
+        }, this.options.requestTimeoutMs ?? 120000);
 
-      const cleanup = () => {
-        settled = true;
-        clearTimeout(timeout);
-        socket.off('message', onMessage);
-        socket.off('close', onClose);
-        socket.off('error', onError);
-        if (this.ws === socket) {
-          this.ws = null;
-          this.wsReady = null;
-        }
-        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-          socket.close();
-        }
-      };
-
-      const finish = (response: OpenAiResponsePayload) => {
-        const output = [...(response.output ?? [])];
-        mergeStreamingFunctionCalls(output, functionCalls);
-        cleanup();
-        const payload = text ? { ...response, output_text: text } : response;
-        resolve(output.length > 0 ? { ...payload, output } : payload);
-      };
-
-      const fail = (error: Error) => {
-        cleanup();
-        reject(error);
-      };
-
-      const onMessage = (raw: RawData) => {
-        if (settled) {
-          return;
-        }
-
-        const event = JSON.parse(raw.toString()) as OpenAiWebSocketEvent;
-        if (
-          event.type === 'response.output_item.added' &&
-          isStreamingFunctionCallItem(event.item)
-        ) {
-          rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
-          return;
-        }
-        if (event.type === 'response.function_call_arguments.delta') {
-          const current = getStreamingFunctionCallForEvent(functionCalls, event);
-          if (current) {
-            current.arguments = `${current.arguments ?? ''}${event.delta ?? ''}`;
+        const cleanup = (closeSocket = false) => {
+          settled = true;
+          clearTimeout(timeout);
+          socket.off('message', onMessage);
+          socket.off('close', onClose);
+          socket.off('error', onError);
+          if (
+            closeSocket &&
+            (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+          ) {
+            socket.close();
           }
-          return;
-        }
-        if (event.type === 'response.function_call_arguments.done') {
-          const current = getStreamingFunctionCallForEvent(functionCalls, event);
-          if (current && typeof event.arguments === 'string') {
-            current.arguments = event.arguments;
+        };
+
+        const finish = (response: OpenAiResponsePayload) => {
+          const output = [...(response.output ?? [])];
+          mergeStreamingFunctionCalls(output, functionCalls);
+          cleanup();
+          const payload = text ? { ...response, output_text: text } : response;
+          resolve(output.length > 0 ? { ...payload, output } : payload);
+        };
+
+        const fail = (error: Error, closeSocket = false) => {
+          cleanup(closeSocket);
+          reject(error);
+        };
+
+        const onMessage = (raw: RawData) => {
+          if (settled) {
+            return;
           }
-          return;
-        }
-        if (event.type === 'response.output_item.done' && isStreamingFunctionCallItem(event.item)) {
-          rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
-          return;
-        }
 
-        const delta = readTextValue(event.delta);
-        if (delta) {
-          text += delta;
-          onTextDelta?.(delta);
-        } else {
-          const eventText = extractStreamEventText(event);
-          if (eventText) {
-            text = applyStreamText(text, eventText, onTextDelta);
+          const event = JSON.parse(raw.toString()) as OpenAiWebSocketEvent;
+          if (
+            event.type === 'response.output_item.added' &&
+            isStreamingFunctionCallItem(event.item)
+          ) {
+            rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
+            return;
           }
-        }
-        if (event.type === 'response.completed' && event.response) {
-          finish(event.response);
-          return;
-        }
-        if (event.type === 'response.incomplete') {
-          finish(event.response ?? {});
-          return;
-        }
-        if (isTerminalStreamEvent(event.type)) {
-          finish(event.response ?? {});
-          return;
-        }
-        if (event.type === 'response.failed' || event.type === 'error') {
-          fail(
-            new Error(event.error?.message ?? `OpenAI Responses WebSocket event ${event.type}.`),
-          );
-        }
-      };
+          if (event.type === 'response.function_call_arguments.delta') {
+            const current = getStreamingFunctionCallForEvent(functionCalls, event);
+            if (current) {
+              current.arguments = `${current.arguments ?? ''}${event.delta ?? ''}`;
+            }
+            return;
+          }
+          if (event.type === 'response.function_call_arguments.done') {
+            const current = getStreamingFunctionCallForEvent(functionCalls, event);
+            if (current && typeof event.arguments === 'string') {
+              current.arguments = event.arguments;
+            }
+            return;
+          }
+          if (
+            event.type === 'response.output_item.done' &&
+            isStreamingFunctionCallItem(event.item)
+          ) {
+            rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
+            return;
+          }
 
-      const onClose = () => {
-        if (!settled) {
-          this.ws = null;
-          this.wsReady = null;
-          fail(new Error('OpenAI Responses WebSocket closed before completion.'));
-        }
-      };
+          const delta = readTextValue(event.delta);
+          if (delta) {
+            text += delta;
+            onTextDelta?.(delta);
+          } else {
+            const eventText = extractStreamEventText(event);
+            if (eventText) {
+              text = applyStreamText(text, eventText, onTextDelta);
+            }
+          }
+          if (event.type === 'response.completed' && event.response) {
+            finish(event.response);
+            return;
+          }
+          if (event.type === 'response.incomplete') {
+            finish(event.response ?? {});
+            return;
+          }
+          if (isTerminalStreamEvent(event.type)) {
+            finish(event.response ?? {});
+            return;
+          }
+          if (event.type === 'response.failed' || event.type === 'error') {
+            const isConnectionLimit = event.error?.code === 'websocket_connection_limit_reached';
+            fail(
+              new Error(event.error?.message ?? `OpenAI Responses WebSocket event ${event.type}.`),
+              isConnectionLimit,
+            );
+          }
+        };
 
-      const onError = (error: Error) => {
-        if (!settled) {
-          this.ws = null;
-          this.wsReady = null;
-          fail(error);
-        }
-      };
+        const onClose = () => {
+          if (!settled) {
+            this.ws = null;
+            this.wsReady = null;
+            fail(new Error('OpenAI Responses WebSocket closed before completion.'));
+          }
+        };
 
-      socket.on('message', onMessage);
-      socket.on('close', onClose);
-      socket.on('error', onError);
-      socket.send(JSON.stringify({ type: 'response.create', ...payload }));
+        const onError = (error: Error) => {
+          if (!settled) {
+            this.ws = null;
+            this.wsReady = null;
+            fail(error, true);
+          }
+        };
+
+        socket.on('message', onMessage);
+        socket.on('close', onClose);
+        socket.on('error', onError);
+        socket.send(JSON.stringify({ type: 'response.create', ...payload }));
+      });
     });
   }
 
+  private enqueueWebSocketRequest<T>(task: () => Promise<T>) {
+    const run = this.wsQueue.then(task, task);
+    this.wsQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   private async createRequestWebSocket() {
-    return new Promise<WebSocket>((resolve, reject) => {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      return this.ws;
+    }
+    if (this.wsReady) {
+      return this.wsReady;
+    }
+
+    this.wsReady = new Promise<WebSocket>((resolve, reject) => {
       const url =
         this.options.webSocketUrl?.trim() || this.baseUrl.replace(/^http/, 'ws') + '/responses';
       const socket = new WebSocket(url, {
@@ -1186,6 +1242,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
         resolve(socket);
       });
       socket.once('error', (error) => {
+        if (this.ws === socket || this.wsReady) {
+          this.ws = null;
+          this.wsReady = null;
+        }
         reject(error);
       });
       socket.once('close', () => {
@@ -1195,6 +1255,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
         }
       });
     });
+    return this.wsReady;
   }
 
   private recordResponseState(

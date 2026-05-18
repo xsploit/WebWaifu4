@@ -338,7 +338,7 @@ function createStreamingToolCallingFetcher(calls: FetchCall[]) {
 }
 
 describe('OpenAiResponsesProvider', () => {
-  it('reports websocket transport as request scoped when idle', () => {
+  it('reports websocket transport as persistent when idle', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
@@ -359,7 +359,7 @@ describe('OpenAiResponsesProvider', () => {
       transport: 'websocket',
       websocketConfigured: true,
       websocketConnected: false,
-      websocketLifecycle: 'request-scoped',
+      websocketLifecycle: 'persistent',
       websocketStatus: 'idle',
     });
   });
@@ -384,7 +384,7 @@ describe('OpenAiResponsesProvider', () => {
         provider: 'openai-responses-ws',
         transport: 'websocket',
         websocketConfigured: true,
-        websocketLifecycle: 'request-scoped',
+        websocketLifecycle: 'persistent',
       },
     );
   });
@@ -480,6 +480,76 @@ describe('OpenAiResponsesProvider', () => {
     expect(response.meta).toMatchObject({
       maxOutputTokens: 16,
     });
+  });
+
+  it('extracts nested Responses output text shapes', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: (async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+        });
+        return new Response(
+          JSON.stringify({
+            id: 'resp_nested_text',
+            output: [
+              {
+                type: 'message',
+                content: [{ type: 'output_text', text: { value: 'nested reply' } }],
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }) as typeof fetch,
+    });
+
+    await expect(provider.complete(createRequest('nested text'))).resolves.toMatchObject({
+      text: 'nested reply',
+    });
+  });
+
+  it('reports incomplete Responses payloads instead of a generic empty response', async () => {
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.5',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: (async () =>
+        new Response(
+          JSON.stringify({
+            id: 'resp_incomplete',
+            status: 'incomplete',
+            incomplete_details: { reason: 'max_output_tokens' },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )) as typeof fetch,
+    });
+
+    await expect(provider.complete(createRequest('tiny budget'))).rejects.toThrow(
+      'max_output_tokens',
+    );
   });
 
   it('passes json_schema structured output into Responses text.format', async () => {
