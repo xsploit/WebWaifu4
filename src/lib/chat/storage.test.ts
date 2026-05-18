@@ -224,4 +224,47 @@ describe('chat settings persistence', () => {
     expect('bloom' in loaded.visualSettings).toBe(false);
     expect('glitch' in loaded.visualSettings).toBe(false);
   });
+
+  it('keeps edited built-in personas instead of replacing them with defaults', async () => {
+    const personas = createDefaultPersonas();
+    const editedPersonas = personas.map((persona) =>
+      persona.id === DEFAULT_PERSONA.id
+        ? {
+            ...persona,
+            description: 'A saved front-end personality edit.',
+            name: 'Neuro Saved',
+            systemPrompt:
+              'You are Neuro Saved, a locally edited persona that must survive reloads.',
+            userNickname: 'Subby',
+          }
+        : persona,
+    );
+    const state: PersistedChatState = {
+      activePersonaId: DEFAULT_PERSONA.id,
+      activeTab: 'character',
+      aiSettings: createDefaultAiSettings(),
+      chatHistory: [],
+      currentBundledModelId: '',
+      currentCustomVrmModelId: '',
+      personas: editedPersonas,
+      relationshipMemories: {},
+      relationshipMemory: createDefaultRelationshipMemory(),
+      twitchChannel: 'subsect',
+      sequencerSettings: createDefaultSequencerSettings(),
+      uiState: createDefaultUiState(),
+      visualSettings: createDefaultVisualSettings(),
+    };
+
+    await savePersistedChatState(state);
+    const loaded = await loadPersistedChatState();
+    const editedDefaultPersona = loaded.personas.find((persona) => persona.id === DEFAULT_PERSONA.id);
+
+    expect(loaded.activePersonaId).toBe(DEFAULT_PERSONA.id);
+    expect(editedDefaultPersona).toMatchObject({
+      description: 'A saved front-end personality edit.',
+      name: 'Neuro Saved',
+      systemPrompt: 'You are Neuro Saved, a locally edited persona that must survive reloads.',
+      userNickname: 'Subby',
+    });
+  });
 });

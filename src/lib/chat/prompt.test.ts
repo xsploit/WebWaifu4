@@ -115,6 +115,15 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('<yw-meta>');
     expect(systemMessage.content).toContain('Available animation: little-wave [wave-01]');
     expect(systemMessage.content).toContain('# Animation Selection Policy');
+    expect(systemMessage.content.indexOf('# Live Response Task')).toBeLessThan(
+      systemMessage.content.indexOf('# Persona'),
+    );
+    expect(systemMessage.content.indexOf('# Tool Policy')).toBeLessThan(
+      systemMessage.content.indexOf('# Persona'),
+    );
+    expect(systemMessage.content.indexOf('# Reply Metadata Contract')).toBeLessThan(
+      systemMessage.content.indexOf('# Persona'),
+    );
     expect(systemMessage.content).toContain('# Grillo Context Packet');
     expect(systemMessage.content).toContain('## relationship_memory');
     expect(systemMessage.content).toContain('known_facts=["likes POML"]');
