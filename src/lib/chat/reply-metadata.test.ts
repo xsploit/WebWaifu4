@@ -5,6 +5,7 @@ import {
   ASSISTANT_REPLY_META_CLOSE,
   ASSISTANT_REPLY_META_OPEN,
   buildAnimationCatalogInstruction,
+  buildReplyMetadataInstruction,
   resolveAnimationIndexForReplyMetadata,
   resolveFacialExpressionForReplyMetadata,
   resolveFacialExpressionIntensityForReplyMetadata,
@@ -12,44 +13,47 @@ import {
 } from './reply-metadata';
 
 describe('assistant reply metadata', () => {
-  it('parses facial expression metadata without leaking it into spoken text', () => {
+  it('parses emotion-only metadata without leaking it into spoken text', () => {
     const parsed = stripAssistantReplyMetadata(
-      `Nice one.${ASSISTANT_REPLY_META_OPEN}{"emotion":"amused","expression":"happy","motion":"laugh","purpose":"emotion","intensity":"medium","animation":""}${ASSISTANT_REPLY_META_CLOSE}`,
+      `Nice one.${ASSISTANT_REPLY_META_OPEN}{"emotion":"amused"}${ASSISTANT_REPLY_META_CLOSE}`,
     );
 
     expect(parsed.text).toBe('Nice one.');
-    expect(parsed.metadata).toMatchObject({
-      emotion: 'amused',
-      expression: 'happy',
-      intensity: 'medium',
-      motion: 'laugh',
-      purpose: 'emotion',
-    });
+    expect(parsed.metadata).toEqual({ emotion: 'amused' });
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('happy');
     expect(resolveFacialExpressionIntensityForReplyMetadata(parsed.metadata)).toBeGreaterThan(0.5);
   });
 
-  it('infers a face from legacy metadata that only had emotion', () => {
+  it('ignores old over-specified fields and keeps only emotion', () => {
     const parsed = stripAssistantReplyMetadata(
-      `${ASSISTANT_REPLY_META_OPEN}{"emotion":"annoyed","motion":"annoyed","purpose":"emotion","intensity":"low","animation":""}${ASSISTANT_REPLY_META_CLOSE}`,
+      `${ASSISTANT_REPLY_META_OPEN}{"emotion":"annoyed","motion":"wave","purpose":"gesture","expression":"happy","animation":"sachi-wave01"}${ASSISTANT_REPLY_META_CLOSE}`,
     );
 
-    expect(parsed.metadata?.expression).toBe('angry');
+    expect(parsed.metadata).toEqual({ emotion: 'annoyed' });
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('angry');
   });
 
-  it('accepts first-class angry metadata and maps it to angry face', () => {
+  it('does not trigger reactions for neutral metadata', () => {
+    const playlist: AnimationEntry[] = [
+      {
+        enabled: true,
+        experimental: false,
+        format: 'vrma',
+        id: 'neutral-idle',
+        name: 'Neutral idle',
+        purpose: 'ambient',
+        tags: ['neutral', 'idle'],
+        url: '/idle.vrma',
+      },
+    ];
+
     const parsed = stripAssistantReplyMetadata(
-      `${ASSISTANT_REPLY_META_OPEN}{"emotion":"angry","motion":"angry","purpose":"emotion","intensity":"high","animation":""}${ASSISTANT_REPLY_META_CLOSE}`,
+      `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral"}${ASSISTANT_REPLY_META_CLOSE}`,
     );
 
-    expect(parsed.metadata).toMatchObject({
-      emotion: 'angry',
-      expression: 'angry',
-      motion: 'angry',
-      purpose: 'emotion',
-    });
-    expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('angry');
+    expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('neutral');
+    expect(resolveFacialExpressionIntensityForReplyMetadata(parsed.metadata)).toBe(0);
+    expect(resolveAnimationIndexForReplyMetadata(parsed.metadata, playlist)).toBe(-1);
   });
 
   it('maps emotional metadata to enabled emotion animations', () => {
@@ -75,52 +79,31 @@ describe('assistant reply metadata', () => {
       },
     ];
 
-    expect(
-      resolveAnimationIndexForReplyMetadata(
-        {
-          animation: '',
-          emotion: 'grateful',
-          expression: 'caring',
-          intensity: 'medium',
-          motion: 'react',
-          purpose: 'emotion',
-        },
-        playlist,
-      ),
-    ).toBe(1);
+    expect(resolveAnimationIndexForReplyMetadata({ emotion: 'grateful' }, playlist)).toBe(1);
   });
 
   it('maps every supported emotion to an equivalent enabled animation when the catalog has one', () => {
     const emotionCases = [
-      ['amused', 'happy', ['amusement', 'happy', 'joy']],
-      ['happy', 'happy', ['happy', 'joy']],
-      ['excited', 'happy', ['excitement', 'happy']],
-      ['curious', 'thinking', ['curiosity', 'thinking']],
-      ['confused', 'confused', ['confusion', 'curiosity']],
-      ['thinking', 'thinking', ['thinking', 'hima', 'waiting']],
-      ['surprised', 'surprised', ['surprise', 'attention']],
-      ['angry', 'angry', ['anger', 'annoyance', 'disapproval']],
-      ['annoyed', 'angry', ['annoyance', 'anger', 'disapproval']],
-      ['embarrassed', 'embarrassed', ['embarrassment', 'nervous']],
-      ['grateful', 'caring', ['gratitude', 'approval', 'caring']],
-      ['optimistic', 'happy', ['optimism', 'approval', 'happy']],
-      ['proud', 'happy', ['pride', 'approval', 'happy']],
-      ['nervous', 'embarrassed', ['nervous', 'nervousness', 'embarrassment']],
-      ['sad', 'sad', ['sadness', 'disappointment']],
-      ['caring', 'caring', ['caring', 'approval', 'gratitude']],
+      ['amused', ['amusement', 'happy', 'joy']],
+      ['happy', ['happy', 'joy']],
+      ['excited', ['excitement', 'happy']],
+      ['curious', ['curiosity', 'thinking']],
+      ['confused', ['confusion', 'curiosity']],
+      ['thinking', ['thinking', 'hima', 'waiting']],
+      ['surprised', ['surprise', 'attention']],
+      ['angry', ['anger', 'annoyance', 'disapproval']],
+      ['annoyed', ['annoyance', 'anger', 'disapproval']],
+      ['embarrassed', ['embarrassment', 'nervous']],
+      ['grateful', ['gratitude', 'approval', 'caring']],
+      ['optimistic', ['optimism', 'approval', 'happy']],
+      ['proud', ['pride', 'approval', 'happy']],
+      ['nervous', ['nervous', 'nervousness', 'embarrassment']],
+      ['sad', ['sadness', 'disappointment']],
+      ['caring', ['caring', 'approval', 'gratitude']],
     ] as const;
-    for (const [emotion, expression, expectedKeywords] of emotionCases) {
-      const index = resolveAnimationIndexForReplyMetadata(
-        {
-          animation: '',
-          emotion,
-          expression,
-          intensity: 'medium',
-          motion: emotion,
-          purpose: 'emotion',
-        },
-        DEFAULT_ANIMATIONS,
-      );
+
+    for (const [emotion, expectedKeywords] of emotionCases) {
+      const index = resolveAnimationIndexForReplyMetadata({ emotion }, DEFAULT_ANIMATIONS);
       const selected = DEFAULT_ANIMATIONS[index];
       const haystack =
         `${selected?.id ?? ''} ${selected?.name ?? ''} ${(selected?.tags ?? []).join(' ')}`.toLowerCase();
@@ -136,48 +119,15 @@ describe('assistant reply metadata', () => {
     }
   });
 
-  it('ignores playlist weights when mapping reply emotions', () => {
-    const playlist: AnimationEntry[] = [
-      {
-        enabled: true,
-        experimental: false,
-        format: 'vrma',
-        id: 'low-weight-happy',
-        name: 'Low weight happy reaction',
-        purpose: 'emotion',
-        tags: ['happy'],
-        url: '/happy.vrma',
-        weight: 0.05,
-      },
-      {
-        enabled: true,
-        experimental: false,
-        format: 'vrma',
-        id: 'high-weight-joy',
-        name: 'High weight joy reaction',
-        purpose: 'emotion',
-        tags: ['joy'],
-        url: '/joy.vrma',
-        weight: 4,
-      },
-    ];
+  it('does not ask the model to pick animations, motions, expressions, or purposes', () => {
+    const instruction = buildReplyMetadataInstruction();
 
-    expect(
-      resolveAnimationIndexForReplyMetadata(
-        {
-          animation: '',
-          emotion: 'happy',
-          expression: 'happy',
-          intensity: 'medium',
-          motion: 'happy',
-          purpose: 'emotion',
-        },
-        playlist,
-      ),
-    ).toBe(0);
+    expect(instruction).toContain('{"emotion":"neutral"}');
+    expect(instruction).toContain('Do not choose animation names, motions, expressions, purposes');
+    expect(buildAnimationCatalogInstruction(DEFAULT_ANIMATIONS)).toBe('');
   });
 
-  it('does not advertise or select disabled animation entries', () => {
+  it('does not select disabled animation entries', () => {
     const playlist: AnimationEntry[] = [
       {
         enabled: false,
@@ -201,19 +151,6 @@ describe('assistant reply metadata', () => {
       },
     ];
 
-    expect(buildAnimationCatalogInstruction(playlist)).not.toContain('disabled-gratitude');
-    expect(
-      resolveAnimationIndexForReplyMetadata(
-        {
-          animation: 'disabled-gratitude',
-          emotion: 'grateful',
-          expression: 'caring',
-          intensity: 'low',
-          motion: 'react',
-          purpose: 'emotion',
-        },
-        playlist,
-      ),
-    ).toBe(1);
+    expect(resolveAnimationIndexForReplyMetadata({ emotion: 'grateful' }, playlist)).toBe(1);
   });
 });
