@@ -39,6 +39,7 @@ import {
   runGrilloMemoryWorkerLoop,
 } from './lib/chat/grillo-memory-loop';
 import { buildChatCompletionMessages, trimChatHistory } from './lib/chat/prompt';
+import { getTurnReplyLengthInstruction } from './lib/chat/reply-length';
 import {
   buildAnimationCatalogInstruction,
   createAssistantMetadataStreamFilter,
@@ -1219,7 +1220,12 @@ function getLiveBridgeSubtitleLine(text: string) {
   return words.slice(-SUBTITLE_WORD_WINDOW).join(' ');
 }
 
-function buildChatAiPrompt(job: ChatAiJob, persona: PersonaProfile | null, channel: string) {
+function buildChatAiPrompt(
+  job: ChatAiJob,
+  persona: PersonaProfile | null,
+  channel: string,
+  replyLength: AiSettings['replyLength'],
+) {
   const personaName = persona?.name ?? DEFAULT_PERSONA.name;
   const channelName = normalizeStateKeyPart(channel, DIRECT_TWITCH_CHANNEL || 'subsect');
   const mentionTags = getPersonaMentionTags(persona)
@@ -1258,7 +1264,7 @@ function buildChatAiPrompt(job: ChatAiJob, persona: PersonaProfile | null, chann
       job.firstTimeChatter
         ? 'This is the first message seen from this viewer in this browser session; greet them naturally.'
         : null,
-      'Reply directly to that viewer in one or two short spoken sentences.',
+      getTurnReplyLengthInstruction(replyLength, 'direct'),
       'Do not mention command syntax, queues, batching, or system internals.',
     ]
       .filter((value): value is string => Boolean(value))
@@ -1271,7 +1277,7 @@ function buildChatAiPrompt(job: ChatAiJob, persona: PersonaProfile | null, chann
     `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
     `Intake policy: active chatters are above ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mention gating is disabled; summarize every ${batchSize} messages or after about ${batchWaitSeconds} seconds, whichever fires first.`,
     'The chat is busy, so answer the overall energy or strongest shared topic instead of replying to every line.',
-    'Keep it stream-safe and concise: one or two spoken sentences.',
+    getTurnReplyLengthInstruction(replyLength, 'batch'),
     `Current batch:\n${formatChatTurns(job.messages, 30)}`,
   ]
     .filter((value): value is string => Boolean(value))
@@ -3949,7 +3955,7 @@ function App() {
           : DEFAULT_OPENAI_MODEL,
       );
       const targetMessage = job.messages[0];
-      const prompt = buildChatAiPrompt(job, persona, channel);
+      const prompt = buildChatAiPrompt(job, persona, channel, settings.replyLength);
       const userContent = buildChatTurnMemoryMessage(job.mode, job.messages);
       const userMessage = targetMessage
         ? chatTurnToChatMessage(targetMessage)
@@ -4012,6 +4018,7 @@ function App() {
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
             persona,
             relationshipMemory: memorySnapshot,
+            replyLength: settings.replyLength,
             semanticMemoryContext,
             turnContext: {
               activeChatters: job.activeChatterCount,

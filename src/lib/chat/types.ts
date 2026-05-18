@@ -27,6 +27,7 @@ export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
 export type LlmProvider = 'openai-responses' | 'openrouter-responses';
 export type AiTransportMode = 'server-default' | 'http-stream' | 'websocket';
 export type OpenAiStateMode = 'server-default' | 'conversation' | 'previous-response' | 'stateless';
+export type ReplyLengthMode = 'short' | 'balanced' | 'yap';
 
 export type AiSettings = {
   llmProvider: LlmProvider;
@@ -34,6 +35,7 @@ export type AiSettings = {
   memoryAgentModel: string;
   aiTransportMode: AiTransportMode;
   openAiStateMode: OpenAiStateMode;
+  replyLength: ReplyLengthMode;
   temperature: number;
   maxTokens: number;
   ttsEnabled: boolean;

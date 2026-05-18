@@ -63,6 +63,7 @@ export function createDefaultAiSettings(): AiSettings {
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
     aiTransportMode: 'websocket',
     openAiStateMode: 'conversation',
+    replyLength: 'balanced',
     temperature: 0.85,
     maxTokens: 300,
     ttsEnabled: true,

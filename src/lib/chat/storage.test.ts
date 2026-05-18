@@ -52,6 +52,7 @@ describe('chat settings persistence', () => {
       memoryAgentModel: 'gpt-5.4-mini',
       model: 'gpt-5.4',
       openAiStateMode: 'previous-response',
+      replyLength: 'yap',
       remoteTtsMode: 'sentence-chunks',
       temperature: 1.1,
       ttsAutoSpeak: false,

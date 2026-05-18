@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AiProxyHealth, AiSettings } from '../../../lib/chat/types';
+import { getReplyLengthLabel, REPLY_LENGTH_MODES } from '../../../lib/chat/reply-length';
 import { Slider } from '../ui/Slider';
 
 type AiTabProps = {
@@ -242,6 +243,25 @@ export function AiTab({
 
       <div className="control-group">
         <div className="control-label">Generation Params</div>
+        <select
+          className="select-tech"
+          onChange={(event) =>
+            updateAiSettings(setAiSettings, {
+              replyLength: event.target.value as AiSettings['replyLength'],
+            })
+          }
+          value={aiSettings.replyLength}
+        >
+          {REPLY_LENGTH_MODES.map((mode) => (
+            <option key={mode} value={mode}>
+              Reply Length: {getReplyLengthLabel(mode)}
+            </option>
+          ))}
+        </select>
+        <div className="field-hint">
+          Max Output is only a ceiling. Reply Length controls whether the prompt asks her to stay
+          tight, balanced, or actually yap.
+        </div>
         <Slider
           label="Temp"
           max={2}

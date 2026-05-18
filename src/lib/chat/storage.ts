@@ -33,6 +33,7 @@ import {
   normalizeRelationshipMood,
   sanitizeDiaryEntry,
 } from './memory-shared';
+import { normalizeReplyLengthMode } from './reply-length';
 
 function getLocalStorage() {
   if (typeof window === 'undefined') {
@@ -192,6 +193,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
     memoryAgentModel: requestedMemoryAgentModel || defaults.memoryAgentModel,
     aiTransportMode,
     openAiStateMode,
+    replyLength: normalizeReplyLengthMode(source.replyLength),
     temperature: typeof source.temperature === 'number' ? source.temperature : defaults.temperature,
     maxTokens: typeof source.maxTokens === 'number' ? source.maxTokens : defaults.maxTokens,
     ttsEnabled: typeof source.ttsEnabled === 'boolean' ? source.ttsEnabled : defaults.ttsEnabled,

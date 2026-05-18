@@ -252,6 +252,32 @@ describe('POML-backed chat prompt', () => {
     expect(messages[1]?.content).toContain('trustedController=true');
   });
 
+  it('renders the selected reply length into POML instructions', async () => {
+    const messages = await buildChatCompletionMessages({
+      history: [],
+      persona: {
+        ...DEFAULT_PERSONA,
+        name: 'Hikari',
+      },
+      relationshipMemory: createDefaultRelationshipMemory(),
+      replyLength: 'yap',
+      turnContext: {
+        source: 'local',
+        turnKind: 'direct',
+      },
+    });
+
+    const systemMessage = messages[0];
+    if (!systemMessage) {
+      throw new Error('Expected a POML-rendered system message.');
+    }
+
+    expect(systemMessage.content).toContain('reply_length: yap');
+    expect(systemMessage.content).toContain('Let the character yap');
+    expect(systemMessage.content).not.toContain('short unless asked for detail');
+    expect(systemMessage.content).not.toContain('Reply as concise spoken dialogue');
+  });
+
   it('omits optional POML sections when they have no useful context', async () => {
     const messages = await buildChatCompletionMessages({
       history: [

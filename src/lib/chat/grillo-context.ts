@@ -120,7 +120,7 @@ export function buildGrilloContextSections({
     ],
     thoughts: [...buildThoughtLane(diaryContext), ...(memoryAdditions?.diaryThoughts ?? [])],
     output_description: [
-      'Return concise spoken dialogue for the live stream, then append the required hidden reply metadata block.',
+      'Return spoken dialogue for the live stream using the active reply length rules, then append the required hidden reply metadata block.',
       'Select emotion/animation metadata that matches the visible reply; avoid conflicting motion cues.',
       currentTurnText.trim()
         ? `current_turn_digest: ${currentTurnText.replace(/\s+/g, ' ').trim().slice(0, 420)}`

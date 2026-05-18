@@ -5,6 +5,8 @@ import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
 import { buildYourWifeyPomlMessages } from './poml';
 import type { PomlPromptMessage } from './poml';
 import { buildReplyMetadataInstruction } from './reply-metadata';
+import { getReplyLengthInstruction, normalizeReplyLengthMode } from './reply-length';
+import type { ReplyLengthMode } from './types';
 
 type CompletionMessage = PomlPromptMessage;
 type PromptTurnContextValue = string | number | boolean | null | undefined;
@@ -23,6 +25,7 @@ type BuildChatCompletionMessagesOptions = {
   maxHistoryMessages?: number;
   persona: PersonaProfile | null;
   relationshipMemory: RelationshipMemory;
+  replyLength?: ReplyLengthMode;
   semanticMemoryContext?: string;
   turnContext?: Record<string, PromptTurnContextValue>;
   ttsExpressionTagsEnabled?: boolean;
@@ -103,6 +106,7 @@ function buildDynamicPromptState({
   turnContext,
   ttsExpressionTagsEnabled,
   ttsProvider,
+  replyLength,
 }: {
   animationCatalogContext: string;
   diaryContext: string;
@@ -112,6 +116,7 @@ function buildDynamicPromptState({
   turnContext?: Record<string, PromptTurnContextValue>;
   ttsExpressionTagsEnabled: boolean;
   ttsProvider: string;
+  replyLength: ReplyLengthMode;
 }) {
   const turnSource = readTurnContextValue(turnContext, 'source');
   const turnKind = readTurnContextValue(turnContext, 'turnKind');
@@ -162,6 +167,8 @@ function buildDynamicPromptState({
     relationship_stage: relationshipStage,
     relationship_turn_count: relationshipMemory.turnCount,
     respect_score: relationshipMemory.respect,
+    reply_length_instruction: getReplyLengthInstruction(replyLength),
+    reply_length_mode: replyLength,
     trust_score: relationshipMemory.trust,
     tts_tags_enabled: ttsExpressionTagsEnabled && ttsProvider !== 'piper',
     turn_kind: turnKind || 'unknown',
@@ -291,11 +298,13 @@ export async function buildChatCompletionMessages({
   maxHistoryMessages = 12,
   persona,
   relationshipMemory,
+  replyLength = 'balanced',
   semanticMemoryContext = '',
   turnContext,
   ttsExpressionTagsEnabled = false,
   ttsProvider = 'piper',
 }: BuildChatCompletionMessagesOptions): Promise<CompletionMessage[]> {
+  const normalizedReplyLength = normalizeReplyLengthMode(replyLength);
   const personaBlocks: string[] = [];
 
   if (persona) {
@@ -353,6 +362,7 @@ export async function buildChatCompletionMessages({
       turnContext,
       ttsExpressionTagsEnabled,
       ttsProvider,
+      replyLength: normalizedReplyLength,
     }),
     grilloContext,
     history: contextualHistory,
