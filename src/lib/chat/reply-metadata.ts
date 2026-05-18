@@ -374,18 +374,6 @@ export function resolveAnimationIndexForReplyMetadata(
     return candidate.score >= Math.max(1, maxScore * 0.5);
   });
 
-  const weights = strongestCandidates.map((candidate) => {
-    return {
-      ...candidate,
-      weight: resolveAnimationSelectionWeight(candidate.entry, metadata, candidate.score),
-    };
-  });
-
-  const selected = pickWeightedCandidate(weights);
-  if (selected) {
-    return selected.index;
-  }
-
   strongestCandidates.sort((a, b) => {
     const aEnabled = a.entry.enabled ? 1 : 0;
     const bEnabled = b.entry.enabled ? 1 : 0;
@@ -396,6 +384,7 @@ export function resolveAnimationIndexForReplyMetadata(
     if (aStable !== bStable) return bStable - aStable;
 
     if (a.score !== b.score) return b.score - a.score;
+    if (a.semanticScore !== b.semanticScore) return b.semanticScore - a.semanticScore;
 
     return a.index - b.index;
   });
@@ -575,37 +564,6 @@ function inferPurposeForMotion(motion: AssistantMotion): AnimationPurpose {
 
 function inferExpressionForEmotion(emotion: AssistantEmotion): AssistantFacialExpression {
   return EMOTION_EXPRESSION_MAP[emotion] ?? 'neutral';
-}
-
-function resolveAnimationSelectionWeight(
-  entry: AnimationEntry,
-  metadata: AssistantReplyMetadata,
-  score: number,
-) {
-  const weight =
-    typeof entry.weight === 'number' && Number.isFinite(entry.weight) ? entry.weight : 0.8;
-  const purposePenalty =
-    (entry.purpose === 'movement' || entry.purpose === 'pose') && metadata.purpose !== entry.purpose
-      ? 0.2
-      : 1;
-  return Math.max(0.001, weight * purposePenalty * Math.max(0.1, score));
-}
-
-function pickWeightedCandidate<T extends { index: number; weight: number }>(candidates: T[]) {
-  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
-  if (totalWeight <= 0) {
-    return undefined;
-  }
-
-  let cursor = Math.random() * totalWeight;
-  for (const candidate of candidates) {
-    cursor -= candidate.weight;
-    if (cursor <= 0) {
-      return candidate;
-    }
-  }
-
-  return candidates[0];
 }
 
 function normalizeSetValue<T extends string>(value: unknown, allowed: Set<T>, fallback: T) {

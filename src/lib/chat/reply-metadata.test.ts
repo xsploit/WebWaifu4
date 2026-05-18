@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { AnimationEntry } from '../menu/types';
 import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
 import {
@@ -103,43 +103,78 @@ describe('assistant reply metadata', () => {
       ['annoyed', 'angry', ['annoyance', 'anger', 'disapproval']],
       ['embarrassed', 'embarrassed', ['embarrassment', 'nervous']],
       ['grateful', 'caring', ['gratitude', 'approval', 'caring']],
-      ['optimistic', 'happy', ['optimism', 'approval']],
-      ['proud', 'happy', ['pride', 'approval']],
+      ['optimistic', 'happy', ['optimism', 'approval', 'happy']],
+      ['proud', 'happy', ['pride', 'approval', 'happy']],
       ['nervous', 'embarrassed', ['nervous', 'nervousness', 'embarrassment']],
       ['sad', 'sad', ['sadness', 'disappointment']],
       ['caring', 'caring', ['caring', 'approval', 'gratitude']],
     ] as const;
-    const random = vi.spyOn(Math, 'random').mockReturnValue(0.42);
+    for (const [emotion, expression, expectedKeywords] of emotionCases) {
+      const index = resolveAnimationIndexForReplyMetadata(
+        {
+          animation: '',
+          emotion,
+          expression,
+          intensity: 'medium',
+          motion: emotion,
+          purpose: 'emotion',
+        },
+        DEFAULT_ANIMATIONS,
+      );
+      const selected = DEFAULT_ANIMATIONS[index];
+      const haystack =
+        `${selected?.id ?? ''} ${selected?.name ?? ''} ${(selected?.tags ?? []).join(' ')}`.toLowerCase();
 
-    try {
-      for (const [emotion, expression, expectedKeywords] of emotionCases) {
-        const index = resolveAnimationIndexForReplyMetadata(
-          {
-            animation: '',
-            emotion,
-            expression,
-            intensity: 'medium',
-            motion: emotion,
-            purpose: 'emotion',
-          },
-          DEFAULT_ANIMATIONS,
-        );
-        const selected = DEFAULT_ANIMATIONS[index];
-        const haystack =
-          `${selected?.id ?? ''} ${selected?.name ?? ''} ${(selected?.tags ?? []).join(' ')}`.toLowerCase();
-
-        expect(index, emotion).toBeGreaterThanOrEqual(0);
-        expect(selected?.enabled, emotion).toBe(true);
-        expect(selected?.purpose, emotion).not.toBe('movement');
-        expect(selected?.purpose, emotion).not.toBe('pose');
-        expect(
-          expectedKeywords.some((keyword) => haystack.includes(keyword)),
-          `${emotion} selected ${selected?.id}`,
-        ).toBe(true);
-      }
-    } finally {
-      random.mockRestore();
+      expect(index, emotion).toBeGreaterThanOrEqual(0);
+      expect(selected?.enabled, emotion).toBe(true);
+      expect(selected?.purpose, emotion).not.toBe('movement');
+      expect(selected?.purpose, emotion).not.toBe('pose');
+      expect(
+        expectedKeywords.some((keyword) => haystack.includes(keyword)),
+        `${emotion} selected ${selected?.id}`,
+      ).toBe(true);
     }
+  });
+
+  it('ignores playlist weights when mapping reply emotions', () => {
+    const playlist: AnimationEntry[] = [
+      {
+        enabled: true,
+        experimental: false,
+        format: 'vrma',
+        id: 'low-weight-happy',
+        name: 'Low weight happy reaction',
+        purpose: 'emotion',
+        tags: ['happy'],
+        url: '/happy.vrma',
+        weight: 0.05,
+      },
+      {
+        enabled: true,
+        experimental: false,
+        format: 'vrma',
+        id: 'high-weight-joy',
+        name: 'High weight joy reaction',
+        purpose: 'emotion',
+        tags: ['joy'],
+        url: '/joy.vrma',
+        weight: 4,
+      },
+    ];
+
+    expect(
+      resolveAnimationIndexForReplyMetadata(
+        {
+          animation: '',
+          emotion: 'happy',
+          expression: 'happy',
+          intensity: 'medium',
+          motion: 'happy',
+          purpose: 'emotion',
+        },
+        playlist,
+      ),
+    ).toBe(0);
   });
 
   it('does not advertise or select disabled animation entries', () => {
