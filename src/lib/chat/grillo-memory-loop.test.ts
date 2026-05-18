@@ -185,6 +185,7 @@ describe('Grillo memory worker loop', () => {
       userMessage: 'yo',
     });
     expect(state.diaryEntries[0]?.emotions?.[0]).toEqual({ intensity: 7, name: 'happy' });
+    expect(state.emotionState.intensities.happy).toBeGreaterThan(0);
   });
 
   it('writes consolidated memory blocks through worker_memory_write', async () => {

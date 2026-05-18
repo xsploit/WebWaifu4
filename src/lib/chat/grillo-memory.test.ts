@@ -4,6 +4,7 @@ import {
   buildGrilloMemoryPromptAdditions,
   clearGrilloMemoryState,
   getGrilloParticipantKey,
+  applyGrilloEmotionSignals,
   loadGrilloMemoryState,
   recordGrilloMemoryTurn,
   saveGrilloMemoryState,
@@ -185,6 +186,27 @@ describe('Grillo memory store', () => {
     expect(state.scopeKey).toBe('missing-scope');
     expect(state.candidates).toEqual([]);
     expect(state.blocks).toEqual([]);
+    expect(state.emotionState.intensities.happy).toBe(0);
+  });
+
+  it('injects current Grillo emotion state into prompt additions', () => {
+    const scopeKey = 'local:persona:hikari';
+    const base = loadGrilloMemoryState(scopeKey);
+    saveGrilloMemoryState(
+      applyGrilloEmotionSignals(
+        base,
+        [{ confidence: 0.9, intensity: 8, name: 'happy' }],
+        'test',
+        Date.parse('2026-05-13T09:00:00.000Z'),
+      ),
+    );
+
+    const additions = buildGrilloMemoryPromptAdditions({
+      query: 'how do you feel',
+      scopeKey,
+    });
+
+    expect(additions.diaryThoughts.join('\n')).toContain('current_emotion_state: happy:');
   });
 
   it('clears a scoped Grillo memory state', () => {

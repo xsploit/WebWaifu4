@@ -1,5 +1,6 @@
 import type { ChatTurn } from './chat-turn';
 import {
+  applyGrilloEmotionSignals,
   buildGrilloMemoryPromptAdditions,
   getGrilloParticipantKey,
   loadGrilloMemoryState,
@@ -12,6 +13,7 @@ import {
   type GrilloMemoryCandidate,
 } from './grillo-memory';
 import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
+import { buildWorkerDebriefPlan } from '../grillo/worker-debrief';
 
 export type GrilloWorkerLoopMessage = {
   role: string;
@@ -229,7 +231,7 @@ export async function runGrilloMemoryWorkerLoop({
 
     const parsed = parseJsonLoose(finalJsonText) as ParsedWorkerResponse | null;
     const calls = normalizeToolCalls(parsed);
-    const recoveryCalls = buildRecoveryToolCalls(parsed, calls, sideEffects);
+    const recoveryCalls = buildRecoveryToolCalls(parsed, calls, sideEffects, toolCalls);
     const allCalls = [...calls, ...recoveryCalls];
 
     if (allCalls.length === 0) {
@@ -593,7 +595,7 @@ function toolDiaryWrite(
   const tags = toStringArray(args['tags']).slice(0, 12);
   const contextTags = toStringArray(args['context_tags']).slice(0, 12);
   const involvedUsers = toStringArray(args['involved_users']).slice(0, 12);
-  const emotions = normalizeDiaryEmotions(args['emotions']);
+  const emotions = normalizeDiaryEmotions(args['emotions']) ?? [];
   if (!summary || !personalThought) {
     return { ok: false, error: 'summary and personal_thought are required' };
   }
@@ -621,11 +623,14 @@ function toolDiaryWrite(
     userMessage,
   };
   const state = loadGrilloMemoryState(scopeKey);
-  saveGrilloMemoryState({
+  const withDiary = {
     ...state,
     diaryEntries: [...state.diaryEntries, entry].slice(-40),
     updatedAt: now,
-  });
+  };
+  saveGrilloMemoryState(
+    applyGrilloEmotionSignals(withDiary, emotions, `diary:${entry.diaryId}`, now),
+  );
   return {
     ok: true,
     diary_id: entry.diaryId,
@@ -772,34 +777,42 @@ function buildRecoveryToolCalls(
   parsed: ParsedWorkerResponse | null,
   calls: GrilloWorkerToolCall[],
   sideEffects: GrilloWorkerLoopResult['sideEffects'],
+  executedToolCalls: GrilloWorkerLoopResult['toolCalls'] = [],
 ) {
-  if (!parsed || typeof parsed !== 'object') {
-    return [];
-  }
+  const debrief = buildWorkerDebriefPlan({
+    maxRecoveryActions: 4,
+    parsedObject: parsed ? (parsed as Record<string, unknown>) : null,
+    sideEffects: {
+      archivalWrites: sideEffects.archivalWrites,
+      candidateIds: sideEffects.candidateIds,
+      diaryIds: sideEffects.diaryIds,
+      profileVersions: [],
+      slotWrites: sideEffects.slotWrites,
+    },
+    toolCalls: [
+      ...calls.map((call) => ({
+        args: call.args,
+        toolName: call.name,
+      })),
+      ...executedToolCalls.map((call) => ({
+        args: call.args,
+        result: call.result,
+        toolName: call.name,
+      })),
+    ],
+  });
 
-  const recovery: GrilloWorkerToolCall[] = [];
-  const wroteCandidate =
-    sideEffects.candidateIds.length > 0 ||
-    calls.some((call) => call.name === 'core.worker_candidate_write');
-  const wroteDiary =
-    sideEffects.diaryIds.length > 0 ||
-    calls.some((call) => call.name === 'core.worker_diary_write');
-
-  if (!wroteCandidate && parsed.candidate && typeof parsed.candidate === 'object') {
-    recovery.push({
-      args: parsed.candidate as Record<string, unknown>,
-      name: 'core.worker_candidate_write',
-    });
-  }
-
-  if (!wroteDiary && parsed.diary && typeof parsed.diary === 'object') {
-    recovery.push({
-      args: parsed.diary as Record<string, unknown>,
-      name: 'core.worker_diary_write',
-    });
-  }
-
-  return recovery;
+  return debrief.recoveryActions
+    .map((action): GrilloWorkerToolCall | null => {
+      if (!TOOL_NAMES.has(action.toolName as GrilloWorkerToolName)) {
+        return null;
+      }
+      return {
+        args: action.args,
+        name: action.toolName as GrilloWorkerToolName,
+      };
+    })
+    .filter((call): call is GrilloWorkerToolCall => Boolean(call));
 }
 
 function parseJsonLoose(raw: string): Record<string, unknown> | null {

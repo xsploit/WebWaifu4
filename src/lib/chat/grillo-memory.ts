@@ -1,6 +1,18 @@
 import type { ChatTurn } from './chat-turn';
 import type { PersonaProfile } from './types';
 import type { GrilloScoredItem } from './grillo-context';
+import {
+  canonicalEmotionName,
+  emptyEmotionIntensities,
+  type CanonicalEmotion,
+  type EmotionIntensities,
+  type EmotionSignal,
+} from '../grillo/emotion-state';
+import {
+  evaluatePromotion,
+  type MemoryBlock as GrilloCoreMemoryBlock,
+  type PromotionCandidate,
+} from '../grillo/memory-promotion';
 
 export type GrilloCandidateType =
   | 'preference'
@@ -64,10 +76,18 @@ export type GrilloMemoryState = {
   blocks: GrilloMemoryBlock[];
   candidates: GrilloMemoryCandidate[];
   diaryEntries: GrilloDiaryEntry[];
+  emotionState: GrilloEmotionState;
   promotedCandidateIds: string[];
   scopeKey: string;
   updatedAt: number;
   version: 1;
+};
+
+export type GrilloEmotionState = {
+  intensities: EmotionIntensities;
+  lastSignalAt?: number;
+  lastSignalSource?: string;
+  updatedAt: number;
 };
 
 export type GrilloMemoryPromptAdditions = {
@@ -106,6 +126,14 @@ const DEFAULT_PROMOTION_POLICY: PromotionPolicy = {
   maxBlockItems: 20,
   minCandidatesForPromotion: 2,
 };
+const OPPOSITE_EMOTIONS: Partial<Record<CanonicalEmotion, CanonicalEmotion>> = {
+  angry: 'relaxed',
+  fear: 'neutral',
+  happy: 'sad',
+  neutral: 'fear',
+  relaxed: 'angry',
+  sad: 'happy',
+};
 
 export function getGrilloParticipantKey(turn: ChatTurn) {
   return `${turn.source}:${turn.channel || 'local'}:${turn.login || 'unknown'}`
@@ -119,6 +147,7 @@ export function createDefaultGrilloMemoryState(scopeKey: string): GrilloMemorySt
     blocks: [],
     candidates: [],
     diaryEntries: [],
+    emotionState: createDefaultGrilloEmotionState(),
     promotedCandidateIds: [],
     scopeKey,
     updatedAt: Date.now(),
@@ -161,6 +190,7 @@ export function saveGrilloMemoryState(state: GrilloMemoryState) {
     current.blocks.length > 0 ||
     current.candidates.length > 0 ||
     current.diaryEntries.length > 0 ||
+    hasEmotionStateSignals(current.emotionState) ||
     current.promotedCandidateIds.length > 0
       ? mergeGrilloMemoryStates(current, state)
       : compactState(state);
@@ -193,6 +223,65 @@ export function recordGrilloMemoryTurn({
   const promoted = promoteGrilloCandidates(nextState);
   saveGrilloMemoryState(promoted);
   return promoted;
+}
+
+export function applyGrilloEmotionSignals(
+  state: GrilloMemoryState,
+  signals: EmotionSignal[],
+  source: string,
+  now = Date.now(),
+): GrilloMemoryState {
+  if (!Array.isArray(signals) || signals.length === 0) {
+    return state;
+  }
+
+  let emotionState = decayGrilloEmotionState(state.emotionState, now);
+  const intensities = { ...emotionState.intensities };
+  let wroteSignal = false;
+
+  for (const signal of signals) {
+    const canonical = canonicalEmotionName(signal.name);
+    const confidence = clamp01(Number(signal.confidence ?? 1));
+    const signalIntensity = clampNumber(Number(signal.intensity ?? 0), 0, 10);
+    if (signalIntensity <= 0) {
+      continue;
+    }
+
+    const blend = 0.45 + confidence * 0.35;
+    const previous = intensities[canonical] ?? 0;
+    intensities[canonical] = clampNumber(
+      previous * (1 - blend) + signalIntensity * blend,
+      0,
+      10,
+    );
+
+    const opposite = OPPOSITE_EMOTIONS[canonical];
+    if (opposite) {
+      intensities[opposite] = clampNumber(
+        (intensities[opposite] ?? 0) - signalIntensity * 0.25 * confidence,
+        0,
+        10,
+      );
+    }
+    wroteSignal = true;
+  }
+
+  if (!wroteSignal) {
+    return state;
+  }
+
+  emotionState = {
+    intensities,
+    lastSignalAt: now,
+    lastSignalSource: source || 'unknown',
+    updatedAt: now,
+  };
+
+  return {
+    ...state,
+    emotionState,
+    updatedAt: Math.max(state.updatedAt, now),
+  };
 }
 
 export function buildGrilloMemoryPromptAdditions({
@@ -247,9 +336,10 @@ export function buildGrilloMemoryPromptAdditions({
     .filter((entry) => includeParticipant(entry.participantKey))
     .slice(-4)
     .map((entry) => formatDiaryThought(entry));
+  const emotionState = formatEmotionState(state.emotionState);
 
   return {
-    diaryThoughts,
+    diaryThoughts: emotionState ? [...diaryThoughts, emotionState] : diaryThoughts,
     recalledMemories,
     relationshipMemory,
   };
@@ -260,67 +350,91 @@ export function promoteGrilloCandidates(
   policy: PromotionPolicy = DEFAULT_PROMOTION_POLICY,
 ): GrilloMemoryState {
   const promotedIds = new Set(state.promotedCandidateIds);
-  const eligible = state.candidates.filter(
-    (candidate) =>
-      !promotedIds.has(candidate.candidateId) && candidate.confidence >= policy.confidenceThreshold,
+  const evaluation = evaluatePromotion(
+    state.candidates.map(toCorePromotionCandidate),
+    state.blocks.map(toCoreMemoryBlock),
+    promotedIds,
+    {
+      confidenceThreshold: policy.confidenceThreshold,
+      maxBlockItems: policy.maxBlockItems,
+      minCandidatesForPromotion: policy.minCandidatesForPromotion,
+    },
   );
-  const grouped = new Map<string, GrilloMemoryCandidate[]>();
-
-  eligible.forEach((candidate) => {
-    const blockName = blockNameForCandidateType(candidate.type);
-    const key = `${candidate.participantKey}::${blockName}`;
-    grouped.set(key, [...(grouped.get(key) ?? []), candidate]);
-  });
-
   const blocks = [...state.blocks];
-  const consumed = new Set<string>();
   const now = Date.now();
 
-  for (const group of grouped.values()) {
-    if (group.length < policy.minCandidatesForPromotion) {
+  for (const result of evaluation.results) {
+    const block = fromCoreMemoryBlock(result.block, state.scopeKey, now);
+    const existingIndex = blocks.findIndex((item) => item.blockId === block.blockId);
+    if (existingIndex >= 0) {
+      blocks[existingIndex] = block;
       continue;
     }
-
-    const first = group[0];
-    if (!first) {
-      continue;
-    }
-
-    const blockName = blockNameForCandidateType(first.type);
-    const existing = blocks.find(
-      (block) => block.participantKey === first.participantKey && block.blockName === blockName,
-    );
-    const sourceCandidateIds = dedupe([...group.map((candidate) => candidate.candidateId)]);
-    const newItems = dedupe(group.map((candidate) => candidate.summary || candidate.content));
-    const existingItems = existing?.items ?? [];
-    const mergedItems = dedupe([...existingItems, ...newItems]).slice(-policy.maxBlockItems);
-
-    sourceCandidateIds.forEach((id) => consumed.add(id));
-
-    if (existing) {
-      existing.items = mergedItems;
-      existing.sourceCandidateIds = dedupe([...existing.sourceCandidateIds, ...sourceCandidateIds]);
-      existing.updatedAt = now;
-    } else {
-      blocks.push({
-        blockId: `${first.participantKey}:${blockName}:v1`,
-        blockName,
-        createdAt: now,
-        items: mergedItems,
-        participantKey: first.participantKey,
-        scopeKey: first.scopeKey,
-        sourceCandidateIds,
-        updatedAt: now,
-      });
-    }
+    blocks.push(block);
   }
 
   return compactState({
     ...state,
     blocks,
-    promotedCandidateIds: dedupe([...state.promotedCandidateIds, ...consumed]),
+    promotedCandidateIds: dedupe([
+      ...state.promotedCandidateIds,
+      ...evaluation.consumedCandidateIds,
+    ]),
     updatedAt: now,
   });
+}
+
+function toCorePromotionCandidate(candidate: GrilloMemoryCandidate): PromotionCandidate {
+  return {
+    candidate_id: candidate.candidateId,
+    confidence: candidate.confidence,
+    content: candidate.content,
+    created_at: new Date(candidate.createdAt).toISOString(),
+    summary: candidate.summary,
+    type: candidate.type,
+    user_id: candidate.participantKey,
+  };
+}
+
+function toCoreMemoryBlock(block: GrilloMemoryBlock): GrilloCoreMemoryBlock {
+  return {
+    block_id: block.blockId,
+    block_name: block.blockName,
+    created_at: new Date(block.createdAt).toISOString(),
+    items: block.items,
+    operation: 'upsert',
+    reason: 'existing YourWifey memory block',
+    schema_version: '1.0.0',
+    source_candidate_ids: block.sourceCandidateIds,
+    user_id: block.participantKey,
+  };
+}
+
+function fromCoreMemoryBlock(
+  block: GrilloCoreMemoryBlock,
+  scopeKey: string,
+  fallbackNow: number,
+): GrilloMemoryBlock {
+  const createdAt = Date.parse(block.created_at);
+  return {
+    blockId: block.block_id,
+    blockName: normalizeCoreBlockName(block.block_name),
+    createdAt: Number.isFinite(createdAt) ? createdAt : fallbackNow,
+    items: block.items,
+    participantKey: block.user_id,
+    scopeKey,
+    sourceCandidateIds: block.source_candidate_ids,
+    updatedAt: fallbackNow,
+  };
+}
+
+function normalizeCoreBlockName(blockName: GrilloCoreMemoryBlock['block_name']): GrilloBlockName {
+  if (blockName === 'preferences') return 'preferences';
+  if (blockName === 'boundaries') return 'boundaries';
+  if (blockName === 'relationship_state') return 'relationship_state';
+  if (blockName === 'verified_facts') return 'verified_facts';
+  if (blockName === 'open_threads') return 'open_threads';
+  return 'ongoing_topics';
 }
 
 function extractCandidatesFromTurn(turn: ChatTurn, scopeKey: string, now: number) {
@@ -415,31 +529,13 @@ function scoreRecallItems(
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 }
 
-function blockNameForCandidateType(type: GrilloCandidateType): GrilloBlockName {
-  if (type === 'preference') {
-    return 'preferences';
-  }
-  if (type === 'boundary') {
-    return 'boundaries';
-  }
-  if (type === 'bond_signal') {
-    return 'relationship_state';
-  }
-  if (type === 'thread') {
-    return 'ongoing_topics';
-  }
-  if (type === 'fact') {
-    return 'verified_facts';
-  }
-  return 'open_threads';
-}
-
 function compactState(state: GrilloMemoryState): GrilloMemoryState {
   return {
     ...state,
     blocks: state.blocks.slice(-MAX_BLOCKS),
     candidates: state.candidates.slice(-MAX_CANDIDATES),
     diaryEntries: state.diaryEntries.filter(isReflectiveDiaryEntry).slice(-MAX_DIARY),
+    emotionState: normalizeGrilloEmotionState(state.emotionState),
     promotedCandidateIds: state.promotedCandidateIds.slice(-MAX_CANDIDATES),
   };
 }
@@ -514,6 +610,10 @@ function mergeGrilloMemoryStates(
       [...current.diaryEntries, ...incoming.diaryEntries],
       (entry) => entry.diaryId,
     ),
+    emotionState:
+      incoming.emotionState.updatedAt >= current.emotionState.updatedAt
+        ? incoming.emotionState
+        : current.emotionState,
     promotedCandidateIds: dedupe([
       ...current.promotedCandidateIds,
       ...incoming.promotedCandidateIds,
@@ -551,6 +651,7 @@ function normalizeGrilloMemoryState(scopeKey: string, value: unknown): GrilloMem
     diaryEntries: Array.isArray(source.diaryEntries)
       ? source.diaryEntries.map(normalizeDiaryEntry).filter(isGrilloDiaryEntry)
       : [],
+    emotionState: normalizeGrilloEmotionState((source as { emotionState?: unknown }).emotionState),
     promotedCandidateIds: Array.isArray(source.promotedCandidateIds)
       ? source.promotedCandidateIds.map(String).filter(Boolean)
       : [],
@@ -699,6 +800,85 @@ function normalizeDiaryEmotions(value: unknown): GrilloDiaryEntry['emotions'] {
     })
     .filter((item): item is { intensity: number; name: string } => Boolean(item))
     .slice(0, 8);
+}
+
+function createDefaultGrilloEmotionState(): GrilloEmotionState {
+  return {
+    intensities: emptyEmotionIntensities(),
+    updatedAt: 0,
+  };
+}
+
+function normalizeGrilloEmotionState(value: unknown): GrilloEmotionState {
+  if (!value || typeof value !== 'object') {
+    return createDefaultGrilloEmotionState();
+  }
+
+  const source = value as Partial<GrilloEmotionState> & Record<string, unknown>;
+  const rawIntensities =
+    source.intensities && typeof source.intensities === 'object'
+      ? (source.intensities as Partial<EmotionIntensities> & Record<string, unknown>)
+      : {};
+  const intensities = emptyEmotionIntensities();
+  (Object.keys(intensities) as CanonicalEmotion[]).forEach((key) => {
+    intensities[key] = clampNumber(Number(rawIntensities[key] ?? 0), 0, 10);
+  });
+
+  return {
+    intensities,
+    lastSignalAt: source.lastSignalAt ? normalizeTimestamp(source.lastSignalAt) : undefined,
+    lastSignalSource: normalizeOptionalString(source.lastSignalSource, 160),
+    updatedAt: source.updatedAt ? normalizeTimestamp(source.updatedAt) : 0,
+  };
+}
+
+function decayGrilloEmotionState(
+  state: GrilloEmotionState,
+  now = Date.now(),
+  decayTauMs = 60 * 60 * 1000,
+  decayThreshold = 0.05,
+): GrilloEmotionState {
+  const normalized = normalizeGrilloEmotionState(state);
+  const from = normalized.lastSignalAt ?? normalized.updatedAt ?? now;
+  const elapsedMs = Math.max(0, now - from);
+  const tau = Math.max(60_000, decayTauMs);
+  const factor = Math.exp(-elapsedMs / tau);
+  const intensities = emptyEmotionIntensities();
+  (Object.keys(intensities) as CanonicalEmotion[]).forEach((key) => {
+    const value = clampNumber((normalized.intensities[key] ?? 0) * factor, 0, 10);
+    intensities[key] = value < decayThreshold ? 0 : value;
+  });
+
+  return {
+    ...normalized,
+    intensities,
+    updatedAt: now,
+  };
+}
+
+function hasEmotionStateSignals(state: GrilloEmotionState) {
+  return Object.values(normalizeGrilloEmotionState(state).intensities).some(
+    (value) => value > 0.05,
+  );
+}
+
+function formatEmotionState(state: GrilloEmotionState) {
+  const rows = Object.entries(normalizeGrilloEmotionState(state).intensities)
+    .map(([name, intensity]) => ({
+      intensity,
+      name: canonicalEmotionName(name),
+    }))
+    .filter((row) => row.intensity > 0.1)
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 4);
+
+  if (rows.length === 0) {
+    return '';
+  }
+
+  return `current_emotion_state: ${rows
+    .map((row) => `${row.name}:${row.intensity.toFixed(1)}/10`)
+    .join(', ')}`;
 }
 
 function isReflectiveDiaryEntry(entry: GrilloDiaryEntry) {
