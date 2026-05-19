@@ -178,7 +178,7 @@ function HomePage(
               [
                 'iii',
                 'Real-time voice output',
-                'Use browser Piper, Fish Speech live bridge, or Inworld remote TTS. The Voice Lab stores Inworld and Orpheus custom voice records per persona.',
+                'Use browser Piper, Fish Speech live bridge, or Inworld remote TTS. The Voice Lab stores Fish Speech and Inworld custom voice records per persona.',
                 ['Piper', 'Fish', 'Inworld'],
               ],
               [
@@ -225,8 +225,9 @@ function HomePage(
               </h2>
               <p className="yw-lede">
                 The app now has a Voice Lab for registering custom voices, attaching them to
-                characters, and keeping a default voice per persona. Orpheus records are saved for
-                the next adapter pass; active playback today is Piper, Fish Speech, and Inworld.
+                characters, and keeping a default voice per persona. Fish Speech is the
+                zero-shot/custom voice path; active playback today is Piper, Fish Speech, and
+                Inworld.
               </p>
               <HomeSpecList
                 items={[
@@ -253,9 +254,9 @@ function HomePage(
                 ['Piper · Neuro-sama', 'local', 'Default for Neuro-sama preset'],
                 ['Fish Speech · s2 voice', 'remote', 'Live bridge ready when provider key exists'],
                 ['Inworld · custom voice id', 'remote', 'Saved per persona through Voice Lab'],
-                ['Orpheus · draft clone', 'draft', 'Stored now, playback adapter pending'],
+                ['Fish Speech · zero-shot clone', 'remote', 'Custom voice reference saved per persona'],
               ].map(([name, type, desc], index) => (
-                <div className={`yw-voice-row ${index === 2 ? 'is-selected' : ''}`} key={name}>
+                <div className={`yw-voice-row ${index === 1 ? 'is-selected' : ''}`} key={name}>
                   <span className="yw-radio" />
                   <div>
                     <strong>{name}</strong>

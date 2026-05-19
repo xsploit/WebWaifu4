@@ -20,7 +20,7 @@ export type PersonaProfile = {
 export type PersonaDraft = Omit<PersonaProfile, 'id'>;
 
 export type TtsProvider = 'piper' | 'fish-speech' | 'inworld';
-export type VoiceCreationProvider = 'inworld' | 'orpheus';
+export type VoiceCreationProvider = 'fish-speech' | 'inworld';
 export type PersonaVoiceProvider = TtsProvider | VoiceCreationProvider;
 export type RemoteTtsMode = 'live-bridge' | 'full-response' | 'sentence-chunks';
 export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';

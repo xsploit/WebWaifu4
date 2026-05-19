@@ -36,7 +36,7 @@ const EMPTY_DRAFT: VoiceDraft = {
   expressiveness: 0.65,
   modelId: '',
   name: '',
-  provider: 'inworld',
+  provider: 'fish-speech',
   providerVoiceId: '',
   sample: null,
   speakingStyle: '',
@@ -49,8 +49,6 @@ function providerLabel(provider: VoiceCreationProvider | PersonaVoiceBinding['pr
       return 'Fish Speech';
     case 'inworld':
       return 'Inworld';
-    case 'orpheus':
-      return 'Orpheus';
     case 'piper':
       return 'Piper';
     default:
@@ -261,8 +259,8 @@ export function VoiceLabTab({
           }
           value={draft.provider}
         >
-          <option value="inworld">Inworld zero-shot / custom voice</option>
-          <option value="orpheus">Orpheus zero-shot / custom voice</option>
+          <option value="fish-speech">Fish Speech zero-shot / custom voice</option>
+          <option value="inworld">Inworld custom voice</option>
         </select>
         <input
           accept="audio/*"
@@ -293,7 +291,7 @@ export function VoiceLabTab({
         <input
           className="input-tech"
           onChange={(event) => updateDraft({ modelId: event.target.value })}
-          placeholder="Model id, e.g. inworld-tts-2 or Orpheus model..."
+          placeholder="Model id, e.g. fish-speech-s2 or inworld-tts-2..."
           type="text"
           value={draft.modelId}
         />
@@ -389,7 +387,7 @@ export function VoiceLabTab({
         </div>
         <div className="field-hint">
           Saving a ready voice with a provider id also updates the selected persona defaults.
-          Orpheus voices can be saved and attached now; playback needs an Orpheus runtime adapter.
+          Fish Speech is the zero-shot/custom voice path; Inworld voices can be registered by id.
         </div>
       </div>
 

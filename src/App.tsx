@@ -3225,10 +3225,6 @@ function App() {
   }, []);
 
   const applyPersonaVoiceBinding = useCallback((binding: PersonaVoiceBinding) => {
-    if (binding.provider === 'orpheus') {
-      return;
-    }
-
     setAiSettings((current) => {
       if (
         binding.provider === 'piper' &&

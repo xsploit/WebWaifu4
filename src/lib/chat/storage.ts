@@ -97,15 +97,19 @@ function normalizePersonaVoiceProvider(value: unknown): PersonaVoiceProvider | n
     case 'piper':
     case 'fish-speech':
     case 'inworld':
-    case 'orpheus':
       return value;
+    case 'orpheus':
+      return 'fish-speech';
     default:
       return null;
   }
 }
 
 function normalizeVoiceCreationProvider(value: unknown): VoiceCreationProvider | null {
-  return value === 'inworld' || value === 'orpheus' ? value : null;
+  if (value === 'orpheus') {
+    return 'fish-speech';
+  }
+  return value === 'inworld' || value === 'fish-speech' ? value : null;
 }
 
 function normalizePersonaVoiceBinding(value: unknown): PersonaVoiceBinding | null {

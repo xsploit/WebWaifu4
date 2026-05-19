@@ -271,14 +271,12 @@ function normalizePersonaVoiceBindings(value: unknown): Record<string, PersonaVo
       continue;
     }
     const source = rawBinding as Partial<PersonaVoiceBinding>;
-    const provider = source.provider;
+    const rawProvider = source.provider as string | undefined;
+    const provider = rawProvider === 'orpheus' ? 'fish-speech' : source.provider;
     const voiceId = String(source.voiceId ?? '').trim();
     if (
       !voiceId ||
-      (provider !== 'piper' &&
-        provider !== 'fish-speech' &&
-        provider !== 'inworld' &&
-        provider !== 'orpheus')
+      (provider !== 'piper' && provider !== 'fish-speech' && provider !== 'inworld')
     ) {
       continue;
     }
@@ -316,10 +314,12 @@ function normalizeVoiceLabVoices(value: unknown): VoiceLabVoice[] {
         return null;
       }
       const source = item as Partial<VoiceLabVoice>;
+      const rawProvider = source.provider as string | undefined;
+      const provider = rawProvider === 'orpheus' ? 'fish-speech' : source.provider;
       if (
         typeof source.id !== 'string' ||
         typeof source.name !== 'string' ||
-        (source.provider !== 'inworld' && source.provider !== 'orpheus')
+        (provider !== 'inworld' && provider !== 'fish-speech')
       ) {
         return null;
       }
@@ -342,7 +342,7 @@ function normalizeVoiceLabVoices(value: unknown): VoiceLabVoice[] {
         id: source.id,
         modelId: String(source.modelId ?? ''),
         name: source.name,
-        provider: source.provider,
+        provider,
         providerVoiceId: String(source.providerVoiceId ?? ''),
         sample: normalizeVoiceLabSample(source.sample),
         speakingStyle: String(source.speakingStyle ?? ''),
