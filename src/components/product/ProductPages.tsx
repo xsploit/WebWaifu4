@@ -1,7 +1,5 @@
-import { Canvas, useFrame } from '@react-three/fiber';
 import {
   FormEvent,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,7 +7,8 @@ import {
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
-import type { VRM } from '@pixiv/three-vrm';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import type { ByokAccountMode } from '../../lib/product/account-mode';
 import type { AppRoute } from '../../lib/product/app-route';
 import {
@@ -38,8 +37,20 @@ import {
 } from '../../lib/product/supabase-auth-shell';
 import type { SupabaseOAuthProvider, SupabasePublicConfig } from '../../lib/product/supabase-env';
 import { getProductAuthCallbackUrl } from '../../lib/product/auth-redirect';
-import { getLocalCdnAssetUrl } from '../../lib/cdn/assets';
-import { disposeVrm, loadVrm } from '../../lib/vrm/loadVrm';
+
+type HomeVrmExpression = 'neutral' | 'happy' | 'surprised' | 'sad' | 'angry';
+
+type HomeVrmApi = {
+  setExpression: (name: string) => void;
+  setTalking: (on: boolean) => void;
+};
+
+declare global {
+  interface Window {
+    YWVRM?: HomeVrmApi;
+    __vrmError?: unknown;
+  }
+}
 
 type ProductPagesProps = {
   accountMode: ByokAccountMode;
@@ -396,28 +407,106 @@ function HomePage(
   );
 }
 
+const HOME_CHAT_POOL = [
+  { user: 'kazumi_dev', color: 'c-pink', text: 'wait she actually remembers my cat??' },
+  { user: 'gamer_jules', color: 'c-cyan', text: '@wifey what build are we running tonight' },
+  {
+    user: 'mod_aria',
+    color: 'c-amber',
+    text: 'queue is wild, lets do small chat mode',
+    badge: 'MOD',
+  },
+  { user: 'late_owl', color: 'c-violet', text: 'first stream since the trip, hi again!' },
+  { user: 'pixel_ren', color: 'c-lime', text: 'her laugh sounds way more natural now' },
+  { user: 'bento_box', color: 'c-pink', text: '@wifey roast my deck pick pls' },
+  { user: 'kazumi_dev', color: 'c-pink', text: 'lmaooo perfect timing on that one' },
+  { user: 'starlit_42', color: 'c-cyan', text: 'gg the inworld voice is so smooth' },
+];
+
+const HOME_REPLIES: Array<{
+  text: string;
+  expr: HomeVrmExpression;
+  meta: { provider: string; voice: string; latency: string };
+}> = [
+  {
+    text: "kazumi! yes, the orange one, right? you sent me a picture last week. how's he doing?",
+    expr: 'happy',
+    meta: { provider: 'OpenAI · Responses', voice: 'Inworld · Aria', latency: '480 ms' },
+  },
+  {
+    text: "@gamer_jules tonight we're running the speedrun build, same as friday but with the new dash mod. let's see if it actually holds.",
+    expr: 'neutral',
+    meta: { provider: 'OpenAI · Responses', voice: 'Fish Speech · Coral', latency: '520 ms' },
+  },
+  {
+    text: 'aria, switching to small chat mode now. tagged messages only. behave, chat.',
+    expr: 'angry',
+    meta: { provider: 'OpenAI · Responses', voice: 'Piper · en_US-amy', latency: '180 ms' },
+  },
+  {
+    text: 'late_owl!! welcome back. how was the trip, did you actually take the pictures you promised?',
+    expr: 'surprised',
+    meta: { provider: 'OpenAI · Responses', voice: 'Inworld · Aria', latency: '490 ms' },
+  },
+];
+
 function HomeProductPreview(props: { twitchLabel: string }) {
-  const replies = [
-    'subby, I saw that. tiny chaos, maximum confidence.',
-    'chat, breathe. I can only roast one cursed build at a time.',
-    'switching tone: playful, sharper, still not letting you off easy.',
-  ];
+  const [chat, setChat] = useState(HOME_CHAT_POOL.slice(0, 5));
   const [replyIndex, setReplyIndex] = useState(0);
   const [typed, setTyped] = useState('');
+  const [activeExpression, setActiveExpression] = useState<HomeVrmExpression>('happy');
+
+  const reply = HOME_REPLIES[replyIndex] ?? HOME_REPLIES[0]!;
+
+  useEffect(() => {
+    let index = 5;
+    const timer = window.setInterval(() => {
+      setChat((current) => [
+        ...current.slice(1),
+        {
+          ...HOME_CHAT_POOL[index % HOME_CHAT_POOL.length]!,
+          key: `${Date.now()}-${Math.random()}`,
+        },
+      ]);
+      index += 1;
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let index = 0;
-    const text = replies[replyIndex] ?? replies[0]!;
+    let finishTimer = 0;
+    let nextTimer = 0;
+    const text = reply.text;
     const timer = window.setInterval(() => {
       index += 1;
       setTyped(text.slice(0, index));
       if (index >= text.length) {
         window.clearInterval(timer);
-        window.setTimeout(() => setReplyIndex((current) => (current + 1) % replies.length), 1600);
+        finishTimer = window.setTimeout(() => {
+          window.YWVRM?.setTalking(false);
+          nextTimer = window.setTimeout(
+            () => setReplyIndex((current) => (current + 1) % HOME_REPLIES.length),
+            1800,
+          );
+        }, 600);
       }
     }, 28);
-    return () => window.clearInterval(timer);
-  }, [replyIndex]);
+    setTyped('');
+    setActiveExpression(reply.expr);
+    window.YWVRM?.setExpression(reply.expr);
+    window.YWVRM?.setTalking(true);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(finishTimer);
+      window.clearTimeout(nextTimer);
+    };
+  }, [reply]);
+
+  function handleExpression(name: HomeVrmExpression) {
+    setActiveExpression(name);
+    window.YWVRM?.setExpression(name);
+  }
 
   return (
     <div className="yw-preview">
@@ -431,20 +520,39 @@ function HomeProductPreview(props: { twitchLabel: string }) {
       <div className="yw-preview__grid">
         <div className="yw-preview__avatar">
           <HomeVrmPreview />
-          <div className="yw-avatar-chip">Hikari · VRM loaded</div>
+          <div className="yw-avatar-overlays">
+            <div className="yw-avatar-top">
+              <div className="yw-avatar-chip">
+                <b>Hikky</b> · v2.4
+              </div>
+              <div className="yw-avatar-chip">VRM 1.0 · idle</div>
+            </div>
+            <div className="yw-expr-bar">
+              {(['neutral', 'happy', 'surprised', 'sad', 'angry'] as HomeVrmExpression[]).map(
+                (expression) => (
+                  <button
+                    className={activeExpression === expression ? 'is-active' : ''}
+                    key={expression}
+                    onClick={() => handleExpression(expression)}
+                    type="button"
+                  >
+                    {expression}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
         </div>
         <div className="yw-preview__panel">
           <h3>
             Twitch chat <span>{props.twitchLabel}</span>
           </h3>
-          {[
-            ['kazumi_dev', 'wait she actually remembers my cat??'],
-            ['gamer_jules', '@wifey what build are we running tonight'],
-            ['mod_aria', 'queue is wild, small chat mode pls'],
-            ['late_owl', 'first stream since the trip, hi again'],
-          ].map(([user, text]) => (
-            <p className="yw-chat-line" key={user}>
-              <b>{user}</b> {text}
+          {chat.map((message, index) => (
+            <p className="yw-chat-line yw-chat-line--enter" key={`${message.user}-${index}`}>
+              <em>#stream</em>
+              <b className={message.color}>{message.user}</b>
+              {message.badge ? <span>{message.badge}</span> : null}
+              {message.text}
             </p>
           ))}
         </div>
@@ -457,9 +565,9 @@ function HomeProductPreview(props: { twitchLabel: string }) {
             <i />"
           </p>
           <div className="yw-reply-meta">
-            <span>OpenAI Responses</span>
-            <span>Fish/Inworld/Piper TTS</span>
-            <span>emotion mapped</span>
+            <span>LLM {reply.meta.provider}</span>
+            <span>Voice {reply.meta.voice}</span>
+            <span>Latency {reply.meta.latency}</span>
           </div>
         </div>
         <div className="yw-preview__panel">
@@ -480,100 +588,289 @@ function HomeProductPreview(props: { twitchLabel: string }) {
 }
 
 function HomeVrmPreview() {
-  const [fallback, setFallback] = useState(false);
-  const handleLoadError = useCallback(() => setFallback(true), []);
-
-  if (fallback) {
-    return <img alt="" src="/cdn-assets/product/hero-vrm.png" />;
-  }
-
-  return (
-    <Canvas
-      camera={{ fov: 25, position: [0, 1.18, 3.25] }}
-      className="yw-home-vrm-canvas"
-      dpr={[1, 1.6]}
-      gl={{
-        alpha: true,
-        antialias: true,
-        powerPreference: 'high-performance',
-        stencil: false,
-      }}
-      onCreated={({ gl }) => {
-        gl.setClearColor(0x000000, 0);
-      }}
-    >
-      <ambientLight intensity={1.2} />
-      <hemisphereLight args={['#fff2ff', '#140b1b', 1.2]} />
-      <directionalLight color="#ffffff" intensity={2.2} position={[1.7, 2.4, 2.8]} />
-      <directionalLight color="#ff8bd2" intensity={1.1} position={[-1.6, 1.4, 1.8]} />
-      <directionalLight color="#8fdfff" intensity={1.4} position={[-1.8, 2.1, -1.8]} />
-      <HomeVrmModel onLoadError={handleLoadError} />
-    </Canvas>
-  );
-}
-
-function HomeVrmModel(props: { onLoadError: () => void }) {
-  const [vrm, setVrm] = useState<VRM | null>(null);
-  const clockRef = useRef(0);
-  const baseRotationRef = useRef(Math.PI);
-  const smileValueRef = useRef(0);
-  const blinkValueRef = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const loadingRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    let loadedVrm: VRM | null = null;
-
-    loadVrm(getLocalCdnAssetUrl('models/hikkyc2.vrm'))
-      .then((nextVrm) => {
-        if (cancelled) {
-          disposeVrm(nextVrm);
-          return;
-        }
-        loadedVrm = nextVrm;
-        nextVrm.scene.position.set(0, -1.08, 0);
-        nextVrm.scene.rotation.set(0, Math.PI, 0);
-        nextVrm.scene.scale.setScalar(1.42);
-        nextVrm.scene.updateMatrixWorld(true);
-        setVrm(nextVrm);
-      })
-      .catch((error) => {
-        console.warn('[HomeVrmPreview] Failed to load homepage VRM:', error);
-        props.onLoadError();
-      });
-
-    return () => {
-      cancelled = true;
-      if (loadedVrm) {
-        disposeVrm(loadedVrm);
-      }
-    };
-  }, [props.onLoadError]);
-
-  useFrame((_, delta) => {
-    if (!vrm) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
       return;
     }
 
-    clockRef.current += delta;
-    const t = clockRef.current;
-    vrm.scene.rotation.y = baseRotationRef.current + Math.sin(t * 0.55) * 0.045;
-    vrm.scene.position.y = -1.08 + Math.sin(t * 0.9) * 0.015;
+    const loadingEl = loadingRef.current;
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    const expressions = vrm.expressionManager;
-    if (expressions) {
-      smileValueRef.current = THREE.MathUtils.lerp(smileValueRef.current, 0.42, 0.08);
-      const blinkPhase = Math.sin(t * 1.7);
-      const blinkTarget = blinkPhase > 0.992 ? 0.95 : 0;
-      blinkValueRef.current = THREE.MathUtils.lerp(blinkValueRef.current, blinkTarget, 0.34);
-      expressions.setValue('happy', smileValueRef.current);
-      expressions.setValue('blink', blinkValueRef.current);
-      expressions.update();
+    const scene = new THREE.Scene();
+    const key = new THREE.DirectionalLight(0xffe1e9, 1.4);
+    key.position.set(1.2, 1.6, 1.4);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xa0d8ff, 0.6);
+    fill.position.set(-1.4, 0.8, 0.6);
+    scene.add(fill);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    scene.add(ambient);
+    const back = new THREE.DirectionalLight(0xff7eb6, 0.4);
+    back.position.set(0, 1, -1.5);
+    scene.add(back);
+
+    const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
+    camera.position.set(0, 1.35, 1.7);
+
+    const resize = () => {
+      const parent = canvas.parentElement;
+      const rect = parent ? parent.getBoundingClientRect() : canvas.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
+
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(canvas.parentElement ?? canvas);
+    resize();
+
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+
+    const clock = new THREE.Clock();
+    const state = {
+      expr: 'neutral' as HomeVrmExpression,
+      nextBlink: 1.2,
+      blinkPhase: 0,
+      blinkT: 0,
+      talking: false,
+      talkT: 0,
+      mouthOpen: 0,
+    };
+    let vrm: VRM | null = null;
+    let animationFrame = 0;
+    let disposed = false;
+    let loadTimer = 0;
+
+    const api: HomeVrmApi = {
+      setExpression(name) {
+        state.expr = (['neutral', 'happy', 'surprised', 'sad', 'angry'].includes(name)
+          ? name
+          : 'neutral') as HomeVrmExpression;
+      },
+      setTalking(on) {
+        state.talking = !!on;
+        if (!on) {
+          state.mouthOpen = 0;
+        }
+      },
+    };
+    window.YWVRM = api;
+
+    const setLoadingText = (text: string) => {
+      const textEl = loadingEl?.querySelector('.txt');
+      if (textEl) {
+        textEl.textContent = text;
+      }
+    };
+
+    const loadAvatar = async () => {
+      try {
+        const gltf = await loader.loadAsync('/cdn-assets/product/avatar.vrm', (xhr) => {
+          if (loadingEl && xhr.total) {
+            const percent = Math.round((xhr.loaded / xhr.total) * 100);
+            setLoadingText(`Loading VRM - ${percent}%`);
+          }
+        });
+        if (disposed) {
+          return;
+        }
+        onLoaded(gltf);
+      } catch (error) {
+        window.__vrmError = {
+          message: error instanceof Error ? error.message : undefined,
+          name: error instanceof Error ? error.name : undefined,
+          stack: error instanceof Error ? error.stack : undefined,
+          toString: String(error),
+          keys: error && typeof error === 'object' ? Object.keys(error) : null,
+        };
+        console.error('[HomeVrmPreview] VRM load failed:', error);
+        setLoadingText('VRM failed to load');
+      }
+    };
+
+    function onLoaded(gltf: Awaited<ReturnType<typeof loader.loadAsync>>) {
+      const loadedVrm = gltf.userData['vrm'] as VRM | undefined;
+      if (!loadedVrm) {
+        setLoadingText('VRM failed to load');
+        return;
+      }
+      vrm = loadedVrm;
+
+      try {
+        VRMUtils.removeUnnecessaryVertices(gltf.scene);
+      } catch {}
+      try {
+        VRMUtils.combineSkeletons(gltf.scene);
+      } catch {}
+      try {
+        VRMUtils.rotateVRM0(vrm);
+      } catch {}
+
+      scene.add(vrm.scene);
+
+      let target = new THREE.Vector3(0, 1.35, 0);
+      try {
+        const head = vrm.humanoid?.getNormalizedBoneNode('head');
+        if (head) {
+          const worldPosition = new THREE.Vector3();
+          head.getWorldPosition(worldPosition);
+          target = new THREE.Vector3(0, worldPosition.y - 0.05, 0);
+          camera.position.set(0, worldPosition.y - 0.05, 1.3);
+        }
+      } catch {}
+      camera.lookAt(target);
+
+      try {
+        const leftUpperArm = vrm.humanoid?.getNormalizedBoneNode('leftUpperArm');
+        const rightUpperArm = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+        if (leftUpperArm) {
+          leftUpperArm.rotation.z = 1.25;
+        }
+        if (rightUpperArm) {
+          rightUpperArm.rotation.z = -1.25;
+        }
+      } catch {}
+
+      if (loadingEl) {
+        loadingEl.style.display = 'none';
+      }
     }
 
-    vrm.update(delta);
-  });
+    function setExpressionValues(expressionManager: NonNullable<VRM['expressionManager']>) {
+      for (const name of ['neutral', 'happy', 'angry', 'sad', 'surprised', 'relaxed']) {
+        try {
+          expressionManager.setValue(name, 0);
+        } catch {}
+      }
+      try {
+        expressionManager.setValue(state.expr, 1);
+      } catch {}
+    }
 
-  return vrm ? <primitive object={vrm.scene} /> : null;
+    function animate() {
+      animationFrame = window.requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.05);
+
+      if (vrm) {
+        const elapsed = clock.elapsedTime;
+        try {
+          const chest =
+            vrm.humanoid?.getNormalizedBoneNode('chest') ??
+            vrm.humanoid?.getNormalizedBoneNode('spine');
+          const head = vrm.humanoid?.getNormalizedBoneNode('head');
+          const neck = vrm.humanoid?.getNormalizedBoneNode('neck');
+          if (chest) {
+            chest.rotation.y = Math.sin(elapsed * 0.6) * 0.04;
+            chest.rotation.x = Math.sin(elapsed * 0.9) * 0.015;
+          }
+          if (head) {
+            head.rotation.y = Math.sin(elapsed * 0.45) * 0.1;
+            head.rotation.x = Math.sin(elapsed * 0.65 + 1.2) * 0.05;
+            head.rotation.z = Math.sin(elapsed * 0.3) * 0.02;
+          }
+          if (neck) {
+            neck.rotation.y = Math.sin(elapsed * 0.45 + 0.3) * 0.04;
+          }
+        } catch {}
+
+        const expressionManager = vrm.expressionManager;
+        if (expressionManager) {
+          setExpressionValues(expressionManager);
+
+          state.nextBlink -= delta;
+          if (state.nextBlink <= 0 && state.blinkPhase === 0) {
+            state.blinkPhase = 1;
+            state.blinkT = 0;
+          }
+          if (state.blinkPhase === 1) {
+            state.blinkT += delta;
+            const value = Math.min(1, state.blinkT / 0.08);
+            try {
+              expressionManager.setValue('blink', value);
+            } catch {}
+            if (value >= 1) {
+              state.blinkPhase = 2;
+              state.blinkT = 0;
+            }
+          } else if (state.blinkPhase === 2) {
+            state.blinkT += delta;
+            const value = Math.max(0, 1 - state.blinkT / 0.12);
+            try {
+              expressionManager.setValue('blink', value);
+            } catch {}
+            if (value <= 0) {
+              state.blinkPhase = 0;
+              state.nextBlink = 2 + Math.random() * 3.5;
+            }
+          }
+
+          if (state.talking) {
+            state.talkT += delta;
+            const mouth =
+              (Math.sin(state.talkT * 18) * 0.5 + 0.5) * 0.7 +
+              (Math.sin(state.talkT * 9 + 1.2) * 0.5 + 0.5) * 0.3;
+            state.mouthOpen = mouth * 0.7;
+          } else {
+            state.mouthOpen *= 0.85;
+          }
+          try {
+            expressionManager.setValue('aa', state.mouthOpen);
+          } catch {}
+          expressionManager.update();
+        }
+
+        vrm.update(delta);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    loadTimer = window.setTimeout(loadAvatar, 100);
+    animate();
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(loadTimer);
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+      if (window.YWVRM === api) {
+        delete window.YWVRM;
+      }
+      if (vrm) {
+        scene.remove(vrm.scene);
+        vrm.scene.traverse((object) => {
+          const mesh = object as THREE.Mesh;
+          mesh.geometry?.dispose();
+          const material = mesh.material;
+          if (Array.isArray(material)) {
+            material.forEach((item) => item.dispose());
+          } else {
+            material?.dispose();
+          }
+        });
+      }
+      renderer.dispose();
+    };
+  }, []);
+
+  return (
+    <div className="yw-avatar-stage">
+      <canvas className="yw-avatar-canvas" id="vrm-canvas" ref={canvasRef} />
+      <div className="yw-avatar-loading" id="vrm-loading" ref={loadingRef}>
+        <div className="ring" />
+        <div className="txt">Loading VRM...</div>
+      </div>
+    </div>
+  );
 }
 
 function HomeSpecList(props: { items: Array<[string, string]> }) {
