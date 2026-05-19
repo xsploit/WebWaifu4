@@ -453,6 +453,11 @@ docs/BYOK_PRODUCT_STATUS.md` -> passed.
 - 2026-05-18: `npx tsc --noEmit`, `git diff --check`, and `npm run build` ->
   passed. Existing Vite warnings remained: onnxruntime-web eval and large
   bundle chunks.
+- 2026-05-18: committed `8d62f76` (`fix(auth): probe Supabase OAuth providers
+  live`), pushed `codex/byok-product-spine`, deployed rebuilt `dist` to
+  `/home/ubuntu/yourwifey-stream`, restarted `serve-dist.mjs`, and verified the
+  public login page serves `assets/index-Bz31DrR8.js`. Remote
+  `http://127.0.0.1:8787/health` returned `ok: true`.
 
 ## Current Blocker Or Next Patch
 
