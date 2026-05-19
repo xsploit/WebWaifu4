@@ -20,12 +20,11 @@ import type { SyncedSettingRecord } from '../../lib/product/byok';
 import {
   buildSupabaseOAuthRequest,
   describeByokAccountShell,
+  getEnabledSupabaseOAuthProviders,
   getSupabaseOAuthProviderLabel,
   requestSupabaseMagicLink,
-  SUPABASE_OAUTH_PROVIDERS,
-  type SupabaseOAuthProvider,
 } from '../../lib/product/supabase-auth-shell';
-import type { SupabasePublicConfig } from '../../lib/product/supabase-env';
+import type { SupabaseOAuthProvider, SupabasePublicConfig } from '../../lib/product/supabase-env';
 
 type ProductPagesProps = {
   accountMode: ByokAccountMode;
@@ -134,8 +133,14 @@ function LoginPage(
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState(props.accountSummary.detail);
   const [busy, setBusy] = useState(false);
+  const enabledOAuthProviders = useMemo(
+    () => getEnabledSupabaseOAuthProviders(props.supabaseConfig),
+    [props.supabaseConfig],
+  );
   const oauthAvailable =
-    props.accountMode.loginAvailable && props.supabaseConfig.status === 'configured';
+    props.accountMode.loginAvailable &&
+    props.supabaseConfig.status === 'configured' &&
+    enabledOAuthProviders.length > 0;
 
   useEffect(() => {
     if (props.accountMode.kind === 'supabase-cloud-sync') {
@@ -188,7 +193,7 @@ function LoginPage(
       <section className="product-card product-card-narrow">
         <SectionTitle title="Continue with" />
         <div className="product-oauth-grid">
-          {SUPABASE_OAUTH_PROVIDERS.map((provider) => (
+          {enabledOAuthProviders.map((provider) => (
             <button
               className="product-primary"
               disabled={!oauthAvailable}
@@ -202,8 +207,8 @@ function LoginPage(
         </div>
         <StatusText>
           {oauthAvailable
-            ? 'Google or GitHub must be enabled in Supabase Auth providers for this project.'
-            : props.accountSummary.detail}
+            ? 'Use an enabled Supabase OAuth provider.'
+            : getOAuthUnavailableMessage(props)}
         </StatusText>
       </section>
       <form className="product-card product-card-narrow" onSubmit={handleSubmit}>
@@ -769,6 +774,17 @@ function getProductAuthCallbackUrl() {
     return undefined;
   }
   return new URL('/auth/callback', window.location.href).toString();
+}
+
+function getOAuthUnavailableMessage(
+  props: ProductPagesProps & {
+    accountSummary: ReturnType<typeof describeByokAccountShell>;
+  },
+) {
+  if (props.supabaseConfig.status !== 'configured') {
+    return props.accountSummary.detail;
+  }
+  return 'No OAuth providers are enabled for this deployment. Set VITE_SUPABASE_OAUTH_PROVIDERS after enabling providers in Supabase.';
 }
 
 function NavLink(props: { active: boolean; children: ReactNode; onClick: () => void }) {

@@ -146,6 +146,7 @@ Supabase product settings:
 ```text
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
+VITE_SUPABASE_OAUTH_PROVIDERS
 SUPABASE_URL
 SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SECRET_KEY
@@ -153,6 +154,9 @@ SUPABASE_JWT_SECRET
 SUPABASE_STORAGE_BUCKET
 OVERLAY_SIGNING_SECRET
 ```
+
+Set `VITE_SUPABASE_OAUTH_PROVIDERS` only after enabling those providers in
+Supabase Auth, for example `google,github`.
 
 Provider API keys are user-owned BYOK values. They should be saved through the
 browser-local provider vault and sent to the backend only for active requests.

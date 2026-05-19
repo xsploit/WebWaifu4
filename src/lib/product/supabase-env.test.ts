@@ -31,6 +31,7 @@ describe('Supabase BYOK environment contracts', () => {
       storageProvider: 'supabase-storage',
       url: 'https://project-ref.supabase.co',
       anonKey: 'anon-public-key',
+      oauthProviders: [],
       missing: [],
       problems: [],
     });
@@ -49,6 +50,16 @@ describe('Supabase BYOK environment contracts', () => {
       missing: [],
       problems: [],
     });
+  });
+
+  it('reads an explicit browser OAuth provider allowlist', () => {
+    const config = readSupabaseBrowserEnv({
+      VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+      VITE_SUPABASE_OAUTH_PROVIDERS: 'google, github, discord, google',
+    });
+
+    expect(config.oauthProviders).toEqual(['google', 'github']);
   });
 
   it('treats partial browser Supabase env as misconfigured instead of blocking local-only mode', () => {
@@ -122,6 +133,7 @@ describe('Supabase BYOK environment contracts', () => {
       storageProvider: 'supabase-storage',
       url: 'https://project-ref.supabase.co',
       anonKey: 'anon-public-key',
+      oauthProviders: [],
       missing: [],
       problems: [],
     });

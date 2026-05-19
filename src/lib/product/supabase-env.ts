@@ -6,6 +6,7 @@ export const SUPABASE_BROWSER_ENV = {
   url: 'VITE_SUPABASE_URL',
   anonKey: 'VITE_SUPABASE_ANON_KEY',
   publishableKey: 'VITE_SUPABASE_PUBLISHABLE_KEY',
+  oauthProviders: 'VITE_SUPABASE_OAUTH_PROVIDERS',
 } as const;
 
 export const SUPABASE_SERVER_ENV = {
@@ -35,9 +36,12 @@ export type SupabasePublicConfig = {
   storageProvider: Extract<AssetStorageProvider, 'supabase-storage'>;
   url: string | null;
   anonKey: string | null;
+  oauthProviders: SupabaseOAuthProvider[];
   missing: SupabaseBrowserEnvName[];
   problems: string[];
 };
+
+export type SupabaseOAuthProvider = 'github' | 'google';
 
 export type SupabaseServerConfig = SupabasePublicConfig & {
   serviceRoleKey: string | null;
@@ -88,6 +92,7 @@ export function readSupabaseBrowserEnv(env: SupabaseEnvSource): SupabasePublicCo
     status: resolveEnvStatus(missing.length, 2, problems),
     url,
     anonKey,
+    oauthProviders: readSupabaseOAuthProviders(env),
     missing,
     problems,
   };
@@ -137,6 +142,7 @@ export function readSupabaseServerEnv(env: SupabaseEnvSource): SupabaseServerCon
     status,
     url,
     anonKey,
+    oauthProviders: readSupabaseOAuthProviders(env),
     missing: publicMissing,
     problems,
     serviceRoleKey,
@@ -154,6 +160,7 @@ export function toSupabasePublicConfig(config: SupabaseServerConfig): SupabasePu
     status: config.status,
     url: config.url,
     anonKey: config.anonKey,
+    oauthProviders: [...config.oauthProviders],
     missing: [...config.missing],
     problems: [...config.problems],
   };
@@ -240,6 +247,26 @@ function validateStorageBucket(value: string) {
     return [];
   }
   return [`${SUPABASE_SERVER_ENV.storageBucket} must be a stable storage bucket name.`];
+}
+
+function readSupabaseOAuthProviders(env: SupabaseEnvSource): SupabaseOAuthProvider[] {
+  const value = readTrimmed(env, SUPABASE_BROWSER_ENV.oauthProviders);
+  if (!value) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .split(',')
+        .map((item) => item.trim().toLowerCase())
+        .filter(isSupabaseOAuthProvider),
+    ),
+  );
+}
+
+function isSupabaseOAuthProvider(value: string): value is SupabaseOAuthProvider {
+  return value === 'google' || value === 'github';
 }
 
 function normalizeSupabaseUrl(value: string | null) {

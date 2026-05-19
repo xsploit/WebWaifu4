@@ -1,5 +1,5 @@
 import type { ByokAccountMode } from './account-mode';
-import type { SupabasePublicConfig } from './supabase-env';
+import type { SupabaseOAuthProvider, SupabasePublicConfig } from './supabase-env';
 
 export type AccountShellSummary = {
   modeLabel: string;
@@ -35,8 +35,6 @@ export type SupabaseMagicLinkResult =
       reason: SupabaseMagicLinkUnavailable['reason'] | 'network-error' | 'supabase-request-failed';
       status?: number;
     };
-
-export type SupabaseOAuthProvider = 'github' | 'google';
 
 export type SupabaseOAuthRequest =
   | {
@@ -104,6 +102,10 @@ export function getSupabaseOAuthProviderLabel(provider: SupabaseOAuthProvider) {
   return provider === 'google' ? 'Google' : 'GitHub';
 }
 
+export function getEnabledSupabaseOAuthProviders(config: SupabasePublicConfig) {
+  return SUPABASE_OAUTH_PROVIDERS.filter((provider) => config.oauthProviders.includes(provider));
+}
+
 export function normalizeAccountEmail(value: string) {
   const email = value.trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
@@ -127,6 +129,13 @@ export function buildSupabaseOAuthRequest(input: {
       ok: false,
       reason: 'cloud-sync-misconfigured',
       message: 'Supabase OAuth is unavailable until browser cloud-sync config is complete.',
+    };
+  }
+  if (!config.oauthProviders.includes(input.provider)) {
+    return {
+      ok: false,
+      reason: 'cloud-sync-misconfigured',
+      message: `${getSupabaseOAuthProviderLabel(input.provider)} login is not enabled for this deployment.`,
     };
   }
 

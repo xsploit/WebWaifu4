@@ -4,6 +4,7 @@ import {
   buildSupabaseOAuthRequest,
   buildSupabaseMagicLinkRequest,
   describeByokAccountShell,
+  getEnabledSupabaseOAuthProviders,
   requestSupabaseMagicLink,
 } from './supabase-auth-shell';
 import { readSupabaseBrowserEnv } from './supabase-env';
@@ -28,6 +29,7 @@ describe('Supabase auth shell', () => {
     const config = readSupabaseBrowserEnv({
       VITE_SUPABASE_URL: 'https://project-ref.supabase.co/',
       VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+      VITE_SUPABASE_OAUTH_PROVIDERS: 'google,github',
     });
     const request = buildSupabaseMagicLinkRequest({
       config,
@@ -51,6 +53,7 @@ describe('Supabase auth shell', () => {
     const config = readSupabaseBrowserEnv({
       VITE_SUPABASE_URL: 'https://project-ref.supabase.co/',
       VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+      VITE_SUPABASE_OAUTH_PROVIDERS: 'google,github',
     });
 
     expect(
@@ -87,6 +90,26 @@ describe('Supabase auth shell', () => {
     ).toMatchObject({
       ok: false,
       reason: 'cloud-sync-disabled',
+    });
+  });
+
+  it('does not build an OAuth redirect for a provider that is not enabled in config', () => {
+    const config = readSupabaseBrowserEnv({
+      VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+      VITE_SUPABASE_OAUTH_PROVIDERS: 'google',
+    });
+
+    expect(getEnabledSupabaseOAuthProviders(config)).toEqual(['google']);
+    expect(
+      buildSupabaseOAuthRequest({
+        config,
+        provider: 'github',
+        redirectTo: 'https://overlay.example.test/auth/callback',
+      }),
+    ).toMatchObject({
+      ok: false,
+      message: 'GitHub login is not enabled for this deployment.',
     });
   });
 

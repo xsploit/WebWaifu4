@@ -5,13 +5,15 @@ import { createBrowserProviderKeyVault } from '../../../lib/product/provider-key
 import {
   buildSupabaseOAuthRequest,
   describeByokAccountShell,
+  getEnabledSupabaseOAuthProviders,
   getSupabaseOAuthProviderLabel,
   normalizeAccountEmail,
   requestSupabaseMagicLink,
-  SUPABASE_OAUTH_PROVIDERS,
-  type SupabaseOAuthProvider,
 } from '../../../lib/product/supabase-auth-shell';
-import type { SupabasePublicConfig } from '../../../lib/product/supabase-env';
+import type {
+  SupabaseOAuthProvider,
+  SupabasePublicConfig,
+} from '../../../lib/product/supabase-env';
 
 type AccountTabProps = {
   accountMode: ByokAccountMode;
@@ -97,6 +99,10 @@ export function AccountTab({
   const [providerStatus, setProviderStatus] = useState('Provider keys stay in this browser only.');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedEmail = normalizeAccountEmail(email);
+  const enabledOAuthProviders = useMemo(
+    () => getEnabledSupabaseOAuthProviders(supabaseConfig),
+    [supabaseConfig],
+  );
   const loginAvailable = accountMode.loginAvailable && supabaseConfig.status === 'configured';
 
   const refreshProviderDescriptors = useCallback(async () => {
@@ -228,7 +234,7 @@ export function AccountTab({
           Use Google or GitHub for the product login. Email links are only a fallback.
         </div>
         <div className="btn-row">
-          {SUPABASE_OAUTH_PROVIDERS.map((provider) => (
+          {enabledOAuthProviders.map((provider) => (
             <button
               className="btn-tech secondary"
               disabled={!loginAvailable}
@@ -245,6 +251,12 @@ export function AccountTab({
             </button>
           ) : null}
         </div>
+        {enabledOAuthProviders.length === 0 ? (
+          <div className="field-hint">
+            No OAuth providers are enabled for this deployment. Enable Google/GitHub in Supabase,
+            then set VITE_SUPABASE_OAUTH_PROVIDERS.
+          </div>
+        ) : null}
         <div className="status-copy">{loginStatus}</div>
       </div>
 

@@ -5,7 +5,7 @@ Current as of 2026-05-15.
 This fork is designed to run in two modes:
 
 - Guest/local-only: no login, settings stay in the browser.
-- Supabase cloud sync: magic-link login, profiles/workspaces/scenes/safe settings
+- Supabase cloud sync: OAuth login, profiles/workspaces/scenes/safe settings
   in Supabase, provider API keys still stay browser-local.
 
 ## 1. Create Supabase
@@ -13,7 +13,9 @@ This fork is designed to run in two modes:
 1. Create a Supabase project.
 2. Run `supabase/migrations/20260515000100_byok_product_spine.sql` in the SQL
    editor or through the Supabase CLI.
-3. Enable magic-link email auth in Supabase Auth.
+3. Enable the OAuth providers you plan to expose, usually Google and/or GitHub,
+   in Supabase Auth. Configure the OAuth app credentials in the provider and
+   Supabase first.
 4. Add the hosted app URL to Supabase Auth redirect URLs:
    - `https://your-domain.example/auth/callback`
    - local dev: `http://localhost:5173/auth/callback`
@@ -28,7 +30,13 @@ Browser-visible:
 ```text
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
+VITE_SUPABASE_OAUTH_PROVIDERS
 ```
+
+`VITE_SUPABASE_OAUTH_PROVIDERS` is a comma-separated allowlist for providers
+that are already enabled in Supabase Auth, for example `google,github`. Leave it
+empty until the provider is enabled; otherwise Supabase returns
+`Unsupported provider: provider is not enabled`.
 
 Server-only:
 
@@ -77,7 +85,7 @@ but the BYOK account/cloud-sync path is Vercel-shaped.
 
 ## 4. Smoke Test
 
-1. Open `/login`, send a magic link, and complete `/auth/callback`.
+1. Open `/login`, click an enabled OAuth provider, and complete `/auth/callback`.
 2. Open `/dashboard`; it should bootstrap a profile, one workspace, and one
    default scene.
 3. Click `Sync settings`, then `Load cloud`.
