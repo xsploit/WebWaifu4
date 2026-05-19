@@ -41,6 +41,9 @@ export function ProductPages(props: ProductPagesProps) {
     [props.accountMode],
   );
 
+  if (props.route.kind === 'home') {
+    return <HomePage {...props} accountSummary={accountSummary} />;
+  }
   if (props.route.kind === 'login') {
     return <LoginPage {...props} accountSummary={accountSummary} />;
   }
@@ -54,6 +57,69 @@ export function ProductPages(props: ProductPagesProps) {
     return <DashboardPage {...props} accountSummary={accountSummary} />;
   }
   return null;
+}
+
+function HomePage(
+  props: ProductPagesProps & {
+    accountSummary: ReturnType<typeof describeByokAccountShell>;
+  },
+) {
+  const isCloud = props.accountMode.kind === 'supabase-cloud-sync';
+  return (
+    <ProductShell {...props}>
+      <section className="product-hero product-home-hero" aria-label="YourWifey">
+        <div className="product-hero-copy">
+          <span className="product-online-pill">
+            <span className="product-online-dot" />
+            stream-ready AI overlay
+          </span>
+          <h1 className="product-display product-home-display">
+            meet <span className="product-display-accent">YourWifey</span>
+          </h1>
+          <p className="product-home-subtitle">
+            an AI character for Twitch chat, voice, memory, and OBS overlays.
+          </p>
+          <div className="product-hero-actions">
+            <button
+              className="product-primary"
+              onClick={() => props.onNavigate(isCloud ? '/dashboard' : '/login')}
+            >
+              {isCloud ? 'Open dashboard' : 'Sign up'}
+            </button>
+            <button className="product-secondary" onClick={() => props.onNavigate('/editor')}>
+              Try local editor
+            </button>
+          </div>
+        </div>
+        <div className="product-hero-art product-home-art" aria-hidden="true" />
+      </section>
+
+      <div className="product-home-strip">
+        <span>{props.accountSummary.providerKeyLabel}</span>
+        <span>{props.accountSummary.cloudSyncLabel}</span>
+        <span>OBS browser source</span>
+        <span>#{props.twitchChannel || 'subsect'}</span>
+      </div>
+
+      <section className="product-feature-row" aria-label="Product flow">
+        <article className="product-feature">
+          <span>01</span>
+          <strong>Create a character</strong>
+          <p>Pick a persona, VRM, voice, background, and animation setup for the stream.</p>
+        </article>
+        <article className="product-feature">
+          <span>02</span>
+          <strong>Connect chat</strong>
+          <p>Twitch and local chat route into the same response queue and memory layer.</p>
+        </article>
+        <article className="product-feature">
+          <span>03</span>
+          <strong>Go live</strong>
+          <p>Use the editor locally or issue an OBS overlay URL from your workspace.</p>
+        </article>
+      </section>
+    </ProductShell>
+  );
 }
 
 function LoginPage(
@@ -87,19 +153,20 @@ function LoginPage(
   };
 
   return (
-    <ProductPageFrame
-      accountMode={props.accountMode}
-      eyebrow="Magic-link login"
-      onNavigate={props.onNavigate}
-      onSignOut={props.onSignOut}
-      routeKind={props.route.kind}
-      title="Sign in to sync your stream setup"
-    >
+    <ProductShell {...props}>
+      <section className="product-hero product-hero-compact">
+        <div className="product-hero-copy">
+          <p className="product-eyebrow">Magic-link login</p>
+          <h1 className="product-display">
+            Sign in to <span className="product-display-accent">YourWifey</span>
+          </h1>
+          <p className="product-lede">
+            No password. We email a one-tap link that signs you in and mirrors safe settings to the
+            cloud. Memory and chat history stay on this device.
+          </p>
+        </div>
+      </section>
       <form className="product-card product-card-narrow" onSubmit={handleSubmit}>
-        <p className="product-status-text product-hint">
-          We never store a password. Drop your email and we&rsquo;ll send a one-tap magic link to
-          finish signing in.
-        </p>
         <label className="product-field">
           <span>Email</span>
           <input
@@ -113,7 +180,7 @@ function LoginPage(
         </label>
         <div className="product-actions">
           <button className="product-primary" disabled={busy} type="submit">
-            {busy ? 'Sending...' : 'Send magic link'}
+            {busy ? 'Sending…' : 'Send magic link'}
           </button>
           <button
             className="product-secondary"
@@ -125,7 +192,7 @@ function LoginPage(
         </div>
         <StatusText>{status}</StatusText>
       </form>
-    </ProductPageFrame>
+    </ProductShell>
   );
 }
 
@@ -137,26 +204,23 @@ function AuthCallbackPage(props: ProductPagesProps) {
   }, [props.accountMode.kind, props.onNavigate]);
 
   return (
-    <ProductPageFrame
-      accountMode={props.accountMode}
-      eyebrow="Auth callback"
-      onNavigate={props.onNavigate}
-      onSignOut={props.onSignOut}
-      routeKind={props.route.kind}
-      title="Checking your session"
-    >
-      <div className="product-card product-card-narrow">
-        <StatusText>{props.authStatus}</StatusText>
-        <div className="product-actions">
-          <button className="product-primary" onClick={() => props.onNavigate('/dashboard')}>
-            Go to dashboard
-          </button>
-          <button className="product-secondary" onClick={() => props.onNavigate('/')}>
-            Back to editor
-          </button>
+    <ProductShell {...props}>
+      <section className="product-hero product-hero-compact">
+        <div className="product-hero-copy">
+          <p className="product-eyebrow">Auth callback</p>
+          <h1 className="product-display">Checking your session…</h1>
+          <p className="product-lede">{props.authStatus}</p>
         </div>
+      </section>
+      <div className="product-actions">
+        <button className="product-primary" onClick={() => props.onNavigate('/dashboard')}>
+          Go to dashboard
+        </button>
+        <button className="product-secondary" onClick={() => props.onNavigate('/editor')}>
+          Back to editor
+        </button>
       </div>
-    </ProductPageFrame>
+    </ProductShell>
   );
 }
 
@@ -204,28 +268,31 @@ function AccountPage(
   };
 
   return (
-    <ProductPageFrame
-      accountMode={props.accountMode}
-      eyebrow="Account"
-      onNavigate={props.onNavigate}
-      onSignOut={props.onSignOut}
-      routeKind={props.route.kind}
-      title="YourWifey account"
-    >
-      <div className="product-actions product-actions-back">
-        <button className="product-secondary" onClick={() => props.onNavigate('/dashboard')}>
-          &larr; Back to dashboard
-        </button>
-      </div>
-      <form className="product-card" onSubmit={handleSave}>
-        <div className="product-grid">
-          <Stat label="Mode" value={props.accountSummary.modeLabel} />
-          <Stat label="Storage" value={props.accountSummary.storageLabel} />
-          <Stat label="Provider keys" value="Browser local only" />
-          <Stat label="Email" value={profile?.profile.email ?? props.accountSummary.loginLabel} />
+    <ProductShell {...props}>
+      <section className="product-hero product-hero-compact">
+        <div className="product-hero-copy">
+          <p className="product-eyebrow">Account</p>
+          <h1 className="product-display">
+            Your <span className="product-display-accent">workspace</span>
+          </h1>
+          <p className="product-lede">
+            Logged in as {profile?.profile.email ?? props.accountSummary.loginLabel}. Cloud sync
+            covers safe settings only — provider keys never leave your browser.
+          </p>
         </div>
+      </section>
+
+      <div className="product-stat-row">
+        <Stat label="Mode" value={props.accountSummary.modeLabel} />
+        <Stat label="Storage" value={props.accountSummary.storageLabel} />
+        <Stat label="Provider keys" value="Browser local only" />
+        <Stat label="Email" value={profile?.profile.email ?? props.accountSummary.loginLabel} />
+      </div>
+
+      <form className="product-card" onSubmit={handleSave}>
+        <SectionTitle title="Display name" />
         <label className="product-field">
-          <span>Display name</span>
+          <span>How streams should address you</span>
           <input
             onChange={(event) => setDisplayName(event.target.value)}
             placeholder="Streamer"
@@ -240,13 +307,20 @@ function AccountPage(
           >
             Save profile
           </button>
+          <button
+            className="product-secondary"
+            onClick={() => props.onNavigate('/dashboard')}
+            type="button"
+          >
+            Back to dashboard
+          </button>
           <button className="product-secondary" onClick={props.onSignOut} type="button">
             Sign out
           </button>
         </div>
         <StatusText>{status}</StatusText>
       </form>
-    </ProductPageFrame>
+    </ProductShell>
   );
 }
 
@@ -413,45 +487,47 @@ function DashboardPage(
     profile?.bootstrap.workspace.name ?? (isCloud ? 'Personal workspace' : 'Local editor');
 
   return (
-    <ProductPageFrame
-      accountMode={props.accountMode}
-      eyebrow={isCloud ? 'Cloud workspace' : 'Local studio'}
-      onNavigate={props.onNavigate}
-      onSignOut={props.onSignOut}
-      routeKind={props.route.kind}
-      title="Stream workspace"
-    >
-      <div className="product-dashboard">
-        <section className="product-card product-card-primary product-hero">
-          <div className="product-card-header">
-            <div>
-              <span>Current scene</span>
-              <strong>{sceneName}</strong>
-            </div>
-            <div className="product-actions product-actions-hero">
-              <button className="product-primary" onClick={() => props.onNavigate('/')}>
-                Open editor
-              </button>
-              <button
-                className="product-secondary"
-                onClick={() => props.onNavigate(previewOverlayUrl)}
-              >
-                Preview overlay
-              </button>
-            </div>
-          </div>
-          <div className="product-grid product-grid-hero">
-            <Stat label="Workspace" value={workspaceName} />
-            <Stat label="Twitch" value={`#${props.twitchChannel || 'subsect'}`} />
-            <Stat label="Sync" value={props.accountSummary.cloudSyncLabel} />
-            <Stat label="Provider keys" value={props.accountSummary.providerKeyLabel} />
+    <ProductShell {...props}>
+      <section className="product-hero" aria-label="Stream workspace">
+        <div className="product-hero-copy">
+          <span className="product-online-pill">
+            <span className="product-online-dot" />
+            {isCloud ? 'Cloud sync online' : 'Local-only mode'}
+          </span>
+          <h1 className="product-display">
+            Stream with <span className="product-display-accent">{sceneName}</span>
+          </h1>
+          <p className="product-lede">
+            Your waifu overlay, your keys, your machine. Push safe settings to the cloud, ship a
+            signed OBS URL, and keep memory plus chat history private on this device.
+          </p>
+          <div className="product-hero-actions">
+            <button className="product-primary" onClick={() => props.onNavigate('/editor')}>
+              Open editor
+            </button>
+            <button
+              className="product-secondary"
+              onClick={() => props.onNavigate(previewOverlayUrl)}
+            >
+              Preview overlay
+            </button>
           </div>
           <StatusText>{status}</StatusText>
-        </section>
+        </div>
+        <div className="product-hero-art" aria-hidden="true" />
+      </section>
 
+      <div className="product-stat-row">
+        <Stat label="Workspace" value={workspaceName} />
+        <Stat label="Twitch" value={`#${props.twitchChannel || 'subsect'}`} />
+        <Stat label="Sync" value={props.accountSummary.cloudSyncLabel} />
+        <Stat label="Provider keys" value={props.accountSummary.providerKeyLabel} />
+      </div>
+
+      <div className="product-grid product-grid-cards">
         <section className="product-card">
           <SectionTitle title="OBS overlay" />
-          <p className="product-status-text product-hint">
+          <p className="product-hint">
             Drop a browser source into OBS using a signed URL. Local preview opens the overlay in
             this tab.
           </p>
@@ -468,18 +544,14 @@ function DashboardPage(
               <option value={24 * 90}>90 days</option>
             </select>
           </label>
-          <div className="product-actions product-actions-grid">
+          <div className="product-actions">
             <button
               className="product-secondary"
               onClick={() => props.onNavigate(previewOverlayUrl)}
             >
               Preview overlay
             </button>
-            <button
-              className="product-secondary"
-              disabled={!isCloud}
-              onClick={handleIssueOverlayUrl}
-            >
+            <button className="product-primary" disabled={!isCloud} onClick={handleIssueOverlayUrl}>
               {isCloud ? 'Issue OBS URL' : 'Sign in for OBS URL'}
             </button>
           </div>
@@ -489,7 +561,7 @@ function DashboardPage(
                 <span>OBS overlay URL</span>
                 <input readOnly value={overlayShareUrl} />
               </label>
-              <div className="product-actions product-actions-grid">
+              <div className="product-actions">
                 <button className="product-secondary" onClick={handleCopyOverlayUrl}>
                   Copy URL
                 </button>
@@ -503,25 +575,25 @@ function DashboardPage(
 
         <section className="product-card">
           <SectionTitle title={isCloud ? 'Cloud sync & backup' : 'Backup & restore'} />
-          <p className="product-status-text product-hint">
+          <p className="product-hint">
             {isCloud
               ? 'Push or pull safe settings to your Supabase workspace. Memory and chat history stay on this device.'
               : 'Export and import scene backups locally. Sign in to mirror safe settings to the cloud.'}
           </p>
-          <div className="product-actions product-actions-grid">
+          <div className="product-actions">
             <button
               className="product-secondary"
               disabled={syncing || !isCloud}
               onClick={handleSyncSettings}
             >
-              {syncing ? 'Syncing...' : 'Push to cloud'}
+              {syncing ? 'Syncing…' : 'Push to cloud'}
             </button>
             <button
               className="product-secondary"
               disabled={pulling || !isCloud}
               onClick={handlePullSettings}
             >
-              {pulling ? 'Loading...' : 'Pull from cloud'}
+              {pulling ? 'Loading…' : 'Pull from cloud'}
             </button>
             <button className="product-secondary" onClick={handleExportBackup}>
               Export backup
@@ -539,7 +611,7 @@ function DashboardPage(
           />
         </section>
 
-        <section className="product-card product-operator-card">
+        <section className="product-card">
           <SectionTitle title="Provider keys" />
           <div className="product-provider-list">
             <ProviderStatus
@@ -553,7 +625,7 @@ function DashboardPage(
           </div>
         </section>
 
-        <section className="product-card product-operator-card">
+        <section className="product-card">
           <SectionTitle title="Launch checklist" />
           <div className="product-checklist">
             <ChecklistItem
@@ -572,9 +644,9 @@ function DashboardPage(
         {!isCloud ? (
           <section className="product-card product-card-cta">
             <SectionTitle title="Cloud sync" />
-            <p className="product-status-text product-hint">
+            <p className="product-hint">
               Sign in with a magic link to mirror safe settings between machines and unlock signed
-              OBS overlay URLs. No password &mdash; just a one-time email link.
+              OBS overlay URLs. No password — just a one-time email link.
             </p>
             <div className="product-actions">
               <button className="product-primary" onClick={() => props.onNavigate('/login')}>
@@ -584,111 +656,80 @@ function DashboardPage(
           </section>
         ) : null}
       </div>
-    </ProductPageFrame>
+    </ProductShell>
   );
 }
 
-function ProductPageFrame(props: {
-  accountMode: ByokAccountMode;
-  children: ReactNode;
-  eyebrow: string;
-  onNavigate: (path: string) => void;
-  onSignOut: () => void;
-  routeKind: AppRoute['kind'];
-  title: string;
-}) {
+function ProductShell(props: ProductPagesProps & { children: ReactNode }) {
   const isCloud = props.accountMode.kind === 'supabase-cloud-sync';
   return (
     <div className="product-page" onClick={(event) => event.stopPropagation()}>
-      <div className="product-scanline" />
-      <nav className="product-nav">
-        <div className="product-brand">
-          <div className="product-brand-icon">YW</div>
-          <div>
-            <strong>YourWifey</strong>
-            <span>BYOK Studio</span>
-          </div>
-        </div>
-        <div className="product-nav-links">
-          <NavButton active={props.routeKind === 'editor'} onClick={() => props.onNavigate('/')}>
+      <div className="product-page-glow" aria-hidden="true" />
+      <header className="product-topnav">
+        <button className="product-brand" onClick={() => props.onNavigate('/home')} type="button">
+          <span className="product-brand-mark">YW</span>
+          <span className="product-brand-name">
+            YourWifey<span className="product-brand-tag">BYOK</span>
+          </span>
+        </button>
+        <nav className="product-topnav-links" aria-label="Primary">
+          <NavLink active={props.route.kind === 'home'} onClick={() => props.onNavigate('/home')}>
+            Home
+          </NavLink>
+          <NavLink
+            active={props.route.kind === 'editor'}
+            onClick={() => props.onNavigate('/editor')}
+          >
             Editor
-          </NavButton>
-          <NavButton
-            active={props.routeKind === 'dashboard'}
+          </NavLink>
+          <NavLink
+            active={props.route.kind === 'dashboard'}
             onClick={() => props.onNavigate('/dashboard')}
           >
             Dashboard
-          </NavButton>
+          </NavLink>
+          <NavLink
+            active={props.route.kind === 'account'}
+            onClick={() => props.onNavigate(isCloud ? '/account' : '/login')}
+          >
+            Account
+          </NavLink>
+          <NavLink active={false} onClick={() => props.onNavigate('/overlay/private-preview')}>
+            Overlay
+          </NavLink>
+        </nav>
+        <div className="product-topnav-end">
+          <span className={`product-mode-pill ${isCloud ? 'is-cloud' : 'is-local'}`}>
+            <span className="product-mode-dot" />
+            {isCloud ? 'Cloud sync' : 'Local only'}
+          </span>
           {isCloud ? (
-            <NavButton
-              active={props.routeKind === 'account'}
-              onClick={() => props.onNavigate('/account')}
-            >
-              Account
-            </NavButton>
-          ) : null}
-          {isCloud ? (
-            <NavButton
-              active={props.routeKind === 'overlay'}
-              onClick={() => props.onNavigate('/overlay/private-preview')}
-            >
-              Overlay
-            </NavButton>
-          ) : null}
-          {isCloud ? (
-            <NavButton active={false} onClick={props.onSignOut}>
+            <button className="product-ghost" onClick={props.onSignOut} type="button">
               Sign out
-            </NavButton>
+            </button>
           ) : (
-            <NavButton
-              active={props.routeKind === 'login'}
+            <button
+              className="product-ghost"
               onClick={() => props.onNavigate('/login')}
+              type="button"
             >
               Sign in
-            </NavButton>
+            </button>
           )}
         </div>
-        <div className="product-nav-foot">
-          <span className={`product-mode-dot ${isCloud ? 'is-cloud' : 'is-local'}`} />
-          <span className="product-mode-label">{isCloud ? 'Cloud sync' : 'Local only'}</span>
-        </div>
-      </nav>
-      <header className="product-topbar">
-        <div className="product-breadcrumb">
-          Workspace / <span>{props.title}</span>
-        </div>
-        <div className="product-status-strip">
-          <TopbarStatus active label="System ready" />
-          <TopbarStatus active={isCloud} label={isCloud ? 'Cloud sync online' : 'Local mode'} />
-          <TopbarStatus
-            active={props.routeKind === 'overlay'}
-            label={props.routeKind === 'overlay' ? 'Overlay route' : 'Overlay idle'}
-          />
-        </div>
       </header>
-      <main className="product-panel">
-        <header className="product-header">
-          <p className="product-eyebrow">{props.eyebrow}</p>
-          <h1>{props.title}</h1>
-        </header>
-        {props.children}
-      </main>
+      <main className="product-main">{props.children}</main>
     </div>
   );
 }
 
-function TopbarStatus(props: { active: boolean; label: string }) {
+function NavLink(props: { active: boolean; children: ReactNode; onClick: () => void }) {
   return (
-    <span className="product-topbar-status">
-      <span className={props.active ? 'product-led is-active' : 'product-led'} />
-      {props.label}
-    </span>
-  );
-}
-
-function NavButton(props: { active: boolean; children: ReactNode; onClick: () => void }) {
-  return (
-    <button className={props.active ? 'active' : ''} onClick={props.onClick}>
+    <button
+      className={props.active ? 'product-navlink is-active' : 'product-navlink'}
+      onClick={props.onClick}
+      type="button"
+    >
       {props.children}
     </button>
   );

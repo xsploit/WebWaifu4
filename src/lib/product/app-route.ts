@@ -1,7 +1,11 @@
 export type AppRoute =
   | {
       kind: 'editor';
-      path: '/';
+      path: '/editor';
+    }
+  | {
+      kind: 'home';
+      path: '/' | '/home';
     }
   | {
       kind: 'login';
@@ -27,6 +31,12 @@ export type AppRoute =
 
 export function parseAppRoute(input: Location | URL | string): AppRoute {
   const pathname = normalizePathname(input);
+  if (pathname === '/' || pathname === '/home') {
+    return { kind: 'home', path: pathname };
+  }
+  if (pathname === '/editor') {
+    return { kind: 'editor', path: '/editor' };
+  }
   if (pathname === '/login') {
     return { kind: 'login', path: '/login' };
   }
@@ -49,7 +59,7 @@ export function parseAppRoute(input: Location | URL | string): AppRoute {
     };
   }
 
-  return { kind: 'editor', path: '/' };
+  return { kind: 'editor', path: '/editor' };
 }
 
 export function navigateToAppPath(path: string) {

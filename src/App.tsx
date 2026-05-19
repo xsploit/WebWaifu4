@@ -4593,7 +4593,7 @@ function App() {
     playAssistantResponse,
   ]);
 
-  const productPageActive = ['account', 'auth-callback', 'dashboard', 'login'].includes(
+  const productPageActive = ['account', 'auth-callback', 'dashboard', 'home', 'login'].includes(
     appRoute.kind,
   );
   const overlayPageActive = appRoute.kind === 'overlay';
