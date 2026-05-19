@@ -48,6 +48,18 @@ export type SupabaseOAuthRequest =
       reason: 'cloud-sync-disabled' | 'cloud-sync-misconfigured' | 'invalid-redirect-url';
     };
 
+export type SupabaseOAuthProviderSettingsResult =
+  | {
+      ok: true;
+      providers: SupabaseOAuthProvider[];
+    }
+  | {
+      ok: false;
+      message: string;
+      reason: 'cloud-sync-disabled' | 'cloud-sync-misconfigured' | 'network-error';
+      status?: number;
+    };
+
 export const SUPABASE_OAUTH_PROVIDERS: readonly SupabaseOAuthProvider[] = ['google', 'github'];
 
 export function describeByokAccountShell(mode: ByokAccountMode): AccountShellSummary {
@@ -104,6 +116,73 @@ export function getSupabaseOAuthProviderLabel(provider: SupabaseOAuthProvider) {
 
 export function getEnabledSupabaseOAuthProviders(config: SupabasePublicConfig) {
   return SUPABASE_OAUTH_PROVIDERS.filter((provider) => config.oauthProviders.includes(provider));
+}
+
+export async function fetchSupabaseEnabledOAuthProviders(input: {
+  config: SupabasePublicConfig;
+  fetchImpl?: typeof fetch;
+}): Promise<SupabaseOAuthProviderSettingsResult> {
+  const { config } = input;
+  if (config.status === 'disabled') {
+    return {
+      ok: false,
+      reason: 'cloud-sync-disabled',
+      message: 'Supabase OAuth is disabled because browser cloud-sync config is absent.',
+    };
+  }
+  if (config.status !== 'configured' || !config.url || !config.anonKey) {
+    return {
+      ok: false,
+      reason: 'cloud-sync-misconfigured',
+      message: 'Supabase OAuth provider status needs complete browser cloud-sync config.',
+    };
+  }
+
+  const fetchImpl = input.fetchImpl ?? globalThis.fetch;
+  if (!fetchImpl) {
+    return {
+      ok: false,
+      reason: 'network-error',
+      message: 'Browser fetch is unavailable, so Supabase OAuth providers could not be checked.',
+    };
+  }
+
+  try {
+    const response = await fetchImpl(`${config.url}/auth/v1/settings`, {
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+      method: 'GET',
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: 'network-error',
+        status: response.status,
+        message: `Supabase OAuth provider check failed with HTTP ${response.status}.`,
+      };
+    }
+
+    const payload = (await response.json()) as {
+      external?: Partial<Record<SupabaseOAuthProvider, unknown>>;
+    };
+    return {
+      ok: true,
+      providers: SUPABASE_OAUTH_PROVIDERS.filter(
+        (provider) => payload.external?.[provider] === true,
+      ),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'network-error',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Supabase OAuth provider status could not be checked.',
+    };
+  }
 }
 
 export function normalizeAccountEmail(value: string) {

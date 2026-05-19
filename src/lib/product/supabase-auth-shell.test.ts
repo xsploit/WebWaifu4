@@ -4,6 +4,7 @@ import {
   buildSupabaseOAuthRequest,
   buildSupabaseMagicLinkRequest,
   describeByokAccountShell,
+  fetchSupabaseEnabledOAuthProviders,
   getEnabledSupabaseOAuthProviders,
   requestSupabaseMagicLink,
 } from './supabase-auth-shell';
@@ -159,5 +160,60 @@ describe('Supabase auth shell', () => {
         method: 'POST',
       }),
     );
+  });
+
+  it('reads enabled OAuth providers from Supabase Auth settings', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ external: { google: true, github: false } }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        }),
+    );
+
+    const result = await fetchSupabaseEnabledOAuthProviders({
+      config: readSupabaseBrowserEnv({
+        VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
+        VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+      }),
+      fetchImpl,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      providers: ['google'],
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://project-ref.supabase.co/auth/v1/settings',
+      expect.objectContaining({
+        headers: {
+          apikey: 'anon-public-key',
+          Authorization: 'Bearer anon-public-key',
+        },
+        method: 'GET',
+      }),
+    );
+  });
+
+  it('returns an empty OAuth provider list when Supabase Auth has providers disabled', async () => {
+    const result = await fetchSupabaseEnabledOAuthProviders({
+      config: readSupabaseBrowserEnv({
+        VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
+        VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+        VITE_SUPABASE_OAUTH_PROVIDERS: 'google,github',
+      }),
+      fetchImpl: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ external: { google: false, github: false } }), {
+            headers: { 'Content-Type': 'application/json' },
+            status: 200,
+          }),
+      ),
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      providers: [],
+    });
   });
 });

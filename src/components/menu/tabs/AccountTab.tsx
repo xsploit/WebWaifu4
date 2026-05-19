@@ -5,6 +5,7 @@ import { createBrowserProviderKeyVault } from '../../../lib/product/provider-key
 import {
   buildSupabaseOAuthRequest,
   describeByokAccountShell,
+  fetchSupabaseEnabledOAuthProviders,
   getEnabledSupabaseOAuthProviders,
   getSupabaseOAuthProviderLabel,
   normalizeAccountEmail,
@@ -99,10 +100,14 @@ export function AccountTab({
   const [providerStatus, setProviderStatus] = useState('Provider keys stay in this browser only.');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedEmail = normalizeAccountEmail(email);
-  const enabledOAuthProviders = useMemo(
+  const [liveOAuthProviders, setLiveOAuthProviders] = useState<SupabaseOAuthProvider[] | null>(
+    null,
+  );
+  const configuredOAuthProviders = useMemo(
     () => getEnabledSupabaseOAuthProviders(supabaseConfig),
     [supabaseConfig],
   );
+  const enabledOAuthProviders = liveOAuthProviders ?? configuredOAuthProviders;
   const loginAvailable = accountMode.loginAvailable && supabaseConfig.status === 'configured';
 
   const refreshProviderDescriptors = useCallback(async () => {
@@ -122,6 +127,42 @@ export function AccountTab({
   useEffect(() => {
     setLoginStatus(authStatus || summary.detail);
   }, [authStatus, summary.detail]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLiveOAuthProviders(null);
+    if (supabaseConfig.status !== 'configured') {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchSupabaseEnabledOAuthProviders({ config: supabaseConfig })
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        if (result.ok) {
+          setLiveOAuthProviders(result.providers);
+          if (result.providers.length === 0) {
+            setLoginStatus(
+              'Supabase Auth currently reports Google and GitHub disabled for this project.',
+            );
+          }
+          return;
+        }
+        setLoginStatus(result.message);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoginStatus(error instanceof Error ? error.message : 'Supabase OAuth check failed.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabaseConfig]);
 
   useEffect(() => {
     void refreshProviderDescriptors();
@@ -152,7 +193,7 @@ export function AccountTab({
 
   function handleOAuth(provider: SupabaseOAuthProvider) {
     const request = buildSupabaseOAuthRequest({
-      config: supabaseConfig,
+      config: { ...supabaseConfig, oauthProviders: enabledOAuthProviders },
       provider,
       redirectTo: getBrowserRedirectUrl(),
     });
@@ -253,8 +294,8 @@ export function AccountTab({
         </div>
         {enabledOAuthProviders.length === 0 ? (
           <div className="field-hint">
-            No OAuth providers are enabled for this deployment. Enable Google/GitHub in Supabase,
-            then set VITE_SUPABASE_OAUTH_PROVIDERS.
+            Supabase Auth reports Google/GitHub disabled. Enable a provider with its OAuth client
+            ID and secret, then add the Supabase callback URL in that provider console.
           </div>
         ) : null}
         <div className="status-copy">{loginStatus}</div>

@@ -435,18 +435,33 @@ docs/BYOK_PRODUCT_STATUS.md` -> passed.
   touched files.
 - 2026-05-15: `npm run build` -> passed. Existing Vite warnings remained:
   onnxruntime-web eval and large bundle chunks.
+- 2026-05-18: authenticated the configured Supabase MCP and checked project
+  `btjccsyoevbczmamoamt`; live Auth settings report `external.google=false`
+  and `external.github=false`, while email auth is enabled. Management API
+  docs and MCP docs confirm Google/GitHub OAuth cannot be enabled without each
+  provider's client ID and secret.
+- 2026-05-18: changed the product login page and Account tab to probe
+  Supabase Auth `/auth/v1/settings` with the publishable key and use the live
+  Google/GitHub provider flags instead of requiring a rebuild-time
+  `VITE_SUPABASE_OAUTH_PROVIDERS` allowlist. If both providers are disabled,
+  the UI now says Supabase Auth reports them disabled and names the missing
+  provider credential setup.
+- 2026-05-18: `npx vitest run
+  src/lib/product/supabase-auth-shell.test.ts
+  src/lib/product/supabase-env.test.ts src/lib/product/app-route.test.ts` -> 3
+  files, 31 tests passed.
+- 2026-05-18: `npx tsc --noEmit`, `git diff --check`, and `npm run build` ->
+  passed. Existing Vite warnings remained: onnxruntime-web eval and large
+  bundle chunks.
 
 ## Current Blocker Or Next Patch
 
-Next patch: return real read-only profile/workspace JSON from the authorized
-BYOK API routes after route authorization passes. Keep writes as explicit
-placeholders until patch/merge semantics are designed. Still do not sync
-provider keys. Alternative small patch: add explicit PKCE code exchange/refresh
-handling if hosted Supabase Auth is configured for PKCE. Next read:
-`api\byok\_lib\route-stub.ts`, `api\byok\_lib\supabase-context.ts`,
-`src\lib\product\byok-route-stub.ts`,
-`src\lib\product\server-route-ownership.ts`, and
-`supabase\migrations\20260515000100_byok_product_spine.sql`.
+Current blocker: Google/GitHub OAuth is disabled in Supabase Auth, not in app
+code. Enable at least one provider in Supabase Auth with its OAuth client ID
+and secret, and register
+`https://btjccsyoevbczmamoamt.supabase.co/auth/v1/callback` in that provider's
+console. After live `/auth/v1/settings` reports `external.google=true` or
+`external.github=true`, the app should show the provider button automatically.
 
 ## Stop Conditions
 

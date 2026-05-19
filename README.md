@@ -155,8 +155,11 @@ SUPABASE_STORAGE_BUCKET
 OVERLAY_SIGNING_SECRET
 ```
 
-Set `VITE_SUPABASE_OAUTH_PROVIDERS` only after enabling those providers in
-Supabase Auth, for example `google,github`.
+`VITE_SUPABASE_OAUTH_PROVIDERS` is optional. The app checks Supabase Auth
+`/auth/v1/settings` at runtime and uses the live Google/GitHub provider flags
+when Supabase is reachable. OAuth still requires provider credentials in
+Supabase Auth: enable the provider, add its client ID and secret, and register
+`https://<project-ref>.supabase.co/auth/v1/callback` in the provider console.
 
 Provider API keys are user-owned BYOK values. They should be saved through the
 browser-local provider vault and sent to the backend only for active requests.

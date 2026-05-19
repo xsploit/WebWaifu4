@@ -14,8 +14,8 @@ This fork is designed to run in two modes:
 2. Run `supabase/migrations/20260515000100_byok_product_spine.sql` in the SQL
    editor or through the Supabase CLI.
 3. Enable the OAuth providers you plan to expose, usually Google and/or GitHub,
-   in Supabase Auth. Configure the OAuth app credentials in the provider and
-   Supabase first.
+   in Supabase Auth. Configure each provider with its OAuth client ID and
+   secret first.
 4. Add the hosted app URL to Supabase Auth redirect URLs:
    - `https://your-domain.example/auth/callback`
    - local dev: `http://localhost:5173/auth/callback`
@@ -33,10 +33,11 @@ VITE_SUPABASE_PUBLISHABLE_KEY
 VITE_SUPABASE_OAUTH_PROVIDERS
 ```
 
-`VITE_SUPABASE_OAUTH_PROVIDERS` is a comma-separated allowlist for providers
-that are already enabled in Supabase Auth, for example `google,github`. Leave it
-empty until the provider is enabled; otherwise Supabase returns
-`Unsupported provider: provider is not enabled`.
+`VITE_SUPABASE_OAUTH_PROVIDERS` is optional. The app probes Supabase Auth
+`/auth/v1/settings` in the browser and uses the live Google/GitHub provider
+flags when Supabase is reachable. You can still set it to `google,github` as a
+local fallback, but Supabase will reject a provider until that provider has a
+client ID and secret configured in Supabase Auth.
 
 Server-only:
 

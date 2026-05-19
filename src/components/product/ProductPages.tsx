@@ -20,6 +20,7 @@ import type { SyncedSettingRecord } from '../../lib/product/byok';
 import {
   buildSupabaseOAuthRequest,
   describeByokAccountShell,
+  fetchSupabaseEnabledOAuthProviders,
   getEnabledSupabaseOAuthProviders,
   getSupabaseOAuthProviderLabel,
   requestSupabaseMagicLink,
@@ -133,14 +134,54 @@ function LoginPage(
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState(props.accountSummary.detail);
   const [busy, setBusy] = useState(false);
-  const enabledOAuthProviders = useMemo(
+  const [liveOAuthProviders, setLiveOAuthProviders] = useState<SupabaseOAuthProvider[] | null>(
+    null,
+  );
+  const configuredOAuthProviders = useMemo(
     () => getEnabledSupabaseOAuthProviders(props.supabaseConfig),
     [props.supabaseConfig],
   );
+  const enabledOAuthProviders = liveOAuthProviders ?? configuredOAuthProviders;
   const oauthAvailable =
     props.accountMode.loginAvailable &&
     props.supabaseConfig.status === 'configured' &&
     enabledOAuthProviders.length > 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLiveOAuthProviders(null);
+    if (props.supabaseConfig.status !== 'configured') {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchSupabaseEnabledOAuthProviders({ config: props.supabaseConfig })
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        if (result.ok) {
+          setLiveOAuthProviders(result.providers);
+          if (result.providers.length === 0) {
+            setStatus(
+              'Supabase Auth currently reports Google and GitHub disabled for this project.',
+            );
+          }
+          return;
+        }
+        setStatus(result.message);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStatus(error instanceof Error ? error.message : 'Supabase OAuth check failed.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [props.supabaseConfig]);
 
   useEffect(() => {
     if (props.accountMode.kind === 'supabase-cloud-sync') {
@@ -165,7 +206,7 @@ function LoginPage(
 
   const handleOAuth = (provider: SupabaseOAuthProvider) => {
     const request = buildSupabaseOAuthRequest({
-      config: props.supabaseConfig,
+      config: { ...props.supabaseConfig, oauthProviders: enabledOAuthProviders },
       provider,
       redirectTo: getProductAuthCallbackUrl(),
     });
@@ -784,7 +825,7 @@ function getOAuthUnavailableMessage(
   if (props.supabaseConfig.status !== 'configured') {
     return props.accountSummary.detail;
   }
-  return 'No OAuth providers are enabled for this deployment. Set VITE_SUPABASE_OAUTH_PROVIDERS after enabling providers in Supabase.';
+  return 'Supabase Auth reports Google/GitHub disabled. Enable a provider with its OAuth client ID and secret, then add the Supabase callback URL in that provider console.';
 }
 
 function NavLink(props: { active: boolean; children: ReactNode; onClick: () => void }) {
