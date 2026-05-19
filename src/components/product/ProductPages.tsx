@@ -18,8 +18,12 @@ import {
 } from '../../lib/product/scene-backup';
 import type { SyncedSettingRecord } from '../../lib/product/byok';
 import {
+  buildSupabaseOAuthRequest,
   describeByokAccountShell,
+  getSupabaseOAuthProviderLabel,
   requestSupabaseMagicLink,
+  SUPABASE_OAUTH_PROVIDERS,
+  type SupabaseOAuthProvider,
 } from '../../lib/product/supabase-auth-shell';
 import type { SupabasePublicConfig } from '../../lib/product/supabase-env';
 
@@ -130,6 +134,8 @@ function LoginPage(
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState(props.accountSummary.detail);
   const [busy, setBusy] = useState(false);
+  const oauthAvailable =
+    props.accountMode.loginAvailable && props.supabaseConfig.status === 'configured';
 
   useEffect(() => {
     if (props.accountMode.kind === 'supabase-cloud-sync') {
@@ -152,21 +158,56 @@ function LoginPage(
     setStatus(result.message);
   };
 
+  const handleOAuth = (provider: SupabaseOAuthProvider) => {
+    const request = buildSupabaseOAuthRequest({
+      config: props.supabaseConfig,
+      provider,
+      redirectTo: getProductAuthCallbackUrl(),
+    });
+    if (!request.ok) {
+      setStatus(request.message);
+      return;
+    }
+    window.location.assign(request.url);
+  };
+
   return (
     <ProductShell {...props}>
       <section className="product-hero product-hero-compact">
         <div className="product-hero-copy">
-          <p className="product-eyebrow">Magic-link login</p>
+          <p className="product-eyebrow">Account login</p>
           <h1 className="product-display">
             Sign in to <span className="product-display-accent">YourWifey</span>
           </h1>
           <p className="product-lede">
-            No password. We email a one-tap link that signs you in and mirrors safe settings to the
-            cloud. Memory and chat history stay on this device.
+            Use a normal OAuth provider for cloud sync, dashboard access, and signed OBS overlay
+            URLs. Provider API keys still stay in this browser vault.
           </p>
         </div>
       </section>
+      <section className="product-card product-card-narrow">
+        <SectionTitle title="Continue with" />
+        <div className="product-oauth-grid">
+          {SUPABASE_OAUTH_PROVIDERS.map((provider) => (
+            <button
+              className="product-primary"
+              disabled={!oauthAvailable}
+              key={provider}
+              onClick={() => handleOAuth(provider)}
+              type="button"
+            >
+              {getSupabaseOAuthProviderLabel(provider)}
+            </button>
+          ))}
+        </div>
+        <StatusText>
+          {oauthAvailable
+            ? 'Google or GitHub must be enabled in Supabase Auth providers for this project.'
+            : props.accountSummary.detail}
+        </StatusText>
+      </section>
       <form className="product-card product-card-narrow" onSubmit={handleSubmit}>
+        <SectionTitle title="Email fallback" />
         <label className="product-field">
           <span>Email</span>
           <input
@@ -180,7 +221,7 @@ function LoginPage(
         </label>
         <div className="product-actions">
           <button className="product-primary" disabled={busy} type="submit">
-            {busy ? 'Sending…' : 'Send magic link'}
+            {busy ? 'Sending…' : 'Send email link'}
           </button>
           <button
             className="product-secondary"
@@ -645,12 +686,12 @@ function DashboardPage(
           <section className="product-card product-card-cta">
             <SectionTitle title="Cloud sync" />
             <p className="product-hint">
-              Sign in with a magic link to mirror safe settings between machines and unlock signed
-              OBS overlay URLs. No password — just a one-time email link.
+              Sign in with Google or GitHub to mirror safe settings between machines and unlock
+              signed OBS overlay URLs. Email link stays available as a fallback on the login page.
             </p>
             <div className="product-actions">
               <button className="product-primary" onClick={() => props.onNavigate('/login')}>
-                Sign in with magic link
+                Sign in
               </button>
             </div>
           </section>
@@ -721,6 +762,13 @@ function ProductShell(props: ProductPagesProps & { children: ReactNode }) {
       <main className="product-main">{props.children}</main>
     </div>
   );
+}
+
+function getProductAuthCallbackUrl() {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+  return new URL('/auth/callback', window.location.href).toString();
 }
 
 function NavLink(props: { active: boolean; children: ReactNode; onClick: () => void }) {

@@ -3,9 +3,13 @@ import type { ByokAccountMode } from '../../../lib/product/account-mode';
 import type { ProviderKind, ProviderSecretDescriptor } from '../../../lib/product/byok';
 import { createBrowserProviderKeyVault } from '../../../lib/product/provider-key-vault';
 import {
+  buildSupabaseOAuthRequest,
   describeByokAccountShell,
+  getSupabaseOAuthProviderLabel,
   normalizeAccountEmail,
   requestSupabaseMagicLink,
+  SUPABASE_OAUTH_PROVIDERS,
+  type SupabaseOAuthProvider,
 } from '../../../lib/product/supabase-auth-shell';
 import type { SupabasePublicConfig } from '../../../lib/product/supabase-env';
 
@@ -38,7 +42,7 @@ function getBrowserRedirectUrl() {
     return undefined;
   }
 
-  return `${window.location.origin}${window.location.pathname}`;
+  return new URL('/auth/callback', window.location.href).toString();
 }
 
 function formatList(values: readonly string[]) {
@@ -140,6 +144,19 @@ export function AccountTab({
     }
   }
 
+  function handleOAuth(provider: SupabaseOAuthProvider) {
+    const request = buildSupabaseOAuthRequest({
+      config: supabaseConfig,
+      provider,
+      redirectTo: getBrowserRedirectUrl(),
+    });
+    if (!request.ok) {
+      setLoginStatus(request.message);
+      return;
+    }
+    window.location.assign(request.url);
+  }
+
   async function handleSaveProviderKey(config: LocalProviderKeyConfig) {
     const secret = providerInputs[config.keyName]?.trim() ?? '';
     if (!secret) {
@@ -205,8 +222,34 @@ export function AccountTab({
         <div className="field-hint">{summary.detail}</div>
       </div>
 
+      <div className="control-group">
+        <div className="control-label">Account Login</div>
+        <div className="field-hint">
+          Use Google or GitHub for the product login. Email links are only a fallback.
+        </div>
+        <div className="btn-row">
+          {SUPABASE_OAUTH_PROVIDERS.map((provider) => (
+            <button
+              className="btn-tech secondary"
+              disabled={!loginAvailable}
+              key={provider}
+              onClick={() => handleOAuth(provider)}
+              type="button"
+            >
+              {getSupabaseOAuthProviderLabel(provider)}
+            </button>
+          ))}
+          {accountMode.kind === 'supabase-cloud-sync' ? (
+            <button className="btn-tech secondary" onClick={onSignOut} type="button">
+              Sign Out
+            </button>
+          ) : null}
+        </div>
+        <div className="status-copy">{loginStatus}</div>
+      </div>
+
       <form className="control-group" onSubmit={handleSubmit}>
-        <div className="control-label">Supabase Login</div>
+        <div className="control-label">Email Fallback</div>
         <input
           autoComplete="email"
           className="input-tech"
@@ -224,13 +267,8 @@ export function AccountTab({
             disabled={!loginAvailable || !normalizedEmail || sending}
             type="submit"
           >
-            {sending ? 'Sending Link...' : 'Send Login Link'}
+            {sending ? 'Sending Link...' : 'Send Email Link'}
           </button>
-          {accountMode.kind === 'supabase-cloud-sync' ? (
-            <button className="btn-tech secondary" onClick={onSignOut} type="button">
-              Sign Out
-            </button>
-          ) : null}
         </div>
         <div className="status-copy">{loginStatus}</div>
       </form>

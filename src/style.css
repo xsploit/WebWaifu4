@@ -2331,6 +2331,12 @@ input[type='range']::-webkit-slider-thumb {
   gap: 10px;
 }
 
+.product-oauth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 /* --- Stat row ------------------------------------------------------ */
 
 .product-stat-row {
@@ -2634,6 +2640,10 @@ input[type='range']::-webkit-slider-thumb {
 
   .product-card {
     padding: 18px;
+  }
+
+  .product-oauth-grid {
+    grid-template-columns: 1fr;
   }
 
   .product-mode-pill {

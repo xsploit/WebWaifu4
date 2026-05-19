@@ -36,6 +36,22 @@ export type SupabaseMagicLinkResult =
       status?: number;
     };
 
+export type SupabaseOAuthProvider = 'github' | 'google';
+
+export type SupabaseOAuthRequest =
+  | {
+      ok: true;
+      provider: SupabaseOAuthProvider;
+      url: string;
+    }
+  | {
+      ok: false;
+      message: string;
+      reason: 'cloud-sync-disabled' | 'cloud-sync-misconfigured' | 'invalid-redirect-url';
+    };
+
+export const SUPABASE_OAUTH_PROVIDERS: readonly SupabaseOAuthProvider[] = ['google', 'github'];
+
 export function describeByokAccountShell(mode: ByokAccountMode): AccountShellSummary {
   if (mode.kind === 'supabase-cloud-sync') {
     return {
@@ -84,9 +100,54 @@ export function describeByokAccountShell(mode: ByokAccountMode): AccountShellSum
   };
 }
 
+export function getSupabaseOAuthProviderLabel(provider: SupabaseOAuthProvider) {
+  return provider === 'google' ? 'Google' : 'GitHub';
+}
+
 export function normalizeAccountEmail(value: string) {
   const email = value.trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+export function buildSupabaseOAuthRequest(input: {
+  config: SupabasePublicConfig;
+  provider: SupabaseOAuthProvider;
+  redirectTo?: string;
+}): SupabaseOAuthRequest {
+  const { config } = input;
+  if (config.status === 'disabled') {
+    return {
+      ok: false,
+      reason: 'cloud-sync-disabled',
+      message: 'Supabase OAuth is disabled because browser cloud-sync config is absent.',
+    };
+  }
+  if (config.status !== 'configured' || !config.url || !config.anonKey) {
+    return {
+      ok: false,
+      reason: 'cloud-sync-misconfigured',
+      message: 'Supabase OAuth is unavailable until browser cloud-sync config is complete.',
+    };
+  }
+
+  const redirectTo = normalizeRedirectUrl(input.redirectTo);
+  if (!redirectTo) {
+    return {
+      ok: false,
+      reason: 'invalid-redirect-url',
+      message: 'Supabase OAuth needs a valid browser callback URL.',
+    };
+  }
+
+  const url = new URL(`${config.url}/auth/v1/authorize`);
+  url.searchParams.set('provider', input.provider);
+  url.searchParams.set('redirect_to', redirectTo);
+
+  return {
+    ok: true,
+    provider: input.provider,
+    url: url.toString(),
+  };
 }
 
 export function buildSupabaseMagicLinkRequest(input: {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveByokAccountMode } from './account-mode';
 import {
+  buildSupabaseOAuthRequest,
   buildSupabaseMagicLinkRequest,
   describeByokAccountShell,
   requestSupabaseMagicLink,
@@ -44,6 +45,49 @@ describe('Supabase auth shell', () => {
     expect(JSON.stringify(request)).toContain('streamer@example.com');
     expect(JSON.stringify(request)).toContain('https://overlay.example.test/settings');
     expect(JSON.stringify(request)).not.toMatch(/service[_-]?role|jwt|openai|fish|inworld|tavily/i);
+  });
+
+  it('builds a Supabase OAuth redirect URL for Google and GitHub', () => {
+    const config = readSupabaseBrowserEnv({
+      VITE_SUPABASE_URL: 'https://project-ref.supabase.co/',
+      VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+    });
+
+    expect(
+      buildSupabaseOAuthRequest({
+        config,
+        provider: 'google',
+        redirectTo: 'https://overlay.example.test/auth/callback',
+      }),
+    ).toEqual({
+      ok: true,
+      provider: 'google',
+      url: 'https://project-ref.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Foverlay.example.test%2Fauth%2Fcallback',
+    });
+
+    expect(
+      buildSupabaseOAuthRequest({
+        config,
+        provider: 'github',
+        redirectTo: 'https://overlay.example.test/auth/callback',
+      }),
+    ).toMatchObject({
+      ok: true,
+      provider: 'github',
+    });
+  });
+
+  it('does not build an OAuth redirect when cloud sync is unavailable', () => {
+    expect(
+      buildSupabaseOAuthRequest({
+        config: readSupabaseBrowserEnv({}),
+        provider: 'google',
+        redirectTo: 'https://overlay.example.test/auth/callback',
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: 'cloud-sync-disabled',
+    });
   });
 
   it('does not request login when cloud-sync config is missing or the email is invalid', () => {
