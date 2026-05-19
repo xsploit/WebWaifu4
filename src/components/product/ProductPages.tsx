@@ -1,4 +1,15 @@
-import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import * as THREE from 'three';
+import type { VRM } from '@pixiv/three-vrm';
 import type { ByokAccountMode } from '../../lib/product/account-mode';
 import type { AppRoute } from '../../lib/product/app-route';
 import {
@@ -27,6 +38,8 @@ import {
 } from '../../lib/product/supabase-auth-shell';
 import type { SupabaseOAuthProvider, SupabasePublicConfig } from '../../lib/product/supabase-env';
 import { getProductAuthCallbackUrl } from '../../lib/product/auth-redirect';
+import { getLocalCdnAssetUrl } from '../../lib/cdn/assets';
+import { disposeVrm, loadVrm } from '../../lib/vrm/loadVrm';
 
 type ProductPagesProps = {
   accountMode: ByokAccountMode;
@@ -417,7 +430,7 @@ function HomeProductPreview(props: { twitchLabel: string }) {
       </div>
       <div className="yw-preview__grid">
         <div className="yw-preview__avatar">
-          <img alt="" src="/cdn-assets/product/hero-vrm.png" />
+          <HomeVrmPreview />
           <div className="yw-avatar-chip">Hikari · VRM loaded</div>
         </div>
         <div className="yw-preview__panel">
@@ -464,6 +477,103 @@ function HomeProductPreview(props: { twitchLabel: string }) {
       </div>
     </div>
   );
+}
+
+function HomeVrmPreview() {
+  const [fallback, setFallback] = useState(false);
+  const handleLoadError = useCallback(() => setFallback(true), []);
+
+  if (fallback) {
+    return <img alt="" src="/cdn-assets/product/hero-vrm.png" />;
+  }
+
+  return (
+    <Canvas
+      camera={{ fov: 25, position: [0, 1.18, 3.25] }}
+      className="yw-home-vrm-canvas"
+      dpr={[1, 1.6]}
+      gl={{
+        alpha: true,
+        antialias: true,
+        powerPreference: 'high-performance',
+        stencil: false,
+      }}
+      onCreated={({ gl }) => {
+        gl.setClearColor(0x000000, 0);
+      }}
+    >
+      <ambientLight intensity={1.2} />
+      <hemisphereLight args={['#fff2ff', '#140b1b', 1.2]} />
+      <directionalLight color="#ffffff" intensity={2.2} position={[1.7, 2.4, 2.8]} />
+      <directionalLight color="#ff8bd2" intensity={1.1} position={[-1.6, 1.4, 1.8]} />
+      <directionalLight color="#8fdfff" intensity={1.4} position={[-1.8, 2.1, -1.8]} />
+      <HomeVrmModel onLoadError={handleLoadError} />
+    </Canvas>
+  );
+}
+
+function HomeVrmModel(props: { onLoadError: () => void }) {
+  const [vrm, setVrm] = useState<VRM | null>(null);
+  const clockRef = useRef(0);
+  const baseRotationRef = useRef(Math.PI);
+  const smileValueRef = useRef(0);
+  const blinkValueRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadedVrm: VRM | null = null;
+
+    loadVrm(getLocalCdnAssetUrl('models/hikkyc2.vrm'))
+      .then((nextVrm) => {
+        if (cancelled) {
+          disposeVrm(nextVrm);
+          return;
+        }
+        loadedVrm = nextVrm;
+        nextVrm.scene.position.set(0, -1.08, 0);
+        nextVrm.scene.rotation.set(0, Math.PI, 0);
+        nextVrm.scene.scale.setScalar(1.42);
+        nextVrm.scene.updateMatrixWorld(true);
+        setVrm(nextVrm);
+      })
+      .catch((error) => {
+        console.warn('[HomeVrmPreview] Failed to load homepage VRM:', error);
+        props.onLoadError();
+      });
+
+    return () => {
+      cancelled = true;
+      if (loadedVrm) {
+        disposeVrm(loadedVrm);
+      }
+    };
+  }, [props.onLoadError]);
+
+  useFrame((_, delta) => {
+    if (!vrm) {
+      return;
+    }
+
+    clockRef.current += delta;
+    const t = clockRef.current;
+    vrm.scene.rotation.y = baseRotationRef.current + Math.sin(t * 0.55) * 0.045;
+    vrm.scene.position.y = -1.08 + Math.sin(t * 0.9) * 0.015;
+
+    const expressions = vrm.expressionManager;
+    if (expressions) {
+      smileValueRef.current = THREE.MathUtils.lerp(smileValueRef.current, 0.42, 0.08);
+      const blinkPhase = Math.sin(t * 1.7);
+      const blinkTarget = blinkPhase > 0.992 ? 0.95 : 0;
+      blinkValueRef.current = THREE.MathUtils.lerp(blinkValueRef.current, blinkTarget, 0.34);
+      expressions.setValue('happy', smileValueRef.current);
+      expressions.setValue('blink', blinkValueRef.current);
+      expressions.update();
+    }
+
+    vrm.update(delta);
+  });
+
+  return vrm ? <primitive object={vrm.scene} /> : null;
 }
 
 function HomeSpecList(props: { items: Array<[string, string]> }) {
