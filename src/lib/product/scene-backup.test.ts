@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createDefaultAiSettings,
+  createDefaultPersonaVoiceBindings,
   createDefaultPersonas,
   createDefaultUiState,
 } from '../chat/defaults';
@@ -65,6 +66,7 @@ function createState(): PersistedChatState {
     ],
     currentBundledModelId: 'neuro-sama',
     currentCustomVrmModelId: '',
+    personaVoiceBindings: createDefaultPersonaVoiceBindings(),
     personas: createDefaultPersonas(),
     relationshipMemories: {},
     relationshipMemory: {
@@ -90,5 +92,6 @@ function createState(): PersistedChatState {
     twitchChannel: 'subsect',
     uiState: createDefaultUiState(),
     visualSettings: createDefaultVisualSettings(),
+    voiceLabVoices: [],
   };
 }

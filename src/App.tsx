@@ -13,6 +13,7 @@ import {
   DEFAULT_PERSONA,
   DEFAULT_OPENAI_MODEL,
   createDefaultAiSettings,
+  createDefaultPersonaVoiceBindings,
   createDefaultRelationshipMemory,
   createDefaultPersonas,
   createDefaultUiState,
@@ -84,7 +85,9 @@ import type {
   PersistedChatState,
   PersonaDraft,
   PersonaProfile,
+  PersonaVoiceBinding,
   RelationshipMemory,
+  VoiceLabVoice,
 } from './lib/chat/types';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from './lib/menu/defaults';
 import type {
@@ -289,6 +292,16 @@ const PERSONA_SCENE_PRESETS: PersonaScenePreset[] = [
     textMuted: '#ffd1a6',
   },
 ];
+
+function getPresetPersonaVoiceBinding(preset: PersonaScenePreset): PersonaVoiceBinding {
+  return {
+    label: `${preset.id} Piper preset`,
+    provider: 'piper',
+    updatedAt: 0,
+    voiceId: preset.ttsVoice,
+  };
+}
+
 const PERSIST_DEBOUNCE_MS = 900;
 const MEMORY_AGENT_DELAY_MS = 2500;
 const OVERLAY_RECONNECT_MS = 3000;
@@ -1460,6 +1473,10 @@ function App() {
   const [sequencerSettings, setSequencerSettings] = useState(createDefaultSequencerSettings);
   const [personas, setPersonas] = useState<PersonaProfile[]>(createDefaultPersonas);
   const [activePersonaId, setActivePersonaId] = useState(DEFAULT_PERSONA.id);
+  const [personaVoiceBindings, setPersonaVoiceBindings] = useState<
+    Record<string, PersonaVoiceBinding>
+  >(() => createDefaultPersonaVoiceBindings());
+  const [voiceLabVoices, setVoiceLabVoices] = useState<VoiceLabVoice[]>([]);
   const [aiSettings, setAiSettings] = useState<AiSettings>(createDefaultAiSettings);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState(() => createDefaultUiState().chatDraft);
@@ -2180,8 +2197,7 @@ function App() {
           label,
           liveBridgeTts,
           metaBalanced:
-            metaOpenIndex === -1 ||
-            (metaCloseIndex > metaOpenIndex && metaCloseIndex !== -1),
+            metaOpenIndex === -1 || (metaCloseIndex > metaOpenIndex && metaCloseIndex !== -1),
           metaCloseIndex,
           metaOpenIndex,
           messageId: assistantMessage.id,
@@ -2773,6 +2789,8 @@ function App() {
 
       setPersonas(persistedState.personas);
       setActivePersonaId(persistedState.activePersonaId);
+      setPersonaVoiceBindings(persistedState.personaVoiceBindings);
+      setVoiceLabVoices(persistedState.voiceLabVoices);
       setAiSettings(persistedState.aiSettings);
       setChatHistory(trimChatHistory(persistedState.chatHistory));
       setRelationshipMemory(
@@ -2855,6 +2873,8 @@ function App() {
           chatHistory,
           relationshipMemory,
           relationshipMemories,
+          personaVoiceBindings,
+          voiceLabVoices,
           uiState: {
             menuOpen: false,
             chatLogOpen,
@@ -2903,11 +2923,13 @@ function App() {
     hydrated,
     menuOpen,
     personas,
+    personaVoiceBindings,
     relationshipMemory,
     relationshipMemories,
     sequencerSettings,
     twitchChannel,
     visualSettings,
+    voiceLabVoices,
   ]);
 
   useEffect(() => {
@@ -3195,6 +3217,164 @@ function App() {
       const next = current.filter((persona) => persona.id !== personaId);
       return next.length > 0 ? next : createDefaultPersonas();
     });
+    setPersonaVoiceBindings((current) => {
+      const next = { ...current };
+      delete next[personaId];
+      return next;
+    });
+  }, []);
+
+  const applyPersonaVoiceBinding = useCallback((binding: PersonaVoiceBinding) => {
+    if (binding.provider === 'orpheus') {
+      return;
+    }
+
+    setAiSettings((current) => {
+      if (
+        binding.provider === 'piper' &&
+        current.ttsProvider === 'piper' &&
+        current.ttsVoice === binding.voiceId
+      ) {
+        return current;
+      }
+      if (
+        binding.provider === 'fish-speech' &&
+        current.ttsProvider === 'fish-speech' &&
+        current.fishSpeechVoiceId === binding.voiceId &&
+        (!binding.modelId || current.fishSpeechModel === binding.modelId)
+      ) {
+        return current;
+      }
+      if (
+        binding.provider === 'inworld' &&
+        current.ttsProvider === 'inworld' &&
+        current.inworldVoiceId === binding.voiceId &&
+        (!binding.modelId || current.inworldModelId === binding.modelId)
+      ) {
+        return current;
+      }
+
+      if (binding.provider === 'piper') {
+        return {
+          ...current,
+          ttsProvider: 'piper',
+          ttsVoice: binding.voiceId,
+        };
+      }
+      if (binding.provider === 'fish-speech') {
+        return {
+          ...current,
+          fishSpeechModel: binding.modelId || current.fishSpeechModel,
+          fishSpeechVoiceId: binding.voiceId,
+          ttsProvider: 'fish-speech',
+        };
+      }
+      return {
+        ...current,
+        inworldModelId: binding.modelId || current.inworldModelId,
+        inworldVoiceId: binding.voiceId,
+        ttsProvider: 'inworld',
+      };
+    });
+  }, []);
+
+  const handleApplyPersonaVoice = useCallback(
+    (personaId: string) => {
+      const persona = personas.find((entry) => entry.id === personaId) ?? activePersona;
+      const binding =
+        personaVoiceBindings[personaId] ??
+        getPresetPersonaVoiceBinding(getPersonaScenePreset(persona));
+      applyPersonaVoiceBinding(binding);
+    },
+    [activePersona, applyPersonaVoiceBinding, personaVoiceBindings, personas],
+  );
+
+  const handleUseCurrentVoiceAsPersonaDefault = useCallback(
+    (personaId: string) => {
+      const now = Date.now();
+      let binding: PersonaVoiceBinding | null = null;
+      if (aiSettings.ttsProvider === 'piper') {
+        const voice = ttsVoices.find((entry) => entry.key === aiSettings.ttsVoice);
+        binding = {
+          label: voice?.name ?? aiSettings.ttsVoice,
+          provider: 'piper',
+          updatedAt: now,
+          voiceId: aiSettings.ttsVoice,
+        };
+      } else if (aiSettings.ttsProvider === 'fish-speech' && aiSettings.fishSpeechVoiceId.trim()) {
+        binding = {
+          label: `Fish Speech ${aiSettings.fishSpeechVoiceId.trim()}`,
+          modelId: aiSettings.fishSpeechModel,
+          provider: 'fish-speech',
+          updatedAt: now,
+          voiceId: aiSettings.fishSpeechVoiceId.trim(),
+        };
+      } else if (aiSettings.ttsProvider === 'inworld' && aiSettings.inworldVoiceId.trim()) {
+        binding = {
+          label: `Inworld ${aiSettings.inworldVoiceId.trim()}`,
+          modelId: aiSettings.inworldModelId,
+          provider: 'inworld',
+          updatedAt: now,
+          voiceId: aiSettings.inworldVoiceId.trim(),
+        };
+      }
+
+      if (!binding) {
+        return;
+      }
+
+      setPersonaVoiceBindings((current) => ({
+        ...current,
+        [personaId]: binding,
+      }));
+    },
+    [
+      aiSettings.fishSpeechModel,
+      aiSettings.fishSpeechVoiceId,
+      aiSettings.inworldModelId,
+      aiSettings.inworldVoiceId,
+      aiSettings.ttsProvider,
+      aiSettings.ttsVoice,
+      ttsVoices,
+    ],
+  );
+
+  const handleSaveVoiceLabVoice = useCallback((voice: VoiceLabVoice) => {
+    setVoiceLabVoices((current) =>
+      current.some((entry) => entry.id === voice.id)
+        ? current.map((entry) => (entry.id === voice.id ? voice : entry))
+        : [...current, voice],
+    );
+
+    const voiceId = voice.providerVoiceId.trim();
+    if (!voiceId || voice.assignedPersonaIds.length === 0) {
+      return;
+    }
+
+    const binding: PersonaVoiceBinding = {
+      customVoiceId: voice.id,
+      label: voice.name,
+      modelId: voice.modelId || undefined,
+      provider: voice.provider,
+      updatedAt: voice.updatedAt,
+      voiceId,
+    };
+    setPersonaVoiceBindings((current) => {
+      const next = { ...current };
+      for (const personaId of voice.assignedPersonaIds) {
+        next[personaId] = binding;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDeleteVoiceLabVoice = useCallback((voiceId: string) => {
+    setVoiceLabVoices((current) => current.filter((voice) => voice.id !== voiceId));
+    setPersonaVoiceBindings((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([, binding]) => binding.customVoiceId !== voiceId),
+      ),
+    );
   }, []);
 
   const handleClearChat = useCallback(() => {
@@ -3576,18 +3756,21 @@ function App() {
     if (!hydrated) {
       return;
     }
-    if (!ttsVoices.some((voice) => voice.key === activePersonaScenePreset.ttsVoice)) {
+    const binding =
+      (activePersona ? personaVoiceBindings[activePersona.id] : undefined) ??
+      getPresetPersonaVoiceBinding(activePersonaScenePreset);
+    if (binding.provider === 'piper' && !ttsVoices.some((voice) => voice.key === binding.voiceId)) {
       return;
     }
-    setAiSettings((current) =>
-      current.ttsProvider === 'piper' && current.ttsVoice !== activePersonaScenePreset.ttsVoice
-        ? {
-            ...current,
-            ttsVoice: activePersonaScenePreset.ttsVoice,
-          }
-        : current,
-    );
-  }, [activePersonaScenePreset.ttsVoice, hydrated, ttsVoices]);
+    applyPersonaVoiceBinding(binding);
+  }, [
+    activePersona,
+    activePersonaScenePreset,
+    applyPersonaVoiceBinding,
+    hydrated,
+    personaVoiceBindings,
+    ttsVoices,
+  ]);
 
   const playAnimationByIndex = useCallback(
     (index: number) => {
@@ -4614,6 +4797,7 @@ function App() {
       chatHistory,
       currentBundledModelId,
       currentCustomVrmModelId,
+      personaVoiceBindings,
       personas,
       relationshipMemories,
       relationshipMemory,
@@ -4625,6 +4809,7 @@ function App() {
         menuOpen,
       },
       visualSettings,
+      voiceLabVoices,
     }),
     [
       activePersonaId,
@@ -4636,12 +4821,14 @@ function App() {
       currentBundledModelId,
       currentCustomVrmModelId,
       menuOpen,
+      personaVoiceBindings,
       personas,
       relationshipMemories,
       relationshipMemory,
       sequencerSettings,
       twitchChannel,
       visualSettings,
+      voiceLabVoices,
     ],
   );
   const handleExportLocalTransferBackup = useCallback(async () => {
@@ -4711,6 +4898,8 @@ function App() {
       await savePersistedChatState(next);
       setPersonas(next.personas);
       setActivePersonaId(next.activePersonaId);
+      setPersonaVoiceBindings(next.personaVoiceBindings);
+      setVoiceLabVoices(next.voiceLabVoices);
       setAiSettings(next.aiSettings);
       setChatHistory(next.chatHistory);
       setRelationshipMemory(next.relationshipMemory);
@@ -4764,6 +4953,8 @@ function App() {
       const next = applyCloudSettingRecords(persistedStateSnapshot, records);
       setPersonas(next.personas);
       setActivePersonaId(next.activePersonaId);
+      setPersonaVoiceBindings(next.personaVoiceBindings);
+      setVoiceLabVoices(next.voiceLabVoices);
       setAiSettings(next.aiSettings);
       setChatInput(next.uiState.chatDraft);
       setChatLogOpen(next.uiState.chatLogOpen);
@@ -5023,6 +5214,8 @@ function App() {
               onRefreshAiProxyHealth={() => {
                 void refreshAiProxyHealth();
               }}
+              onApplyPersonaVoice={handleApplyPersonaVoice}
+              onDeleteVoiceLabVoice={handleDeleteVoiceLabVoice}
               onRefreshRemoteVoices={(provider) => {
                 for (const key of Array.from(remoteTtsVoiceFetchAttemptedRef.current)) {
                   if (key === provider || key.startsWith(`${provider}:`)) {
@@ -5047,6 +5240,7 @@ function App() {
               }}
               onRunMemoryAgent={handleRunMemoryAgentNow}
               onSavePersona={handleSavePersona}
+              onSaveVoiceLabVoice={handleSaveVoiceLabVoice}
               onSelectVoice={handleSelectTtsVoice}
               onSetTwitchChannel={(channel) => {
                 const cleanChannel = channel.replace(/^#/, '').trim().toLowerCase();
@@ -5063,7 +5257,9 @@ function App() {
               onTabChange={setActiveTab}
               onTestVoice={handleTestTtsVoice}
               onToggleChatOverlay={setChatLogOpen}
+              onUseCurrentVoiceAsPersonaDefault={handleUseCurrentVoiceAsPersonaDefault}
               open={menuOpen}
+              personaVoiceBindings={personaVoiceBindings}
               personas={personas}
               savedVrmModels={savedVrmModels}
               savedVrmStatus={savedVrmStatus}
@@ -5083,6 +5279,7 @@ function App() {
               remoteTtsVoices={activeRemoteTtsVoices}
               remoteVoicesError={remoteTtsVoicesError}
               remoteVoicesLoading={remoteTtsVoicesLoading}
+              voiceLabVoices={voiceLabVoices}
               supabaseAuthStatus={supabaseAuthStatus}
               supabaseConfig={supabaseConfig}
               twitchAiModeLabel={twitchModeLabel}

@@ -1,5 +1,11 @@
-import type { AiSettings, PersonaProfile, RelationshipMemory, UiState } from './types';
-import { NEURO_PIPER_VOICE_KEY } from '../tts/piper';
+import type {
+  AiSettings,
+  PersonaProfile,
+  PersonaVoiceBinding,
+  RelationshipMemory,
+  UiState,
+} from './types';
+import { HIKARI_PIPER_VOICE_KEY, NEURO_PIPER_VOICE_KEY, RIKO_PIPER_VOICE_KEY } from '../tts/piper';
 
 export const STORAGE_KEYS = {
   personas: 'yourwifey.personas.v1',
@@ -15,6 +21,8 @@ export const STORAGE_KEYS = {
   twitchChannel: 'yourwifey.twitchChannel.v1',
   sequencerSettings: 'yourwifey.sequencerSettings.v1',
   visualSettings: 'yourwifey.visualSettings.v1',
+  personaVoiceBindings: 'yourwifey.personaVoiceBindings.v1',
+  voiceLabVoices: 'yourwifey.voiceLabVoices.v1',
 } as const;
 
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
@@ -54,6 +62,31 @@ export const HIKARI_PERSONA: PersonaProfile = {
 
 export function createDefaultPersonas(): PersonaProfile[] {
   return [{ ...DEFAULT_PERSONA }, { ...RIKO_PERSONA }, { ...HIKARI_PERSONA }];
+}
+
+export function createDefaultPersonaVoiceBindings(
+  updatedAt = 0,
+): Record<string, PersonaVoiceBinding> {
+  return {
+    [DEFAULT_PERSONA.id]: {
+      label: 'Neuro-sama Piper default',
+      provider: 'piper',
+      updatedAt,
+      voiceId: NEURO_PIPER_VOICE_KEY,
+    },
+    [RIKO_PERSONA.id]: {
+      label: 'Riko Piper default',
+      provider: 'piper',
+      updatedAt,
+      voiceId: RIKO_PIPER_VOICE_KEY,
+    },
+    [HIKARI_PERSONA.id]: {
+      label: 'Hikari Piper default',
+      provider: 'piper',
+      updatedAt,
+      voiceId: HIKARI_PIPER_VOICE_KEY,
+    },
+  };
 }
 
 export function createDefaultAiSettings(): AiSettings {

@@ -2,6 +2,7 @@ import {
   DEFAULT_PERSONA,
   HIKARI_PERSONA,
   createDefaultAiSettings,
+  createDefaultPersonaVoiceBindings,
   createDefaultRelationshipMemory,
   createDefaultPersonas,
   createDefaultUiState,
@@ -13,9 +14,14 @@ import type {
   AiSettings,
   ChatMessage,
   PersistedChatState,
+  PersonaVoiceBinding,
+  PersonaVoiceProvider,
   PersonaProfile,
   RelationshipMemory,
   UiState,
+  VoiceCreationProvider,
+  VoiceLabSample,
+  VoiceLabVoice,
 } from './types';
 import type {
   AnimationEntry,
@@ -84,6 +90,159 @@ function normalizePersonaProfile(value: unknown): PersonaProfile | null {
     description: String(source.description ?? ''),
     userNickname: String(source.userNickname ?? ''),
   };
+}
+
+function normalizePersonaVoiceProvider(value: unknown): PersonaVoiceProvider | null {
+  switch (value) {
+    case 'piper':
+    case 'fish-speech':
+    case 'inworld':
+    case 'orpheus':
+      return value;
+    default:
+      return null;
+  }
+}
+
+function normalizeVoiceCreationProvider(value: unknown): VoiceCreationProvider | null {
+  return value === 'inworld' || value === 'orpheus' ? value : null;
+}
+
+function normalizePersonaVoiceBinding(value: unknown): PersonaVoiceBinding | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const source = value as Partial<PersonaVoiceBinding>;
+  const provider = normalizePersonaVoiceProvider(source.provider);
+  const voiceId = String(source.voiceId ?? '').trim();
+  if (!provider || !voiceId) {
+    return null;
+  }
+
+  return {
+    customVoiceId:
+      typeof source.customVoiceId === 'string' && source.customVoiceId.trim()
+        ? source.customVoiceId.trim()
+        : undefined,
+    label: String(source.label ?? voiceId).slice(0, 120),
+    modelId:
+      typeof source.modelId === 'string' && source.modelId.trim()
+        ? source.modelId.trim().slice(0, 120)
+        : undefined,
+    provider,
+    updatedAt:
+      typeof source.updatedAt === 'number' && Number.isFinite(source.updatedAt)
+        ? Math.max(0, Math.round(source.updatedAt))
+        : 0,
+    voiceId: voiceId.slice(0, 240),
+  };
+}
+
+function normalizePersonaVoiceBindings(value: unknown): Record<string, PersonaVoiceBinding> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const entries: Array<[string, PersonaVoiceBinding]> = [];
+  for (const [rawPersonaId, rawBinding] of Object.entries(value as Record<string, unknown>)) {
+    const personaId = rawPersonaId.trim().slice(0, 160);
+    const binding = normalizePersonaVoiceBinding(rawBinding);
+    if (personaId && binding) {
+      entries.push([personaId, binding]);
+    }
+  }
+  return Object.fromEntries(entries);
+}
+
+function normalizeVoiceLabSample(value: unknown): VoiceLabSample | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const source = value as Partial<VoiceLabSample>;
+  const fileName = String(source.fileName ?? '').trim();
+  if (!fileName) {
+    return null;
+  }
+  return {
+    fileName: fileName.slice(0, 240),
+    lastModified:
+      typeof source.lastModified === 'number' && Number.isFinite(source.lastModified)
+        ? Math.max(0, Math.round(source.lastModified))
+        : undefined,
+    mimeType: String(source.mimeType ?? '').slice(0, 120),
+    size:
+      typeof source.size === 'number' && Number.isFinite(source.size)
+        ? Math.max(0, Math.round(source.size))
+        : 0,
+  };
+}
+
+function normalizeVoiceLabVoice(value: unknown): VoiceLabVoice | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const source = value as Partial<VoiceLabVoice>;
+  const provider = normalizeVoiceCreationProvider(source.provider);
+  const id = String(source.id ?? '').trim();
+  const name = String(source.name ?? '').trim();
+  if (!id || !name || !provider) {
+    return null;
+  }
+
+  const assignedPersonaIds = Array.isArray(source.assignedPersonaIds)
+    ? Array.from(
+        new Set(
+          source.assignedPersonaIds
+            .map((item) => String(item).trim().slice(0, 160))
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const createdAt =
+    typeof source.createdAt === 'number' && Number.isFinite(source.createdAt)
+      ? Math.max(0, Math.round(source.createdAt))
+      : Date.now();
+  const updatedAt =
+    typeof source.updatedAt === 'number' && Number.isFinite(source.updatedAt)
+      ? Math.max(createdAt, Math.round(source.updatedAt))
+      : createdAt;
+
+  return {
+    accent: String(source.accent ?? '').slice(0, 160),
+    ageVibe: String(source.ageVibe ?? '').slice(0, 160),
+    assignedPersonaIds,
+    createdAt,
+    description: String(source.description ?? '').slice(0, 1000),
+    emotionalTone: String(source.emotionalTone ?? '').slice(0, 240),
+    expressiveness:
+      typeof source.expressiveness === 'number' && Number.isFinite(source.expressiveness)
+        ? Math.max(0, Math.min(1, source.expressiveness))
+        : 0.65,
+    id: id.slice(0, 160),
+    modelId: String(source.modelId ?? '').slice(0, 160),
+    name: name.slice(0, 160),
+    provider,
+    providerVoiceId: String(source.providerVoiceId ?? '').slice(0, 240),
+    sample: normalizeVoiceLabSample(source.sample),
+    speakingStyle: String(source.speakingStyle ?? '').slice(0, 500),
+    stability:
+      typeof source.stability === 'number' && Number.isFinite(source.stability)
+        ? Math.max(0, Math.min(1, source.stability))
+        : 0.5,
+    status: source.status === 'ready' ? 'ready' : 'draft',
+    updatedAt,
+  };
+}
+
+function normalizeVoiceLabVoices(value: unknown): VoiceLabVoice[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map(normalizeVoiceLabVoice)
+    .filter((voice): voice is VoiceLabVoice => Boolean(voice))
+    .slice(-200);
 }
 
 function normalizeChatMessage(value: unknown): ChatMessage | null {
@@ -348,6 +507,7 @@ function normalizeSettingsTab(value: string | null): SettingsTabId {
     case 'twitch':
     case 'context':
     case 'tts':
+    case 'voice-lab':
     case 'vrm':
       return value;
     default:
@@ -753,6 +913,8 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     chatHistory: [],
     relationshipMemory: createDefaultRelationshipMemory(),
     relationshipMemories: {},
+    personaVoiceBindings: createDefaultPersonaVoiceBindings(),
+    voiceLabVoices: [],
     uiState: createDefaultUiState(),
     activeTab: 'vrm',
     currentBundledModelId: 'neuro-sama',
@@ -770,6 +932,8 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       chatHistoryRaw,
       relationshipMemoryRaw,
       relationshipMemoriesRaw,
+      personaVoiceBindingsRaw,
+      voiceLabVoicesRaw,
       uiStateRaw,
       activeTabRaw,
       currentBundledModelIdRaw,
@@ -784,6 +948,8 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       getPersistedItem(STORAGE_KEYS.chatHistory),
       getPersistedItem(STORAGE_KEYS.relationshipMemory),
       getPersistedItem(STORAGE_KEYS.relationshipMemories),
+      getPersistedItem(STORAGE_KEYS.personaVoiceBindings),
+      getPersistedItem(STORAGE_KEYS.voiceLabVoices),
       getPersistedItem(STORAGE_KEYS.uiState),
       getPersistedItem(STORAGE_KEYS.activeTab),
       getPersistedItem(STORAGE_KEYS.currentBundledModelId),
@@ -806,6 +972,10 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     const relationshipMemories = normalizeRelationshipMemories(
       safeParse(relationshipMemoriesRaw, null),
     );
+    const persistedPersonaVoiceBindings = normalizePersonaVoiceBindings(
+      safeParse(personaVoiceBindingsRaw, null),
+    );
+    const voiceLabVoices = normalizeVoiceLabVoices(safeParse(voiceLabVoicesRaw, null));
     const uiState = normalizeUiState(safeParse(uiStateRaw, null));
     const activeTab = normalizeSettingsTab(activeTabRaw);
     const currentBundledModelId =
@@ -830,6 +1000,10 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     const activePersonaId = nextPersonas.some((persona) => persona.id === requestedActivePersonaId)
       ? requestedActivePersonaId
       : (nextPersonas[0]?.id ?? defaultActivePersonaId);
+    const personaVoiceBindings = {
+      ...createDefaultPersonaVoiceBindings(),
+      ...persistedPersonaVoiceBindings,
+    };
 
     return {
       personas: nextPersonas,
@@ -838,6 +1012,8 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       chatHistory,
       relationshipMemory,
       relationshipMemories,
+      personaVoiceBindings,
+      voiceLabVoices,
       uiState,
       activeTab,
       currentBundledModelId,
@@ -865,6 +1041,8 @@ export async function savePersistedChatState(state: PersistedChatState) {
     [STORAGE_KEYS.chatHistory, JSON.stringify(state.chatHistory)],
     [STORAGE_KEYS.relationshipMemory, JSON.stringify(state.relationshipMemory)],
     [STORAGE_KEYS.relationshipMemories, JSON.stringify(state.relationshipMemories)],
+    [STORAGE_KEYS.personaVoiceBindings, JSON.stringify(state.personaVoiceBindings)],
+    [STORAGE_KEYS.voiceLabVoices, JSON.stringify(state.voiceLabVoices)],
     [STORAGE_KEYS.uiState, JSON.stringify(state.uiState)],
     [STORAGE_KEYS.activeTab, state.activeTab],
     [STORAGE_KEYS.currentBundledModelId, state.currentBundledModelId],

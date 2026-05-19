@@ -5,7 +5,9 @@ import type {
   AiSettings,
   PersonaDraft,
   PersonaProfile,
+  PersonaVoiceBinding,
   RelationshipMemory,
+  VoiceLabVoice,
 } from '../../lib/chat/types';
 import type {
   BundledVrmOption,
@@ -28,6 +30,7 @@ import { CharacterTab } from './tabs/CharacterTab';
 import { ContextTab } from './tabs/ContextTab';
 import { TtsTab } from './tabs/TtsTab';
 import { TwitchTab } from './tabs/TwitchTab';
+import { VoiceLabTab } from './tabs/VoiceLabTab';
 import { VrmTab } from './tabs/VrmTab';
 
 type SettingsPanelProps = {
@@ -69,10 +72,13 @@ type SettingsPanelProps = {
   onRefreshSavedVrmModels: () => void;
   onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
+  onApplyPersonaVoice: (personaId: string) => void;
+  onDeleteVoiceLabVoice: (voiceId: string) => void;
   onResetContext: () => void;
   onResetTwitchState: () => void;
   onRunMemoryAgent: () => void;
   onSavePersona: (draft: PersonaDraft, personaId?: string) => void;
+  onSaveVoiceLabVoice: (voice: VoiceLabVoice) => void;
   onSelectVoice: (voiceId: string) => void;
   onSetTwitchChannel: (channel: string) => void;
   onSpeakLastReply: () => void;
@@ -81,7 +87,9 @@ type SettingsPanelProps = {
   onTabChange: (tab: SettingsTabId) => void;
   onTestVoice: () => void;
   onToggleChatOverlay: (open: boolean) => void;
+  onUseCurrentVoiceAsPersonaDefault: (personaId: string) => void;
   open: boolean;
+  personaVoiceBindings: Record<string, PersonaVoiceBinding>;
   personas: PersonaProfile[];
   savedVrmModels: SavedVrmModelSummary[];
   savedVrmStatus: string;
@@ -101,6 +109,7 @@ type SettingsPanelProps = {
   remoteTtsVoices: RemoteTtsVoice[];
   remoteVoicesError: string | null;
   remoteVoicesLoading: boolean;
+  voiceLabVoices: VoiceLabVoice[];
   twitchAiModeLabel: string;
   twitchChannel: string;
   twitchConnectionLabel: string;
@@ -120,6 +129,7 @@ const TABS: { id: SettingsTabId; label: string }[] = [
   { id: 'vrm', label: 'Avatar' },
   { id: 'anim', label: 'Animation' },
   { id: 'character', label: 'Character' },
+  { id: 'voice-lab', label: 'Voice Lab' },
   { id: 'ai', label: 'AI' },
   { id: 'twitch', label: 'Twitch' },
   { id: 'context', label: 'Memory' },
@@ -165,10 +175,13 @@ export function SettingsPanel({
   onRefreshSavedVrmModels,
   onRefreshRemoteVoices,
   onRefreshVoices,
+  onApplyPersonaVoice,
+  onDeleteVoiceLabVoice,
   onResetContext,
   onResetTwitchState,
   onRunMemoryAgent,
   onSavePersona,
+  onSaveVoiceLabVoice,
   onSelectVoice,
   onSetTwitchChannel,
   onSpeakLastReply,
@@ -177,7 +190,9 @@ export function SettingsPanel({
   onTabChange,
   onTestVoice,
   onToggleChatOverlay,
+  onUseCurrentVoiceAsPersonaDefault,
   open,
+  personaVoiceBindings,
   personas,
   savedVrmModels,
   savedVrmStatus,
@@ -197,6 +212,7 @@ export function SettingsPanel({
   remoteTtsVoices,
   remoteVoicesError,
   remoteVoicesLoading,
+  voiceLabVoices,
   twitchAiModeLabel,
   twitchChannel,
   twitchConnectionLabel,
@@ -238,6 +254,19 @@ export function SettingsPanel({
         onDeletePersona={onDeletePersona}
         onSavePersona={onSavePersona}
         personas={personas}
+      />
+    ) : activeTab === 'voice-lab' ? (
+      <VoiceLabTab
+        activePersona={activePersona}
+        aiSettings={aiSettings}
+        onApplyPersonaVoice={onApplyPersonaVoice}
+        onDeleteVoice={onDeleteVoiceLabVoice}
+        onSaveVoice={onSaveVoiceLabVoice}
+        onUseCurrentVoiceAsPersonaDefault={onUseCurrentVoiceAsPersonaDefault}
+        personaVoiceBindings={personaVoiceBindings}
+        personas={personas}
+        ttsVoices={ttsVoices}
+        voiceLabVoices={voiceLabVoices}
       />
     ) : activeTab === 'ai' ? (
       <AiTab

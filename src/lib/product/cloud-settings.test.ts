@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createDefaultAiSettings,
+  createDefaultPersonaVoiceBindings,
   createDefaultPersonas,
   createDefaultUiState,
 } from '../chat/defaults';
@@ -25,6 +26,8 @@ describe('cloud settings adapter', () => {
 
     expect(records.map((record) => record.key)).toEqual([
       'personas',
+      'personaVoiceBindings',
+      'voiceLabVoices',
       'character.personaId',
       'aiSettings',
       'uiState',
@@ -139,6 +142,7 @@ function createState(): PersistedChatState {
     ],
     currentBundledModelId: 'neuro-sama',
     currentCustomVrmModelId: '',
+    personaVoiceBindings: createDefaultPersonaVoiceBindings(),
     personas: createDefaultPersonas(),
     relationshipMemories: {},
     relationshipMemory: {
@@ -164,5 +168,6 @@ function createState(): PersistedChatState {
     twitchChannel: 'subsect',
     uiState: createDefaultUiState(),
     visualSettings: createDefaultVisualSettings(),
+    voiceLabVoices: [],
   };
 }

@@ -20,6 +20,8 @@ export type PersonaProfile = {
 export type PersonaDraft = Omit<PersonaProfile, 'id'>;
 
 export type TtsProvider = 'piper' | 'fish-speech' | 'inworld';
+export type VoiceCreationProvider = 'inworld' | 'orpheus';
+export type PersonaVoiceProvider = TtsProvider | VoiceCreationProvider;
 export type RemoteTtsMode = 'live-bridge' | 'full-response' | 'sentence-chunks';
 export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 export type FishSpeechLatency = 'balanced' | 'normal';
@@ -57,6 +59,42 @@ export type AiSettings = {
   inworldBufferCharThreshold: number;
   ttsPlaybackRate: number;
   ttsVolume: number;
+};
+
+export type PersonaVoiceBinding = {
+  customVoiceId?: string;
+  label: string;
+  modelId?: string;
+  provider: PersonaVoiceProvider;
+  updatedAt: number;
+  voiceId: string;
+};
+
+export type VoiceLabSample = {
+  fileName: string;
+  lastModified?: number;
+  mimeType: string;
+  size: number;
+};
+
+export type VoiceLabVoice = {
+  accent: string;
+  ageVibe: string;
+  assignedPersonaIds: string[];
+  createdAt: number;
+  description: string;
+  emotionalTone: string;
+  expressiveness: number;
+  id: string;
+  modelId: string;
+  name: string;
+  provider: VoiceCreationProvider;
+  providerVoiceId: string;
+  sample: VoiceLabSample | null;
+  speakingStyle: string;
+  stability: number;
+  status: 'draft' | 'ready';
+  updatedAt: number;
 };
 
 export type RelationshipStage = 'new' | 'familiar' | 'close';
@@ -170,6 +208,8 @@ export type PersistedChatState = {
   chatHistory: ChatMessage[];
   relationshipMemory: RelationshipMemory;
   relationshipMemories: Record<string, RelationshipMemory>;
+  personaVoiceBindings: Record<string, PersonaVoiceBinding>;
+  voiceLabVoices: VoiceLabVoice[];
   uiState: UiState;
   activeTab: SettingsTabId;
   currentBundledModelId: string;

@@ -1,5 +1,13 @@
 import { STORAGE_KEYS } from '../chat/defaults';
-import type { AiSettings, PersistedChatState, PersonaProfile, UiState } from '../chat/types';
+import type {
+  AiSettings,
+  PersistedChatState,
+  PersonaProfile,
+  PersonaVoiceBinding,
+  UiState,
+  VoiceLabSample,
+  VoiceLabVoice,
+} from '../chat/types';
 import type { SequencerSettings, VisualSettings } from '../menu/types';
 import type { SyncedSettingRecord } from './byok';
 import { assertSettingCanSync, classifyByokSetting } from './byok';
@@ -9,11 +17,13 @@ export type CloudSyncSettingKey =
   | 'aiSettings'
   | 'character.personaId'
   | 'character.vrmModelId'
+  | 'personaVoiceBindings'
   | 'personas'
   | 'scene.twitchChannel'
   | 'sequencerSettings'
   | 'uiState'
-  | 'visualSettings';
+  | 'visualSettings'
+  | 'voiceLabVoices';
 
 export type CloudSettingPayload = {
   key: CloudSyncSettingKey;
@@ -24,6 +34,14 @@ const SAFE_STATE_TO_CLOUD_SETTINGS = [
   {
     key: 'personas',
     read: (state: PersistedChatState) => state.personas,
+  },
+  {
+    key: 'personaVoiceBindings',
+    read: (state: PersistedChatState) => state.personaVoiceBindings,
+  },
+  {
+    key: 'voiceLabVoices',
+    read: (state: PersistedChatState) => state.voiceLabVoices,
   },
   {
     key: 'character.personaId',
@@ -149,6 +167,12 @@ export function applyCloudSettingRecords(
         }
         break;
       }
+      case 'personaVoiceBindings':
+        next.personaVoiceBindings = normalizePersonaVoiceBindings(value);
+        break;
+      case 'voiceLabVoices':
+        next.voiceLabVoices = normalizeVoiceLabVoices(value);
+        break;
       case 'character.personaId':
         if (typeof value === 'string' && value.trim()) {
           next.activePersonaId = value.trim();
@@ -234,6 +258,122 @@ function normalizePersonas(value: unknown): PersonaProfile[] {
       } satisfies PersonaProfile;
     })
     .filter((persona): persona is PersonaProfile => Boolean(persona));
+}
+
+function normalizePersonaVoiceBindings(value: unknown): Record<string, PersonaVoiceBinding> {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  const entries: Array<[string, PersonaVoiceBinding]> = [];
+  for (const [personaId, rawBinding] of Object.entries(value as Record<string, unknown>)) {
+    if (!isPlainObject(rawBinding)) {
+      continue;
+    }
+    const source = rawBinding as Partial<PersonaVoiceBinding>;
+    const provider = source.provider;
+    const voiceId = String(source.voiceId ?? '').trim();
+    if (
+      !voiceId ||
+      (provider !== 'piper' &&
+        provider !== 'fish-speech' &&
+        provider !== 'inworld' &&
+        provider !== 'orpheus')
+    ) {
+      continue;
+    }
+    entries.push([
+      personaId,
+      {
+        customVoiceId:
+          typeof source.customVoiceId === 'string' && source.customVoiceId.trim()
+            ? source.customVoiceId.trim()
+            : undefined,
+        label: String(source.label ?? voiceId),
+        modelId:
+          typeof source.modelId === 'string' && source.modelId.trim()
+            ? source.modelId.trim()
+            : undefined,
+        provider,
+        updatedAt:
+          typeof source.updatedAt === 'number' && Number.isFinite(source.updatedAt)
+            ? source.updatedAt
+            : 0,
+        voiceId,
+      },
+    ]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function normalizeVoiceLabVoices(value: unknown): VoiceLabVoice[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item): VoiceLabVoice | null => {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+      const source = item as Partial<VoiceLabVoice>;
+      if (
+        typeof source.id !== 'string' ||
+        typeof source.name !== 'string' ||
+        (source.provider !== 'inworld' && source.provider !== 'orpheus')
+      ) {
+        return null;
+      }
+      return {
+        accent: String(source.accent ?? ''),
+        ageVibe: String(source.ageVibe ?? ''),
+        assignedPersonaIds: Array.isArray(source.assignedPersonaIds)
+          ? source.assignedPersonaIds.map(String)
+          : [],
+        createdAt:
+          typeof source.createdAt === 'number' && Number.isFinite(source.createdAt)
+            ? source.createdAt
+            : 0,
+        description: String(source.description ?? ''),
+        emotionalTone: String(source.emotionalTone ?? ''),
+        expressiveness:
+          typeof source.expressiveness === 'number' && Number.isFinite(source.expressiveness)
+            ? source.expressiveness
+            : 0.65,
+        id: source.id,
+        modelId: String(source.modelId ?? ''),
+        name: source.name,
+        provider: source.provider,
+        providerVoiceId: String(source.providerVoiceId ?? ''),
+        sample: normalizeVoiceLabSample(source.sample),
+        speakingStyle: String(source.speakingStyle ?? ''),
+        stability:
+          typeof source.stability === 'number' && Number.isFinite(source.stability)
+            ? source.stability
+            : 0.5,
+        status: source.status === 'ready' ? 'ready' : 'draft',
+        updatedAt:
+          typeof source.updatedAt === 'number' && Number.isFinite(source.updatedAt)
+            ? source.updatedAt
+            : 0,
+      } satisfies VoiceLabVoice;
+    })
+    .filter((voice): voice is VoiceLabVoice => Boolean(voice));
+}
+
+function normalizeVoiceLabSample(value: unknown): VoiceLabSample | null {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const source = value as Partial<VoiceLabSample>;
+  const sample: VoiceLabSample = {
+    fileName: String(source.fileName ?? ''),
+    mimeType: String(source.mimeType ?? ''),
+    size: typeof source.size === 'number' && Number.isFinite(source.size) ? source.size : 0,
+  };
+  if (typeof source.lastModified === 'number' && Number.isFinite(source.lastModified)) {
+    sample.lastModified = source.lastModified;
+  }
+  return sample;
 }
 
 function normalizeUiState(value: unknown, fallback: UiState): UiState {

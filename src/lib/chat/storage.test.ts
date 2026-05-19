@@ -3,6 +3,7 @@ import {
   DEFAULT_PERSONA,
   STORAGE_KEYS,
   createDefaultAiSettings,
+  createDefaultPersonaVoiceBindings,
   createDefaultPersonas,
   createDefaultRelationshipMemory,
   createDefaultUiState,
@@ -151,6 +152,16 @@ describe('chat settings persistence', () => {
       ],
       currentBundledModelId: 'hikari-chan',
       currentCustomVrmModelId: 'custom-vrm-test-avatar',
+      personaVoiceBindings: {
+        [DEFAULT_PERSONA.id]: {
+          customVoiceId: 'voice-lab-1',
+          label: 'Custom Neuro',
+          modelId: 'inworld-tts-2',
+          provider: 'inworld',
+          updatedAt: 1778889600000,
+          voiceId: 'inworld-custom-neuro',
+        },
+      },
       personas,
       relationshipMemories: {
         'local:persona:neuro-sama': {
@@ -172,6 +183,32 @@ describe('chat settings persistence', () => {
         menuOpen: true,
       },
       visualSettings,
+      voiceLabVoices: [
+        {
+          accent: 'neutral',
+          ageVibe: 'young adult',
+          assignedPersonaIds: [DEFAULT_PERSONA.id],
+          createdAt: 1778889500000,
+          description: 'Dry streamer voice.',
+          emotionalTone: 'sarcastic',
+          expressiveness: 0.72,
+          id: 'voice-lab-1',
+          modelId: 'inworld-tts-2',
+          name: 'Custom Neuro',
+          provider: 'inworld',
+          providerVoiceId: 'inworld-custom-neuro',
+          sample: {
+            fileName: 'sample.wav',
+            lastModified: 1778889400000,
+            mimeType: 'audio/wav',
+            size: 12345,
+          },
+          speakingStyle: 'fast dry banter',
+          stability: 0.58,
+          status: 'ready',
+          updatedAt: 1778889600000,
+        },
+      ],
     };
 
     await savePersistedChatState(state);
@@ -200,6 +237,15 @@ describe('chat settings persistence', () => {
     expect(loaded.relationshipMemories['local:persona:neuro-sama']?.summary).toBe(
       'local scope summary',
     );
+    expect(loaded.personaVoiceBindings[DEFAULT_PERSONA.id]).toMatchObject({
+      provider: 'inworld',
+      voiceId: 'inworld-custom-neuro',
+    });
+    expect(loaded.voiceLabVoices[0]).toMatchObject({
+      id: 'voice-lab-1',
+      provider: 'inworld',
+      providerVoiceId: 'inworld-custom-neuro',
+    });
   });
 
   it('ignores retired post-processing settings from older saved state', async () => {
@@ -247,6 +293,7 @@ describe('chat settings persistence', () => {
       chatHistory: [],
       currentBundledModelId: '',
       currentCustomVrmModelId: '',
+      personaVoiceBindings: createDefaultPersonaVoiceBindings(),
       personas: editedPersonas,
       relationshipMemories: {},
       relationshipMemory: createDefaultRelationshipMemory(),
@@ -254,11 +301,14 @@ describe('chat settings persistence', () => {
       sequencerSettings: createDefaultSequencerSettings(),
       uiState: createDefaultUiState(),
       visualSettings: createDefaultVisualSettings(),
+      voiceLabVoices: [],
     };
 
     await savePersistedChatState(state);
     const loaded = await loadPersistedChatState();
-    const editedDefaultPersona = loaded.personas.find((persona) => persona.id === DEFAULT_PERSONA.id);
+    const editedDefaultPersona = loaded.personas.find(
+      (persona) => persona.id === DEFAULT_PERSONA.id,
+    );
 
     expect(loaded.activePersonaId).toBe(DEFAULT_PERSONA.id);
     expect(editedDefaultPersona).toMatchObject({

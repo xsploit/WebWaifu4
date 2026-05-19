@@ -6,6 +6,7 @@ export type SettingsTabId =
   | 'ai'
   | 'twitch'
   | 'context'
+  | 'voice-lab'
   | 'tts';
 
 export type CameraViewMode = 'full-body' | 'half-body';

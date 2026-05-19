@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createDefaultAiSettings, createDefaultRelationshipMemory } from '../chat/defaults';
+import {
+  createDefaultAiSettings,
+  createDefaultPersonaVoiceBindings,
+  createDefaultRelationshipMemory,
+} from '../chat/defaults';
 import type { PersistedChatState } from '../chat/types';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
 import {
@@ -18,6 +22,7 @@ function createState(): PersistedChatState {
     chatHistory: [],
     currentBundledModelId: '',
     currentCustomVrmModelId: 'custom-vrm-test',
+    personaVoiceBindings: createDefaultPersonaVoiceBindings(),
     personas: [
       {
         id: 'hikari-chan',
@@ -37,6 +42,7 @@ function createState(): PersistedChatState {
       menuOpen: false,
     },
     visualSettings: createDefaultVisualSettings(),
+    voiceLabVoices: [],
   };
 }
 
