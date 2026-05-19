@@ -8,6 +8,7 @@ import {
   getEnabledSupabaseOAuthProviders,
   requestSupabaseMagicLink,
 } from './supabase-auth-shell';
+import { getProductAuthCallbackUrl } from './auth-redirect';
 import { readSupabaseBrowserEnv } from './supabase-env';
 
 describe('Supabase auth shell', () => {
@@ -79,6 +80,19 @@ describe('Supabase auth shell', () => {
       ok: true,
       provider: 'github',
     });
+  });
+
+  it('can force a canonical public OAuth callback instead of the current localhost page', () => {
+    vi.stubEnv('VITE_PUBLIC_APP_URL', 'https://148-113-191-103.sslip.io/');
+
+    expect(getProductAuthCallbackUrl('http://localhost:3000/login')).toBe(
+      'https://148-113-191-103.sslip.io/auth/callback',
+    );
+
+    vi.unstubAllEnvs();
+    expect(getProductAuthCallbackUrl('http://localhost:3000/login')).toBe(
+      'http://localhost:3000/auth/callback',
+    );
   });
 
   it('does not build an OAuth redirect when cloud sync is unavailable', () => {

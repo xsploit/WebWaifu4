@@ -15,6 +15,7 @@ import type {
   SupabaseOAuthProvider,
   SupabasePublicConfig,
 } from '../../../lib/product/supabase-env';
+import { getProductAuthCallbackUrl } from '../../../lib/product/auth-redirect';
 
 type AccountTabProps = {
   accountMode: ByokAccountMode;
@@ -39,14 +40,6 @@ const LOCAL_PROVIDER_KEYS: LocalProviderKeyConfig[] = [
   { provider: 'inworld', keyName: 'inworld.apiKey', label: 'Inworld' },
   { provider: 'tavily', keyName: 'tavily.apiKey', label: 'Tavily' },
 ];
-
-function getBrowserRedirectUrl() {
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-
-  return new URL('/auth/callback', window.location.href).toString();
-}
 
 function formatList(values: readonly string[]) {
   return values.length > 0 ? values.join(', ') : 'none';
@@ -179,7 +172,7 @@ export function AccountTab({
       const result = await requestSupabaseMagicLink({
         config: supabaseConfig,
         email,
-        redirectTo: getBrowserRedirectUrl(),
+        redirectTo: getProductAuthCallbackUrl(),
       });
       if (mountedRef.current) {
         setLoginStatus(result.message);
@@ -195,7 +188,7 @@ export function AccountTab({
     const request = buildSupabaseOAuthRequest({
       config: { ...supabaseConfig, oauthProviders: enabledOAuthProviders },
       provider,
-      redirectTo: getBrowserRedirectUrl(),
+      redirectTo: getProductAuthCallbackUrl(),
     });
     if (!request.ok) {
       setLoginStatus(request.message);

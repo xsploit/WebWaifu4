@@ -26,6 +26,7 @@ import {
   requestSupabaseMagicLink,
 } from '../../lib/product/supabase-auth-shell';
 import type { SupabaseOAuthProvider, SupabasePublicConfig } from '../../lib/product/supabase-env';
+import { getProductAuthCallbackUrl } from '../../lib/product/auth-redirect';
 
 type ProductPagesProps = {
   accountMode: ByokAccountMode;
@@ -195,10 +196,7 @@ function LoginPage(
     const result = await requestSupabaseMagicLink({
       config: props.supabaseConfig,
       email,
-      redirectTo:
-        typeof window === 'undefined'
-          ? undefined
-          : new URL('/auth/callback', window.location.href).toString(),
+      redirectTo: getProductAuthCallbackUrl(),
     });
     setBusy(false);
     setStatus(result.message);
@@ -808,13 +806,6 @@ function ProductShell(props: ProductPagesProps & { children: ReactNode }) {
       <main className="product-main">{props.children}</main>
     </div>
   );
-}
-
-function getProductAuthCallbackUrl() {
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-  return new URL('/auth/callback', window.location.href).toString();
 }
 
 function getOAuthUnavailableMessage(
