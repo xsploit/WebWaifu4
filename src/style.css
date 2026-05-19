@@ -1825,29 +1825,27 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 /* ======================================================================
-   Product shell — Aethris-inspired top-nav hero layout (waifu/anime theme)
+   Product shell — main-app stream UI product routes
    ====================================================================== */
 
 .product-page {
-  --pp-bg-0: #0b0408;
-  --pp-bg-1: #160913;
-  --pp-bg-2: #1f0a18;
-  --pp-ink: #fff7f2;
-  --pp-muted: #d7aaa4;
-  --pp-dim: #8f7374;
-  --pp-pink: #ff4d8d;
-  --pp-crimson: #ff4156;
-  --pp-violet: #b266ff;
-  --pp-border: rgba(255, 120, 160, 0.18);
-  --pp-border-strong: rgba(255, 120, 160, 0.34);
-  --pp-surface: rgba(22, 12, 20, 0.66);
-  --pp-surface-soft: rgba(28, 16, 26, 0.5);
-  --pp-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  --pp-radius: 18px;
-  --pp-radius-sm: 12px;
-  --pp-font-display: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
-  --pp-font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --pp-font-mono: 'JetBrains Mono', Consolas, 'SFMono-Regular', Menlo, monospace;
+  --pp-bg-0: #02040a;
+  --pp-bg-1: #090307;
+  --pp-ink: var(--text-main);
+  --pp-muted: var(--text-muted);
+  --pp-dim: var(--text-dim);
+  --pp-accent: var(--c-text-accent);
+  --pp-warm: var(--c-warm);
+  --pp-border: var(--c-border);
+  --pp-border-strong: rgba(255, 65, 86, 0.44);
+  --pp-surface: rgba(10, 8, 11, 0.76);
+  --pp-surface-soft: rgba(6, 3, 8, 0.88);
+  --pp-shadow: 0 22px 56px rgba(0, 0, 0, 0.42);
+  --pp-radius: 6px;
+  --pp-radius-sm: 6px;
+  --pp-font-display: var(--font-ui);
+  --pp-font-ui: var(--font-tech);
+  --pp-font-mono: var(--font-tech);
 
   position: fixed;
   inset: 0;
@@ -1855,11 +1853,14 @@ input[type='range']::-webkit-slider-thumb {
   color: var(--pp-ink);
   font-family: var(--pp-font-ui);
   overflow: auto;
-  background:
-    radial-gradient(900px 600px at 80% -10%, rgba(178, 102, 255, 0.18), transparent 60%),
-    radial-gradient(800px 600px at -10% 20%, rgba(255, 77, 141, 0.16), transparent 65%),
-    radial-gradient(900px 700px at 50% 120%, rgba(255, 65, 86, 0.12), transparent 70%),
-    linear-gradient(180deg, var(--pp-bg-0) 0%, var(--pp-bg-1) 60%, var(--pp-bg-0) 100%);
+  background-color: var(--pp-bg-0);
+  background-image:
+    linear-gradient(180deg, rgba(2, 2, 6, 0.9), rgba(7, 1, 4, 0.94)),
+    radial-gradient(900px 600px at 10% -10%, rgba(255, 65, 86, 0.18), transparent 60%),
+    radial-gradient(860px 600px at 100% 20%, rgba(255, 179, 143, 0.08), transparent 62%),
+    url('/cdn-assets/backgrounds/red-stream-room.png');
+  background-position: center;
+  background-size: cover;
 }
 
 .product-page-glow {
@@ -1868,10 +1869,16 @@ input[type='range']::-webkit-slider-thumb {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(420px 220px at 14% 30%, rgba(255, 77, 141, 0.22), transparent 70%),
-    radial-gradient(520px 280px at 90% 70%, rgba(178, 102, 255, 0.18), transparent 70%);
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 65, 86, 0.035) 0,
+      rgba(255, 65, 86, 0.035) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    radial-gradient(420px 220px at 14% 30%, rgba(255, 65, 86, 0.16), transparent 70%);
   mix-blend-mode: screen;
-  opacity: 0.7;
+  opacity: 0.55;
 }
 
 /* --- Top nav ------------------------------------------------------- */
@@ -1884,7 +1891,7 @@ input[type='range']::-webkit-slider-thumb {
   align-items: center;
   gap: 18px;
   padding: 14px 28px;
-  background: linear-gradient(180deg, rgba(11, 4, 8, 0.85), rgba(11, 4, 8, 0.4));
+  background: linear-gradient(180deg, rgba(10, 6, 10, 0.92), rgba(6, 3, 8, 0.68));
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--pp-border);
@@ -1899,7 +1906,7 @@ input[type='range']::-webkit-slider-thumb {
   color: var(--pp-ink);
   cursor: pointer;
   font-family: var(--pp-font-display);
-  font-size: 1.1rem;
+  font-size: 1.02rem;
   padding: 4px 6px;
   letter-spacing: 0.01em;
 }
@@ -1910,14 +1917,14 @@ input[type='range']::-webkit-slider-thumb {
   justify-content: center;
   width: 30px;
   height: 30px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--pp-pink), var(--pp-violet));
-  color: #1a0612;
+  background: var(--pp-accent);
+  color: #110205;
   font-family: var(--pp-font-mono);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.04em;
-  box-shadow: 0 6px 20px rgba(255, 77, 141, 0.45);
+  box-shadow: 0 0 18px rgba(255, 65, 86, 0.42);
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
 .product-brand-name {
@@ -1959,7 +1966,7 @@ input[type='range']::-webkit-slider-thumb {
   font-weight: 500;
   letter-spacing: 0.01em;
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--pp-radius);
   white-space: nowrap;
   transition:
     background 0.15s ease,
@@ -1974,7 +1981,7 @@ input[type='range']::-webkit-slider-thumb {
 
 .product-navlink.is-active {
   color: var(--pp-ink);
-  background: rgba(255, 77, 141, 0.14);
+  background: rgba(255, 65, 86, 0.12);
   border-color: var(--pp-border-strong);
 }
 
@@ -1991,7 +1998,7 @@ input[type='range']::-webkit-slider-thumb {
   gap: 8px;
   border: 1px solid var(--pp-border);
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 999px;
+  border-radius: var(--pp-radius);
   color: var(--pp-muted);
   font-family: var(--pp-font-mono);
   font-size: 0.66rem;
@@ -2014,14 +2021,14 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .product-mode-pill.is-local .product-mode-dot {
-  background: var(--pp-pink);
-  box-shadow: 0 0 10px rgba(255, 77, 141, 0.7);
+  background: var(--pp-accent);
+  box-shadow: 0 0 10px rgba(255, 65, 86, 0.7);
 }
 
 .product-ghost {
   background: transparent;
   border: 1px solid var(--pp-border);
-  border-radius: 999px;
+  border-radius: var(--pp-radius);
   color: var(--pp-ink);
   cursor: pointer;
   font-family: var(--pp-font-ui);
@@ -2063,8 +2070,8 @@ input[type='range']::-webkit-slider-thumb {
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius);
   background:
-    radial-gradient(420px 220px at 0% 0%, rgba(255, 77, 141, 0.16), transparent 70%),
-    radial-gradient(380px 240px at 100% 100%, rgba(178, 102, 255, 0.18), transparent 72%),
+    radial-gradient(420px 220px at 0% 0%, rgba(255, 65, 86, 0.16), transparent 70%),
+    radial-gradient(380px 240px at 100% 100%, rgba(255, 179, 143, 0.12), transparent 72%),
     linear-gradient(180deg, var(--pp-surface) 0%, var(--pp-surface-soft) 100%);
   box-shadow: var(--pp-shadow);
   overflow: hidden;
@@ -2074,8 +2081,8 @@ input[type='range']::-webkit-slider-thumb {
   min-height: min(620px, calc(100vh - 150px));
   grid-template-columns: minmax(0, 0.96fr) minmax(320px, 0.84fr);
   background:
-    radial-gradient(520px 280px at 16% 24%, rgba(255, 77, 141, 0.16), transparent 70%),
-    radial-gradient(420px 280px at 72% 55%, rgba(178, 102, 255, 0.14), transparent 70%),
+    radial-gradient(520px 280px at 16% 24%, rgba(255, 65, 86, 0.16), transparent 70%),
+    radial-gradient(420px 280px at 72% 55%, rgba(255, 179, 143, 0.1), transparent 70%),
     linear-gradient(180deg, rgba(14, 6, 12, 0.58), rgba(8, 3, 9, 0.72));
 }
 
@@ -2097,7 +2104,7 @@ input[type='range']::-webkit-slider-thumb {
   align-items: center;
   gap: 8px;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: var(--pp-radius);
   border: 1px solid rgba(77, 255, 176, 0.32);
   background: rgba(77, 255, 176, 0.08);
   color: #b8ffd9;
@@ -2132,7 +2139,7 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .product-display-accent {
-  background: linear-gradient(120deg, var(--pp-pink) 0%, var(--pp-violet) 70%, #ffb3d1 100%);
+  background: linear-gradient(120deg, var(--pp-accent) 0%, var(--pp-warm) 82%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -2158,7 +2165,7 @@ input[type='range']::-webkit-slider-thumb {
 
 .product-eyebrow {
   margin: 0;
-  color: var(--pp-pink);
+  color: var(--pp-accent);
   font-family: var(--pp-font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.18em;
@@ -2179,7 +2186,7 @@ input[type='range']::-webkit-slider-thumb {
   background:
     radial-gradient(60% 80% at 60% 40%, rgba(255, 255, 255, 0.08), transparent 70%),
     url('/thumbnail.jpg') center / cover no-repeat,
-    linear-gradient(135deg, rgba(255, 77, 141, 0.22), rgba(178, 102, 255, 0.22));
+    linear-gradient(135deg, rgba(255, 65, 86, 0.22), rgba(255, 179, 143, 0.12));
   border: 1px solid var(--pp-border);
   box-shadow:
     inset 0 0 40px rgba(0, 0, 0, 0.45),
@@ -2188,7 +2195,7 @@ input[type='range']::-webkit-slider-thumb {
 
 .product-home-art {
   min-height: 470px;
-  border-radius: 34px;
+  border-radius: var(--pp-radius);
   background-position: center;
   transform: translateY(8px);
 }
@@ -2215,7 +2222,7 @@ input[type='range']::-webkit-slider-thumb {
   min-height: 32px;
   padding: 6px 12px;
   border: 1px solid var(--pp-border);
-  border-radius: 999px;
+  border-radius: var(--pp-radius);
   background: rgba(255, 255, 255, 0.035);
   color: var(--pp-muted);
   font-family: var(--pp-font-mono);
@@ -2242,7 +2249,7 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .product-feature span {
-  color: var(--pp-pink);
+  color: var(--pp-accent);
   font-family: var(--pp-font-mono);
   font-size: 0.68rem;
   letter-spacing: 0.14em;
@@ -2269,7 +2276,7 @@ input[type='range']::-webkit-slider-thumb {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: 0;
   cursor: pointer;
   font-family: var(--pp-font-ui);
   font-size: 0.86rem;
@@ -2283,13 +2290,14 @@ input[type='range']::-webkit-slider-thumb {
     color 0.15s ease,
     transform 0.15s ease,
     box-shadow 0.15s ease;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 }
 
 .product-primary {
-  background: linear-gradient(135deg, var(--pp-pink) 0%, var(--pp-violet) 100%);
-  border: 1px solid rgba(255, 77, 141, 0.6);
-  color: #190512;
-  box-shadow: 0 12px 28px rgba(255, 77, 141, 0.28);
+  background: linear-gradient(135deg, var(--pp-accent) 0%, var(--pp-warm) 100%);
+  border: 1px solid rgba(255, 65, 86, 0.62);
+  color: #170204;
+  box-shadow: 0 12px 28px rgba(255, 65, 86, 0.25);
 }
 
 .product-primary:hover:not(:disabled) {
@@ -2394,9 +2402,9 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .product-card-cta {
-  border-color: rgba(178, 102, 255, 0.32);
+  border-color: rgba(255, 179, 143, 0.32);
   background:
-    radial-gradient(300px 180px at 100% 0%, rgba(178, 102, 255, 0.18), transparent 70%),
+    radial-gradient(300px 180px at 100% 0%, rgba(255, 179, 143, 0.14), transparent 70%),
     var(--pp-surface);
 }
 
@@ -2429,7 +2437,7 @@ input[type='range']::-webkit-slider-thumb {
 .product-field select {
   background: rgba(0, 0, 0, 0.32);
   border: 1px solid var(--pp-border);
-  border-radius: 10px;
+  border-radius: var(--pp-radius);
   color: var(--pp-ink);
   font-family: var(--pp-font-ui);
   font-size: 0.92rem;
@@ -2443,8 +2451,8 @@ input[type='range']::-webkit-slider-thumb {
 .product-field input:focus,
 .product-field select:focus {
   outline: none;
-  border-color: var(--pp-pink);
-  box-shadow: 0 0 0 3px rgba(255, 77, 141, 0.18);
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 3px rgba(255, 65, 86, 0.18);
 }
 
 .product-url-box {
@@ -2488,7 +2496,7 @@ input[type='range']::-webkit-slider-thumb {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--pp-radius);
   border: 1px solid var(--pp-border);
   background: rgba(255, 255, 255, 0.03);
 }
@@ -2508,12 +2516,12 @@ input[type='range']::-webkit-slider-thumb {
   color: #b8ffd9;
   border: 1px solid rgba(77, 255, 176, 0.32);
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--pp-radius);
 }
 
 .product-provider-row strong.is-safe {
-  color: #c5b3ff;
-  border-color: rgba(178, 102, 255, 0.36);
+  color: #ffd0bf;
+  border-color: rgba(255, 179, 143, 0.36);
 }
 
 .product-check-item {
@@ -2539,9 +2547,9 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .product-check-item.is-done span {
-  background: linear-gradient(135deg, var(--pp-pink), var(--pp-violet));
+  background: var(--pp-accent);
   border-color: transparent;
-  box-shadow: 0 0 10px rgba(255, 77, 141, 0.45);
+  box-shadow: 0 0 10px rgba(255, 65, 86, 0.45);
 }
 
 /* --- Responsive ---------------------------------------------------- */
