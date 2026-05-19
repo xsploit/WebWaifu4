@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { issueOverlayToken, verifyOverlayToken } from './overlay-token.js';
+import {
+  issueOverlayToken,
+  readOverlayTokenFromRequest,
+  verifyOverlayToken,
+} from './overlay-token.js';
 import type { SupabaseServerConfig } from '../../../src/lib/product/supabase-env.js';
 
 const config: SupabaseServerConfig = {
@@ -34,5 +38,27 @@ describe('BYOK overlay tokens', () => {
       workspaceId: 'workspace-1',
     });
     expect(verifyOverlayToken({ ...config, overlaySigningSecret: 'wrong' }, token)).toBeNull();
+  });
+
+  it('reads overlay tokens only from Authorization headers', () => {
+    expect(
+      readOverlayTokenFromRequest({
+        headers: {
+          authorization: 'Bearer header-token',
+        },
+        query: {
+          token: 'query-token',
+        },
+      }),
+    ).toBe('header-token');
+
+    expect(
+      readOverlayTokenFromRequest({
+        headers: {},
+        query: {
+          token: 'query-token',
+        },
+      }),
+    ).toBeNull();
   });
 });

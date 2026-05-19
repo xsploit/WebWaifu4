@@ -55,11 +55,6 @@ export function readOverlayTokenFromRequest(input: {
   headers?: Record<string, string | string[] | undefined>;
   query?: Record<string, string | string[] | undefined>;
 }) {
-  const queryToken = readQueryParam(input, 'token');
-  if (queryToken) {
-    return queryToken;
-  }
-
   const authorization = readHeader(input, 'authorization');
   const match = authorization?.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || null;
@@ -96,17 +91,6 @@ function base64UrlEncode(value: string) {
 
 function base64UrlDecode(value: string) {
   return Buffer.from(value, 'base64url').toString('utf8');
-}
-
-function readQueryParam(
-  request: { query?: Record<string, string | string[] | undefined> },
-  name: string,
-) {
-  const value = request.query?.[name];
-  if (Array.isArray(value)) {
-    return value[0]?.trim() || null;
-  }
-  return value?.trim() || null;
 }
 
 function readHeader(

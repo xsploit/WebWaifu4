@@ -59,7 +59,7 @@ export function createBrowserProviderKeyVault(input: {
       if (!storage) {
         return [];
       }
-      return readIndex(storage)
+      return readWorkspaceIndex(storage, workspaceId)
         .map((id) => readSecretRecord(storage, id))
         .filter((record): record is ProviderSecretRecord => Boolean(record))
         .map((record) => ({ ...record }))
@@ -93,7 +93,7 @@ export function createBrowserProviderKeyVault(input: {
       if (!storage) {
         return [];
       }
-      return readIndex(storage)
+      return readWorkspaceIndex(storage, workspaceId)
         .map((id) => readSecretRecord(storage, id))
         .filter((record): record is ProviderSecretRecord => Boolean(record))
         .map(stripSecret)
@@ -207,6 +207,11 @@ function readIndex(storage: ProviderKeyVaultStorage) {
   } catch {
     return [];
   }
+}
+
+function readWorkspaceIndex(storage: ProviderKeyVaultStorage, workspaceId: string) {
+  const prefix = `${workspaceId}:`;
+  return readIndex(storage).filter((id) => id.startsWith(prefix));
 }
 
 function writeIndex(storage: ProviderKeyVaultStorage, ids: string[]) {

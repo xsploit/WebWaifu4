@@ -1,5 +1,4 @@
 import { createServer } from 'node:http';
-import { createHash } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
@@ -322,10 +321,6 @@ function normalizeRuntimeLlmProvider(value: unknown) {
   return value === 'openrouter-responses' ? 'openrouter-responses' : 'openai-responses';
 }
 
-function hashSecret(value: string) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
 function getRuntimeChatProvider(
   baseConfig: StreamBotConfig,
   request: IncomingMessage,
@@ -335,10 +330,6 @@ function getRuntimeChatProvider(
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
   const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerProxy);
-  const hasBrowserTavilyKey = Boolean(getHeaderSecret(request, 'x-yourwifey-tavily-provider-key'));
-  if (!apiKey && !hasBrowserTavilyKey) {
-    return allowServerProxy && baseConfig.providerProxyEnabled ? provider : null;
-  }
   const effectiveApiKey = apiKey || (allowServerProxy ? baseConfig.aiApiKey : '');
   if (!effectiveApiKey) {
     return null;
@@ -367,19 +358,7 @@ function getRuntimeChatProvider(
       providerName === 'openrouter-responses' ? '' : baseConfig.openAiWebSocketUrl,
     providerProxyEnabled: true,
   };
-  const cacheKey = [
-    providerName,
-    runtimeConfig.aiApiBaseUrl,
-    runtimeConfig.openAiStateMode,
-    runtimeConfig.openAiStore ? 'store' : 'no-store',
-    runtimeConfig.tavilyApiKey ? hashSecret(runtimeConfig.tavilyApiKey) : 'no-tools',
-    hashSecret(effectiveApiKey),
-  ].join('|');
-  let runtimeProvider = runtimeProviderCache.get(cacheKey);
-  if (!runtimeProvider) {
-    runtimeProvider = createProvider(runtimeConfig);
-    runtimeProviderCache.set(cacheKey, runtimeProvider);
-  }
+  const runtimeProvider = createProvider(runtimeConfig);
   runtimeProvider.setModel?.(runtimeConfig.aiModel);
   return runtimeProvider;
 }
@@ -872,7 +851,6 @@ async function handleByokApiRoute(
 
 const config = loadConfig();
 const provider = createProvider(config);
-const runtimeProviderCache = new Map<string, ChatProvider>();
 const serverTwitchMode = config.twitchMock ? 'client-direct' : 'server-irc';
 
 let mockSource: MockTwitchChatSource | null = null;

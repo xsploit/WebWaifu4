@@ -10,6 +10,7 @@ import {
 } from './supabase-auth-shell';
 import { getProductAuthCallbackUrl } from './auth-redirect';
 import { readSupabaseBrowserEnv } from './supabase-env';
+import { SUPABASE_AUTH_STATE_STORAGE_KEY } from './supabase-auth-session';
 
 describe('Supabase auth shell', () => {
   it('keeps the account shell local-only when Supabase browser env is absent', () => {
@@ -82,6 +83,48 @@ describe('Supabase auth shell', () => {
     });
   });
 
+  it('stores OAuth callback state when browser storage is available', () => {
+    const storage = createStorage();
+    const config = readSupabaseBrowserEnv({
+      VITE_SUPABASE_URL: 'https://project-ref.supabase.co/',
+      VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+      VITE_SUPABASE_OAUTH_PROVIDERS: 'google,github',
+    });
+
+    const request = buildSupabaseOAuthRequest({
+      config,
+      provider: 'github',
+      redirectTo: 'https://overlay.example.test/auth/callback',
+      storage,
+    });
+
+    expect(request).toMatchObject({ ok: true });
+    expect(request.ok && new URL(request.url).searchParams.get('state')).toBeTruthy();
+    expect(storage.getItem(SUPABASE_AUTH_STATE_STORAGE_KEY)).toContain(
+      request.ok ? new URL(request.url).searchParams.get('state') : '',
+    );
+  });
+
+  it('adds callback state to magic-link redirect URLs when storage is available', () => {
+    const storage = createStorage();
+    const request = buildSupabaseMagicLinkRequest({
+      config: readSupabaseBrowserEnv({
+        VITE_SUPABASE_URL: 'https://project-ref.supabase.co',
+        VITE_SUPABASE_ANON_KEY: 'anon-public-key',
+      }),
+      email: 'streamer@example.com',
+      redirectTo: 'https://overlay.example.test/auth/callback',
+      storage,
+    });
+
+    expect(request).toMatchObject({ ok: true });
+    const body = request.ok ? JSON.parse(String(request.init.body)) : {};
+    expect(new URL(String(body.email_redirect_to)).searchParams.get('yw_auth_state')).toBeTruthy();
+    expect(storage.getItem(SUPABASE_AUTH_STATE_STORAGE_KEY)).toContain(
+      new URL(String(body.email_redirect_to)).searchParams.get('yw_auth_state'),
+    );
+  });
+
   it('can force a canonical public OAuth callback instead of the current localhost page', () => {
     vi.stubEnv('VITE_PUBLIC_APP_URL', 'https://148-113-191-103.sslip.io/');
 
@@ -90,9 +133,11 @@ describe('Supabase auth shell', () => {
     );
 
     vi.unstubAllEnvs();
+    vi.stubEnv('VITE_PUBLIC_APP_URL', '');
     expect(getProductAuthCallbackUrl('http://localhost:3000/login')).toBe(
       'http://localhost:3000/auth/callback',
     );
+    vi.unstubAllEnvs();
   });
 
   it('does not build an OAuth redirect when cloud sync is unavailable', () => {
@@ -231,3 +276,16 @@ describe('Supabase auth shell', () => {
     });
   });
 });
+
+function createStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+}

@@ -2,6 +2,7 @@ import type { SupabaseAuthIdentity } from './account-mode.js';
 import type { SupabasePublicConfig } from './supabase-env.js';
 
 export const SUPABASE_AUTH_SESSION_STORAGE_KEY = 'yourwifey.byok.supabase.authSession.v1';
+export const SUPABASE_AUTH_STATE_STORAGE_KEY = 'yourwifey.byok.supabase.authState.v1';
 
 export type SupabaseAuthSession = {
   accessToken: string;
@@ -19,6 +20,7 @@ export type SupabaseAuthCallbackResult =
       kind: 'session';
       cleanUrl: string;
       session: SupabaseAuthSession;
+      state: string | null;
     }
   | {
       kind: 'pkce-code';
@@ -58,6 +60,12 @@ export type SupabaseAuthHydrationResult =
 type SupabaseAuthStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
 type SupabaseAuthLifecycleWindow = Pick<Window, 'addEventListener' | 'removeEventListener'>;
 
+type SupabaseAuthPendingState = {
+  expiresAt: number;
+  issuedAt: number;
+  state: string;
+};
+
 export type SupabaseAuthSessionLifecycle = {
   stop: () => void;
 };
@@ -73,9 +81,13 @@ const CALLBACK_PARAM_NAMES = [
   'provider_refresh_token',
   'provider_token',
   'refresh_token',
+  'state',
   'token_type',
   'type',
+  'yw_auth_state',
 ] as const;
+
+const SUPABASE_AUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 const FORBIDDEN_USER_METADATA_KEY_PATTERN =
   /(?:api[_-]?key|apikey|secret|password|service[_-]?role|jwt|token|credential)/i;
@@ -91,6 +103,12 @@ export function parseSupabaseAuthCallbackUrl(
 
   const hashParams = readHashParams(parsed);
   if (hasKnownCallbackParam(hashParams)) {
+    if (!hashParams.has('state')) {
+      const state = parsed.searchParams.get('state') ?? parsed.searchParams.get('yw_auth_state');
+      if (state) {
+        hashParams.set('state', state);
+      }
+    }
     return parseCallbackParams(hashParams, cleanUrl(parsed, 'hash'), nowMs);
   }
 
@@ -144,6 +162,37 @@ export function clearPersistedSupabaseAuthSession(
   storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
 ) {
   storage?.removeItem(SUPABASE_AUTH_SESSION_STORAGE_KEY);
+}
+
+export function createSupabaseAuthRequestState(
+  storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
+  nowMs = Date.now(),
+) {
+  if (!storage) {
+    return null;
+  }
+  const state = createRandomState();
+  const pending: SupabaseAuthPendingState = {
+    expiresAt: nowMs + SUPABASE_AUTH_STATE_TTL_MS,
+    issuedAt: nowMs,
+    state,
+  };
+  storage.setItem(SUPABASE_AUTH_STATE_STORAGE_KEY, JSON.stringify(pending));
+  return state;
+}
+
+export function consumeSupabaseAuthRequestState(
+  returnedState: string | null | undefined,
+  storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
+  nowMs = Date.now(),
+) {
+  if (!storage || !returnedState?.trim()) {
+    return false;
+  }
+
+  const pending = normalizePendingState(storage.getItem(SUPABASE_AUTH_STATE_STORAGE_KEY));
+  storage.removeItem(SUPABASE_AUTH_STATE_STORAGE_KEY);
+  return Boolean(pending && pending.expiresAt > nowMs && pending.state === returnedState.trim());
 }
 
 export function getSupabaseAuthSessionExpiryDelayMs(
@@ -357,6 +406,15 @@ export async function hydrateSupabaseAuthSession(input: {
       ? callback.session
       : loadPersistedSupabaseAuthSession(storage, nowMs);
   if (callback?.kind === 'session') {
+    if (!consumeSupabaseAuthRequestState(callback.state, storage, nowMs)) {
+      clearPersistedSupabaseAuthSession(storage);
+      return {
+        status: 'callback-error',
+        cleanUrl,
+        message: 'Supabase login callback state did not match this browser session.',
+        user: null,
+      };
+    }
     persistSupabaseAuthSession(callback.session, storage);
   }
 
@@ -460,6 +518,7 @@ function parseCallbackParams(
       kind: 'session',
       cleanUrl: cleanUrlValue,
       session,
+      state: normalizeOptionalString(params.get('state')) ?? null,
     };
   }
 
@@ -528,6 +587,35 @@ function normalizeSupabaseAuthSession(value: string | null): SupabaseAuthSession
   }
 }
 
+function normalizePendingState(value: string | null): SupabaseAuthPendingState | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<SupabaseAuthPendingState>;
+    const issuedAt = parsed.issuedAt;
+    const expiresAt = parsed.expiresAt;
+    if (
+      typeof parsed.state !== 'string' ||
+      !parsed.state.trim() ||
+      typeof issuedAt !== 'number' ||
+      !Number.isFinite(issuedAt) ||
+      typeof expiresAt !== 'number' ||
+      !Number.isFinite(expiresAt)
+    ) {
+      return null;
+    }
+    return {
+      expiresAt,
+      issuedAt,
+      state: parsed.state.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function normalizeSupabaseUserPayload(value: unknown): SupabaseAuthIdentity | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -571,6 +659,7 @@ function cleanUrl(url: URL, source: 'hash' | 'search') {
   const next = new URL(url.toString());
   if (source === 'hash') {
     next.hash = '';
+    CALLBACK_PARAM_NAMES.forEach((name) => next.searchParams.delete(name));
     return next.toString();
   }
 
@@ -592,4 +681,17 @@ function parseUrl(href: string) {
 
 function normalizeOptionalString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function createRandomState() {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(24);
+    cryptoApi.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

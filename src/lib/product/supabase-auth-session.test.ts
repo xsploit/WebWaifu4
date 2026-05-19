@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readSupabaseBrowserEnv } from './supabase-env';
 import {
+  SUPABASE_AUTH_STATE_STORAGE_KEY,
   SUPABASE_AUTH_SESSION_STORAGE_KEY,
   buildSupabaseUserRequest,
   clearPersistedSupabaseAuthSession,
+  consumeSupabaseAuthRequestState,
+  createSupabaseAuthRequestState,
   getSupabaseAuthSessionExpiryDelayMs,
   hydrateSupabaseAuthSession,
   loadPersistedSupabaseAuthSession,
@@ -54,6 +57,14 @@ describe('Supabase auth session hydration', () => {
 
   it('hydrates a Supabase auth identity through the public anon user endpoint', async () => {
     const storage = createStorage();
+    storage.setItem(
+      SUPABASE_AUTH_STATE_STORAGE_KEY,
+      JSON.stringify({
+        expiresAt: Date.parse('2026-05-15T12:10:00.000Z'),
+        issuedAt: Date.parse('2026-05-15T12:00:00.000Z'),
+        state: 'state-123',
+      }),
+    );
     const fetchImpl = vi.fn(async () => {
       return new Response(
         JSON.stringify({
@@ -71,7 +82,7 @@ describe('Supabase auth session hydration', () => {
     const result = await hydrateSupabaseAuthSession({
       config: configuredSupabase,
       fetchImpl,
-      href: 'https://overlay.example.test/settings#access_token=access-123&refresh_token=refresh-456&expires_in=3600',
+      href: 'https://overlay.example.test/settings#access_token=access-123&refresh_token=refresh-456&expires_in=3600&state=state-123',
       nowMs: Date.parse('2026-05-15T12:00:00.000Z'),
       storage,
     });
@@ -98,8 +109,43 @@ describe('Supabase auth session hydration', () => {
       }),
     );
     expect(storage.getItem(SUPABASE_AUTH_SESSION_STORAGE_KEY)).toContain('access-123');
+    expect(storage.getItem(SUPABASE_AUTH_STATE_STORAGE_KEY)).toBeNull();
     expect(JSON.stringify(result)).not.toContain('anon-public-key');
     expect(JSON.stringify(result)).not.toContain('metadata-value-that-must-not-copy');
+  });
+
+  it('rejects unsolicited callback tokens without a matching browser state', async () => {
+    const storage = createStorage();
+    const fetchImpl = vi.fn();
+
+    const result = await hydrateSupabaseAuthSession({
+      config: configuredSupabase,
+      fetchImpl,
+      href: 'https://overlay.example.test/settings#access_token=attacker-access&refresh_token=attacker-refresh&expires_in=3600',
+      nowMs: Date.parse('2026-05-15T12:00:00.000Z'),
+      storage,
+    });
+
+    expect(result).toMatchObject({
+      status: 'callback-error',
+      cleanUrl: 'https://overlay.example.test/settings',
+      user: null,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(storage.getItem(SUPABASE_AUTH_SESSION_STORAGE_KEY)).toBeNull();
+  });
+
+  it('creates and consumes one-time auth callback state', () => {
+    const storage = createStorage();
+    const state = createSupabaseAuthRequestState(storage, Date.parse('2026-05-15T12:00:00.000Z'));
+
+    expect(state).toBeTruthy();
+    expect(
+      consumeSupabaseAuthRequestState(state, storage, Date.parse('2026-05-15T12:01:00.000Z')),
+    ).toBe(true);
+    expect(
+      consumeSupabaseAuthRequestState(state, storage, Date.parse('2026-05-15T12:01:00.000Z')),
+    ).toBe(false);
   });
 
   it('loads an existing unexpired session and clears a local sign-out', () => {

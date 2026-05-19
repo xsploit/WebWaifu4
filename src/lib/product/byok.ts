@@ -127,27 +127,27 @@ export const BYOK_STACK_DECISION: ProductStackDecision = {
 };
 
 const LOCAL_SECRET_SETTING_KEYS = new Set([
-  'openai.apiKey',
-  'openrouter.apiKey',
-  'fishSpeech.apiKey',
-  'inworld.apiKey',
-  'tavily.apiKey',
+  'openai.apikey',
+  'openrouter.apikey',
+  'fishspeech.apikey',
+  'inworld.apikey',
+  'tavily.apikey',
 ]);
 
 const PUBLIC_OVERLAY_SETTING_KEYS = new Set([
   'scene.name',
-  'scene.twitchChannel',
-  'character.personaId',
-  'character.vrmModelId',
-  'character.backgroundAssetId',
-  'visualSettings',
-  'sequencerSettings',
+  'scene.twitchchannel',
+  'character.personaid',
+  'character.vrmmodelid',
+  'character.backgroundassetid',
+  'visualsettings',
+  'sequencersettings',
 ]);
 
 const SERVER_ONLY_SETTING_KEYS = new Set([
-  'auth.supabaseServiceRoleKey',
-  'auth.supabaseJwtSecret',
-  'overlay.signingSecret',
+  'auth.supabaseservicerolekey',
+  'auth.supabasejwtsecret',
+  'overlay.signingsecret',
   'database.url',
 ]);
 
@@ -155,14 +155,14 @@ export function classifyByokSetting(
   key: string,
   providerKeyMode: ProviderKeyMode,
 ): SettingStorageClass {
-  const normalized = normalizeSettingKey(key);
-  if (SERVER_ONLY_SETTING_KEYS.has(normalized)) {
+  const canonical = canonicalizeSettingKey(key);
+  if (SERVER_ONLY_SETTING_KEYS.has(canonical)) {
     return 'server-only';
   }
-  if (LOCAL_SECRET_SETTING_KEYS.has(normalized)) {
+  if (LOCAL_SECRET_SETTING_KEYS.has(canonical)) {
     return providerKeyMode === 'hosted-encrypted-vault' ? 'hosted-secret' : 'local-secret';
   }
-  if (PUBLIC_OVERLAY_SETTING_KEYS.has(normalized)) {
+  if (PUBLIC_OVERLAY_SETTING_KEYS.has(canonical)) {
     return 'public-overlay';
   }
   return 'synced-private';
@@ -170,6 +170,10 @@ export function classifyByokSetting(
 
 export function normalizeSettingKey(key: string) {
   return key.trim().replace(/\s+/g, '');
+}
+
+function canonicalizeSettingKey(key: string) {
+  return normalizeSettingKey(key).toLowerCase();
 }
 
 export function normalizeTwitchChannelName(value: string) {
@@ -192,10 +196,16 @@ export function redactProviderSecret(value: string) {
 }
 
 export function assertSettingCanSync(record: SyncedSettingRecord) {
-  if (record.storageClass === 'server-only') {
+  const effectiveClass = classifyByokSetting(record.key, 'local-indexeddb');
+  if (record.storageClass === 'server-only' || effectiveClass === 'server-only') {
     throw new Error('Server-only settings cannot be stored as synced user settings.');
   }
-  if (LOCAL_SECRET_SETTING_KEYS.has(normalizeSettingKey(record.key))) {
+  if (
+    effectiveClass === 'local-secret' ||
+    effectiveClass === 'hosted-secret' ||
+    (record.storageClass as SettingStorageClass) === 'local-secret' ||
+    (record.storageClass as SettingStorageClass) === 'hosted-secret'
+  ) {
     throw new Error('Provider API keys must use the key vault, not synced settings.');
   }
 }

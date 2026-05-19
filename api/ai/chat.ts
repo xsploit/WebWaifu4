@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   TAVILY_OPENAI_TOOLS,
   buildTavilyToolInstruction,
@@ -5,7 +6,7 @@ import {
   type OpenAiFunctionCall,
   type TavilyToolOptions,
 } from '../../server/src/ai/TavilyTools.js';
-import { hasServerProviderProxyAuth } from './provider-proxy-auth.js';
+import { getServerProviderProxyAuthContext } from './provider-proxy-auth.js';
 
 type ApiRequest = {
   method?: string;
@@ -103,6 +104,7 @@ type StreamingFunctionCallState = {
 };
 
 const MAX_TOOL_ROUNDS = 5;
+const MAX_ROUTE_STATES = 200;
 
 const routeStates = new Map<string, RouteState>();
 const unsupportedParamsByModel = new Map<string, Set<UnsupportedOpenAiParam>>();
@@ -420,8 +422,32 @@ function getRouteState(stateKey: string) {
       stateSignature: null,
     };
     routeStates.set(stateKey, state);
+    if (routeStates.size > MAX_ROUTE_STATES) {
+      const oldestStateKey = routeStates.keys().next().value;
+      if (oldestStateKey) {
+        routeStates.delete(oldestStateKey);
+      }
+    }
   }
   return state;
+}
+
+function hashSecret(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function scopeRouteStateKey(input: {
+  browserLlmApiKey: string;
+  serverProxyPrincipal: string | null;
+  stateKey: string;
+}) {
+  if (input.browserLlmApiKey) {
+    return `byok:${hashSecret(input.browserLlmApiKey).slice(0, 32)}:${input.stateKey}`;
+  }
+  if (input.serverProxyPrincipal) {
+    return `server-proxy:${input.serverProxyPrincipal}:${input.stateKey}`;
+  }
+  return `anonymous:${input.stateKey}`;
 }
 
 function isReasoningStyleModel(model: string) {
@@ -529,10 +555,10 @@ function numberFromEnv(name: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function getTavilyTools(request: ApiRequest): TavilyToolOptions | null {
+function getTavilyTools(request: ApiRequest, allowServerProxy: boolean): TavilyToolOptions | null {
   const apiKey =
     getHeaderSecret(request, 'x-yourwifey-tavily-provider-key') ||
-    process.env['TAVILY_API_KEY']?.trim();
+    (allowServerProxy ? process.env['TAVILY_API_KEY']?.trim() : '');
   if (!apiKey) {
     return null;
   }
@@ -784,20 +810,21 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   }
 
   const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const proxyAuthContext = isServerAiProxyEnabled()
+    ? await getServerProviderProxyAuthContext(request)
+    : ({ ok: false, principal: null } as const);
   if (!browserLlmApiKey && !isServerAiProxyEnabled()) {
     response.status(200).json({ ok: false, error: 'Server AI proxy is disabled for BYOK mode.' });
     return;
   }
-  if (
-    !browserLlmApiKey &&
-    isServerAiProxyEnabled() &&
-    !(await hasServerProviderProxyAuth(request))
-  ) {
+  if (!browserLlmApiKey && isServerAiProxyEnabled() && !proxyAuthContext.ok) {
     response.status(401).json({ ok: false, error: 'Authentication required for server AI proxy.' });
     return;
   }
 
-  const apiKey = browserLlmApiKey || process.env['OPENAI_API_KEY'] || process.env['AI_API_KEY'];
+  const apiKey =
+    browserLlmApiKey ||
+    (proxyAuthContext.ok ? process.env['OPENAI_API_KEY'] || process.env['AI_API_KEY'] : '');
   if (!apiKey) {
     response.status(200).json({ ok: false, error: 'OPENAI_API_KEY is not configured.' });
     return;
@@ -835,9 +862,14 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   const stateDisabled = body.disableState === true || stateScope === 'memory';
   const shouldStream = body.stream === true;
   const responseFormat = normalizeResponseFormat(body.responseFormat);
-  const state = getRouteState(stateKey);
+  const scopedStateKey = scopeRouteStateKey({
+    browserLlmApiKey,
+    serverProxyPrincipal: proxyAuthContext.ok ? proxyAuthContext.principal : null,
+    stateKey,
+  });
+  const state = getRouteState(scopedStateKey);
   const promptCacheKey = process.env['OPENAI_PROMPT_CACHE_KEY']?.trim() || '';
-  const tavilyTools = getTavilyTools(request);
+  const tavilyTools = getTavilyTools(request, proxyAuthContext.ok);
   const canUsePreviousResponse = !stateDisabled && stateMode === 'previous-response' && store;
   const signature = createStateSignature(model, promptCacheKey);
   if (!stateDisabled) {
@@ -848,7 +880,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     ) {
       state.previousResponseId = null;
       state.conversationId =
-        stateKey === 'default' ? process.env['OPENAI_CONVERSATION_ID']?.trim() || null : null;
+        scopedStateKey === 'default' ? process.env['OPENAI_CONVERSATION_ID']?.trim() || null : null;
     }
     state.stateSignature = signature;
   }
@@ -866,7 +898,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     stateMode === 'conversation' &&
     Boolean(
       state.conversationId ||
-      (stateKey === 'default' && process.env['OPENAI_CONVERSATION_ID']?.trim()),
+      (scopedStateKey === 'default' && process.env['OPENAI_CONVERSATION_ID']?.trim()),
     );
   const payload: Record<string, unknown> = {
     input:

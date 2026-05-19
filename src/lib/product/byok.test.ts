@@ -35,6 +35,10 @@ describe('BYOK product contracts', () => {
     expect(classifyByokSetting('auth.supabaseServiceRoleKey', 'local-indexeddb')).toBe(
       'server-only',
     );
+    expect(classifyByokSetting(' AUTH.SUPABASESERVICEROLEKEY ', 'local-indexeddb')).toBe(
+      'server-only',
+    );
+    expect(classifyByokSetting('OpenAI.ApiKey', 'local-indexeddb')).toBe('local-secret');
   });
 
   it('rejects accidental API key sync records', () => {
@@ -48,6 +52,30 @@ describe('BYOK product contracts', () => {
     };
 
     expect(() => assertSettingCanSync(record)).toThrow(/key vault/i);
+  });
+
+  it('derives sync safety from the key instead of trusting caller labels', () => {
+    expect(() =>
+      assertSettingCanSync({
+        id: 'setting_2',
+        workspaceId: 'workspace_1',
+        key: 'overlay.signingSecret',
+        storageClass: 'synced-private',
+        valueJson: '"server-secret"',
+        updatedAt: '2026-05-15T12:00:00.000Z',
+      }),
+    ).toThrow(/server-only/i);
+
+    expect(() =>
+      assertSettingCanSync({
+        id: 'setting_3',
+        workspaceId: 'workspace_1',
+        key: 'TAVILY.ApiKey',
+        storageClass: 'synced-private',
+        valueJson: '"tvly-test"',
+        updatedAt: '2026-05-15T12:00:00.000Z',
+      }),
+    ).toThrow(/key vault/i);
   });
 
   it('redacts provider secrets and stores only descriptors', () => {

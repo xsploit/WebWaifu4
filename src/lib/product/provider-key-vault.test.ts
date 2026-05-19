@@ -151,6 +151,45 @@ describe('provider key vault', () => {
     expect(await target.getSecret('openai', 'openai.apiKey')).toBe('sk-source-secret');
   });
 
+  it('lists and exports only secrets from the active workspace', async () => {
+    const storage = createStorage();
+    const workspaceOne = createBrowserProviderKeyVault({
+      workspaceId: 'workspace-1',
+      storage,
+    });
+    const workspaceTwo = createBrowserProviderKeyVault({
+      workspaceId: 'workspace-2',
+      storage,
+    });
+
+    await workspaceOne.setSecret({
+      provider: 'openai',
+      keyName: 'openai.apiKey',
+      secret: 'sk-workspace-one',
+      now: '2026-05-15T12:00:00.000Z',
+    });
+    await workspaceTwo.setSecret({
+      provider: 'fish_speech',
+      keyName: 'fishSpeech.apiKey',
+      secret: 'fish-workspace-two',
+      now: '2026-05-15T12:00:00.000Z',
+    });
+
+    expect(await workspaceOne.listSecretDescriptors()).toEqual([
+      expect.objectContaining({
+        id: 'workspace-1:openai:openai.apiKey',
+        workspaceId: 'workspace-1',
+      }),
+    ]);
+    expect(await workspaceOne.exportSecrets()).toEqual([
+      expect.objectContaining({
+        secret: 'sk-workspace-one',
+        workspaceId: 'workspace-1',
+      }),
+    ]);
+    expect(JSON.stringify(await workspaceOne.exportSecrets())).not.toContain('fish-workspace-two');
+  });
+
   it('fails closed when browser storage is unavailable', async () => {
     const vault = createBrowserProviderKeyVault({
       workspaceId: 'workspace-1',

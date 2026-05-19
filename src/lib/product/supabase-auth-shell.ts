@@ -1,4 +1,5 @@
 import type { ByokAccountMode } from './account-mode';
+import { createSupabaseAuthRequestState } from './supabase-auth-session';
 import type { SupabaseOAuthProvider, SupabasePublicConfig } from './supabase-env';
 
 export type AccountShellSummary = {
@@ -194,6 +195,7 @@ export function buildSupabaseOAuthRequest(input: {
   config: SupabasePublicConfig;
   provider: SupabaseOAuthProvider;
   redirectTo?: string;
+  storage?: Parameters<typeof createSupabaseAuthRequestState>[0];
 }): SupabaseOAuthRequest {
   const { config } = input;
   if (config.status === 'disabled') {
@@ -230,6 +232,10 @@ export function buildSupabaseOAuthRequest(input: {
   const url = new URL(`${config.url}/auth/v1/authorize`);
   url.searchParams.set('provider', input.provider);
   url.searchParams.set('redirect_to', redirectTo);
+  const state = createSupabaseAuthRequestState(input.storage);
+  if (state) {
+    url.searchParams.set('state', state);
+  }
 
   return {
     ok: true,
@@ -242,6 +248,7 @@ export function buildSupabaseMagicLinkRequest(input: {
   config: SupabasePublicConfig;
   email: string;
   redirectTo?: string;
+  storage?: Parameters<typeof createSupabaseAuthRequestState>[0];
 }): SupabaseMagicLinkRequest | SupabaseMagicLinkUnavailable {
   const email = normalizeAccountEmail(input.email);
   if (!email) {
@@ -275,7 +282,8 @@ export function buildSupabaseMagicLinkRequest(input: {
   };
   const redirectTo = normalizeRedirectUrl(input.redirectTo);
   if (redirectTo) {
-    body['email_redirect_to'] = redirectTo;
+    const state = createSupabaseAuthRequestState(input.storage);
+    body['email_redirect_to'] = state ? appendAuthStateToRedirect(redirectTo, state) : redirectTo;
   }
 
   return {
@@ -299,6 +307,7 @@ export async function requestSupabaseMagicLink(input: {
   email: string;
   fetchImpl?: typeof fetch;
   redirectTo?: string;
+  storage?: Parameters<typeof createSupabaseAuthRequestState>[0];
 }): Promise<SupabaseMagicLinkResult> {
   const request = buildSupabaseMagicLinkRequest(input);
   if (!request.ok) {
@@ -354,4 +363,10 @@ function normalizeRedirectUrl(value: string | undefined) {
   } catch {
     return null;
   }
+}
+
+function appendAuthStateToRedirect(redirectTo: string, state: string) {
+  const url = new URL(redirectTo);
+  url.searchParams.set('yw_auth_state', state);
+  return url.toString();
 }

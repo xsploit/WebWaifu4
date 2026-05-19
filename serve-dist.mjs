@@ -4,6 +4,7 @@ import { extname, join, normalize } from 'node:path';
 
 const root = join(process.cwd(), 'dist');
 const port = Number.parseInt(process.env.OVERLAY_PORT || '4173', 10);
+const host = process.env.OVERLAY_HOST || process.env.HOST || '127.0.0.1';
 const apiPort = Number.parseInt(process.env.BOT_PORT || '8787', 10);
 const types = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -73,11 +74,23 @@ function getUpstreamApiPath(path) {
 createServer((request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`);
   if (url.pathname.startsWith('/api/')) {
+    if (!isAllowedApiProxyPath(url.pathname)) {
+      response.writeHead(404, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ ok: false, error: 'API proxy path is not exposed.' }));
+      return;
+    }
     proxyApi(request, response);
     return;
   }
 
-  const decoded = decodeURIComponent(url.pathname);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(url.pathname);
+  } catch {
+    response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Bad Request');
+    return;
+  }
   const safe = normalize(decoded).replace(/^([/\\.]+)+/, '');
   let filePath = join(root, safe || 'index.html');
   try {
@@ -88,6 +101,16 @@ createServer((request, response) => {
     return sendFile(response, filePath);
   } catch {}
   return sendFile(response, join(root, 'index.html'));
-}).listen(port, '0.0.0.0', () => {
-  console.log(`YourWifey overlay listening on http://0.0.0.0:${port}`);
+}).listen(port, host, () => {
+  console.log(`YourWifey overlay listening on http://${host}:${port}`);
 });
+
+function isAllowedApiProxyPath(pathname) {
+  return (
+    pathname.startsWith('/api/ai/') ||
+    pathname.startsWith('/api/byok/') ||
+    pathname === '/api/health' ||
+    pathname.startsWith('/api/tts/') ||
+    pathname.startsWith('/api/mock/')
+  );
+}

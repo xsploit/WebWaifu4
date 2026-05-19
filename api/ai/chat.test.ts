@@ -181,6 +181,122 @@ describe('serverless AI chat route', () => {
     expect(tavilyCalls[0]?.body).toMatchObject({ query: 'vtuber news' });
   });
 
+  it('does not use server Tavily tools for BYOK browser-key requests without proxy auth', async () => {
+    vi.stubEnv('OPENAI_MODEL', 'gpt-5.5');
+    vi.stubEnv('OPENAI_STATE_MODE', 'stateless');
+    vi.stubEnv('TAVILY_API_KEY', 'server-tavily-key');
+
+    const openAiCalls: FetchCall[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      openAiCalls.push({ url: String(input), body });
+      return new Response(
+        JSON.stringify({
+          id: 'resp_no_tools',
+          output_text: 'No server tools.',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    }) as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          'x-yourwifey-llm-provider-key': 'browser-openai-key',
+        },
+        body: {
+          messages: [{ role: 'user', content: 'search this' }],
+          stateKey: 'test:no-server-tools',
+        },
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.jsonBody).toMatchObject({
+      ok: true,
+      meta: {
+        toolsAvailable: false,
+      },
+    });
+    expect(openAiCalls[0]?.body).not.toHaveProperty('tools');
+  });
+
+  it('isolates server-proxy conversation state by authenticated user', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-openai');
+    vi.stubEnv('OPENAI_MODEL', 'gpt-5.5');
+    vi.stubEnv('OPENAI_REASONING_EFFORT', 'none');
+    vi.stubEnv('OPENAI_STATE_MODE', 'conversation');
+    vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');
+    vi.stubEnv('SUPABASE_URL', 'https://project-ref.supabase.co');
+    vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'supabase-publishable');
+
+    const conversationIds = ['conv_user_1', 'conv_user_2'];
+    const responseBodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const authorization = (init?.headers as Record<string, string> | undefined)?.authorization;
+      if (url === 'https://project-ref.supabase.co/auth/v1/user') {
+        return new Response(
+          JSON.stringify({
+            id: authorization?.includes('user-two') ? 'user-2' : 'user-1',
+            email: 'streamer@example.com',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url === 'https://api.openai.com/v1/conversations') {
+        return new Response(
+          JSON.stringify({
+            id: conversationIds.shift(),
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      responseBodies.push(
+        init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+      );
+      return new Response(
+        JSON.stringify({
+          id: 'resp_final',
+          output_text: 'ok',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    for (const token of ['user-one-token', 'user-two-token']) {
+      const response = createApiResponse();
+      await handler(
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+          body: {
+            messages: [{ role: 'user', content: 'hello' }],
+            stateKey: 'shared-state',
+          },
+        },
+        response,
+      );
+      expect(response.statusCode).toBe(200);
+      expect(response.jsonBody).toMatchObject({ ok: true });
+    }
+
+    expect(responseBodies.map((body) => body['conversation'])).toEqual([
+      'conv_user_1',
+      'conv_user_2',
+    ]);
+  });
+
   it('keeps streamed tool-call arguments when call_id arrives after argument events', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-openai');
     vi.stubEnv('OPENAI_MODEL', 'gpt-5.5');
