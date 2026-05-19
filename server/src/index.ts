@@ -276,8 +276,46 @@ function getHeaderSecret(request: IncomingMessage, name: string) {
   return getHeaderValue(request, name)?.trim() ?? '';
 }
 
-function getRuntimeTavilyApiKey(baseConfig: StreamBotConfig, request: IncomingMessage) {
-  return getHeaderSecret(request, 'x-yourwifey-tavily-provider-key') || baseConfig.tavilyApiKey;
+function readBearerToken(request: IncomingMessage) {
+  const authorization = getHeaderValue(request, 'authorization') ?? '';
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+async function hasServerProviderProxyAuth(request: IncomingMessage) {
+  const token = readBearerToken(request);
+  if (!token) {
+    return false;
+  }
+  const supabaseUrl =
+    process.env.SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim() || '';
+  const supabaseAnonKey =
+    process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.SUPABASE_ANON_KEY?.trim() ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
+    '';
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return false;
+  }
+  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      authorization: `Bearer ${token}`,
+    },
+  }).catch(() => null);
+  return Boolean(response?.ok);
+}
+
+function getRuntimeTavilyApiKeyWithAuth(
+  baseConfig: StreamBotConfig,
+  request: IncomingMessage,
+  allowServerProxy: boolean,
+) {
+  return (
+    getHeaderSecret(request, 'x-yourwifey-tavily-provider-key') ||
+    (allowServerProxy ? baseConfig.tavilyApiKey : '')
+  );
 }
 
 function normalizeRuntimeLlmProvider(value: unknown) {
@@ -293,14 +331,15 @@ function getRuntimeChatProvider(
   request: IncomingMessage,
   llmProvider: unknown,
   model?: string,
+  allowServerProxy = false,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
-  const tavilyApiKey = getRuntimeTavilyApiKey(baseConfig, request);
+  const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerProxy);
   const hasBrowserTavilyKey = Boolean(getHeaderSecret(request, 'x-yourwifey-tavily-provider-key'));
   if (!apiKey && !hasBrowserTavilyKey) {
-    return baseConfig.providerProxyEnabled ? provider : null;
+    return allowServerProxy && baseConfig.providerProxyEnabled ? provider : null;
   }
-  const effectiveApiKey = apiKey || baseConfig.aiApiKey;
+  const effectiveApiKey = apiKey || (allowServerProxy ? baseConfig.aiApiKey : '');
   if (!effectiveApiKey) {
     return null;
   }
@@ -349,10 +388,11 @@ function getRuntimeEmbeddingConfig(
   baseConfig: StreamBotConfig,
   request: IncomingMessage,
   llmProvider: unknown,
+  allowServerProxy = false,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
   if (!apiKey) {
-    return baseConfig.providerProxyEnabled ? baseConfig : null;
+    return allowServerProxy && baseConfig.providerProxyEnabled ? baseConfig : null;
   }
 
   const providerName = normalizeRuntimeLlmProvider(
@@ -373,6 +413,7 @@ function getRuntimeProviderConfig(
   baseConfig: StreamBotConfig,
   request: IncomingMessage,
   llmProvider: unknown,
+  allowServerProxy = false,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
   const providerName = normalizeRuntimeLlmProvider(
@@ -386,7 +427,7 @@ function getRuntimeProviderConfig(
       providerProxyEnabled: true,
     };
   }
-  if (!apiKey && !baseConfig.providerProxyEnabled) {
+  if (!apiKey && (!allowServerProxy || !baseConfig.providerProxyEnabled)) {
     return null;
   }
 
@@ -396,7 +437,7 @@ function getRuntimeProviderConfig(
       providerName === 'openrouter-responses'
         ? 'https://openrouter.ai/api/v1'
         : baseConfig.aiApiBaseUrl,
-    aiApiKey: apiKey || baseConfig.aiApiKey,
+    aiApiKey: apiKey || (allowServerProxy ? baseConfig.aiApiKey : ''),
     providerProxyEnabled: true,
   };
 }
@@ -429,10 +470,11 @@ function getRuntimeTtsConfig(
   baseConfig: StreamBotConfig,
   providerName: RemoteTtsProvider,
   request: IncomingMessage,
+  allowServerProxy = false,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-tts-provider-key');
   if (!apiKey) {
-    return baseConfig.providerProxyEnabled ? baseConfig : null;
+    return allowServerProxy && baseConfig.providerProxyEnabled ? baseConfig : null;
   }
 
   return providerName === 'inworld'
@@ -852,6 +894,7 @@ const httpServer = createServer(async (request, response) => {
   }
 
   const runtimePath = getRuntimeApiPath(url.pathname);
+  const allowServerProviderProxy = await hasServerProviderProxyAuth(request);
 
   if (request.method === 'GET' && runtimePath === '/health') {
     const requestedStateKey = url.searchParams.get('stateKey') ?? undefined;
@@ -865,13 +908,18 @@ const httpServer = createServer(async (request, response) => {
       request,
       getHeaderValue(request, 'x-yourwifey-llm-provider') || config.aiProvider,
       requestedModel ?? undefined,
+      allowServerProviderProxy,
     );
     const providerState =
       runtimeHealthProvider?.getState?.(requestedStateKey, {
         openAiStateMode: requestedOpenAiStateMode,
         transportMode: requestedTransportMode,
       }) ?? null;
-    const runtimeTavilyApiKey = getRuntimeTavilyApiKey(config, request);
+    const runtimeTavilyApiKey = getRuntimeTavilyApiKeyWithAuth(
+      config,
+      request,
+      allowServerProviderProxy,
+    );
     const healthProviderState =
       providerState && runtimeTavilyApiKey
         ? {
@@ -917,7 +965,7 @@ const httpServer = createServer(async (request, response) => {
 
   if (request.method === 'GET' && runtimePath === '/tts/voices') {
     const providerName = normalizeRemoteTtsProvider(url.searchParams.get('provider'));
-    const ttsConfig = getRuntimeTtsConfig(config, providerName, request);
+    const ttsConfig = getRuntimeTtsConfig(config, providerName, request, allowServerProviderProxy);
     if (!ttsConfig) {
       writeJson(response, 200, {
         ok: false,
@@ -965,7 +1013,12 @@ const httpServer = createServer(async (request, response) => {
         return;
       }
       const providerName = normalizeRemoteTtsProvider(body.provider);
-      const ttsConfig = getRuntimeTtsConfig(config, providerName, request);
+      const ttsConfig = getRuntimeTtsConfig(
+        config,
+        providerName,
+        request,
+        allowServerProviderProxy,
+      );
       if (!ttsConfig) {
         writeJson(response, 200, {
           ok: false,
@@ -1031,7 +1084,12 @@ const httpServer = createServer(async (request, response) => {
         llmProvider?: unknown;
         model?: unknown;
       }>(request);
-      const embeddingConfig = getRuntimeEmbeddingConfig(config, request, body.llmProvider);
+      const embeddingConfig = getRuntimeEmbeddingConfig(
+        config,
+        request,
+        body.llmProvider,
+        allowServerProviderProxy,
+      );
       if (!embeddingConfig?.aiApiKey) {
         writeJson(response, 200, { ok: false, error: 'AI provider key is not configured.' });
         return;
@@ -1078,7 +1136,12 @@ const httpServer = createServer(async (request, response) => {
   if (request.method === 'GET' && runtimePath === '/ai/models') {
     try {
       const providerName = normalizeRuntimeLlmProvider(url.searchParams.get('provider'));
-      const modelConfig = getRuntimeProviderConfig(config, request, providerName);
+      const modelConfig = getRuntimeProviderConfig(
+        config,
+        request,
+        providerName,
+        allowServerProviderProxy,
+      );
       const canUsePublicOpenRouterModels = providerName === 'openrouter-responses';
       if (!modelConfig?.aiApiKey && !canUsePublicOpenRouterModels) {
         writeJson(response, 200, { ok: false, error: 'AI provider key is not configured.' });
@@ -1134,7 +1197,13 @@ const httpServer = createServer(async (request, response) => {
         return;
       }
 
-      const runtimeProvider = getRuntimeChatProvider(config, request, body.llmProvider, body.model);
+      const runtimeProvider = getRuntimeChatProvider(
+        config,
+        request,
+        body.llmProvider,
+        body.model,
+        allowServerProviderProxy,
+      );
       if (!runtimeProvider) {
         writeJson(response, 200, {
           ok: false,
@@ -1165,7 +1234,7 @@ const httpServer = createServer(async (request, response) => {
         writeSseHead(response);
         const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
         const bridgeConfig = bridgeRequest
-          ? getRuntimeTtsConfig(config, 'fish-speech', request)
+          ? getRuntimeTtsConfig(config, 'fish-speech', request, allowServerProviderProxy)
           : null;
         if (bridgeRequest && !bridgeConfig) {
           writeSseEvent(response, {

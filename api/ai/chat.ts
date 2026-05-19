@@ -5,6 +5,7 @@ import {
   type OpenAiFunctionCall,
   type TavilyToolOptions,
 } from '../../server/src/ai/TavilyTools.js';
+import { hasServerProviderProxyAuth } from './provider-proxy-auth.js';
 
 type ApiRequest = {
   method?: string;
@@ -785,6 +786,14 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
   if (!browserLlmApiKey && !isServerAiProxyEnabled()) {
     response.status(200).json({ ok: false, error: 'Server AI proxy is disabled for BYOK mode.' });
+    return;
+  }
+  if (
+    !browserLlmApiKey &&
+    isServerAiProxyEnabled() &&
+    !(await hasServerProviderProxyAuth(request))
+  ) {
+    response.status(401).json({ ok: false, error: 'Authentication required for server AI proxy.' });
     return;
   }
 

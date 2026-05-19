@@ -127,6 +127,9 @@ describe('BYOK product data bootstrap', () => {
           },
         ]);
       }
+      if (url.includes('/rest/v1/synced_settings?id=eq.visualSettings')) {
+        return jsonResponse([]);
+      }
       if (url.includes('/rest/v1/synced_settings?')) {
         return jsonResponse([
           {
@@ -193,6 +196,42 @@ describe('BYOK product data bootstrap', () => {
         workspaceId: 'workspace-1',
       }),
     ).rejects.toThrow(/key vault/i);
+  });
+
+  it('rejects synced setting ids that already belong to another workspace', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/rest/v1/synced_settings?workspace_id=eq.workspace-2')) {
+        return jsonResponse([]);
+      }
+      if (url.includes('/rest/v1/synced_settings?id=eq.shared-setting')) {
+        return jsonResponse([
+          {
+            id: 'shared-setting',
+            key: 'aiSettings',
+            storage_class: 'synced-private',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            value_json: '{}',
+            workspace_id: 'workspace-1',
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    await expect(
+      upsertSyncedSetting({
+        body: {
+          key: 'aiSettings',
+          storageClass: 'synced-private',
+          valueJson: '{}',
+        },
+        config,
+        fetchFn: fetchMock as unknown as SupabaseFetch,
+        settingId: 'shared-setting',
+        workspaceId: 'workspace-2',
+      }),
+    ).rejects.toThrow(/another workspace/i);
+    expect(fetchMock.mock.calls.some(([url, init]) => url.includes('on_conflict=id') && init?.method === 'POST')).toBe(false);
   });
 });
 

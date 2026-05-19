@@ -11,6 +11,7 @@ import {
   buildCloudSettingRecords,
   LOCAL_ONLY_PERSISTED_SETTING_KEYS,
 } from './cloud-settings';
+import { cloudSettingId } from './cloud-setting-id';
 import type { PersistedChatState } from '../chat/types';
 
 describe('cloud settings adapter', () => {
@@ -68,6 +69,33 @@ describe('cloud settings adapter', () => {
       storageClass: 'synced-private',
       valueJson: record!.valueJson,
     });
+  });
+
+  it('scopes deterministic cloud setting ids by workspace and scene', () => {
+    expect(
+      cloudSettingId({
+        key: 'aiSettings',
+        workspaceId: 'workspace-a',
+      }),
+    ).not.toBe(
+      cloudSettingId({
+        key: 'aiSettings',
+        workspaceId: 'workspace-b',
+      }),
+    );
+    expect(
+      cloudSettingId({
+        key: 'scene.twitchChannel',
+        sceneId: 'scene-a',
+        workspaceId: 'workspace-a',
+      }),
+    ).not.toBe(
+      cloudSettingId({
+        key: 'scene.twitchChannel',
+        sceneId: 'scene-b',
+        workspaceId: 'workspace-a',
+      }),
+    );
   });
 
   it('applies only safe cloud records back to persisted editor state', () => {

@@ -2,7 +2,8 @@ import { STORAGE_KEYS } from '../chat/defaults';
 import type { AiSettings, PersistedChatState, PersonaProfile, UiState } from '../chat/types';
 import type { SequencerSettings, VisualSettings } from '../menu/types';
 import type { SyncedSettingRecord } from './byok';
-import { assertSettingCanSync, classifyByokSetting, normalizeSettingKey } from './byok';
+import { assertSettingCanSync, classifyByokSetting } from './byok';
+import { cloudSettingId } from './cloud-setting-id';
 
 export type CloudSyncSettingKey =
   | 'aiSettings'
@@ -75,13 +76,18 @@ export function buildCloudSettingRecords(input: {
 }): SyncedSettingRecord[] {
   const now = input.now ?? new Date().toISOString();
   return SAFE_STATE_TO_CLOUD_SETTINGS.map(({ key, read }) => {
+    const sceneId =
+      key.startsWith('scene.') || key.startsWith('character.')
+        ? (input.sceneId ?? undefined)
+        : undefined;
     const record: SyncedSettingRecord = {
-      id: cloudSettingId(key),
+      id: cloudSettingId({
+        key,
+        sceneId,
+        workspaceId: input.workspaceId,
+      }),
       key,
-      sceneId:
-        key.startsWith('scene.') || key.startsWith('character.')
-          ? (input.sceneId ?? undefined)
-          : undefined,
+      sceneId,
       storageClass: classifyByokSetting(
         key,
         'local-indexeddb',
@@ -189,10 +195,6 @@ export function applyCloudSettingRecords(
   return next;
 }
 
-export function cloudSettingId(key: string) {
-  return deterministicUuidFromText(`yourwifey:cloud-setting:${normalizeSettingKey(key)}`);
-}
-
 export function isSafeCloudSyncKey(key: string): key is CloudSyncSettingKey {
   const normalized = key.trim();
   return SAFE_STATE_TO_CLOUD_SETTINGS.some((entry) => entry.key === normalized);
@@ -246,38 +248,4 @@ function normalizeUiState(value: unknown, fallback: UiState): UiState {
       typeof source.chatLogOpen === 'boolean' ? source.chatLogOpen : fallback.chatLogOpen,
     menuOpen: false,
   };
-}
-
-function deterministicUuidFromText(value: string) {
-  const hex = cyrb128(value)
-    .map((item) => item.toString(16).padStart(8, '0'))
-    .join('');
-  const variant = ((parseInt(hex[16] ?? '0', 16) & 0x3) | 0x8).toString(16);
-  const uuidHex = `${hex.slice(0, 12)}5${hex.slice(13, 16)}${variant}${hex.slice(17, 32)}`;
-  return [
-    uuidHex.slice(0, 8),
-    uuidHex.slice(8, 12),
-    uuidHex.slice(12, 16),
-    uuidHex.slice(16, 20),
-    uuidHex.slice(20, 32),
-  ].join('-');
-}
-
-function cyrb128(value: string) {
-  let h1 = 1779033703;
-  let h2 = 3144134277;
-  let h3 = 1013904242;
-  let h4 = 2773480762;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    h1 = h2 ^ Math.imul(h1 ^ code, 597399067);
-    h2 = h3 ^ Math.imul(h2 ^ code, 2869860233);
-    h3 = h4 ^ Math.imul(h3 ^ code, 951274213);
-    h4 = h1 ^ Math.imul(h4 ^ code, 2716044179);
-  }
-  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
-  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
-  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
-  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
-  return [(h1 ^ h2 ^ h3 ^ h4) >>> 0, (h2 ^ h1) >>> 0, (h3 ^ h1) >>> 0, (h4 ^ h1) >>> 0];
 }

@@ -54,4 +54,31 @@ describe('serverless AI embeddings route', () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('rejects anonymous server-key proxy use when proxy mode is enabled', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-openai');
+    vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');
+    vi.stubEnv('SUPABASE_URL', 'https://project-ref.supabase.co');
+    vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'supabase-publishable');
+    const fetchMock = vi.fn() as unknown as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        body: {
+          input: 'remember this',
+        },
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.jsonBody).toMatchObject({
+      ok: false,
+      error: 'Authentication required for server embeddings proxy.',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

@@ -1,6 +1,9 @@
+import { hasServerProviderProxyAuth } from './provider-proxy-auth.js';
+
 type ApiRequest = {
   method?: string;
   body?: unknown;
+  headers?: Record<string, string | string[] | undefined>;
 };
 
 type ApiResponse = {
@@ -48,6 +51,12 @@ export default async function handler(request: ApiRequest, response: ApiResponse
 
   if (!isServerAiProxyEnabled()) {
     response.status(200).json({ ok: false, error: 'Server AI proxy is disabled for BYOK mode.' });
+    return;
+  }
+  if (!(await hasServerProviderProxyAuth(request))) {
+    response
+      .status(401)
+      .json({ ok: false, error: 'Authentication required for server embeddings proxy.' });
     return;
   }
 

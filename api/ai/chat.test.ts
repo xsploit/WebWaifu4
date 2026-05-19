@@ -187,6 +187,8 @@ describe('serverless AI chat route', () => {
     vi.stubEnv('OPENAI_REASONING_EFFORT', 'none');
     vi.stubEnv('OPENAI_STATE_MODE', 'stateless');
     vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');
+    vi.stubEnv('SUPABASE_URL', 'https://project-ref.supabase.co');
+    vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'supabase-publishable');
     vi.stubEnv('TAVILY_API_KEY', 'test-tavily');
 
     const openAiCalls: FetchCall[] = [];
@@ -195,6 +197,13 @@ describe('serverless AI chat route', () => {
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      if (url === 'https://project-ref.supabase.co/auth/v1/user') {
+        return new Response(JSON.stringify({ id: 'user-1', email: 'subsect@example.com' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
 
       if (url === 'https://api.tavily.com/search') {
         tavilyCalls.push({ url, body });
@@ -281,6 +290,9 @@ describe('serverless AI chat route', () => {
     await handler(
       {
         method: 'POST',
+        headers: {
+          authorization: 'Bearer valid-session',
+        },
         body: {
           messages: [
             { role: 'system', content: 'Use tools when useful.' },
@@ -312,5 +324,32 @@ describe('serverless AI chat route', () => {
         type: 'done',
       }),
     );
+  });
+
+  it('rejects anonymous server-key proxy use when proxy mode is enabled', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-openai');
+    vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');
+    vi.stubEnv('SUPABASE_URL', 'https://project-ref.supabase.co');
+    vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'supabase-publishable');
+    const fetchMock = vi.fn() as unknown as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        body: {
+          messages: [{ role: 'user', content: 'hello' }],
+        },
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.jsonBody).toMatchObject({
+      ok: false,
+      error: 'Authentication required for server AI proxy.',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

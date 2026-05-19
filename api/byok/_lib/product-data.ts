@@ -6,6 +6,7 @@ import type {
 } from '../../../src/lib/product/byok-api.js';
 import type { ProductStorageMode, ProviderKeyMode } from '../../../src/lib/product/byok.js';
 import { assertSettingCanSync, type SyncedSettingRecord } from '../../../src/lib/product/byok.js';
+import { cloudSettingId } from '../../../src/lib/product/cloud-setting-id.js';
 import type { SupabaseServerConfig } from '../../../src/lib/product/supabase-env.js';
 import { fetchSupabaseRest, type SupabaseFetch } from './supabase-context.js';
 
@@ -352,21 +353,47 @@ export async function upsertSyncedSetting(input: {
   const key = normalizeText(body['key'], 160) || input.settingId;
   const storageClass = normalizeSyncedStorageClass(body['storageClass']);
   const valueJson = normalizeText(body['valueJson'], 250000);
+  const sceneId = normalizeNullableText(body['sceneId'], 160) ?? undefined;
+  const characterId = normalizeNullableText(body['characterId'], 160) ?? undefined;
   if (!storageClass || valueJson === null) {
     throw new Error('Synced setting requires storageClass and valueJson.');
   }
 
-  const record: SyncedSettingRecord = {
-    characterId: normalizeNullableText(body['characterId'], 160) ?? undefined,
-    id: input.settingId,
+  const scopedSettingId = cloudSettingId({
+    characterId,
     key,
-    sceneId: normalizeNullableText(body['sceneId'], 160) ?? undefined,
+    sceneId,
+    workspaceId: input.workspaceId,
+  });
+  const record: SyncedSettingRecord = {
+    characterId,
+    id: scopedSettingId,
+    key,
+    sceneId,
     storageClass,
     updatedAt: new Date().toISOString(),
     valueJson,
     workspaceId: input.workspaceId,
   };
   assertSettingCanSync(record);
+
+  const existingInScope = await fetchSyncedSettingByScope({
+    characterId,
+    config: input.config,
+    fetchFn: input.fetchFn,
+    key,
+    sceneId,
+    workspaceId: input.workspaceId,
+  });
+  const existingByRequestedId = await fetchSyncedSettingById({
+    config: input.config,
+    fetchFn: input.fetchFn,
+    settingId: input.settingId,
+  });
+  if (existingByRequestedId && existingByRequestedId.workspaceId !== input.workspaceId) {
+    throw new Error('Synced setting id belongs to another workspace.');
+  }
+  record.id = existingInScope?.id ?? scopedSettingId;
 
   const rows = await fetchSupabaseRest<SyncedSettingRow>(
     input.config,
@@ -390,6 +417,42 @@ export async function upsertSyncedSetting(input: {
     },
   );
   return normalizeSyncedSetting(rows[0], input.workspaceId) ?? record;
+}
+
+async function fetchSyncedSettingById(input: {
+  config: SupabaseServerConfig;
+  fetchFn: SupabaseFetch;
+  settingId: string;
+}) {
+  const rows = await fetchSupabaseRest<SyncedSettingRow>(
+    input.config,
+    `/rest/v1/synced_settings?id=eq.${encodeURIComponent(input.settingId)}&select=${SYNCED_SETTING_SELECT}&limit=1`,
+    input.fetchFn,
+  );
+  return normalizeSyncedSettingAnyWorkspace(rows[0]);
+}
+
+async function fetchSyncedSettingByScope(input: {
+  characterId?: string;
+  config: SupabaseServerConfig;
+  fetchFn: SupabaseFetch;
+  key: string;
+  sceneId?: string;
+  workspaceId: string;
+}) {
+  const rows = await fetchSupabaseRest<SyncedSettingRow>(
+    input.config,
+    [
+      '/rest/v1/synced_settings',
+      `?workspace_id=eq.${encodeURIComponent(input.workspaceId)}`,
+      `&key=eq.${encodeURIComponent(input.key)}`,
+      nullableUuidFilter('scene_id', input.sceneId),
+      nullableUuidFilter('character_id', input.characterId),
+      `&select=${SYNCED_SETTING_SELECT}&limit=1`,
+    ].join(''),
+    input.fetchFn,
+  );
+  return normalizeSyncedSetting(rows[0], input.workspaceId);
 }
 
 export async function attachDefaultScene(input: {
@@ -507,8 +570,19 @@ function normalizeSyncedSetting(
   };
 }
 
+function normalizeSyncedSettingAnyWorkspace(row: SyncedSettingRow | undefined) {
+  const workspaceId = stringOrNull(row?.workspace_id);
+  return workspaceId ? normalizeSyncedSetting(row, workspaceId) : null;
+}
+
 function normalizeSyncedStorageClass(value: unknown): SyncedSettingRecord['storageClass'] | null {
   return value === 'public-overlay' || value === 'synced-private' ? value : null;
+}
+
+function nullableUuidFilter(column: string, value: string | undefined) {
+  return value
+    ? `&${column}=eq.${encodeURIComponent(value)}`
+    : `&${column}=is.null`;
 }
 
 function normalizeStorageMode(value: unknown): ProductStorageMode | null {

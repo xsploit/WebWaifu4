@@ -129,7 +129,7 @@ export function readRouteParam(request: ByokApiRequestLike, name: string) {
   return value?.trim() || null;
 }
 
-async function fetchSupabaseAuthIdentity(
+export async function fetchSupabaseAuthIdentity(
   config: SupabaseServerConfig,
   accessToken: string,
   fetchFn: SupabaseFetch,
