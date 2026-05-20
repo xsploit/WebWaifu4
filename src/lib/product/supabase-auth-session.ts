@@ -59,6 +59,9 @@ export type SupabaseAuthHydrationResult =
 
 type SupabaseAuthStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
 type SupabaseAuthLifecycleWindow = Pick<Window, 'addEventListener' | 'removeEventListener'>;
+type ConsumeSupabaseAuthRequestStateOptions = {
+  allowMissingReturnedState?: boolean;
+};
 
 type SupabaseAuthPendingState = {
   expiresAt: number;
@@ -185,14 +188,24 @@ export function consumeSupabaseAuthRequestState(
   returnedState: string | null | undefined,
   storage: SupabaseAuthStorage | null = getBrowserSupabaseAuthStorage(),
   nowMs = Date.now(),
+  options: ConsumeSupabaseAuthRequestStateOptions = {},
 ) {
-  if (!storage || !returnedState?.trim()) {
+  if (!storage) {
     return false;
   }
 
   const pending = normalizePendingState(storage.getItem(SUPABASE_AUTH_STATE_STORAGE_KEY));
   storage.removeItem(SUPABASE_AUTH_STATE_STORAGE_KEY);
-  return Boolean(pending && pending.expiresAt > nowMs && pending.state === returnedState.trim());
+  if (!pending || pending.expiresAt <= nowMs) {
+    return false;
+  }
+
+  const normalizedReturnedState = returnedState?.trim();
+  if (!normalizedReturnedState) {
+    return Boolean(options.allowMissingReturnedState);
+  }
+
+  return pending.state === normalizedReturnedState;
 }
 
 export function getSupabaseAuthSessionExpiryDelayMs(
@@ -406,7 +419,11 @@ export async function hydrateSupabaseAuthSession(input: {
       ? callback.session
       : loadPersistedSupabaseAuthSession(storage, nowMs);
   if (callback?.kind === 'session') {
-    if (!consumeSupabaseAuthRequestState(callback.state, storage, nowMs)) {
+    if (
+      !consumeSupabaseAuthRequestState(callback.state, storage, nowMs, {
+        allowMissingReturnedState: true,
+      })
+    ) {
       clearPersistedSupabaseAuthSession(storage);
       return {
         status: 'callback-error',

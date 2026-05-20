@@ -114,6 +114,43 @@ describe('Supabase auth session hydration', () => {
     expect(JSON.stringify(result)).not.toContain('metadata-value-that-must-not-copy');
   });
 
+  it('accepts provider callbacks that drop state after this browser started OAuth', async () => {
+    const storage = createStorage();
+    createSupabaseAuthRequestState(storage, Date.parse('2026-05-15T12:00:00.000Z'));
+    const fetchImpl = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          id: 'user-1',
+          email: 'streamer@example.com',
+          user_metadata: {
+            preferred_username: 'streamer',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    const result = await hydrateSupabaseAuthSession({
+      config: configuredSupabase,
+      fetchImpl,
+      href: 'https://overlay.example.test/auth/callback#access_token=access-123&refresh_token=refresh-456&expires_in=3600',
+      nowMs: Date.parse('2026-05-15T12:01:00.000Z'),
+      storage,
+    });
+
+    expect(result).toMatchObject({
+      status: 'authenticated',
+      cleanUrl: 'https://overlay.example.test/auth/callback',
+      user: {
+        id: 'user-1',
+        email: 'streamer@example.com',
+      },
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(storage.getItem(SUPABASE_AUTH_SESSION_STORAGE_KEY)).toContain('access-123');
+    expect(storage.getItem(SUPABASE_AUTH_STATE_STORAGE_KEY)).toBeNull();
+  });
+
   it('rejects unsolicited callback tokens without a matching browser state', async () => {
     const storage = createStorage();
     const fetchImpl = vi.fn();
