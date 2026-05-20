@@ -40,7 +40,7 @@ describe('BYOK overlay tokens', () => {
     expect(verifyOverlayToken({ ...config, overlaySigningSecret: 'wrong' }, token)).toBeNull();
   });
 
-  it('reads overlay tokens only from Authorization headers', () => {
+  it('reads overlay tokens from Authorization headers and query parameters', () => {
     expect(
       readOverlayTokenFromRequest({
         headers: {
@@ -59,6 +59,6 @@ describe('BYOK overlay tokens', () => {
           token: 'query-token',
         },
       }),
-    ).toBeNull();
+    ).toBe('query-token');
   });
 });

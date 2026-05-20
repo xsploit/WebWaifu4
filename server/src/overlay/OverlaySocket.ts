@@ -1,4 +1,5 @@
-import type { Server as HttpServer } from 'node:http';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { IncomingHttpHeaders, IncomingMessage, Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { StreamBotEvent } from '../scheduler/ChatScheduler.js';
 
@@ -7,6 +8,19 @@ export type OverlayClientEvent =
   | { type: 'tts:done'; payload?: Record<string, unknown> }
   | { type: 'avatar:loaded'; payload?: Record<string, unknown> }
   | { type: 'manual:prompt'; payload?: { text?: string } };
+
+const OVERLAY_TOKEN_VERSION = 'ywot1';
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+export type OverlaySocketOptions = {
+  allowedOrigins?: readonly string[];
+  env?: Record<string, string | undefined>;
+  signingSecret?: string;
+};
+
+export type OverlaySocketAuthDecision =
+  | { allowed: true; reason: 'local-dev-origin' | 'signed-overlay-token'; trusted: boolean }
+  | { allowed: false; reason: 'forbidden-origin' | 'missing-overlay-token'; trusted: false };
 
 function parseClientEvent(data: RawData): OverlayClientEvent | null {
   try {
@@ -17,6 +31,128 @@ function parseClientEvent(data: RawData): OverlayClientEvent | null {
   }
 }
 
+function verifyOverlayToken(secret: string, token: string | null | undefined): boolean {
+  if (!token) {
+    return false;
+  }
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== OVERLAY_TOKEN_VERSION || !parts[1] || !parts[2]) {
+    return false;
+  }
+
+  const expected = createHmac('sha256', secret).update(parts[1]).digest('base64url');
+  const leftBuffer = Buffer.from(parts[2]);
+  const rightBuffer = Buffer.from(expected);
+
+  if (leftBuffer.length !== rightBuffer.length || !timingSafeEqual(leftBuffer, rightBuffer)) {
+    return false;
+  }
+
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    if (!claims.sceneId || !claims.workspaceId) {
+      return false;
+    }
+    if (claims.expiresAt && new Date(claims.expiresAt).getTime() < Date.now()) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readOverlaySocketSigningSecret(
+  env: Record<string, string | undefined> = process.env,
+) {
+  return (
+    env.BYOK_OVERLAY_SIGNING_SECRET?.trim() ||
+    env.OVERLAY_SIGNING_SECRET?.trim() ||
+    env.SUPABASE_JWT_SECRET?.trim() ||
+    env.SUPABASE_SECRET_KEY?.trim() ||
+    env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    ''
+  );
+}
+
+export function readOverlaySocketToken(request: Pick<IncomingMessage, 'headers' | 'url'>) {
+  try {
+    const url = new URL(request.url ?? '', `http://${request.headers.host ?? 'localhost'}`);
+    return url.searchParams.get('token')?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function authorizeOverlaySocketRequest(
+  request: Pick<IncomingMessage, 'headers' | 'url'>,
+  options: OverlaySocketOptions = {},
+): OverlaySocketAuthDecision {
+  const env = options.env ?? process.env;
+  const signingSecret = options.signingSecret ?? readOverlaySocketSigningSecret(env);
+  if (signingSecret) {
+    return verifyOverlayToken(signingSecret, readOverlaySocketToken(request))
+      ? { allowed: true, reason: 'signed-overlay-token', trusted: true }
+      : { allowed: false, reason: 'missing-overlay-token', trusted: false };
+  }
+
+  if (isOverlaySocketLocalDevRequest(request.headers, env, options.allowedOrigins)) {
+    return { allowed: true, reason: 'local-dev-origin', trusted: true };
+  }
+
+  return { allowed: false, reason: 'forbidden-origin', trusted: false };
+}
+
+function isOverlaySocketLocalDevRequest(
+  headers: IncomingHttpHeaders,
+  env: Record<string, string | undefined>,
+  allowedOrigins: readonly string[] | undefined,
+) {
+  if (env.NODE_ENV === 'production' || env.VERCEL_ENV === 'production') {
+    return false;
+  }
+
+  const origin = normalizeOrigin(readHeader(headers, 'origin'));
+  if (origin && allowedOrigins?.includes(origin)) {
+    return true;
+  }
+
+  const host = readHeader(headers, 'host') ?? '';
+  if (!origin) {
+    return isLocalHost(host);
+  }
+
+  try {
+    return isLocalHost(new URL(origin).host) && isLocalHost(host);
+  } catch {
+    return false;
+  }
+}
+
+function normalizeOrigin(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function readHeader(headers: IncomingHttpHeaders, name: string) {
+  const value = headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function isLocalHost(value: string) {
+  const trimmed = value.trim();
+  const host = trimmed.startsWith('[')
+    ? (trimmed.match(/^\[([^\]]+)\]/)?.[1] ?? '')
+    : (trimmed.split(':')[0] ?? '');
+  return LOCAL_HOSTS.has(host);
+}
+
 export class OverlaySocket {
   private readonly server: WebSocketServer;
   private readonly clients = new Set<WebSocket>();
@@ -24,9 +160,16 @@ export class OverlaySocket {
   constructor(
     httpServer: HttpServer,
     private readonly onClientEvent?: (event: OverlayClientEvent) => void,
+    private readonly options: OverlaySocketOptions = {},
   ) {
     this.server = new WebSocketServer({ server: httpServer, path: '/ws' });
-    this.server.on('connection', (socket) => {
+    this.server.on('connection', (socket, request) => {
+      const auth = authorizeOverlaySocketRequest(request, this.options);
+      if (!auth.allowed) {
+        socket.close(4001, 'Unauthorized');
+        return;
+      }
+
       this.clients.add(socket);
       this.broadcast({
         type: 'system:status',
@@ -36,6 +179,9 @@ export class OverlaySocket {
       socket.on('message', (data) => {
         const event = parseClientEvent(data);
         if (event) {
+          if (event.type === 'manual:prompt' && !auth.trusted) {
+            return;
+          }
           this.onClientEvent?.(event);
         }
       });

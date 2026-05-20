@@ -5,7 +5,7 @@ import {
   resolveByokApiRouteContext,
   type SupabaseFetch,
 } from './supabase-context.js';
-import { resolveByokCorsOrigin } from './route-stub.js';
+import { createByokApiRoute, resolveByokCorsOrigin } from './route-stub.js';
 import { hashOverlayToken, issueOverlayToken } from './overlay-token.js';
 import { readSupabaseServerEnv } from '../../../src/lib/product/supabase-env.js';
 
@@ -246,6 +246,35 @@ describe('BYOK Supabase route context', () => {
       }),
     ).toBe('https://overlay.example.test');
   });
+
+  it('rejects unsupported route methods before resolving sibling contracts', async () => {
+    const response = createMockApiResponse();
+    const implementation = vi.fn();
+    const handler = createByokApiRoute(
+      {
+        PATCH: 'profile.self.write',
+      },
+      {
+        PATCH: implementation,
+      },
+    );
+
+    await handler(
+      {
+        body: {},
+        headers: {},
+        method: 'GET',
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(405);
+    expect(response.body).toMatchObject({
+      reason: 'method-not-allowed',
+      status: 405,
+    });
+    expect(implementation).not.toHaveBeenCalled();
+  });
 });
 
 function jsonResponse(body: unknown, status = 200) {
@@ -253,4 +282,22 @@ function jsonResponse(body: unknown, status = 200) {
     headers: { 'content-type': 'application/json' },
     status,
   });
+}
+
+function createMockApiResponse() {
+  return {
+    body: null as unknown,
+    headers: new Map<string, string>(),
+    statusCode: 200,
+    json(body: unknown) {
+      this.body = body;
+    },
+    setHeader(name: string, value: string) {
+      this.headers.set(name, value);
+    },
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+  };
 }

@@ -13,3 +13,14 @@ export function safeDecodePathParts(pathname: string) {
     return null;
   }
 }
+
+export function resolveRuntimeHealthStateKey(input: {
+  browserProviderKeyPresent: boolean;
+  requestedStateKey?: string | null;
+}) {
+  const requestedStateKey = input.requestedStateKey?.trim();
+  if (!requestedStateKey) {
+    return undefined;
+  }
+  return input.browserProviderKeyPresent ? requestedStateKey : undefined;
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canUseServerProviderProxy,
   getRawPathParts,
+  resolveRuntimeHealthStateKey,
   safeDecodePathParts,
 } from './runtimeSafety.js';
 
@@ -20,5 +21,20 @@ describe('runtimeSafety', () => {
   it('returns null instead of throwing for malformed path encoding', () => {
     expect(safeDecodePathParts('/api/byok/%E0%A4%A')).toBeNull();
     expect(safeDecodePathParts('/api/byok/profile')).toEqual(['api', 'byok', 'profile']);
+  });
+
+  it('does not expose arbitrary health state keys to server-proxy auth callers', () => {
+    expect(
+      resolveRuntimeHealthStateKey({
+        browserProviderKeyPresent: false,
+        requestedStateKey: 'other-channel:persona:hikari',
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveRuntimeHealthStateKey({
+        browserProviderKeyPresent: true,
+        requestedStateKey: 'local:persona:hikari',
+      }),
+    ).toBe('local:persona:hikari');
   });
 });

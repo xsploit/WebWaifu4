@@ -73,10 +73,35 @@ function getConfiguredOverlaySocketUrl() {
   ).trim();
 }
 
+function getOverlaySocketToken() {
+  const configured = (import.meta.env['VITE_OVERLAY_WS_TOKEN'] || '').trim();
+  if (configured) {
+    return configured;
+  }
+  return new URLSearchParams(window.location.search).get('token')?.trim() || '';
+}
+
+function withOverlaySocketToken(value: string) {
+  const token = getOverlaySocketToken();
+  if (!token) {
+    return value;
+  }
+
+  try {
+    const url = new URL(value, window.location.href);
+    if (!url.searchParams.has('token')) {
+      url.searchParams.set('token', token);
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 export function getOverlaySocketUrl() {
   const configured = getConfiguredOverlaySocketUrl();
   if (configured) {
-    return configured;
+    return withOverlaySocketToken(configured);
   }
 
   const url = new URL('/ws', window.location.href);
@@ -86,7 +111,7 @@ export function getOverlaySocketUrl() {
     url.port = '8787';
   }
 
-  return url.toString();
+  return withOverlaySocketToken(url.toString());
 }
 
 export function parseOverlayServerEvent(raw: string): OverlayServerEvent | null {

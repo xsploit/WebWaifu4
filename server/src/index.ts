@@ -29,6 +29,7 @@ import { summarizeByokRuntimeHealth } from './byokHealth.js';
 import {
   canUseServerProviderProxy,
   getRawPathParts,
+  resolveRuntimeHealthStateKey,
   safeDecodePathParts,
 } from './runtimeSafety.js';
 
@@ -76,7 +77,7 @@ type MalformedByokApiRoute = {
 };
 
 const CORS_REQUEST_HEADERS =
-  'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
+  'authorization,content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
 
 function createProvider(config: StreamBotConfig): ChatProvider {
   if (!config.providerProxyEnabled) {
@@ -907,6 +908,12 @@ const httpServer = createServer(async (request, response) => {
     const requestedOpenAiStateMode = normalizeOpenAiStateMode(
       url.searchParams.get('openAiStateMode'),
     );
+
+    const healthStateKey = resolveRuntimeHealthStateKey({
+      browserProviderKeyPresent: Boolean(getHeaderSecret(request, 'x-yourwifey-llm-provider-key')),
+      requestedStateKey,
+    });
+
     const runtimeHealthProvider = getRuntimeChatProvider(
       config,
       request,
@@ -915,7 +922,7 @@ const httpServer = createServer(async (request, response) => {
       allowServerProviderProxy,
     );
     const providerState =
-      runtimeHealthProvider?.getState?.(requestedStateKey, {
+      runtimeHealthProvider?.getState?.(healthStateKey, {
         openAiStateMode: requestedOpenAiStateMode,
         transportMode: requestedTransportMode,
       }) ?? null;
@@ -1201,6 +1208,11 @@ const httpServer = createServer(async (request, response) => {
         return;
       }
 
+      const targetStateKey = normalizeStateKey(
+        body.stateKey,
+        `twitch:${config.twitchChannel}:persona:riko`,
+      );
+
       const runtimeProvider = getRuntimeChatProvider(
         config,
         request,
@@ -1227,7 +1239,7 @@ const httpServer = createServer(async (request, response) => {
         sourceMessages: [],
         maxTokens: body.maxTokens,
         responseFormat: normalizeResponseFormat(body.responseFormat),
-        stateKey: normalizeStateKey(body.stateKey, `twitch:${config.twitchChannel}:persona:riko`),
+        stateKey: targetStateKey,
         stateScope: normalizeStateScope(body.stateScope),
         temperature: body.temperature,
         transportMode: normalizeAiTransportMode(body.transportMode),

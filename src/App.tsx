@@ -141,7 +141,7 @@ import {
 } from './lib/product/supabase-auth-session';
 import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import { applyCloudSettingRecords } from './lib/product/cloud-settings';
-import { fetchByokOverlayConfig } from './lib/product/byok-api';
+import { fetchByokOverlayConfig, getSupabaseAccessToken } from './lib/product/byok-api';
 import type { ProviderKind, SyncedSettingRecord } from './lib/product/byok';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
 import {
@@ -707,6 +707,11 @@ async function buildBackendProviderHeaders({
     if (ttsApiKey) {
       headers['x-yourwifey-tts-provider-key'] = ttsApiKey;
     }
+  }
+
+  const accessToken = getSupabaseAccessToken();
+  if (accessToken) {
+    headers['authorization'] = `Bearer ${accessToken}`;
   }
 
   return headers;

@@ -54,9 +54,8 @@ export function createByokApiRoute(
       return;
     }
 
-    const method = (request.method ?? '').toUpperCase() as 'DELETE' | 'GET' | 'PATCH' | 'POST';
-    const routeId = routeIdByMethod[method] ?? Object.values(routeIdByMethod)[0];
-    if (!routeId) {
+    const method = (request.method ?? '').toUpperCase();
+    if (!isByokApiRouteMethod(method) || !routeIdByMethod[method]) {
       response.status(405).json({
         ok: false,
         status: 405,
@@ -66,6 +65,7 @@ export function createByokApiRoute(
       return;
     }
 
+    const routeId = routeIdByMethod[method];
     const resolved = await resolveByokApiRouteRequest({ request, routeId });
     const result = createByokRouteStubResponse({
       body: request.body,
@@ -101,6 +101,10 @@ export function createByokApiRoute(
       });
     }
   };
+}
+
+function isByokApiRouteMethod(method: string): method is ByokApiRouteMethod {
+  return method === 'DELETE' || method === 'GET' || method === 'PATCH' || method === 'POST';
 }
 
 export function resolveByokCorsOrigin(input: {
