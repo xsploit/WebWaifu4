@@ -335,7 +335,7 @@ export function buildSupabaseUserRequest(input: {
     return {
       ok: false,
       reason: 'expired',
-      message: 'Supabase session expired; local-only mode remains active.',
+      message: 'Supabase session expired; sign in to reopen the editor.',
     };
   }
 
@@ -422,7 +422,7 @@ export async function hydrateSupabaseAuthSession(input: {
     return {
       status: 'no-session',
       cleanUrl,
-      message: 'No Supabase session is present; guest local-only mode remains active.',
+      message: 'No Supabase session is present; sign in to open the editor.',
       user: null,
     };
   }

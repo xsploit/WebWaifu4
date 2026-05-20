@@ -78,13 +78,14 @@ export function describeByokAccountShell(mode: ByokAccountMode): AccountShellSum
 
   if (mode.supabase.status === 'configured') {
     return {
-      modeLabel: 'Guest',
-      storageLabel: 'Local only',
+      modeLabel: 'Sign-in required',
+      storageLabel: 'Cloud sync after login',
       cloudSyncLabel: 'Sign-in required',
-      localOnlyLabel: 'Active',
+      localOnlyLabel: 'Provider vault only',
       providerKeyLabel: 'Browser local',
       loginLabel: 'Available',
-      detail: 'Supabase is configured, but this browser is still using local-only overlay state.',
+      detail:
+        'Sign in to open the editor, dashboard, and waifu settings. Provider keys still stay in the browser vault.',
     };
   }
 

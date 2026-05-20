@@ -136,7 +136,13 @@ import {
 } from './lib/stream/overlay-events';
 import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitch/direct-irc';
 import { resolveByokAccountMode, type SupabaseAuthIdentity } from './lib/product/account-mode';
-import { navigateToAppPath, parseAppRoute } from './lib/product/app-route';
+import {
+  appRouteNeedsAuth,
+  buildLoginRedirectPath,
+  getInternalAppPath,
+  navigateToAppPath,
+  parseAppRoute,
+} from './lib/product/app-route';
 import {
   clearPersistedSupabaseAuthSession,
   startSupabaseAuthSessionLifecycle,
@@ -1416,6 +1422,7 @@ function App() {
   );
   const [supabaseAuthUser, setSupabaseAuthUser] = useState<SupabaseAuthIdentity | null>(null);
   const [supabaseAuthStatus, setSupabaseAuthStatus] = useState('Checking Supabase session state.');
+  const [supabaseAuthChecked, setSupabaseAuthChecked] = useState(false);
   const [appRoute, setAppRoute] = useState(() =>
     parseAppRoute(typeof window === 'undefined' ? '/' : window.location),
   );
@@ -1460,6 +1467,7 @@ function App() {
 
         setSupabaseAuthUser(result.user);
         setSupabaseAuthStatus(result.message);
+        setSupabaseAuthChecked(true);
       },
       onStatus: setSupabaseAuthStatus,
     });
@@ -1472,7 +1480,8 @@ function App() {
   const handleSupabaseLocalSignOut = useCallback(() => {
     clearPersistedSupabaseAuthSession();
     setSupabaseAuthUser(null);
-    setSupabaseAuthStatus('Signed out locally. Guest local-only mode is active.');
+    setSupabaseAuthChecked(true);
+    setSupabaseAuthStatus('Signed out locally. Sign in to open the editor and cloud settings.');
   }, []);
   const [menuOpen, setMenuOpen] = useState(() => createDefaultUiState().menuOpen);
   const [chatBarOpen, setChatBarOpen] = useState(false);
@@ -4807,6 +4816,23 @@ function App() {
     }
     return getOverlaySocketToken();
   }, [appRoute]);
+  const routeNeedsAuth = appRouteNeedsAuth(appRoute, {
+    overlayTokenPresent: Boolean(overlayToken),
+  });
+  const routeAuthPending = routeNeedsAuth && !supabaseAuthChecked;
+  const routeAuthBlocked =
+    routeNeedsAuth && supabaseAuthChecked && accountMode.kind !== 'supabase-cloud-sync';
+  const productShellActive = productPageActive || routeAuthPending || routeAuthBlocked;
+  useEffect(() => {
+    if (!routeAuthBlocked) {
+      return;
+    }
+
+    const nextPath =
+      typeof window === 'undefined' ? appRoute.path : getInternalAppPath(window.location);
+    setSupabaseAuthStatus('Sign in to open the editor, dashboard, and waifu settings.');
+    setAppRoute(navigateToAppPath(buildLoginRedirectPath(nextPath)));
+  }, [appRoute, routeAuthBlocked]);
   const persistedStateSnapshot = useMemo<PersistedChatState>(
     () => ({
       activePersonaId,
@@ -5055,7 +5081,7 @@ function App() {
 
   return (
     <div
-      className={`shell ${productPageActive ? 'product-shell-mode' : ''} ${
+      className={`shell ${productShellActive ? 'product-shell-mode' : ''} ${
         overlayPageActive ? 'overlay-shell-mode' : ''
       }`}
       onClick={() => {
@@ -5090,6 +5116,18 @@ function App() {
         />
       ) : null}
 
+      {routeAuthPending || routeAuthBlocked ? (
+        <section className="product-card product-card-narrow product-auth-gate">
+          <p className="product-eyebrow">Account required</p>
+          <h1>Checking your session…</h1>
+          <p>
+            YourWifey syncs the waifu setup to your account, while provider API keys stay in this
+            browser vault.
+          </p>
+          <p className="product-status">{supabaseAuthStatus}</p>
+        </section>
+      ) : null}
+
       {overlayPageActive && overlayConfigStatus ? (
         <div className="overlay-config-status">{overlayConfigStatus}</div>
       ) : null}
@@ -5105,7 +5143,7 @@ function App() {
         </div>
       ) : null}
 
-      {!productPageActive && !overlayPageActive ? (
+      {!productShellActive && !overlayPageActive ? (
         <div className="ui-layer">
           <ChatLog
             activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}

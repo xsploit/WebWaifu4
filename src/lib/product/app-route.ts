@@ -71,6 +71,35 @@ export function navigateToAppPath(path: string) {
   return parseAppRoute(window.location);
 }
 
+export function appRouteNeedsAuth(route: AppRoute, input: { overlayTokenPresent?: boolean } = {}) {
+  if (route.kind === 'home' || route.kind === 'login' || route.kind === 'auth-callback') {
+    return false;
+  }
+  if (route.kind === 'overlay') {
+    return !input.overlayTokenPresent;
+  }
+  return true;
+}
+
+export function buildLoginRedirectPath(nextPath: string | null | undefined) {
+  const next = normalizeSafeInternalNextPath(nextPath) ?? '/dashboard';
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
+export function getSafeLoginNextPath(input: Location | URL | string, fallback = '/dashboard') {
+  const parsed = parseUrl(input);
+  const safeNext = normalizeSafeInternalNextPath(parsed?.searchParams.get('next'));
+  return safeNext ?? fallback;
+}
+
+export function getInternalAppPath(input: Location | URL | string) {
+  const parsed = parseUrl(input);
+  if (!parsed) {
+    return '/dashboard';
+  }
+  return `${parsed.pathname || '/'}${parsed.search}${parsed.hash}`;
+}
+
 function normalizePathname(input: Location | URL | string) {
   if (typeof input === 'string') {
     try {
@@ -81,4 +110,38 @@ function normalizePathname(input: Location | URL | string) {
   }
 
   return input.pathname || '/';
+}
+
+function normalizeSafeInternalNextPath(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.startsWith('//')) {
+    return null;
+  }
+
+  const parsed = parseUrl(trimmed);
+  if (!parsed || parsed.origin !== 'http://localhost') {
+    return null;
+  }
+
+  const route = parseAppRoute(parsed);
+  if (route.kind === 'home' || route.kind === 'login' || route.kind === 'auth-callback') {
+    return null;
+  }
+  return `${parsed.pathname || '/'}${parsed.search}${parsed.hash}`;
+}
+
+function parseUrl(input: Location | URL | string) {
+  if (typeof input !== 'string') {
+    try {
+      return new URL(input.href);
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    return new URL(input, 'http://localhost');
+  } catch {
+    return null;
+  }
 }

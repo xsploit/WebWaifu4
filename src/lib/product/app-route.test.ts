@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseAppRoute } from './app-route';
+import {
+  appRouteNeedsAuth,
+  buildLoginRedirectPath,
+  getInternalAppPath,
+  getSafeLoginNextPath,
+  parseAppRoute,
+} from './app-route';
 
 describe('product app route parser', () => {
   it.each([
@@ -24,5 +30,29 @@ describe('product app route parser', () => {
 
   it('falls back unknown paths to the editor', () => {
     expect(parseAppRoute('/not-a-product-route')).toEqual({ kind: 'editor', path: '/editor' });
+  });
+
+  it('requires auth for the editor, account, dashboard, and unsigned overlay routes', () => {
+    expect(appRouteNeedsAuth(parseAppRoute('/'))).toBe(false);
+    expect(appRouteNeedsAuth(parseAppRoute('/login'))).toBe(false);
+    expect(appRouteNeedsAuth(parseAppRoute('/auth/callback'))).toBe(false);
+    expect(appRouteNeedsAuth(parseAppRoute('/editor'))).toBe(true);
+    expect(appRouteNeedsAuth(parseAppRoute('/account'))).toBe(true);
+    expect(appRouteNeedsAuth(parseAppRoute('/dashboard'))).toBe(true);
+    expect(appRouteNeedsAuth(parseAppRoute('/overlay/main-scene'))).toBe(true);
+    expect(
+      appRouteNeedsAuth(parseAppRoute('/overlay/main-scene'), { overlayTokenPresent: true }),
+    ).toBe(false);
+  });
+
+  it('builds safe login redirects for protected app routes', () => {
+    expect(buildLoginRedirectPath('/editor')).toBe('/login?next=%2Feditor');
+    expect(getSafeLoginNextPath('/login?next=%2Feditor')).toBe('/editor');
+    expect(getSafeLoginNextPath('/login?next=%2Fdashboard%3Ftab%3Dvoice')).toBe(
+      '/dashboard?tab=voice',
+    );
+    expect(getSafeLoginNextPath('/login?next=https%3A%2F%2Fevil.test')).toBe('/dashboard');
+    expect(getSafeLoginNextPath('/login?next=%2Flogin')).toBe('/dashboard');
+    expect(getInternalAppPath('/editor?tab=voice#settings')).toBe('/editor?tab=voice#settings');
   });
 });

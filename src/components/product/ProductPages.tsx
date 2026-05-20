@@ -1,16 +1,9 @@
-import {
-  FormEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import type { ByokAccountMode } from '../../lib/product/account-mode';
-import type { AppRoute } from '../../lib/product/app-route';
+import { getSafeLoginNextPath, type AppRoute } from '../../lib/product/app-route';
 import {
   fetchByokProfile,
   fetchByokSettings,
@@ -127,9 +120,9 @@ function HomePage(
                 </button>
                 <button
                   className="yw-btn yw-btn--ghost"
-                  onClick={() => props.onNavigate('/editor')}
+                  onClick={() => props.onNavigate(isCloud ? '/editor' : '/login')}
                 >
-                  Try local-only
+                  {isCloud ? 'Open editor' : 'Sign in first'}
                 </button>
               </div>
               <div className="yw-hero__meta">
@@ -254,7 +247,11 @@ function HomePage(
                 ['Piper · Neuro-sama', 'local', 'Default for Neuro-sama preset'],
                 ['Fish Speech · s2 voice', 'remote', 'Live bridge ready when provider key exists'],
                 ['Inworld · custom voice id', 'remote', 'Saved per persona through Voice Lab'],
-                ['Fish Speech · zero-shot clone', 'remote', 'Custom voice reference saved per persona'],
+                [
+                  'Fish Speech · zero-shot clone',
+                  'remote',
+                  'Custom voice reference saved per persona',
+                ],
               ].map(([name, type, desc], index) => (
                 <div className={`yw-voice-row ${index === 1 ? 'is-selected' : ''}`} key={name}>
                   <span className="yw-radio" />
@@ -397,8 +394,11 @@ function HomePage(
               >
                 {isCloud ? 'Open dashboard' : 'Start creating'}
               </button>
-              <button className="yw-btn yw-btn--ghost" onClick={() => props.onNavigate('/editor')}>
-                Try local-only
+              <button
+                className="yw-btn yw-btn--ghost"
+                onClick={() => props.onNavigate(isCloud ? '/editor' : '/login')}
+              >
+                {isCloud ? 'Open editor' : 'Sign in first'}
               </button>
             </div>
           </div>
@@ -653,9 +653,9 @@ function HomeVrmPreview() {
 
     const api: HomeVrmApi = {
       setExpression(name) {
-        state.expr = (['neutral', 'happy', 'surprised', 'sad', 'angry'].includes(name)
-          ? name
-          : 'neutral') as HomeVrmExpression;
+        state.expr = (
+          ['neutral', 'happy', 'surprised', 'sad', 'angry'].includes(name) ? name : 'neutral'
+        ) as HomeVrmExpression;
       },
       setTalking(on) {
         state.talking = !!on;
@@ -887,6 +887,24 @@ function HomeSpecList(props: { items: Array<[string, string]> }) {
   );
 }
 
+function getLoginNextTarget(fallback = '/dashboard') {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+  return getSafeLoginNextPath(window.location, fallback);
+}
+
+function getAuthCallbackUrlWithNext() {
+  const callbackUrl = getProductAuthCallbackUrl();
+  if (!callbackUrl) {
+    return undefined;
+  }
+
+  const url = new URL(callbackUrl);
+  url.searchParams.set('next', getLoginNextTarget());
+  return url.toString();
+}
+
 function LoginPage(
   props: ProductPagesProps & {
     accountSummary: ReturnType<typeof describeByokAccountShell>;
@@ -946,7 +964,7 @@ function LoginPage(
 
   useEffect(() => {
     if (props.accountMode.kind === 'supabase-cloud-sync') {
-      props.onNavigate('/dashboard');
+      props.onNavigate(getLoginNextTarget());
     }
   }, [props.accountMode.kind, props.onNavigate]);
 
@@ -956,7 +974,7 @@ function LoginPage(
     const result = await requestSupabaseMagicLink({
       config: props.supabaseConfig,
       email,
-      redirectTo: getProductAuthCallbackUrl(),
+      redirectTo: getAuthCallbackUrlWithNext(),
     });
     setBusy(false);
     setStatus(result.message);
@@ -966,7 +984,7 @@ function LoginPage(
     const request = buildSupabaseOAuthRequest({
       config: { ...props.supabaseConfig, oauthProviders: enabledOAuthProviders },
       provider,
-      redirectTo: getProductAuthCallbackUrl(),
+      redirectTo: getAuthCallbackUrlWithNext(),
     });
     if (!request.ok) {
       setStatus(request.message);
@@ -1027,13 +1045,6 @@ function LoginPage(
           <button className="product-primary" disabled={busy} type="submit">
             {busy ? 'Sending…' : 'Send email link'}
           </button>
-          <button
-            className="product-secondary"
-            onClick={() => props.onNavigate('/dashboard')}
-            type="button"
-          >
-            Continue local-only
-          </button>
         </div>
         <StatusText>{status}</StatusText>
       </form>
@@ -1044,7 +1055,7 @@ function LoginPage(
 function AuthCallbackPage(props: ProductPagesProps) {
   useEffect(() => {
     if (props.accountMode.kind === 'supabase-cloud-sync') {
-      props.onNavigate('/dashboard');
+      props.onNavigate(getLoginNextTarget());
     }
   }, [props.accountMode.kind, props.onNavigate]);
 
@@ -1058,11 +1069,11 @@ function AuthCallbackPage(props: ProductPagesProps) {
         </div>
       </section>
       <div className="product-actions">
-        <button className="product-primary" onClick={() => props.onNavigate('/dashboard')}>
-          Go to dashboard
+        <button className="product-primary" onClick={() => props.onNavigate(getLoginNextTarget())}>
+          Continue
         </button>
-        <button className="product-secondary" onClick={() => props.onNavigate('/editor')}>
-          Back to editor
+        <button className="product-secondary" onClick={() => props.onNavigate('/login')}>
+          Back to login
         </button>
       </div>
     </ProductShell>
