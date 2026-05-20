@@ -26,13 +26,13 @@ import {
 } from '../../lib/product/scene-backup';
 import type { SyncedSettingRecord } from '../../lib/product/byok';
 import {
-  buildSupabaseOAuthRequest,
   describeByokAccountShell,
   fetchSupabaseEnabledOAuthProviders,
   getEnabledSupabaseOAuthProviders,
   getSupabaseOAuthProviderLabel,
   requestSupabaseMagicLink,
 } from '../../lib/product/supabase-auth-shell';
+import { signInWithSupabaseOAuth } from '../../lib/product/supabase-sdk-auth';
 import type { SupabaseOAuthProvider, SupabasePublicConfig } from '../../lib/product/supabase-env';
 import { getProductAuthCallbackUrl } from '../../lib/product/auth-redirect';
 
@@ -987,12 +987,14 @@ function LoginPage(
     setStatus(result.message);
   };
 
-  const handleOAuth = (provider: SupabaseOAuthProvider) => {
-    const request = buildSupabaseOAuthRequest({
+  const handleOAuth = async (provider: SupabaseOAuthProvider) => {
+    setBusy(true);
+    const request = await signInWithSupabaseOAuth({
       config: { ...props.supabaseConfig, oauthProviders: enabledOAuthProviders },
       provider,
       redirectTo: getAuthCallbackUrlWithNext(),
     });
+    setBusy(false);
     if (!request.ok) {
       setStatus(request.message);
       return;
@@ -1020,7 +1022,7 @@ function LoginPage(
           {enabledOAuthProviders.map((provider) => (
             <button
               className="product-primary"
-              disabled={!oauthAvailable}
+              disabled={!oauthAvailable || busy}
               key={provider}
               onClick={() => handleOAuth(provider)}
               type="button"

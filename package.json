@@ -57,6 +57,7 @@
     "@pixiv/three-vrm-animation": "^3.5.1",
     "@react-three/drei": "^9.121.0",
     "@react-three/fiber": "^8.17.0",
+    "@supabase/supabase-js": "^2.106.1",
     "dotenv": "^17.4.2",
     "fish-audio": "^0.1.0",
     "ioredis": "^5.10.1",

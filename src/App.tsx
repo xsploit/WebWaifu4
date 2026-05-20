@@ -145,9 +145,9 @@ import {
   parseAppRoute,
 } from './lib/product/app-route';
 import {
-  clearPersistedSupabaseAuthSession,
-  startSupabaseAuthSessionLifecycle,
-} from './lib/product/supabase-auth-session';
+  signOutSupabaseSdkAuth,
+  startSupabaseSdkAuthSessionLifecycle,
+} from './lib/product/supabase-sdk-auth';
 import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
 import { applyCloudSettingRecords } from './lib/product/cloud-settings';
 import { fetchByokOverlayConfig, getSupabaseAccessToken } from './lib/product/byok-api';
@@ -1453,9 +1453,8 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    const lifecycle = startSupabaseAuthSessionLifecycle({
+    const lifecycle = startSupabaseSdkAuthSessionLifecycle({
       config: supabaseConfig,
-      href: typeof window === 'undefined' ? undefined : window.location.href,
       onResult(result) {
         if (
           result.cleanUrl &&
@@ -1490,11 +1489,11 @@ function App() {
   }, [supabaseConfig]);
 
   const handleSupabaseLocalSignOut = useCallback(() => {
-    clearPersistedSupabaseAuthSession();
+    void signOutSupabaseSdkAuth(supabaseConfig);
     setSupabaseAuthUser(null);
     setSupabaseAuthChecked(true);
     setSupabaseAuthStatus('Signed out locally. Sign in to open the editor and cloud settings.');
-  }, []);
+  }, [supabaseConfig]);
   const [menuOpen, setMenuOpen] = useState(() => createDefaultUiState().menuOpen);
   const [chatBarOpen, setChatBarOpen] = useState(false);
   const [chatLogOpen, setChatLogOpen] = useState(() => createDefaultUiState().chatLogOpen);
