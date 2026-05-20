@@ -7,6 +7,7 @@ import type {
 import type { ProductStorageMode, ProviderKeyMode } from '../../../src/lib/product/byok.js';
 import { assertSettingCanSync, type SyncedSettingRecord } from '../../../src/lib/product/byok.js';
 import { cloudSettingId } from '../../../src/lib/product/cloud-setting-id.js';
+import { findForbiddenCloudRouteSecretPaths } from '../../../src/lib/product/server-route-ownership.js';
 import type { SupabaseServerConfig } from '../../../src/lib/product/supabase-env.js';
 import { fetchSupabaseRest, type SupabaseFetch } from './supabase-context.js';
 
@@ -376,6 +377,7 @@ export async function upsertSyncedSetting(input: {
     workspaceId: input.workspaceId,
   };
   assertSettingCanSync(record);
+  assertSyncedSettingHasNoSecretMaterial(record);
 
   const existingInScope = await fetchSyncedSettingByScope({
     characterId,
@@ -417,6 +419,19 @@ export async function upsertSyncedSetting(input: {
     },
   );
   return normalizeSyncedSetting(rows[0], input.workspaceId) ?? record;
+}
+
+function assertSyncedSettingHasNoSecretMaterial(record: SyncedSettingRecord) {
+  const findings = findForbiddenCloudRouteSecretPaths(
+    {
+      key: record.key,
+      valueJson: record.valueJson,
+    },
+    'syncedSetting',
+  );
+  if (findings.length > 0) {
+    throw new Error(`Synced settings cannot contain provider secrets: ${findings.join(', ')}`);
+  }
 }
 
 async function fetchSyncedSettingById(input: {
@@ -580,9 +595,7 @@ function normalizeSyncedStorageClass(value: unknown): SyncedSettingRecord['stora
 }
 
 function nullableUuidFilter(column: string, value: string | undefined) {
-  return value
-    ? `&${column}=eq.${encodeURIComponent(value)}`
-    : `&${column}=is.null`;
+  return value ? `&${column}=eq.${encodeURIComponent(value)}` : `&${column}=is.null`;
 }
 
 function normalizeStorageMode(value: unknown): ProductStorageMode | null {

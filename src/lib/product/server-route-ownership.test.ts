@@ -65,6 +65,7 @@ describe('BYOK cloud route ownership contracts', () => {
       'synced-setting.write',
       'provider-secret-descriptor.write',
       'overlay-token.issue',
+      'overlay-token.revoke',
       'memory-entry.write',
       'asset.write',
       'overlay.scene.read',
@@ -172,6 +173,29 @@ describe('BYOK cloud route ownership contracts', () => {
       status: 400,
       reason: 'secret-material-forbidden',
       findings: ['body.valueJson.provider.apiKey'],
+    });
+
+    expect(
+      authorizeByokCloudRoute({
+        routeId: 'synced-setting.write',
+        accountMode: ownerMode,
+        workspace,
+        settingStorageClass: 'synced-private',
+        body: {
+          key: 'aiSettings',
+          storageClass: 'synced-private',
+          valueJson: JSON.stringify({
+            provider: {
+              defaultCredential: 'sk-proj-abcdefghijklmnop1234567890',
+            },
+          }),
+        },
+      }),
+    ).toMatchObject({
+      allowed: false,
+      status: 400,
+      reason: 'secret-material-forbidden',
+      findings: ['body.valueJson.provider.defaultCredential'],
     });
 
     expect(

@@ -108,9 +108,10 @@ export function resolveByokCorsOrigin(input: {
   origin?: string;
 }) {
   const origin = input.origin?.trim();
-  const allowedOrigins = readAllowedOrigins(input.env ?? process.env);
+  const env = input.env ?? process.env;
+  const allowedOrigins = readAllowedOrigins(env);
 
-  if (origin && isLocalDevelopmentOrigin(origin)) {
+  if (origin && isLocalDevelopmentOrigin(origin, env)) {
     return origin;
   }
 
@@ -139,7 +140,12 @@ function readAllowedOrigins(env: Record<string, string | undefined>) {
     normalizeOrigin(env['VITE_PUBLIC_APP_ORIGIN']),
     normalizeOrigin(env['VERCEL_URL']),
     normalizeOrigin(env['VERCEL_PROJECT_PRODUCTION_URL']),
-  ].filter((origin): origin is string => Boolean(origin));
+  ].filter((origin): origin is string => {
+    if (!origin) {
+      return false;
+    }
+    return !isForbiddenProductionLocalOrigin(origin, env);
+  });
 }
 
 function splitOriginList(value: string | undefined) {
@@ -162,8 +168,21 @@ function normalizeOrigin(value: string | undefined) {
   }
 }
 
-function isLocalDevelopmentOrigin(origin: string) {
+function isLocalDevelopmentOrigin(origin: string, env: Record<string, string | undefined>) {
+  if (isProductionEnv(env)) {
+    return false;
+  }
   return /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin);
+}
+
+function isForbiddenProductionLocalOrigin(origin: string, env: Record<string, string | undefined>) {
+  return (
+    isProductionEnv(env) && /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin)
+  );
+}
+
+function isProductionEnv(env: Record<string, string | undefined>) {
+  return env['NODE_ENV'] === 'production' || env['VERCEL_ENV'] === 'production';
 }
 
 function readHeader(request: ApiRequest, name: string) {

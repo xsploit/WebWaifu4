@@ -1,13 +1,37 @@
 import { fetchSceneSummary } from '../../../../_lib/product-data.js';
-import { issueOverlayToken } from '../../../../_lib/overlay-token.js';
+import { issueOverlayToken, verifyOverlayToken } from '../../../../_lib/overlay-token.js';
+import {
+  revokeOverlayTokensForScene,
+  storeOverlayTokenRecord,
+} from '../../../../_lib/overlay-token-store.js';
 import { createByokApiRoute } from '../../../../_lib/route-stub.js';
 import { readRouteParam, type ByokApiRequestLike } from '../../../../_lib/supabase-context.js';
 
 export default createByokApiRoute(
   {
+    DELETE: 'overlay-token.revoke',
     POST: 'overlay-token.issue',
   },
   {
+    async DELETE({ request, resolved }) {
+      const params = readOverlayTokenParams(request);
+      if (!params) {
+        return missingScene();
+      }
+      const revokedCount = await revokeOverlayTokensForScene({
+        config: resolved.config,
+        fetchFn: resolved.fetchFn,
+        sceneId: params.sceneId,
+        workspaceId: params.workspaceId,
+      });
+      return {
+        body: {
+          ok: true,
+          revokedCount,
+        },
+      };
+    },
+
     async POST({ request, resolved }) {
       const params = readOverlayTokenParams(request);
       if (!params) {
@@ -32,11 +56,21 @@ export default createByokApiRoute(
         sceneId: scene.id,
         workspaceId: scene.workspaceId,
       });
+      const claims = verifyOverlayToken(resolved.config, token);
+      if (!claims) {
+        throw new Error('Issued overlay token could not be verified.');
+      }
+      await storeOverlayTokenRecord({
+        claims,
+        config: resolved.config,
+        fetchFn: resolved.fetchFn,
+        token,
+      });
 
       return {
         body: {
           ok: true,
-          expiresAt: tokenExpiry(token),
+          expiresAt: claims.expiresAt,
           scene,
           token,
         },
@@ -61,16 +95,4 @@ function missingScene() {
     },
     status: 404,
   };
-}
-
-function tokenExpiry(token: string) {
-  try {
-    const [, payload] = token.split('.');
-    if (!payload) {
-      return null;
-    }
-    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).expiresAt ?? null;
-  } catch {
-    return null;
-  }
 }

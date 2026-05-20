@@ -60,6 +60,10 @@ export function readOverlayTokenFromRequest(input: {
   return match?.[1]?.trim() || null;
 }
 
+export function hashOverlayToken(config: SupabaseServerConfig, token: string) {
+  return createHmac('sha256', getOverlaySigningSecret(config)).update(token).digest('base64url');
+}
+
 export function getOverlaySigningSecret(config: SupabaseServerConfig) {
   const secret = config.overlaySigningSecret ?? config.jwtSecret ?? config.serviceRoleKey;
   if (!secret) {

@@ -196,6 +196,24 @@ describe('BYOK product data bootstrap', () => {
         workspaceId: 'workspace-1',
       }),
     ).rejects.toThrow(/key vault/i);
+
+    await expect(
+      upsertSyncedSetting({
+        body: {
+          key: 'aiSettings',
+          storageClass: 'synced-private',
+          valueJson: JSON.stringify({
+            provider: {
+              defaultCredential: 'sk-proj-abcdefghijklmnop1234567890',
+            },
+          }),
+        },
+        config,
+        fetchFn,
+        settingId: 'aiSettings',
+        workspaceId: 'workspace-1',
+      }),
+    ).rejects.toThrow(/provider secrets/i);
   });
 
   it('rejects synced setting ids that already belong to another workspace', async () => {
@@ -231,7 +249,11 @@ describe('BYOK product data bootstrap', () => {
         workspaceId: 'workspace-2',
       }),
     ).rejects.toThrow(/another workspace/i);
-    expect(fetchMock.mock.calls.some(([url, init]) => url.includes('on_conflict=id') && init?.method === 'POST')).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => url.includes('on_conflict=id') && init?.method === 'POST',
+      ),
+    ).toBe(false);
   });
 });
 

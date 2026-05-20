@@ -14,6 +14,7 @@ import {
   type SupabaseServerConfig,
 } from '../../../src/lib/product/supabase-env.js';
 import { readOverlayTokenFromRequest, verifyOverlayToken } from './overlay-token.js';
+import { isOverlayTokenRecordActive } from './overlay-token-store.js';
 
 export type ByokApiRequestLike = {
   body?: unknown;
@@ -68,7 +69,19 @@ export async function resolveByokApiRouteRequest(input: {
 
   const fetchFn = input.fetchFn ?? fetch;
   if (input.routeId === 'overlay.scene.read') {
-    const overlayToken = verifyOverlayToken(config, readOverlayTokenFromRequest(input.request));
+    const rawOverlayToken = readOverlayTokenFromRequest(input.request);
+    const verifiedOverlayToken = verifyOverlayToken(config, rawOverlayToken);
+    const overlayToken =
+      rawOverlayToken && verifiedOverlayToken
+        ? (await isOverlayTokenRecordActive({
+            claims: verifiedOverlayToken,
+            config,
+            fetchFn,
+            token: rawOverlayToken,
+          }).catch(() => false))
+          ? verifiedOverlayToken
+          : null
+        : null;
     return {
       authUser: null,
       config,

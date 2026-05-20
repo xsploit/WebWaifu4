@@ -6,11 +6,18 @@ import {
   type SupabaseFetch,
 } from './supabase-context.js';
 import { resolveByokCorsOrigin } from './route-stub.js';
+import { hashOverlayToken, issueOverlayToken } from './overlay-token.js';
+import { readSupabaseServerEnv } from '../../../src/lib/product/supabase-env.js';
 
 const serverEnv = {
   SUPABASE_URL: 'https://project-ref.supabase.co',
   SUPABASE_ANON_KEY: 'anon-public-key',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+};
+
+const overlayServerEnv = {
+  ...serverEnv,
+  OVERLAY_SIGNING_SECRET: 'overlay-secret',
 };
 
 describe('BYOK Supabase route context', () => {
@@ -129,6 +136,79 @@ describe('BYOK Supabase route context', () => {
     ).toBe('workspace-1');
   });
 
+  it('requires overlay scene tokens to have an active stored hash row', async () => {
+    const config = readSupabaseServerEnv(overlayServerEnv);
+    const token = issueOverlayToken({
+      config,
+      expiresInHours: 24,
+      sceneId: 'scene-1',
+      workspaceId: 'workspace-1',
+    });
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes('/rest/v1/overlay_tokens?')) {
+        return jsonResponse([
+          {
+            expires_at: '2099-01-01T00:00:00.000Z',
+            revoked_at: null,
+            scopes: ['overlay:read'],
+            token_hash: hashOverlayToken(config, token),
+          },
+        ]);
+      }
+      return jsonResponse([], 404);
+    }) as unknown as SupabaseFetch;
+
+    await expect(
+      resolveByokApiRouteContext({
+        env: overlayServerEnv,
+        fetchFn,
+        request: {
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+          query: {
+            sceneId: 'scene-1',
+          },
+        },
+        routeId: 'overlay.scene.read',
+      }),
+    ).resolves.toMatchObject({
+      overlayToken: {
+        sceneId: 'scene-1',
+        workspaceId: 'workspace-1',
+      },
+    });
+
+    fetchFn.mockResolvedValueOnce(
+      jsonResponse([
+        {
+          expires_at: '2099-01-01T00:00:00.000Z',
+          revoked_at: '2026-05-20T00:00:00.000Z',
+          scopes: ['overlay:read'],
+          token_hash: hashOverlayToken(config, token),
+        },
+      ]),
+    );
+
+    await expect(
+      resolveByokApiRouteContext({
+        env: overlayServerEnv,
+        fetchFn,
+        request: {
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+          query: {
+            sceneId: 'scene-1',
+          },
+        },
+        routeId: 'overlay.scene.read',
+      }),
+    ).resolves.toMatchObject({
+      overlayToken: null,
+    });
+  });
+
   it('uses an explicit CORS allowlist instead of wildcarding BYOK bearer routes', () => {
     expect(
       resolveByokCorsOrigin({
@@ -155,6 +235,16 @@ describe('BYOK Supabase route context', () => {
         origin: 'http://localhost:4173',
       }),
     ).toBe('http://localhost:4173');
+
+    expect(
+      resolveByokCorsOrigin({
+        env: {
+          NODE_ENV: 'production',
+          BYOK_CORS_ALLOWED_ORIGINS: 'http://localhost:4173, https://overlay.example.test',
+        },
+        origin: 'http://localhost:4173',
+      }),
+    ).toBe('https://overlay.example.test');
   });
 });
 

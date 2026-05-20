@@ -152,6 +152,15 @@ export const BYOK_CLOUD_ROUTE_CONTRACTS = [
     secretMaterialPolicy: 'forbidden',
   },
   {
+    id: 'overlay-token.revoke',
+    method: 'DELETE',
+    path: '/api/byok/workspaces/:workspaceId/scenes/:sceneId/overlay-tokens',
+    actor: 'supabase-user',
+    ownership: 'workspace-owner',
+    resource: 'overlay-token',
+    secretMaterialPolicy: 'forbidden',
+  },
+  {
     id: 'memory-entry.write',
     method: 'PATCH',
     path: '/api/byok/workspaces/:workspaceId/memory/:memoryEntryId',
@@ -320,7 +329,11 @@ export function findForbiddenCloudRouteSecretPaths(value: unknown, path = 'body'
     return [];
   }
   if (typeof value === 'string') {
-    return findForbiddenPathsInJsonString(value, path);
+    const findings = findForbiddenPathsInJsonString(value, path);
+    if (findings.length === 0 && isForbiddenCloudRouteSecretValue(value)) {
+      findings.push(path);
+    }
+    return findings;
   }
   if (typeof value !== 'object') {
     return [];
@@ -344,7 +357,10 @@ export function findForbiddenCloudRouteSecretPaths(value: unknown, path = 'body'
 }
 
 function isForbiddenCloudRouteSecretKey(key: string) {
-  const normalized = key.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalized = key
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
   if (!normalized) {
     return false;
   }
@@ -365,6 +381,20 @@ function isForbiddenCloudRouteSecretKey(key: string) {
     return true;
   }
   return false;
+}
+
+function isForbiddenCloudRouteSecretValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    /\bsk-(?:proj-|test-)?[a-z0-9_-]{12,}\b/i.test(trimmed) ||
+    /\bgh[opsu]_[a-z0-9_]{20,}\b/i.test(trimmed) ||
+    /\btvly-[a-z0-9_-]{16,}\b/i.test(trimmed) ||
+    /\bsb_secret_[a-z0-9_-]{8,}\b/i.test(trimmed) ||
+    /\beyJ[a-z0-9_-]{20,}\.[a-z0-9_-]{20,}\.[a-z0-9_-]{10,}\b/i.test(trimmed)
+  );
 }
 
 function authorizeOverlayRoute(
