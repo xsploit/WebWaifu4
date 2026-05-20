@@ -21,9 +21,10 @@ describe('OverlaySocket auth', () => {
 
     expect(
       authorizeOverlaySocketRequest(
-        request(`/ws?token=${encodeURIComponent(token)}`, {
+        request('/ws', {
           host: 'overlay.example.test',
           origin: 'https://overlay.example.test',
+          'sec-websocket-protocol': `yourwifey.overlay, ${token}`,
         }),
         { signingSecret: 'overlay-secret' },
       ),
@@ -62,14 +63,25 @@ describe('OverlaySocket auth', () => {
     ).toMatchObject({ allowed: false, reason: 'forbidden-origin', trusted: false });
   });
 
-  it('extracts overlay socket tokens from the websocket URL only', () => {
+  it('extracts overlay socket tokens from the websocket protocol header only', () => {
+    const token = issueSocketToken('overlay-secret');
+
     expect(
       readOverlaySocketToken(
-        request('/ws?token=abc123', {
+        request('/ws', {
+          host: 'overlay.example.test',
+          'sec-websocket-protocol': `yourwifey.overlay, ${token}`,
+        }),
+      ),
+    ).toBe(token);
+
+    expect(
+      readOverlaySocketToken(
+        request(`/ws?token=${encodeURIComponent(token)}`, {
           host: 'overlay.example.test',
         }),
       ),
-    ).toBe('abc123');
+    ).toBeNull();
   });
 });
 

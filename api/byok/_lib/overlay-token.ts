@@ -57,17 +57,7 @@ export function readOverlayTokenFromRequest(input: {
 }) {
   const authorization = readHeader(input, 'authorization');
   const match = authorization?.match(/^Bearer\s+(.+)$/i);
-  if (match?.[1]?.trim()) {
-    return match[1].trim();
-  }
-  const tokenQuery = input.query?.['token'] || input.query?.['apiKey'];
-  if (typeof tokenQuery === 'string') {
-    return tokenQuery.trim() || null;
-  }
-  if (Array.isArray(tokenQuery) && typeof tokenQuery[0] === 'string') {
-    return tokenQuery[0].trim() || null;
-  }
-  return null;
+  return match?.[1]?.trim() || null;
 }
 
 export function hashOverlayToken(config: SupabaseServerConfig, token: string) {

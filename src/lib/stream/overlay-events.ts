@@ -73,35 +73,43 @@ function getConfiguredOverlaySocketUrl() {
   ).trim();
 }
 
-function getOverlaySocketToken() {
+export const OVERLAY_SOCKET_PROTOCOL = 'yourwifey.overlay';
+const OVERLAY_SESSION_TOKEN_KEY = 'yourwifey.overlay.token';
+
+export function getOverlaySocketToken() {
   const configured = (import.meta.env['VITE_OVERLAY_WS_TOKEN'] || '').trim();
   if (configured) {
     return configured;
   }
-  return new URLSearchParams(window.location.search).get('token')?.trim() || '';
-}
 
-function withOverlaySocketToken(value: string) {
-  const token = getOverlaySocketToken();
-  if (!token) {
-    return value;
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const queryToken = new URLSearchParams(window.location.search).get('token')?.trim() || '';
+  if (queryToken) {
+    try {
+      window.sessionStorage.setItem(OVERLAY_SESSION_TOKEN_KEY, queryToken);
+    } catch {}
+    return queryToken;
   }
 
   try {
-    const url = new URL(value, window.location.href);
-    if (!url.searchParams.has('token')) {
-      url.searchParams.set('token', token);
-    }
-    return url.toString();
+    return window.sessionStorage.getItem(OVERLAY_SESSION_TOKEN_KEY)?.trim() || '';
   } catch {
-    return value;
+    return '';
   }
+}
+
+export function getOverlaySocketProtocols() {
+  const token = getOverlaySocketToken();
+  return token ? [OVERLAY_SOCKET_PROTOCOL, token] : undefined;
 }
 
 export function getOverlaySocketUrl() {
   const configured = getConfiguredOverlaySocketUrl();
   if (configured) {
-    return withOverlaySocketToken(configured);
+    return configured;
   }
 
   const url = new URL('/ws', window.location.href);
@@ -111,7 +119,7 @@ export function getOverlaySocketUrl() {
     url.port = '8787';
   }
 
-  return withOverlaySocketToken(url.toString());
+  return url.toString();
 }
 
 export function parseOverlayServerEvent(raw: string): OverlayServerEvent | null {

@@ -28,6 +28,7 @@ function sendFile(response, filePath) {
     'Content-Type': type,
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Embedder-Policy': 'require-corp',
+    'Referrer-Policy': 'no-referrer',
   });
   createReadStream(filePath).pipe(response);
 }

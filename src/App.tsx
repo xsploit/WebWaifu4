@@ -128,6 +128,8 @@ import type {
   RemoteTtsVoice,
 } from './lib/tts/remote';
 import {
+  getOverlaySocketProtocols,
+  getOverlaySocketToken,
   getOverlaySocketUrl,
   parseOverlayServerEvent,
   type OverlayServerEvent,
@@ -325,6 +327,18 @@ const ROUTELET_SAY_TEXT = ROUTELET_MODE
 const ROUTELET_SAY_DELAY_MS = ROUTELET_MODE
   ? Math.min(Math.max(Number(BROWSER_URL_PARAMS.get('routeletSayDelayMs') ?? 0) || 0, 0), 60000)
   : 0;
+
+function stripOverlayTokenFromLocation() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('token')) {
+    return;
+  }
+  url.searchParams.delete('token');
+  window.history.replaceState(window.history.state, document.title, url.toString());
+}
 
 function getRouteletVisualSettings(settings: VisualSettings): VisualSettings {
   return {
@@ -4654,7 +4668,10 @@ function App() {
     };
 
     const connect = () => {
-      socket = new WebSocket(getOverlaySocketUrl());
+      const protocols = getOverlaySocketProtocols();
+      socket = protocols
+        ? new WebSocket(getOverlaySocketUrl(), protocols)
+        : new WebSocket(getOverlaySocketUrl());
 
       socket.addEventListener('open', () => {
         socket?.send(
@@ -4788,7 +4805,7 @@ function App() {
     if (appRoute.kind !== 'overlay' || typeof window === 'undefined') {
       return '';
     }
-    return new URLSearchParams(window.location.search).get('token')?.trim() ?? '';
+    return getOverlaySocketToken();
   }, [appRoute]);
   const persistedStateSnapshot = useMemo<PersistedChatState>(
     () => ({
@@ -5016,6 +5033,7 @@ function App() {
         if (response.scene.twitchChannel) {
           setTwitchChannel(response.scene.twitchChannel);
         }
+        stripOverlayTokenFromLocation();
         setOverlayConfigStatus('');
         setOverlayConfigReady(true);
       })

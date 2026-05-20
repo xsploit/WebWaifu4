@@ -10,6 +10,7 @@ export type OverlayClientEvent =
   | { type: 'manual:prompt'; payload?: { text?: string } };
 
 const OVERLAY_TOKEN_VERSION = 'ywot1';
+const OVERLAY_SOCKET_PROTOCOL = 'yourwifey.overlay';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 export type OverlaySocketOptions = {
@@ -76,12 +77,12 @@ export function readOverlaySocketSigningSecret(
 }
 
 export function readOverlaySocketToken(request: Pick<IncomingMessage, 'headers' | 'url'>) {
-  try {
-    const url = new URL(request.url ?? '', `http://${request.headers.host ?? 'localhost'}`);
-    return url.searchParams.get('token')?.trim() || null;
-  } catch {
-    return null;
-  }
+  const protocols =
+    readHeader(request.headers, 'sec-websocket-protocol')
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean) ?? [];
+  return protocols.find((protocol) => protocol.startsWith(`${OVERLAY_TOKEN_VERSION}.`)) ?? null;
 }
 
 export function authorizeOverlaySocketRequest(
@@ -162,7 +163,13 @@ export class OverlaySocket {
     private readonly onClientEvent?: (event: OverlayClientEvent) => void,
     private readonly options: OverlaySocketOptions = {},
   ) {
-    this.server = new WebSocketServer({ server: httpServer, path: '/ws' });
+    this.server = new WebSocketServer({
+      handleProtocols(protocols) {
+        return protocols.has(OVERLAY_SOCKET_PROTOCOL) ? OVERLAY_SOCKET_PROTOCOL : false;
+      },
+      path: '/ws',
+      server: httpServer,
+    });
     this.server.on('connection', (socket, request) => {
       const auth = authorizeOverlaySocketRequest(request, this.options);
       if (!auth.allowed) {
