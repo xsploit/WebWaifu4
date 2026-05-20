@@ -1471,13 +1471,12 @@ function App() {
         setSupabaseAuthChecked(true);
         if (result.status === 'authenticated' && typeof window !== 'undefined') {
           const currentRoute = parseAppRoute(window.location);
-          const nextPath = consumeStoredLoginNextPath(undefined, '');
           if (
-            nextPath &&
-            (currentRoute.kind === 'home' ||
-              currentRoute.kind === 'login' ||
-              currentRoute.kind === 'auth-callback')
+            currentRoute.kind === 'home' ||
+            currentRoute.kind === 'login' ||
+            currentRoute.kind === 'auth-callback'
           ) {
+            const nextPath = consumeStoredLoginNextPath(undefined, '/dashboard');
             setAppRoute(navigateToAppPath(nextPath));
           }
         }
