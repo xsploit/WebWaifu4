@@ -26,6 +26,11 @@ import {
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
 import { summarizeByokRuntimeHealth } from './byokHealth.js';
+import {
+  canUseServerProviderProxy,
+  getRawPathParts,
+  safeDecodePathParts,
+} from './runtimeSafety.js';
 
 type OpenAiEmbeddingPayload = {
   data?: Array<{
@@ -64,6 +69,10 @@ type ByokApiHandler = (
 type MatchedByokApiRoute = {
   modulePath: string;
   query: Record<string, string | string[] | undefined>;
+};
+
+type MalformedByokApiRoute = {
+  malformed: true;
 };
 
 const CORS_REQUEST_HEADERS =
@@ -328,9 +337,13 @@ function getRuntimeChatProvider(
   model?: string,
   allowServerProxy = false,
 ) {
+  const allowServerKeys = canUseServerProviderProxy(
+    baseConfig.providerProxyEnabled,
+    allowServerProxy,
+  );
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
-  const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerProxy);
-  const effectiveApiKey = apiKey || (allowServerProxy ? baseConfig.aiApiKey : '');
+  const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerKeys);
+  const effectiveApiKey = apiKey || (allowServerKeys ? baseConfig.aiApiKey : '');
   if (!effectiveApiKey) {
     return null;
   }
@@ -713,11 +726,17 @@ async function createOpenAiEmbedding(config: StreamBotConfig, input: string, mod
   return embedding;
 }
 
-function matchByokApiRoute(url: URL): MatchedByokApiRoute | null {
-  const parts = url.pathname
-    .split('/')
-    .filter(Boolean)
-    .map((part) => decodeURIComponent(part));
+function matchByokApiRoute(url: URL): MatchedByokApiRoute | MalformedByokApiRoute | null {
+  const rawParts = getRawPathParts(url.pathname);
+  if (rawParts[0] !== 'api' || rawParts[1] !== 'byok') {
+    return null;
+  }
+
+  const parts = safeDecodePathParts(url.pathname);
+  if (!parts) {
+    return { malformed: true };
+  }
+
   if (parts[0] !== 'api' || parts[1] !== 'byok') {
     return null;
   }
@@ -866,13 +885,20 @@ const httpServer = createServer(async (request, response) => {
   }
 
   const byokApiRoute = matchByokApiRoute(url);
+  if (byokApiRoute && 'malformed' in byokApiRoute) {
+    writeJson(response, 400, { ok: false, error: 'Malformed BYOK API path.' });
+    return;
+  }
   if (byokApiRoute) {
     await handleByokApiRoute(request, response, byokApiRoute);
     return;
   }
 
   const runtimePath = getRuntimeApiPath(url.pathname);
-  const allowServerProviderProxy = await hasServerProviderProxyAuth(request);
+  const allowServerProviderProxy = canUseServerProviderProxy(
+    config.providerProxyEnabled,
+    await hasServerProviderProxyAuth(request),
+  );
 
   if (request.method === 'GET' && runtimePath === '/health') {
     const requestedStateKey = url.searchParams.get('stateKey') ?? undefined;

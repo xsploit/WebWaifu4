@@ -144,24 +144,56 @@ describe('ChatScheduler', () => {
     expect(provider.requests).toHaveLength(1);
   });
 
-  it('queues a direct mention while busy and drains it after the current reply', async () => {
+  it('queues a direct mention while busy and waits for cooldown before draining it', async () => {
     const provider = new BusyOnceProvider();
     const { scheduler } = createSchedulerWithOptions(provider, {});
+    const now = Date.now();
 
-    const first = scheduler.handleMessage(message('viewer1', 'hello @ai', 100000));
+    const first = scheduler.handleMessage(message('viewer1', 'hello @ai', now));
     await provider.firstRequestStarted;
 
-    await scheduler.handleMessage(message('viewer2', 'second @ai', 101000));
+    await scheduler.handleMessage(message('viewer2', 'second @ai', now + 1000));
     expect(scheduler.getPendingBatchCount()).toBe(1);
 
     provider.releaseFirstRequest();
     await first;
 
-    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests).toHaveLength(1);
     expect(provider.requests[0]?.mode).toBe('direct');
+    expect(scheduler.getPendingBatchCount()).toBe(1);
+
+    await scheduler.flushTimedBatch(now + 7999);
+    expect(provider.requests).toHaveLength(1);
+    expect(scheduler.getPendingBatchCount()).toBe(1);
+
+    await scheduler.flushTimedBatch(now + 8000);
+    expect(provider.requests).toHaveLength(2);
     expect(provider.requests[1]?.mode).toBe('batch');
     expect(provider.requests[1]?.sourceMessages[0]?.user).toBe('viewer2');
     expect(scheduler.getPendingBatchCount()).toBe(0);
+  });
+
+  it('does not recursively drain low-chatter queued mentions into back-to-back requests', async () => {
+    const provider = new BusyOnceProvider();
+    const { scheduler } = createSchedulerWithOptions(provider, {});
+    const now = Date.now();
+
+    const first = scheduler.handleMessage(message('viewer1', 'hello @ai', now));
+    await provider.firstRequestStarted;
+
+    await scheduler.handleMessage(message('viewer2', 'second @ai', now + 1000));
+    await scheduler.handleMessage(message('viewer3', 'third @ai', now + 2000));
+    expect(scheduler.getPendingBatchCount()).toBe(2);
+
+    provider.releaseFirstRequest();
+    await first;
+
+    expect(provider.requests).toHaveLength(1);
+    expect(scheduler.getPendingBatchCount()).toBe(2);
+
+    await scheduler.flushTimedBatch(now + 8000);
+    expect(provider.requests).toHaveLength(2);
+    expect(scheduler.getPendingBatchCount()).toBe(1);
   });
 
   it('caps queued chat while the AI is busy', async () => {

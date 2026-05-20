@@ -186,7 +186,16 @@ export class ChatScheduler {
 
   async flushTimedBatch(now = Date.now()) {
     const activeChatters = this.getActiveChatterCount(now);
-    if (activeChatters <= 50 || this.batchQueue.length === 0) {
+    if (this.busy || this.batchQueue.length === 0) {
+      return;
+    }
+    if (activeChatters <= 10) {
+      if (now - this.lastGlobalReplyAt >= this.globalReplyCooldownMs) {
+        await this.flushBatch('drain', now);
+      }
+      return;
+    }
+    if (activeChatters <= 50) {
       return;
     }
     if (now - this.lastBatchAt >= this.batchTimerMs) {
@@ -200,6 +209,13 @@ export class ChatScheduler {
     }
 
     const activeChatters = this.getActiveChatterCount(now);
+    if (
+      reason === 'drain' &&
+      activeChatters <= 10 &&
+      now - this.lastGlobalReplyAt < this.globalReplyCooldownMs
+    ) {
+      return;
+    }
     const batchSize = this.getBatchSize(activeChatters);
     const messages = selectMeaningfulMessages(this.batchQueue.splice(0, batchSize));
     this.lastBatchAt = now;
@@ -214,6 +230,12 @@ export class ChatScheduler {
         },
       });
       return;
+    }
+    if (reason === 'drain' && activeChatters <= 10) {
+      this.lastGlobalReplyAt = now;
+      for (const message of messages) {
+        this.userCooldowns.set(message.user, now);
+      }
     }
 
     this.emit({
