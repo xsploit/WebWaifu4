@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   appRouteNeedsAuth,
   buildLoginRedirectPath,
+  consumeStoredLoginNextPath,
   getInternalAppPath,
   getSafeLoginNextPath,
+  LOGIN_NEXT_STORAGE_KEY,
   parseAppRoute,
+  storeLoginNextPath,
 } from './app-route';
 
 describe('product app route parser', () => {
@@ -55,4 +58,29 @@ describe('product app route parser', () => {
     expect(getSafeLoginNextPath('/login?next=%2Flogin')).toBe('/dashboard');
     expect(getInternalAppPath('/editor?tab=voice#settings')).toBe('/editor?tab=voice#settings');
   });
+
+  it('stores only safe internal login return paths', () => {
+    const storage = createStorage();
+
+    expect(storeLoginNextPath('/editor?tab=voice', storage)).toBe(true);
+    expect(storage.getItem(LOGIN_NEXT_STORAGE_KEY)).toBe('/editor?tab=voice');
+    expect(consumeStoredLoginNextPath(storage)).toBe('/editor?tab=voice');
+    expect(storage.getItem(LOGIN_NEXT_STORAGE_KEY)).toBeNull();
+
+    expect(storeLoginNextPath('https://evil.test/editor', storage)).toBe(false);
+    expect(consumeStoredLoginNextPath(storage)).toBe('/dashboard');
+  });
 });
+
+function createStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+}

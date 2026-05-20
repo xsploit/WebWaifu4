@@ -29,6 +29,10 @@ export type AppRoute =
       sceneId: string;
     };
 
+export const LOGIN_NEXT_STORAGE_KEY = 'yourwifey.byok.loginNext.v1';
+
+type LoginNextStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
+
 export function parseAppRoute(input: Location | URL | string): AppRoute {
   const pathname = normalizePathname(input);
   if (pathname === '/' || pathname === '/home') {
@@ -92,12 +96,47 @@ export function getSafeLoginNextPath(input: Location | URL | string, fallback = 
   return safeNext ?? fallback;
 }
 
+export function storeLoginNextPath(
+  nextPath: string | null | undefined,
+  storage: LoginNextStorage | null = getBrowserLoginNextStorage(),
+) {
+  const safeNext = normalizeSafeInternalNextPath(nextPath);
+  if (!storage || !safeNext) {
+    return false;
+  }
+  storage.setItem(LOGIN_NEXT_STORAGE_KEY, safeNext);
+  return true;
+}
+
+export function consumeStoredLoginNextPath(
+  storage: LoginNextStorage | null = getBrowserLoginNextStorage(),
+  fallback = '/dashboard',
+) {
+  if (!storage) {
+    return fallback;
+  }
+  const safeNext = normalizeSafeInternalNextPath(storage.getItem(LOGIN_NEXT_STORAGE_KEY));
+  storage.removeItem(LOGIN_NEXT_STORAGE_KEY);
+  return safeNext ?? fallback;
+}
+
 export function getInternalAppPath(input: Location | URL | string) {
   const parsed = parseUrl(input);
   if (!parsed) {
     return '/dashboard';
   }
   return `${parsed.pathname || '/'}${parsed.search}${parsed.hash}`;
+}
+
+function getBrowserLoginNextStorage(): LoginNextStorage | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function normalizePathname(input: Location | URL | string) {

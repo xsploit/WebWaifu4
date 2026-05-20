@@ -139,6 +139,7 @@ import { resolveByokAccountMode, type SupabaseAuthIdentity } from './lib/product
 import {
   appRouteNeedsAuth,
   buildLoginRedirectPath,
+  consumeStoredLoginNextPath,
   getInternalAppPath,
   navigateToAppPath,
   parseAppRoute,
@@ -1468,6 +1469,18 @@ function App() {
         setSupabaseAuthUser(result.user);
         setSupabaseAuthStatus(result.message);
         setSupabaseAuthChecked(true);
+        if (result.status === 'authenticated' && typeof window !== 'undefined') {
+          const currentRoute = parseAppRoute(window.location);
+          const nextPath = consumeStoredLoginNextPath(undefined, '');
+          if (
+            nextPath &&
+            (currentRoute.kind === 'home' ||
+              currentRoute.kind === 'login' ||
+              currentRoute.kind === 'auth-callback')
+          ) {
+            setAppRoute(navigateToAppPath(nextPath));
+          }
+        }
       },
       onStatus: setSupabaseAuthStatus,
     });

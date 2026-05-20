@@ -3,7 +3,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import type { ByokAccountMode } from '../../lib/product/account-mode';
-import { getSafeLoginNextPath, type AppRoute } from '../../lib/product/app-route';
+import {
+  consumeStoredLoginNextPath,
+  getSafeLoginNextPath,
+  storeLoginNextPath,
+  type AppRoute,
+} from '../../lib/product/app-route';
 import {
   fetchByokProfile,
   fetchByokSettings,
@@ -891,18 +896,20 @@ function getLoginNextTarget(fallback = '/dashboard') {
   if (typeof window === 'undefined') {
     return fallback;
   }
-  return getSafeLoginNextPath(window.location, fallback);
+  return (
+    getSafeLoginNextPath(window.location, '') || consumeStoredLoginNextPath(undefined, fallback)
+  );
 }
 
 function getAuthCallbackUrlWithNext() {
+  if (typeof window !== 'undefined') {
+    storeLoginNextPath(getSafeLoginNextPath(window.location));
+  }
   const callbackUrl = getProductAuthCallbackUrl();
   if (!callbackUrl) {
     return undefined;
   }
-
-  const url = new URL(callbackUrl);
-  url.searchParams.set('next', getLoginNextTarget());
-  return url.toString();
+  return callbackUrl;
 }
 
 function LoginPage(
