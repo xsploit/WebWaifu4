@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_PERSONA,
+  DEFAULT_OPENROUTER_MODEL,
   STORAGE_KEYS,
   createDefaultAiSettings,
   createDefaultPersonaVoiceBindings,
@@ -52,9 +53,9 @@ describe('chat settings persistence', () => {
       llmProvider: 'openrouter-responses',
       maxTokens: 420,
       memoryAgentIntervalMessages: 7,
-      memoryAgentModel: 'gpt-5.4-mini',
-      model: 'gpt-5.4',
-      openAiStateMode: 'previous-response',
+      memoryAgentModel: DEFAULT_OPENROUTER_MODEL,
+      model: DEFAULT_OPENROUTER_MODEL,
+      openAiStateMode: 'stateless',
       replyLength: 'yap',
       remoteTtsMode: 'sentence-chunks',
       temperature: 1.1,
@@ -311,6 +312,30 @@ describe('chat settings persistence', () => {
     expect(loaded.visualSettings.mtoonRimColor).toBe('#ffffff');
     expect('bloom' in loaded.visualSettings).toBe(false);
     expect('glitch' in loaded.visualSettings).toBe(false);
+  });
+
+  it('normalizes legacy OpenRouter settings to app-owned state and OpenRouter model ids', async () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.aiSettings,
+      JSON.stringify({
+        ...createDefaultAiSettings(),
+        aiTransportMode: 'websocket',
+        llmProvider: 'openrouter-responses',
+        memoryAgentModel: 'gpt-5.4-mini',
+        model: 'gpt-5.4-nano',
+        openAiStateMode: 'conversation',
+      }),
+    );
+
+    const loaded = await loadPersistedChatState();
+
+    expect(loaded.aiSettings).toMatchObject({
+      aiTransportMode: 'http-stream',
+      llmProvider: 'openrouter-responses',
+      memoryAgentModel: DEFAULT_OPENROUTER_MODEL,
+      model: DEFAULT_OPENROUTER_MODEL,
+      openAiStateMode: 'stateless',
+    });
   });
 
   it('keeps edited built-in personas instead of replacing them with defaults', async () => {

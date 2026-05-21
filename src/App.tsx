@@ -7,7 +7,6 @@ import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
 import { ProductPages } from './components/product/ProductPages';
 import {
-  DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   DEFAULT_PERSONA,
@@ -19,6 +18,10 @@ import {
   createDefaultTwitchSettings,
   createDefaultUiState,
 } from './lib/chat/defaults';
+import {
+  getAiProviderSwitchDefaults,
+  getProviderFallbackModels,
+} from './lib/chat/provider-defaults';
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
 import {
   buildMemoryAgentMessages,
@@ -493,27 +496,16 @@ function pickAvailableModel(
 
 function sanitizeAiModels(current: AiSettings, availableModels: readonly string[]) {
   const providerModels = getProviderModelPool(current.llmProvider, availableModels);
-  const providerDefaults =
-    current.llmProvider === 'openrouter-responses'
-      ? {
-          models: providerModels,
-          primary: DEFAULT_OPENROUTER_MODEL,
-          memory: DEFAULT_OPENROUTER_MODEL,
-        }
-      : {
-          models: availableModels,
-          primary: DEFAULT_OPENAI_MODEL,
-          memory: DEFAULT_MEMORY_AGENT_MODEL,
-        };
+  const providerDefaults = getAiProviderSwitchDefaults(current.llmProvider);
   const nextModel = pickAvailableModel(
     current.model,
-    providerDefaults.models,
-    providerDefaults.primary,
+    providerModels,
+    providerDefaults.model,
   );
   const nextMemoryAgentModel = pickAvailableModel(
     current.memoryAgentModel,
-    providerDefaults.models,
-    pickAvailableModel(providerDefaults.memory, providerDefaults.models, nextModel),
+    providerModels,
+    pickAvailableModel(providerDefaults.memoryAgentModel, providerModels, nextModel),
   );
 
   return {
@@ -527,8 +519,7 @@ function getProviderModelPool(
   llmProvider: AiSettings['llmProvider'],
   availableModels: readonly string[],
 ) {
-  void llmProvider;
-  return [...availableModels];
+  return mergeModels(getProviderFallbackModels(llmProvider), availableModels);
 }
 
 function createChatMessage(role: ChatMessage['role'], content: string): ChatMessage {

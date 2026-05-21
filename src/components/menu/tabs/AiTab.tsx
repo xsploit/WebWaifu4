@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AiProxyHealth, AiSettings } from '../../../lib/chat/types';
+import { applyLlmProviderSwitchDefaults } from '../../../lib/chat/provider-defaults';
 import { getReplyLengthLabel, REPLY_LENGTH_MODES } from '../../../lib/chat/reply-length';
 import { Slider } from '../ui/Slider';
 
@@ -101,13 +102,7 @@ export function AiTab({
           className="select-tech"
           onChange={(event) => {
             const llmProvider = event.target.value as AiSettings['llmProvider'];
-            updateAiSettings(setAiSettings, {
-              llmProvider,
-              memoryAgentModel: '',
-              model: '',
-              openAiStateMode:
-                llmProvider === 'openrouter-responses' ? 'stateless' : aiSettings.openAiStateMode,
-            });
+            setAiSettings((current) => applyLlmProviderSwitchDefaults(current, llmProvider));
           }}
           value={aiSettings.llmProvider}
         >

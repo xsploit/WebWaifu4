@@ -11,6 +11,7 @@ import {
 } from './defaults';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
 import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
+import { normalizeLlmProviderCompatibility } from './provider-defaults';
 import type {
   AiSettings,
   ChatMessage,
@@ -357,7 +358,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
       ? source.remoteTtsMode
       : defaults.remoteTtsMode;
 
-  return {
+  return normalizeLlmProviderCompatibility({
     llmProvider,
     model: normalizedModel,
     memoryAgentModel: requestedMemoryAgentModel || defaults.memoryAgentModel,
@@ -396,7 +397,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
     inworldBufferCharThreshold,
     ttsPlaybackRate: playbackRate,
     ttsVolume,
-  };
+  });
 }
 
 function normalizeRelationshipMemory(value: unknown): RelationshipMemory {
