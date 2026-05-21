@@ -176,5 +176,9 @@ export function createDefaultTwitchSettings(): TwitchSettings {
     streamTranscriptionIntervalSeconds: 90,
     streamTranscriptionModel: 'whisper-1',
     streamTranscriptionSampleSeconds: 15,
+    streamVisionContextEnabled: false,
+    streamVisionDetail: 'low',
+    streamVisionIntervalSeconds: 120,
+    streamVisionMaxAgeSeconds: 180,
   };
 }

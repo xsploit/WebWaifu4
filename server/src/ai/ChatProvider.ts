@@ -3,6 +3,12 @@ import type { TwitchChatMessage } from '../twitch/TwitchChatSource.js';
 export type ChatProviderMessage = {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  images?: ChatProviderInputImage[];
+};
+
+export type ChatProviderInputImage = {
+  detail?: 'auto' | 'high' | 'low';
+  imageUrl: string;
 };
 
 export type ChatProviderResponseFormat =

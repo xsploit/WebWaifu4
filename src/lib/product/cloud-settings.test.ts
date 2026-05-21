@@ -120,7 +120,7 @@ describe('cloud settings adapter', () => {
         storageClass: 'synced-private',
         updatedAt: '2026-05-15T12:00:00.000Z',
         valueJson:
-          '{"directChatterLimit":25,"localDisplayName":"Cloud Subby","streamTranscriptionEnabled":true,"streamTranscriptionModel":"whisper-1"}',
+          '{"directChatterLimit":25,"localDisplayName":"Cloud Subby","streamTranscriptionEnabled":true,"streamTranscriptionModel":"whisper-1","streamVisionContextEnabled":true,"streamVisionDetail":"high"}',
         workspaceId: 'workspace-1',
       },
       {
@@ -138,6 +138,8 @@ describe('cloud settings adapter', () => {
     expect(next.twitchSettings.localDisplayName).toBe('Cloud Subby');
     expect(next.twitchSettings.streamTranscriptionEnabled).toBe(true);
     expect(next.twitchSettings.streamTranscriptionModel).toBe('whisper-1');
+    expect(next.twitchSettings.streamVisionContextEnabled).toBe(true);
+    expect(next.twitchSettings.streamVisionDetail).toBe('high');
     expect(next.relationshipMemory.facts).toEqual(['local-only fact']);
   });
 });

@@ -42,7 +42,10 @@ export type OpenAiResponsesProviderOptions = {
 type ResponsesInputMessage = {
   type: 'message';
   role: 'user' | 'assistant';
-  content: Array<{ type: 'input_text' | 'output_text'; text: string }>;
+  content: Array<
+    | { type: 'input_text' | 'output_text'; text: string }
+    | { type: 'input_image'; image_url: string; detail?: 'auto' | 'high' | 'low' }
+  >;
 };
 
 type ResponsesFunctionCallOutput = {
@@ -154,18 +157,31 @@ function splitMessages(messages: readonly ChatProviderMessage[]) {
     .join('\n\n');
   const input = messages
     .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .map(
-      (message): ResponsesInputMessage => ({
+    .map((message): ResponsesInputMessage => {
+      const content: ResponsesInputMessage['content'] = [
+        {
+          type: message.role === 'assistant' ? 'output_text' : 'input_text',
+          text: message.content,
+        },
+      ];
+      if (message.role === 'user') {
+        message.images
+          ?.filter((image) => image.imageUrl.trim())
+          .slice(0, 2)
+          .forEach((image) => {
+            content.push({
+              type: 'input_image',
+              detail: image.detail ?? 'low',
+              image_url: image.imageUrl,
+            });
+          });
+      }
+      return {
         type: 'message',
         role: message.role === 'assistant' ? 'assistant' : 'user',
-        content: [
-          {
-            type: message.role === 'assistant' ? 'output_text' : 'input_text',
-            text: message.content,
-          },
-        ],
-      }),
-    );
+        content,
+      };
+    });
 
   return { instructions, input };
 }

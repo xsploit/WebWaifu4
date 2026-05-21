@@ -295,6 +295,28 @@ function normalizeTwitchSettings(value: unknown, fallback: TwitchSettings): Twit
       5,
       60,
     ),
+    streamVisionContextEnabled:
+      typeof source.streamVisionContextEnabled === 'boolean'
+        ? source.streamVisionContextEnabled
+        : fallback.streamVisionContextEnabled,
+    streamVisionDetail:
+      source.streamVisionDetail === 'auto' ||
+      source.streamVisionDetail === 'high' ||
+      source.streamVisionDetail === 'low'
+        ? source.streamVisionDetail
+        : fallback.streamVisionDetail,
+    streamVisionIntervalSeconds: numberValue(
+      source.streamVisionIntervalSeconds,
+      fallback.streamVisionIntervalSeconds,
+      30,
+      600,
+    ),
+    streamVisionMaxAgeSeconds: numberValue(
+      source.streamVisionMaxAgeSeconds,
+      fallback.streamVisionMaxAgeSeconds,
+      15,
+      600,
+    ),
   };
 }
 

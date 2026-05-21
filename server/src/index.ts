@@ -6,6 +6,7 @@ import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
 import { TAVILY_OPENAI_TOOLS } from './ai/TavilyTools.js';
 import type {
   ChatProvider,
+  ChatProviderInputImage,
   ChatProviderMessage,
   ChatProviderRequest,
   ChatProviderResponse,
@@ -25,7 +26,10 @@ import {
 } from './tts/RemoteTtsProvider.js';
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
-import { transcribeTwitchStreamSample } from './twitch/TwitchStreamTranscriber.js';
+import {
+  captureTwitchStreamFrame,
+  transcribeTwitchStreamSample,
+} from './twitch/TwitchStreamTranscriber.js';
 import { summarizeByokRuntimeHealth } from './byokHealth.js';
 import {
   canUseServerProviderProxy,
@@ -218,9 +222,32 @@ function normalizeProviderMessages(value: unknown): ChatProviderMessage[] {
       if (typeof source.content !== 'string' || !source.content.trim()) {
         return null;
       }
+      const images = Array.isArray(source.images)
+        ? source.images
+            .map((image): ChatProviderInputImage | null => {
+              if (!image || typeof image !== 'object') {
+                return null;
+              }
+              const input = image as { detail?: unknown; imageUrl?: unknown };
+              if (typeof input.imageUrl !== 'string' || !input.imageUrl.trim()) {
+                return null;
+              }
+              const detail =
+                input.detail === 'high' || input.detail === 'auto' || input.detail === 'low'
+                  ? input.detail
+                  : 'low';
+              return {
+                detail,
+                imageUrl: input.imageUrl.trim().slice(0, 8 * 1024 * 1024),
+              };
+            })
+            .filter((image): image is ChatProviderInputImage => Boolean(image))
+            .slice(0, 2)
+        : undefined;
       return {
         role: source.role,
         content: source.content,
+        ...(images?.length ? { images } : {}),
       };
     })
     .filter((item): item is ChatProviderMessage => Boolean(item));
@@ -1181,6 +1208,27 @@ const httpServer = createServer(async (request, response) => {
       writeJson(response, 200, {
         ok: false,
         error: error instanceof Error ? error.message : 'Twitch stream transcription failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/twitch/capture-frame') {
+    try {
+      const body = await readRequestJson<{
+        channel?: unknown;
+      }>(request);
+      const frame = await captureTwitchStreamFrame(
+        typeof body.channel === 'string' ? body.channel : chatSource.channel,
+      );
+      writeJson(response, 200, {
+        frame,
+        ok: true,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Twitch stream frame capture failed.',
       });
     }
     return;

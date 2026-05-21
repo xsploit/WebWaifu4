@@ -17,6 +17,24 @@ export type TwitchStreamTranscriptionResponse = {
   };
 };
 
+export type TwitchStreamFrame = {
+  channel: string;
+  createdAt: number;
+  detail: 'auto' | 'high' | 'low';
+  imageDataUrl: string;
+  mimeType: string;
+};
+
+export type TwitchStreamFrameResponse = {
+  error?: string;
+  frame?: {
+    channel?: string;
+    imageDataUrl?: string;
+    mimeType?: string;
+  };
+  ok?: boolean;
+};
+
 export function formatTwitchStreamTranscriptContext(
   transcripts: TwitchStreamTranscript[],
   limit: number,
@@ -34,4 +52,33 @@ export function formatTwitchStreamTranscriptContext(
       return `- ${time} #${entry.channel}: ${entry.text}`;
     }),
   ].join('\n');
+}
+
+export function isLikelyVisionModel(provider: string, model: string) {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const openAiVision =
+    /(^|[/:-])(gpt-4o|gpt-4\.1|gpt-4\.5|gpt-5|o3|o4)([/:-]|$)/.test(normalized) ||
+    normalized.startsWith('gpt-4o') ||
+    normalized.startsWith('gpt-4.1') ||
+    normalized.startsWith('gpt-4.5') ||
+    normalized.startsWith('gpt-5') ||
+    normalized.startsWith('o3') ||
+    normalized.startsWith('o4');
+  if (provider === 'openai-responses') {
+    return openAiVision;
+  }
+  return (
+    openAiVision ||
+    normalized.includes('vision') ||
+    normalized.includes('vl') ||
+    normalized.includes('llava') ||
+    normalized.includes('pixtral') ||
+    normalized.includes('gemini') ||
+    normalized.includes('claude-3') ||
+    normalized.includes('claude-4') ||
+    normalized.includes('qwen-vl')
+  );
 }

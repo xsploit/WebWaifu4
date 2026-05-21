@@ -649,6 +649,49 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('passes user image input into Responses messages', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5.4',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createFetcher(calls),
+    });
+
+    await provider.complete({
+      ...createRequest('what is on stream?'),
+      messages: [
+        { role: 'system', content: 'You are Hikari.' },
+        {
+          role: 'user',
+          content: 'what is on stream?',
+          images: [{ detail: 'low', imageUrl: 'data:image/jpeg;base64,abc123' }],
+        },
+      ],
+    });
+
+    expect(calls[0]?.body.input).toEqual([
+      {
+        content: [
+          { text: 'what is on stream?', type: 'input_text' },
+          {
+            detail: 'low',
+            image_url: 'data:image/jpeg;base64,abc123',
+            type: 'input_image',
+          },
+        ],
+        role: 'user',
+        type: 'message',
+      },
+    ]);
+  });
+
   it('executes Tavily tool calls and sends function outputs back to Responses', async () => {
     const calls: FetchCall[] = [];
     const tavilyCalls: FetchCall[] = [];

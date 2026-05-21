@@ -120,6 +120,7 @@ type SettingsPanelProps = {
   twitchSettings: TwitchSettings;
   twitchStreamTranscriptCount: number;
   twitchStreamTranscriptionStatus: string;
+  twitchStreamVisionStatus: string;
   visualSettings: VisualSettings;
   supabaseAuthStatus: string;
   supabaseConfig: SupabasePublicConfig;
@@ -227,6 +228,7 @@ export function SettingsPanel({
   twitchSettings,
   twitchStreamTranscriptCount,
   twitchStreamTranscriptionStatus,
+  twitchStreamVisionStatus,
   visualSettings,
   supabaseAuthStatus,
   supabaseConfig,
@@ -307,6 +309,7 @@ export function SettingsPanel({
         setTwitchSettings={setTwitchSettings}
         streamTranscriptCount={twitchStreamTranscriptCount}
         streamTranscriptionStatus={twitchStreamTranscriptionStatus}
+        streamVisionStatus={twitchStreamVisionStatus}
         twitchSettings={twitchSettings}
       />
     ) : activeTab === 'context' ? (

@@ -15,6 +15,7 @@ type TranscribeTwitchStreamOptions = {
 };
 
 const MAX_AUDIO_BYTES = 18 * 1024 * 1024;
+const MAX_FRAME_BYTES = 6 * 1024 * 1024;
 const MAX_TOOL_OUTPUT_BYTES = 1024 * 1024;
 
 function cleanChannel(value: string) {
@@ -101,7 +102,7 @@ function runProcess(
   });
 }
 
-async function resolveTwitchStreamUrl(channel: string) {
+export async function resolveTwitchStreamUrl(channel: string) {
   const twitchUrl = `https://www.twitch.tv/${channel}`;
   const attempts = [
     {
@@ -172,6 +173,39 @@ async function captureAudioSample(streamUrl: string, sampleSeconds: number) {
   return result.stdout;
 }
 
+async function captureJpegFrame(streamUrl: string) {
+  const result = await runProcess(
+    'ffmpeg',
+    [
+      '-nostdin',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      streamUrl,
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=960:-2',
+      '-q:v',
+      '5',
+      '-f',
+      'image2pipe',
+      '-vcodec',
+      'mjpeg',
+      'pipe:1',
+    ],
+    {
+      maxBuffer: MAX_FRAME_BYTES,
+      timeoutMs: 30000,
+    },
+  );
+  if (result.stdout.length < 512) {
+    throw new Error('Captured Twitch stream frame was empty.');
+  }
+  return result.stdout;
+}
+
 export async function transcribeTwitchStreamSample(options: TranscribeTwitchStreamOptions) {
   const channel = cleanChannel(options.channel);
   if (!options.apiKey.trim()) {
@@ -215,5 +249,16 @@ export async function transcribeTwitchStreamSample(options: TranscribeTwitchStre
     model: options.model.trim() || 'whisper-1',
     sampleSeconds: Math.max(5, Math.min(60, Math.round(options.sampleSeconds))),
     text: (data.text ?? '').replace(/\s+/g, ' ').trim(),
+  };
+}
+
+export async function captureTwitchStreamFrame(channelValue: string) {
+  const channel = cleanChannel(channelValue);
+  const streamUrl = await resolveTwitchStreamUrl(channel);
+  const frame = await captureJpegFrame(streamUrl);
+  return {
+    channel,
+    imageDataUrl: `data:image/jpeg;base64,${frame.toString('base64')}`,
+    mimeType: 'image/jpeg',
   };
 }

@@ -20,6 +20,7 @@ type TwitchTabProps = {
   setTwitchSettings: Dispatch<SetStateAction<TwitchSettings>>;
   streamTranscriptCount: number;
   streamTranscriptionStatus: string;
+  streamVisionStatus: string;
   twitchSettings: TwitchSettings;
 };
 
@@ -85,6 +86,7 @@ export function TwitchTab({
   setTwitchSettings,
   streamTranscriptCount,
   streamTranscriptionStatus,
+  streamVisionStatus,
   twitchSettings,
 }: TwitchTabProps) {
   const [draftChannel, setDraftChannel] = useState(channel);
@@ -383,6 +385,69 @@ export function TwitchTab({
           yt-dlp or streamlink. Transcript snippets are ambient stream context, not chat messages.
         </div>
         <div className="status-copy">{streamTranscriptionStatus}</div>
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">Stream Vision Context</div>
+        <div className="status-grid">
+          <div className="status-copy">
+            Vision: <strong>{twitchSettings.streamVisionContextEnabled ? 'On' : 'Off'}</strong>
+          </div>
+          <div className="status-copy">
+            Detail: <strong>{twitchSettings.streamVisionDetail}</strong>
+          </div>
+          <div className="status-copy">
+            Max age: <strong>{twitchSettings.streamVisionMaxAgeSeconds}s</strong>
+          </div>
+        </div>
+        <div className="setting-row">
+          <span>Attach Twitch stream frame to vision models</span>
+          <Toggle
+            checked={twitchSettings.streamVisionContextEnabled}
+            onChange={(checked) =>
+              updateTwitchSettings(setTwitchSettings, { streamVisionContextEnabled: checked })
+            }
+          />
+        </div>
+        <label className="setting-row">
+          <span>Image detail</span>
+          <select
+            className="input-tech compact-input"
+            onChange={(event) =>
+              updateTwitchSettings(setTwitchSettings, {
+                streamVisionDetail: event.target.value as TwitchSettings['streamVisionDetail'],
+              })
+            }
+            value={twitchSettings.streamVisionDetail}
+          >
+            <option value="low">Low</option>
+            <option value="auto">Auto</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <NumberField
+          label="Capture every seconds"
+          max={600}
+          min={30}
+          onChange={(value) =>
+            updateTwitchSettings(setTwitchSettings, { streamVisionIntervalSeconds: value })
+          }
+          value={twitchSettings.streamVisionIntervalSeconds}
+        />
+        <NumberField
+          label="Use frame if younger than seconds"
+          max={600}
+          min={15}
+          onChange={(value) =>
+            updateTwitchSettings(setTwitchSettings, { streamVisionMaxAgeSeconds: value })
+          }
+          value={twitchSettings.streamVisionMaxAgeSeconds}
+        />
+        <div className="field-hint">
+          Captures one JPEG frame from the Twitch stream and attaches it only when the selected
+          model appears to support image input. It stays prompt context only.
+        </div>
+        <div className="status-copy">{streamVisionStatus}</div>
       </div>
 
       <div className="control-group">

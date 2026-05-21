@@ -138,6 +138,9 @@ import {
 import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitch/direct-irc';
 import {
   formatTwitchStreamTranscriptContext,
+  isLikelyVisionModel,
+  type TwitchStreamFrame,
+  type TwitchStreamFrameResponse,
   type TwitchStreamTranscript,
   type TwitchStreamTranscriptionResponse,
 } from './lib/twitch/stream-transcription';
@@ -381,6 +384,12 @@ type CommandChatMessage = DirectTwitchChatMessage & {
 type AppCompletionMessage = {
   role: string;
   content: string;
+  images?: AppCompletionImage[];
+};
+
+type AppCompletionImage = {
+  detail?: 'auto' | 'high' | 'low';
+  imageUrl: string;
 };
 
 type AppCompletionResponseFormat =
@@ -551,6 +560,15 @@ function getTwitchTranscriptionUrl() {
   url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/twitch/transcribe-sample');
   if (!/\/twitch\/transcribe-sample\/?$/.test(url.pathname)) {
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/twitch/transcribe-sample`;
+  }
+  return url.toString();
+}
+
+function getTwitchFrameCaptureUrl() {
+  const url = new URL(getAiProxyUrl());
+  url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/twitch/capture-frame');
+  if (!/\/twitch\/capture-frame\/?$/.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/twitch/capture-frame`;
   }
   return url.toString();
 }
@@ -1008,6 +1026,83 @@ async function requestTwitchStreamTranscript(input: {
     sampleSeconds: data.transcript.sampleSeconds || input.sampleSeconds,
     text: data.transcript.text.trim(),
   } satisfies TwitchStreamTranscript;
+}
+
+async function requestTwitchStreamFrame(input: {
+  channel: string;
+  detail: 'auto' | 'high' | 'low';
+}) {
+  const response = await fetch(getTwitchFrameCaptureUrl(), {
+    body: JSON.stringify({
+      channel: input.channel,
+    }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    method: 'POST',
+  });
+  const data = (await response.json().catch(() => ({}))) as TwitchStreamFrameResponse;
+  if (!response.ok || !data.ok || !data.frame?.imageDataUrl?.trim()) {
+    throw new Error(data.error || 'Twitch stream frame capture returned no image.');
+  }
+  return {
+    channel: data.frame.channel || input.channel,
+    createdAt: Date.now(),
+    detail: input.detail,
+    imageDataUrl: data.frame.imageDataUrl.trim(),
+    mimeType: data.frame.mimeType || 'image/jpeg',
+  } satisfies TwitchStreamFrame;
+}
+
+function getFreshTwitchStreamFrameForPrompt({
+  frame,
+  llmProvider,
+  maxAgeSeconds,
+  model,
+  visionEnabled,
+}: {
+  frame: TwitchStreamFrame | null;
+  llmProvider: AiSettings['llmProvider'];
+  maxAgeSeconds: number;
+  model: string;
+  visionEnabled: boolean;
+}) {
+  if (!visionEnabled || !frame || !isLikelyVisionModel(llmProvider, model)) {
+    return null;
+  }
+  const maxAgeMs = Math.max(15, Math.min(600, maxAgeSeconds)) * 1000;
+  if (Date.now() - frame.createdAt > maxAgeMs) {
+    return null;
+  }
+  return frame;
+}
+
+function attachStreamVisionFrame(
+  messages: AppCompletionMessage[],
+  frame: TwitchStreamFrame | null,
+): AppCompletionMessage[] {
+  if (!frame) {
+    return messages;
+  }
+  const userIndex = messages.map((message) => message.role).lastIndexOf('user');
+  if (userIndex < 0) {
+    return messages;
+  }
+  return messages.map((message, index) =>
+    index === userIndex
+      ? {
+          ...message,
+          content: `${message.content}\n\nCurrent Twitch stream frame is attached as visual context only. Use it to understand what is currently on stream when relevant; do not describe it unless it helps the reply.`,
+          images: [
+            ...(message.images ?? []),
+            {
+              detail: frame.detail,
+              imageUrl: frame.imageDataUrl,
+            },
+          ],
+        }
+      : message,
+  );
 }
 
 async function getSemanticMemoryContext(
@@ -1582,6 +1677,10 @@ function App() {
   const [twitchStreamTranscriptionStatus, setTwitchStreamTranscriptionStatus] = useState(
     'Stream transcription idle.',
   );
+  const [twitchStreamFrame, setTwitchStreamFrame] = useState<TwitchStreamFrame | null>(null);
+  const [twitchStreamVisionStatus, setTwitchStreamVisionStatus] = useState(
+    'Stream vision idle.',
+  );
   const [relationshipMemory, setRelationshipMemory] = useState<RelationshipMemory>(
     createDefaultRelationshipMemory,
   );
@@ -1648,6 +1747,8 @@ function App() {
   const twitchBatchTimerRef = useRef<number | null>(null);
   const twitchStreamTranscriptsRef = useRef<TwitchStreamTranscript[]>([]);
   const twitchStreamTranscriptionBusyRef = useRef(false);
+  const twitchStreamFrameRef = useRef<TwitchStreamFrame | null>(null);
+  const twitchStreamVisionBusyRef = useRef(false);
   const overlayAiStreamsRef = useRef<Map<string, { player: StreamingSpeechPlayer }>>(new Map());
   const subtitleDataRef = useRef<{ text: string; wordBoundaries: WordBoundary[] } | null>(null);
   const subtitleIntervalRef = useRef<number | null>(null);
@@ -1807,6 +1908,40 @@ function App() {
     }
   }, [providerKeyVaultWorkspaceId, twitchChannel]);
 
+  const captureTwitchStreamFrame = useCallback(async () => {
+    const currentTwitchSettings = twitchSettingsRef.current;
+    if (
+      !currentTwitchSettings.streamVisionContextEnabled ||
+      twitchStreamVisionBusyRef.current
+    ) {
+      return;
+    }
+
+    const channel = directTwitchClientRef.current?.channel || twitchChannel || DIRECT_TWITCH_CHANNEL;
+    if (!channel) {
+      return;
+    }
+
+    twitchStreamVisionBusyRef.current = true;
+    setTwitchStreamVisionStatus(`Capturing #${channel} stream frame...`);
+    try {
+      const frame = await requestTwitchStreamFrame({
+        channel,
+        detail: currentTwitchSettings.streamVisionDetail,
+      });
+      setTwitchStreamFrame(frame);
+      setTwitchStreamVisionStatus(
+        `Last stream frame: ${new Date(frame.createdAt).toLocaleTimeString()} (${frame.detail})`,
+      );
+    } catch (error) {
+      setTwitchStreamVisionStatus(
+        `Stream frame capture failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    } finally {
+      twitchStreamVisionBusyRef.current = false;
+    }
+  }, [twitchChannel]);
+
   useEffect(() => {
     if (!hydrated || !twitchSettings.streamTranscriptionEnabled) {
       return;
@@ -1823,6 +1958,24 @@ function App() {
     hydrated,
     twitchSettings.streamTranscriptionEnabled,
     twitchSettings.streamTranscriptionIntervalSeconds,
+  ]);
+
+  useEffect(() => {
+    if (!hydrated || !twitchSettings.streamVisionContextEnabled) {
+      return;
+    }
+
+    void captureTwitchStreamFrame();
+    const interval = window.setInterval(
+      () => void captureTwitchStreamFrame(),
+      twitchSettings.streamVisionIntervalSeconds * 1000,
+    );
+    return () => window.clearInterval(interval);
+  }, [
+    captureTwitchStreamFrame,
+    hydrated,
+    twitchSettings.streamVisionContextEnabled,
+    twitchSettings.streamVisionIntervalSeconds,
   ]);
 
   useEffect(() => {
@@ -1845,6 +1998,10 @@ function App() {
   useEffect(() => {
     twitchStreamTranscriptsRef.current = twitchStreamTranscripts;
   }, [twitchStreamTranscripts]);
+
+  useEffect(() => {
+    twitchStreamFrameRef.current = twitchStreamFrame;
+  }, [twitchStreamFrame]);
 
   useEffect(() => {
     availableModelsRef.current = availableModels;
@@ -4479,12 +4636,15 @@ function App() {
           query: userContent,
           scopeKey: stateKey,
         });
-        const response = await requestChatCompletion({
-          activeChatters: job.activeChatterCount,
-          mode: job.mode,
-          model: selectedModel,
+        const promptVisionFrame = getFreshTwitchStreamFrameForPrompt({
+          frame: twitchStreamFrameRef.current,
           llmProvider: settings.llmProvider,
-          messages: await buildChatCompletionMessages({
+          maxAgeSeconds: currentTwitchSettings.streamVisionMaxAgeSeconds,
+          model: selectedModel,
+          visionEnabled: currentTwitchSettings.streamVisionContextEnabled,
+        });
+        const promptMessages = attachStreamVisionFrame(
+          await buildChatCompletionMessages({
             animationCatalogContext: buildAnimationCatalogInstruction(
               sequencerSettingsRef.current.playlist,
             ),
@@ -4522,6 +4682,7 @@ function App() {
               localControllerNickname: currentTwitchSettings.localDisplayName || 'not configured',
               source: targetMessage?.source ?? 'twitch',
               stateKey,
+              streamVisionContext: promptVisionFrame ? 'attached' : 'not-attached',
               targetBadges: targetMessage?.badges.join('/') ?? '',
               targetIsBroadcaster: targetMessage?.isBroadcaster ?? false,
               targetIsMod: targetMessage?.isMod ?? false,
@@ -4532,6 +4693,14 @@ function App() {
             ttsExpressionTagsEnabled: settings.ttsExpressionTagsEnabled,
             ttsProvider: settings.ttsProvider,
           }),
+          promptVisionFrame,
+        );
+        const response = await requestChatCompletion({
+          activeChatters: job.activeChatterCount,
+          mode: job.mode,
+          model: selectedModel,
+          llmProvider: settings.llmProvider,
+          messages: promptMessages,
           maxTokens: settings.maxTokens,
           openAiStateMode: settings.openAiStateMode,
           stateKey,
@@ -5559,6 +5728,7 @@ function App() {
               twitchSettings={twitchSettings}
               twitchStreamTranscriptCount={twitchStreamTranscripts.length}
               twitchStreamTranscriptionStatus={twitchStreamTranscriptionStatus}
+              twitchStreamVisionStatus={twitchStreamVisionStatus}
               visualSettings={visualSettings}
               voicesError={ttsVoicesError}
               voicesLoading={ttsVoicesLoading}

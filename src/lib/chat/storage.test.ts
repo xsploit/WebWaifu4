@@ -191,6 +191,10 @@ describe('chat settings persistence', () => {
         streamTranscriptionIntervalSeconds: 120,
         streamTranscriptionModel: 'whisper-1',
         streamTranscriptionSampleSeconds: 20,
+        streamVisionContextEnabled: true,
+        streamVisionDetail: 'auto',
+        streamVisionIntervalSeconds: 150,
+        streamVisionMaxAgeSeconds: 240,
       },
       sequencerSettings,
       uiState: {
@@ -260,6 +264,10 @@ describe('chat settings persistence', () => {
       streamTranscriptionIntervalSeconds: 120,
       streamTranscriptionModel: 'whisper-1',
       streamTranscriptionSampleSeconds: 20,
+      streamVisionContextEnabled: true,
+      streamVisionDetail: 'auto',
+      streamVisionIntervalSeconds: 150,
+      streamVisionMaxAgeSeconds: 240,
     });
     expect(loaded.uiState).toEqual({
       ...state.uiState,

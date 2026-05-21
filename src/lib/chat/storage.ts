@@ -601,6 +601,28 @@ function normalizeTwitchSettings(value: unknown): TwitchSettings {
       5,
       60,
     ),
+    streamVisionContextEnabled:
+      typeof source.streamVisionContextEnabled === 'boolean'
+        ? source.streamVisionContextEnabled
+        : defaults.streamVisionContextEnabled,
+    streamVisionDetail:
+      source.streamVisionDetail === 'auto' ||
+      source.streamVisionDetail === 'high' ||
+      source.streamVisionDetail === 'low'
+        ? source.streamVisionDetail
+        : defaults.streamVisionDetail,
+    streamVisionIntervalSeconds: clampInteger(
+      source.streamVisionIntervalSeconds,
+      defaults.streamVisionIntervalSeconds,
+      30,
+      600,
+    ),
+    streamVisionMaxAgeSeconds: clampInteger(
+      source.streamVisionMaxAgeSeconds,
+      defaults.streamVisionMaxAgeSeconds,
+      15,
+      600,
+    ),
   };
 }
 

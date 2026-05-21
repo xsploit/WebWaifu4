@@ -223,6 +223,10 @@ export type TwitchSettings = {
   streamTranscriptionIntervalSeconds: number;
   streamTranscriptionModel: string;
   streamTranscriptionSampleSeconds: number;
+  streamVisionContextEnabled: boolean;
+  streamVisionDetail: 'auto' | 'high' | 'low';
+  streamVisionIntervalSeconds: number;
+  streamVisionMaxAgeSeconds: number;
 };
 
 export type PersistedChatState = {
