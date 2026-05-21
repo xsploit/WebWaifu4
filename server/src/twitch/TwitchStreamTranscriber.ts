@@ -10,7 +10,6 @@ type TranscribeTwitchStreamOptions = {
   apiKey: string;
   channel: string;
   model: string;
-  prompt?: string;
   sampleSeconds: number;
 };
 
@@ -180,6 +179,21 @@ async function captureAudioSample(streamUrl: string, sampleSeconds: number) {
   return result.stdout;
 }
 
+function normalizeTranscriptText(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function looksLikePromptEcho(text: string) {
+  const normalized = text.toLowerCase();
+  return (
+    normalized.includes('preserve names') ||
+    normalized.includes('game/event terms') ||
+    normalized.includes('streamer speech') ||
+    normalized.includes('chat-relevant context') ||
+    normalized.includes('twitch livestream audio')
+  );
+}
+
 async function captureJpegFrame(streamUrl: string) {
   const result = await runProcess(
     'ffmpeg',
@@ -224,9 +238,6 @@ export async function transcribeTwitchStreamSample(options: TranscribeTwitchStre
   const form = new FormData();
   form.append('model', options.model.trim() || 'whisper-1');
   form.append('response_format', 'json');
-  if (options.prompt?.trim()) {
-    form.append('prompt', options.prompt.trim().slice(0, 600));
-  }
   form.append(
     'file',
     new Blob([new Uint8Array(audio)], { type: 'audio/mpeg' }),
@@ -250,12 +261,16 @@ export async function transcribeTwitchStreamSample(options: TranscribeTwitchStre
   if (!response.ok) {
     throw new Error(data.error?.message || `OpenAI transcription failed with HTTP ${response.status}.`);
   }
+  const text = normalizeTranscriptText(data.text ?? '');
+  if (!text || looksLikePromptEcho(text)) {
+    throw new Error('OpenAI transcription returned no usable stream speech.');
+  }
 
   return {
     channel,
     model: options.model.trim() || 'whisper-1',
     sampleSeconds: Math.max(5, Math.min(60, Math.round(options.sampleSeconds))),
-    text: (data.text ?? '').replace(/\s+/g, ' ').trim(),
+    text,
   };
 }
 

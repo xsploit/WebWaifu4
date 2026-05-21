@@ -1165,7 +1165,6 @@ const httpServer = createServer(async (request, response) => {
       const body = await readRequestJson<{
         channel?: unknown;
         model?: unknown;
-        prompt?: unknown;
         sampleSeconds?: unknown;
       }>(request);
       const model =
@@ -1194,10 +1193,6 @@ const httpServer = createServer(async (request, response) => {
         apiKey: providerConfig.aiApiKey,
         channel: typeof body.channel === 'string' ? body.channel : chatSource.channel,
         model,
-        prompt:
-          typeof body.prompt === 'string'
-            ? body.prompt
-            : 'Twitch livestream audio. Preserve names, game/event terms, music/DJ names, streamer speech, and chat-relevant context.',
         sampleSeconds,
       });
       writeJson(response, 200, {
