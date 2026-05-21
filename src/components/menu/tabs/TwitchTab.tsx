@@ -202,7 +202,7 @@ export function TwitchTab({
             Direct intake: <strong>{twitchSettings.directChatterLimit} chatters</strong>
           </div>
           <div className="status-copy">
-            Batch intake:{' '}
+            All-chat intake:{' '}
             <strong>
               {twitchSettings.batchLowSize}/{twitchSettings.batchMidSize}/
               {twitchSettings.batchHighSize}/{twitchSettings.batchMaxSize} msgs
@@ -267,9 +267,8 @@ export function TwitchTab({
           value={twitchSettings.maxBatchMessages}
         />
         <div className="field-hint">
-          Direct mode intakes one tagged Twitch/local participant message per reply. Batch mode
-          intakes the configured number of Twitch messages before replying, or fires when the batch
-          timer expires.
+          Direct mode intakes one tagged Twitch/local participant message per reply. All-chat mode
+          intakes every normal Twitch chat line until the configured message count or timer fires.
         </div>
         <button className="btn-tech danger" onClick={onResetTwitchState} type="button">
           Reset Twitch AI Queue
@@ -313,7 +312,7 @@ export function TwitchTab({
       </div>
 
       <div className="control-group">
-        <div className="control-label">Batch Sizes</div>
+        <div className="control-label">All-Chat Intake Size</div>
         <NumberField
           label="Intake msgs, 1-25 chatters"
           max={200}
