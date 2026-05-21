@@ -523,6 +523,7 @@ describe('OpenAiResponsesProvider', () => {
   });
 
   it('ignores reasoning and thinking output when extracting final text', async () => {
+    const calls: FetchCall[] = [];
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'test-key',
@@ -533,8 +534,12 @@ describe('OpenAiResponsesProvider', () => {
       store: false,
       reasoningEffort: 'none',
       useWebSocket: false,
-      fetcher: (async () =>
-        new Response(
+      fetcher: (async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+        });
+        return new Response(
           JSON.stringify({
             id: 'resp_openrouter_reasoning',
             output: [
@@ -554,11 +559,16 @@ describe('OpenAiResponsesProvider', () => {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           },
-        )) as typeof fetch,
+        );
+      }) as typeof fetch,
     });
 
     await expect(provider.complete(createRequest('hello'))).resolves.toMatchObject({
       text: 'visible reply',
+    });
+    expect(calls[0]?.body).toMatchObject({
+      include_reasoning: false,
+      reasoning: { exclude: true },
     });
   });
 
@@ -1382,6 +1392,10 @@ describe('OpenAiResponsesProvider', () => {
 
     expect(deltas).toEqual(['visible']);
     expect(response.text).toBe('visible');
+    expect(calls[0]?.body).toMatchObject({
+      include_reasoning: false,
+      reasoning: { exclude: true },
+    });
   });
 
   it('does not treat output item lifecycle events as terminal stream events', async () => {

@@ -469,6 +469,14 @@ function supportsTemperature(model: string, reasoningEffort?: OpenAiReasoningEff
   return !isReasoningStyleModel(model) || !reasoningEffort || reasoningEffort === 'none';
 }
 
+function isOpenRouterBaseUrl(value: string) {
+  try {
+    return new URL(value).hostname.toLowerCase().endsWith('openrouter.ai');
+  } catch {
+    return value.toLowerCase().includes('openrouter.ai');
+  }
+}
+
 function normalizeMaxOutputTokens(requested: number | undefined, fallback: number) {
   const value = Number.isFinite(requested) ? requested! : fallback;
   return Math.max(16, Math.floor(value));
@@ -824,7 +832,12 @@ export class OpenAiResponsesProvider implements ChatProvider {
       payload.prompt_cache_retention = this.options.promptCacheRetention;
     }
 
-    if (reasoningEffort) {
+    if (isOpenRouterBaseUrl(this.baseUrl)) {
+      payload.reasoning = {
+        exclude: true,
+      };
+      payload.include_reasoning = false;
+    } else if (reasoningEffort) {
       payload.reasoning = {
         effort: reasoningEffort,
       };

@@ -504,6 +504,14 @@ function supportsTemperature(model: string, reasoningEffort?: OpenAiReasoningEff
   return !isReasoningStyleModel(model) || !reasoningEffort || reasoningEffort === 'none';
 }
 
+function isOpenRouterBaseUrl(value: string) {
+  try {
+    return new URL(value).hostname.toLowerCase().endsWith('openrouter.ai');
+  } catch {
+    return value.toLowerCase().includes('openrouter.ai');
+  }
+}
+
 function normalizeMaxOutputTokens(requested: number | undefined, fallback: number) {
   const value = Number.isFinite(requested) ? requested! : fallback;
   return Math.max(16, Math.floor(value));
@@ -990,7 +998,12 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   if (process.env['OPENAI_PROMPT_CACHE_RETENTION']) {
     payload.prompt_cache_retention = process.env['OPENAI_PROMPT_CACHE_RETENTION'];
   }
-  if (reasoningEffort) {
+  if (isOpenRouterBaseUrl(apiBaseUrl)) {
+    payload.reasoning = {
+      exclude: true,
+    };
+    payload.include_reasoning = false;
+  } else if (reasoningEffort) {
     payload.reasoning = {
       effort: reasoningEffort,
     };

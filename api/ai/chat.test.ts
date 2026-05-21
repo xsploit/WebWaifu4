@@ -445,15 +445,17 @@ describe('serverless AI chat route', () => {
   it('does not forward OpenRouter reasoning deltas as visible text', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-openai');
     vi.stubEnv('OPENAI_MODEL', 'openai/gpt-oss-120b');
-    vi.stubEnv('OPENAI_BASE_URL', 'https://openrouter.ai/api/v1');
+    vi.stubEnv('OPENAI_API_BASE_URL', 'https://openrouter.ai/api/v1');
     vi.stubEnv('OPENAI_STATE_MODE', 'stateless');
     vi.stubEnv('OPENAI_REASONING_EFFORT', 'none');
     vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');
     vi.stubEnv('SUPABASE_URL', 'https://project-ref.supabase.co');
     vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'supabase-publishable');
 
+    const openAiCalls: FetchCall[] = [];
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
       if (url === 'https://project-ref.supabase.co/auth/v1/user') {
         return new Response(JSON.stringify({ id: 'user-1', email: 'subsect@example.com' }), {
           status: 200,
@@ -461,6 +463,7 @@ describe('serverless AI chat route', () => {
         });
       }
 
+      openAiCalls.push({ url, body });
       return createStreamResponse([
         { type: 'response.reasoning.delta', delta: 'hidden thinking ' },
         { type: 'response.output_item.added', item: { id: 'rs_1', type: 'reasoning' } },
@@ -512,6 +515,10 @@ describe('serverless AI chat route', () => {
     expect(events).not.toContainEqual(
       expect.objectContaining({ delta: expect.stringContaining('hidden') }),
     );
+    expect(openAiCalls[0]?.body).toMatchObject({
+      include_reasoning: false,
+      reasoning: { exclude: true },
+    });
   });
 
   it('rejects anonymous server-key proxy use when proxy mode is enabled', async () => {
