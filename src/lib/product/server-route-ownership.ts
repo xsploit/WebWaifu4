@@ -185,7 +185,7 @@ export const BYOK_CLOUD_ROUTE_CONTRACTS = [
     actor: 'overlay-token',
     ownership: 'overlay-scoped-scene',
     resource: 'public-overlay-config',
-    allowedSettingStorageClasses: ['public-overlay'],
+    allowedSettingStorageClasses: ['public-overlay', 'synced-private'],
     secretMaterialPolicy: 'forbidden',
   },
 ] as const satisfies readonly ByokCloudRouteContract[];

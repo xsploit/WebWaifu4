@@ -5,7 +5,11 @@ import type {
   ByokWorkspaceSummary,
 } from '../../../src/lib/product/byok-api.js';
 import type { ProductStorageMode, ProviderKeyMode } from '../../../src/lib/product/byok.js';
-import { assertSettingCanSync, type SyncedSettingRecord } from '../../../src/lib/product/byok.js';
+import {
+  assertSettingCanSync,
+  type SettingStorageClass,
+  type SyncedSettingRecord,
+} from '../../../src/lib/product/byok.js';
 import { cloudSettingId } from '../../../src/lib/product/cloud-setting-id.js';
 import { findForbiddenCloudRouteSecretPaths } from '../../../src/lib/product/server-route-ownership.js';
 import type { SupabaseServerConfig } from '../../../src/lib/product/supabase-env.js';
@@ -330,10 +334,8 @@ export async function fetchPublicOverlayConfig(input: {
   workspaceId: string;
 }) {
   const scene = await fetchSceneSummary(input);
-  const settings = (await fetchSyncedSettings(input)).filter(
-    (record) =>
-      record.storageClass === 'public-overlay' &&
-      (!record.sceneId || record.sceneId === input.sceneId),
+  const settings = (await fetchSyncedSettings(input)).filter((record) =>
+    isOverlayRuntimeSetting(record, input.sceneId),
   );
   return {
     scene,
@@ -341,6 +343,27 @@ export async function fetchPublicOverlayConfig(input: {
     workspaceId: input.workspaceId,
   };
 }
+
+function isOverlayRuntimeSetting(record: SyncedSettingRecord, sceneId: string) {
+  if (!OVERLAY_RUNTIME_STORAGE_CLASSES.has(record.storageClass)) {
+    return false;
+  }
+  if (record.sceneId && record.sceneId !== sceneId) {
+    return false;
+  }
+  try {
+    assertSettingCanSync(record);
+    assertSyncedSettingHasNoSecretMaterial(record);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const OVERLAY_RUNTIME_STORAGE_CLASSES = new Set<SettingStorageClass>([
+  'public-overlay',
+  'synced-private',
+]);
 
 export async function upsertSyncedSetting(input: {
   body: unknown;

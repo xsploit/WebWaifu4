@@ -256,7 +256,7 @@ describe('BYOK cloud route ownership contracts', () => {
     });
   });
 
-  it('allows public overlay config only with a matching scoped overlay token', () => {
+  it('allows overlay runtime config only with a matching scoped overlay token', () => {
     vi.setSystemTime(new Date('2026-05-15T12:00:00.000Z'));
 
     const overlayToken: OverlayTokenClaims = {
@@ -298,11 +298,7 @@ describe('BYOK cloud route ownership contracts', () => {
         targetSceneId: 'scene-1',
         settingStorageClass: 'synced-private',
       }),
-    ).toMatchObject({
-      allowed: false,
-      status: 400,
-      reason: 'setting-storage-class-forbidden',
-    });
+    ).toMatchObject({ allowed: true });
 
     expect(
       authorizeByokCloudRoute({

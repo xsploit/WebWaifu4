@@ -356,6 +356,17 @@ function stripOverlayTokenFromLocation() {
   window.history.replaceState(window.history.state, document.title, url.toString());
 }
 
+function getOverlayControlsEnabled() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const params = new URLSearchParams(window.location.search);
+  return ['controls', 'settings', 'editor'].some((key) => {
+    const value = params.get(key)?.trim().toLowerCase();
+    return value === '1' || value === 'true' || value === 'yes';
+  });
+}
+
 function getRouteletVisualSettings(settings: VisualSettings): VisualSettings {
   return {
     ...settings,
@@ -5252,6 +5263,7 @@ function App() {
     appRoute.kind,
   );
   const overlayPageActive = appRoute.kind === 'overlay';
+  const overlayControlsActive = overlayPageActive && getOverlayControlsEnabled();
   const overlayConfigLoadRef = useRef('');
   const [overlayConfigStatus, setOverlayConfigStatus] = useState('');
   const [overlayConfigReady, setOverlayConfigReady] = useState(false);
@@ -5268,6 +5280,11 @@ function App() {
   const routeAuthBlocked =
     routeNeedsAuth && supabaseAuthChecked && accountMode.kind !== 'supabase-cloud-sync';
   const productShellActive = productPageActive || routeAuthPending || routeAuthBlocked;
+  useEffect(() => {
+    if (overlayControlsActive) {
+      setMenuOpen(true);
+    }
+  }, [overlayControlsActive]);
   useEffect(() => {
     if (!routeAuthBlocked) {
       return;
@@ -5592,7 +5609,7 @@ function App() {
         </div>
       ) : null}
 
-      {!productShellActive && !overlayPageActive ? (
+      {!productShellActive && (!overlayPageActive || overlayControlsActive) ? (
         <div className="ui-layer">
           <ChatLog
             activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}

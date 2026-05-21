@@ -4,6 +4,7 @@ import {
   ensureByokProfile,
   ensureDefaultScene,
   ensureDefaultWorkspace,
+  fetchPublicOverlayConfig,
   fetchSyncedSetting,
   fetchSyncedSettings,
   upsertSyncedSetting,
@@ -254,6 +255,80 @@ describe('BYOK product data bootstrap', () => {
         ([url, init]) => url.includes('on_conflict=id') && init?.method === 'POST',
       ),
     ).toBe(false);
+  });
+
+  it('returns every non-secret scene runtime setting for signed overlay loads', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/rest/v1/scenes?')) {
+        return jsonResponse([
+          {
+            active_character_id: 'hikari',
+            created_at: '2026-05-15T00:00:00.000Z',
+            id: 'scene-1',
+            name: 'Main Overlay',
+            twitch_channel: 'subsect',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            workspace_id: 'workspace-1',
+          },
+        ]);
+      }
+      if (url.includes('/rest/v1/synced_settings?')) {
+        return jsonResponse([
+          {
+            id: 'visualSettings',
+            key: 'visualSettings',
+            scene_id: null,
+            storage_class: 'public-overlay',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            value_json: '{}',
+            workspace_id: 'workspace-1',
+          },
+          {
+            id: 'aiSettings',
+            key: 'aiSettings',
+            scene_id: null,
+            storage_class: 'synced-private',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            value_json: '{"model":"gpt-5.4-mini"}',
+            workspace_id: 'workspace-1',
+          },
+          {
+            id: 'otherScene',
+            key: 'character.vrmModelId',
+            scene_id: 'scene-2',
+            storage_class: 'public-overlay',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            value_json: '"neuro"',
+            workspace_id: 'workspace-1',
+          },
+          {
+            id: 'secret',
+            key: 'openai.apiKey',
+            scene_id: null,
+            storage_class: 'synced-private',
+            updated_at: '2026-05-15T00:00:00.000Z',
+            value_json: '"sk-test"',
+            workspace_id: 'workspace-1',
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    await expect(
+      fetchPublicOverlayConfig({
+        config,
+        fetchFn: fetchMock as unknown as SupabaseFetch,
+        sceneId: 'scene-1',
+        workspaceId: 'workspace-1',
+      }),
+    ).resolves.toMatchObject({
+      scene: { id: 'scene-1' },
+      settings: [
+        { key: 'visualSettings', storageClass: 'public-overlay' },
+        { key: 'aiSettings', storageClass: 'synced-private' },
+      ],
+    });
   });
 });
 
