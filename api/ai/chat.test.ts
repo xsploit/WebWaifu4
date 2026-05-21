@@ -442,6 +442,78 @@ describe('serverless AI chat route', () => {
     );
   });
 
+  it('does not forward OpenRouter reasoning deltas as visible text', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-openai');
+    vi.stubEnv('OPENAI_MODEL', 'openai/gpt-oss-120b');
+    vi.stubEnv('OPENAI_BASE_URL', 'https://openrouter.ai/api/v1');
+    vi.stubEnv('OPENAI_STATE_MODE', 'stateless');
+    vi.stubEnv('OPENAI_REASONING_EFFORT', 'none');
+    vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');
+    vi.stubEnv('SUPABASE_URL', 'https://project-ref.supabase.co');
+    vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'supabase-publishable');
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://project-ref.supabase.co/auth/v1/user') {
+        return new Response(JSON.stringify({ id: 'user-1', email: 'subsect@example.com' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return createStreamResponse([
+        { type: 'response.reasoning.delta', delta: 'hidden thinking ' },
+        { type: 'response.output_item.added', item: { id: 'rs_1', type: 'reasoning' } },
+        { type: 'response.output_text.delta', delta: 'visible answer' },
+        {
+          type: 'response.completed',
+          response: {
+            id: 'resp_openrouter_reasoning',
+            output: [
+              {
+                id: 'rs_1',
+                type: 'reasoning',
+                content: [{ type: 'reasoning_text', text: 'hidden final reasoning' }],
+              },
+              {
+                id: 'msg_1',
+                type: 'message',
+                content: [{ type: 'output_text', text: 'visible answer' }],
+              },
+            ],
+          },
+        },
+      ]);
+    }) as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer valid-session',
+        },
+        body: {
+          messages: [{ role: 'user', content: 'hello' }],
+          stream: true,
+        },
+      },
+      response,
+    );
+
+    const events = parseSseEvents(response.chunks);
+    expect(events).toContainEqual(
+      expect.objectContaining({ delta: 'visible answer', type: 'delta' }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ ok: true, text: 'visible answer', type: 'done' }),
+    );
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ delta: expect.stringContaining('hidden') }),
+    );
+  });
+
   it('rejects anonymous server-key proxy use when proxy mode is enabled', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-openai');
     vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');

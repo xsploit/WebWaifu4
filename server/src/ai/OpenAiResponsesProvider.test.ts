@@ -522,6 +522,46 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('ignores reasoning and thinking output when extracting final text', async () => {
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: 'test-key',
+      model: 'openai/gpt-oss-120b',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: (async () =>
+        new Response(
+          JSON.stringify({
+            id: 'resp_openrouter_reasoning',
+            output: [
+              {
+                id: 'rs_1',
+                type: 'reasoning',
+                content: [{ type: 'reasoning_text', text: 'hidden chain of thought' }],
+              },
+              {
+                id: 'msg_1',
+                type: 'message',
+                content: [{ type: 'output_text', text: { value: 'visible reply' } }],
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )) as typeof fetch,
+    });
+
+    await expect(provider.complete(createRequest('hello'))).resolves.toMatchObject({
+      text: 'visible reply',
+    });
+  });
+
   it('reports incomplete Responses payloads instead of a generic empty response', async () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
@@ -1281,6 +1321,67 @@ describe('OpenAiResponsesProvider', () => {
       cachedTokens: 64,
       previousResponseId: 'resp_stream',
     });
+  });
+
+  it('drops reasoning stream deltas from OpenRouter-compatible streams', async () => {
+    const calls: FetchCall[] = [];
+    const deltas: string[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: 'test-key',
+      model: 'openai/gpt-oss-120b',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      useWebSocket: false,
+      fetcher: (async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+        });
+        return new Response(
+          [
+            { type: 'response.reasoning.delta', delta: 'hidden ' },
+            { type: 'response.output_item.added', item: { id: 'rs_1', type: 'reasoning' } },
+            { type: 'response.output_text.delta', delta: 'visible' },
+            {
+              type: 'response.completed',
+              response: {
+                id: 'resp_openrouter_stream',
+                output: [
+                  {
+                    id: 'rs_1',
+                    type: 'reasoning',
+                    content: [{ type: 'reasoning_text', text: 'hidden final' }],
+                  },
+                  {
+                    id: 'msg_1',
+                    type: 'message',
+                    content: [{ type: 'output_text', text: 'visible' }],
+                  },
+                ],
+              },
+            },
+          ]
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(''),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          },
+        );
+      }) as typeof fetch,
+    });
+
+    const response = await provider.completeStream(createRequest('stream please'), {
+      onTextDelta: (delta) => {
+        deltas.push(delta);
+      },
+    });
+
+    expect(deltas).toEqual(['visible']);
+    expect(response.text).toBe('visible');
   });
 
   it('does not treat output item lifecycle events as terminal stream events', async () => {

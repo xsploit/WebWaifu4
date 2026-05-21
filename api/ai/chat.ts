@@ -166,8 +166,10 @@ function extractResponseText(payload: OpenAiResponsePayload) {
 
   return (
     payload.output
+      ?.filter(isTextOutputItem)
       ?.flatMap((item) => item.content ?? [])
-      .map((content) => content.text?.trim() ?? '')
+      .filter(isTextContentPart)
+      .map((content) => readTextValue(content.text).trim())
       .filter(Boolean)
       .join(' ')
       .trim() ?? ''
@@ -185,6 +187,38 @@ function readTextValue(value: unknown) {
     }
   }
   return '';
+}
+
+function readType(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  const type = (value as Record<string, unknown>)['type'];
+  return typeof type === 'string' ? type.toLowerCase() : '';
+}
+
+function isReasoningType(type: string | undefined) {
+  const normalized = type?.toLowerCase() ?? '';
+  return normalized.includes('reasoning') || normalized.includes('thinking');
+}
+
+function isTextContentPart(value: unknown) {
+  const type = readType(value);
+  return !type || type === 'output_text' || type === 'refusal' || type === 'text';
+}
+
+function isTextOutputItem(value: unknown) {
+  const type = readType(value);
+  return !type || type === 'message' || type === 'output_text';
+}
+
+function isReasoningStreamEvent(event: OpenAiStreamEvent) {
+  return (
+    isReasoningType(event.type) ||
+    isReasoningType(readType(event.item)) ||
+    isReasoningType(readType(event.part)) ||
+    isReasoningType(readType(event.content_part))
+  );
 }
 
 function extractNestedText(value: unknown): string {
@@ -206,6 +240,9 @@ function extractNestedText(value: unknown): string {
   }
 
   const record = value as Record<string, unknown>;
+  if (isReasoningType(readType(record))) {
+    return '';
+  }
   const direct =
     readTextValue(record['text']) ||
     readTextValue(record['output_text']) ||
@@ -224,6 +261,9 @@ function extractNestedText(value: unknown): string {
 }
 
 function extractStreamEventText(event: OpenAiStreamEvent) {
+  if (isReasoningStreamEvent(event)) {
+    return '';
+  }
   return (
     readTextValue(event.text) ||
     extractNestedText(event.content_part) ||
@@ -734,6 +774,9 @@ async function readOpenAiStream(
     }
     if (event.type === 'response.output_item.done' && isStreamingFunctionCallItem(event.item)) {
       rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
+      return;
+    }
+    if (isReasoningStreamEvent(event)) {
       return;
     }
 
