@@ -102,11 +102,18 @@ function runProcess(
   });
 }
 
-export async function resolveTwitchStreamUrl(channel: string) {
+export async function resolveTwitchStreamUrl(channel: string, media: 'audio' | 'video' = 'audio') {
   const twitchUrl = `https://www.twitch.tv/${channel}`;
   const attempts = [
     {
-      args: ['--no-warnings', '--no-playlist', '-f', 'bestaudio/best', '--get-url', twitchUrl],
+      args: [
+        '--no-warnings',
+        '--no-playlist',
+        '-f',
+        media === 'video' ? 'best' : 'bestaudio/best',
+        '--get-url',
+        twitchUrl,
+      ],
       command: 'yt-dlp',
     },
     {
@@ -212,7 +219,7 @@ export async function transcribeTwitchStreamSample(options: TranscribeTwitchStre
     throw new Error('OpenAI provider key is not configured.');
   }
 
-  const streamUrl = await resolveTwitchStreamUrl(channel);
+  const streamUrl = await resolveTwitchStreamUrl(channel, 'audio');
   const audio = await captureAudioSample(streamUrl, options.sampleSeconds);
   const form = new FormData();
   form.append('model', options.model.trim() || 'whisper-1');
@@ -254,7 +261,7 @@ export async function transcribeTwitchStreamSample(options: TranscribeTwitchStre
 
 export async function captureTwitchStreamFrame(channelValue: string) {
   const channel = cleanChannel(channelValue);
-  const streamUrl = await resolveTwitchStreamUrl(channel);
+  const streamUrl = await resolveTwitchStreamUrl(channel, 'video');
   const frame = await captureJpegFrame(streamUrl);
   return {
     channel,
