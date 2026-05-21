@@ -574,6 +574,33 @@ function normalizeTwitchSettings(value: unknown): TwitchSettings {
         ? source.mentionRequiredUnderThreshold
         : defaults.mentionRequiredUnderThreshold,
     replyGapMs: clampInteger(source.replyGapMs, defaults.replyGapMs, 0, 30000),
+    streamTranscriptionContextLimit: clampInteger(
+      source.streamTranscriptionContextLimit,
+      defaults.streamTranscriptionContextLimit,
+      1,
+      20,
+    ),
+    streamTranscriptionEnabled:
+      typeof source.streamTranscriptionEnabled === 'boolean'
+        ? source.streamTranscriptionEnabled
+        : defaults.streamTranscriptionEnabled,
+    streamTranscriptionIntervalSeconds: clampInteger(
+      source.streamTranscriptionIntervalSeconds,
+      defaults.streamTranscriptionIntervalSeconds,
+      30,
+      600,
+    ),
+    streamTranscriptionModel:
+      typeof source.streamTranscriptionModel === 'string' &&
+      source.streamTranscriptionModel.trim().length > 0
+        ? source.streamTranscriptionModel.trim().slice(0, 80)
+        : defaults.streamTranscriptionModel,
+    streamTranscriptionSampleSeconds: clampInteger(
+      source.streamTranscriptionSampleSeconds,
+      defaults.streamTranscriptionSampleSeconds,
+      5,
+      60,
+    ),
   };
 }
 

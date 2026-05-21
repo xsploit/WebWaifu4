@@ -186,6 +186,11 @@ describe('chat settings persistence', () => {
         maxPendingJobs: 5,
         mentionRequiredUnderThreshold: false,
         replyGapMs: 1500,
+        streamTranscriptionContextLimit: 6,
+        streamTranscriptionEnabled: true,
+        streamTranscriptionIntervalSeconds: 120,
+        streamTranscriptionModel: 'whisper-1',
+        streamTranscriptionSampleSeconds: 20,
       },
       sequencerSettings,
       uiState: {
@@ -250,6 +255,11 @@ describe('chat settings persistence', () => {
       maxPendingJobs: 5,
       mentionRequiredUnderThreshold: false,
       replyGapMs: 1500,
+      streamTranscriptionContextLimit: 6,
+      streamTranscriptionEnabled: true,
+      streamTranscriptionIntervalSeconds: 120,
+      streamTranscriptionModel: 'whisper-1',
+      streamTranscriptionSampleSeconds: 20,
     });
     expect(loaded.uiState).toEqual({
       ...state.uiState,

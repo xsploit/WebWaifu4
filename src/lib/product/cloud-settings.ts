@@ -268,6 +268,33 @@ function normalizeTwitchSettings(value: unknown, fallback: TwitchSettings): Twit
         ? source.mentionRequiredUnderThreshold
         : fallback.mentionRequiredUnderThreshold,
     replyGapMs: numberValue(source.replyGapMs, fallback.replyGapMs, 0, 30000),
+    streamTranscriptionContextLimit: numberValue(
+      source.streamTranscriptionContextLimit,
+      fallback.streamTranscriptionContextLimit,
+      1,
+      20,
+    ),
+    streamTranscriptionEnabled:
+      typeof source.streamTranscriptionEnabled === 'boolean'
+        ? source.streamTranscriptionEnabled
+        : fallback.streamTranscriptionEnabled,
+    streamTranscriptionIntervalSeconds: numberValue(
+      source.streamTranscriptionIntervalSeconds,
+      fallback.streamTranscriptionIntervalSeconds,
+      30,
+      600,
+    ),
+    streamTranscriptionModel:
+      typeof source.streamTranscriptionModel === 'string' &&
+      source.streamTranscriptionModel.trim()
+        ? source.streamTranscriptionModel.trim().slice(0, 80)
+        : fallback.streamTranscriptionModel,
+    streamTranscriptionSampleSeconds: numberValue(
+      source.streamTranscriptionSampleSeconds,
+      fallback.streamTranscriptionSampleSeconds,
+      5,
+      60,
+    ),
   };
 }
 

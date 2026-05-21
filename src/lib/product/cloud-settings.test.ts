@@ -119,7 +119,8 @@ describe('cloud settings adapter', () => {
         key: 'twitchSettings',
         storageClass: 'synced-private',
         updatedAt: '2026-05-15T12:00:00.000Z',
-        valueJson: '{"directChatterLimit":25,"localDisplayName":"Cloud Subby"}',
+        valueJson:
+          '{"directChatterLimit":25,"localDisplayName":"Cloud Subby","streamTranscriptionEnabled":true,"streamTranscriptionModel":"whisper-1"}',
         workspaceId: 'workspace-1',
       },
       {
@@ -135,6 +136,8 @@ describe('cloud settings adapter', () => {
     expect(next.twitchChannel).toBe('newchannel');
     expect(next.twitchSettings.directChatterLimit).toBe(25);
     expect(next.twitchSettings.localDisplayName).toBe('Cloud Subby');
+    expect(next.twitchSettings.streamTranscriptionEnabled).toBe(true);
+    expect(next.twitchSettings.streamTranscriptionModel).toBe('whisper-1');
     expect(next.relationshipMemory.facts).toEqual(['local-only fact']);
   });
 });

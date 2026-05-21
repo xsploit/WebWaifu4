@@ -171,5 +171,10 @@ export function createDefaultTwitchSettings(): TwitchSettings {
     maxPendingJobs: 8,
     mentionRequiredUnderThreshold: true,
     replyGapMs: 2000,
+    streamTranscriptionContextLimit: 5,
+    streamTranscriptionEnabled: false,
+    streamTranscriptionIntervalSeconds: 90,
+    streamTranscriptionModel: 'whisper-1',
+    streamTranscriptionSampleSeconds: 15,
   };
 }

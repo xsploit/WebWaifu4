@@ -136,6 +136,11 @@ import {
   type OverlayServerEvent,
 } from './lib/stream/overlay-events';
 import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitch/direct-irc';
+import {
+  formatTwitchStreamTranscriptContext,
+  type TwitchStreamTranscript,
+  type TwitchStreamTranscriptionResponse,
+} from './lib/twitch/stream-transcription';
 import { resolveByokAccountMode, type SupabaseAuthIdentity } from './lib/product/account-mode';
 import {
   appRouteNeedsAuth,
@@ -537,6 +542,15 @@ function getAiEmbeddingUrl() {
   url.pathname = url.pathname.replace(/\/chat\/?$/, '/embeddings');
   if (!/\/embeddings\/?$/.test(url.pathname)) {
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/embeddings`;
+  }
+  return url.toString();
+}
+
+function getTwitchTranscriptionUrl() {
+  const url = new URL(getAiProxyUrl());
+  url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/twitch/transcribe-sample');
+  if (!/\/twitch\/transcribe-sample\/?$/.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/twitch/transcribe-sample`;
   }
   return url.toString();
 }
@@ -962,6 +976,38 @@ async function requestTextEmbedding(
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function requestTwitchStreamTranscript(input: {
+  channel: string;
+  llmProvider: AiSettings['llmProvider'];
+  model: string;
+  providerKeyVaultWorkspaceId?: string;
+  sampleSeconds: number;
+}) {
+  const response = await fetch(getTwitchTranscriptionUrl(), {
+    body: JSON.stringify({
+      channel: input.channel,
+      model: input.model,
+      sampleSeconds: input.sampleSeconds,
+    }),
+    headers: await buildBackendProviderHeaders({
+      llmProvider: input.llmProvider,
+      providerKeyVaultWorkspaceId: input.providerKeyVaultWorkspaceId,
+    }),
+    method: 'POST',
+  });
+  const data = (await response.json().catch(() => ({}))) as TwitchStreamTranscriptionResponse;
+  if (!response.ok || !data.ok || !data.transcript?.text?.trim()) {
+    throw new Error(data.error || 'Twitch stream transcription returned no text.');
+  }
+  return {
+    channel: data.transcript.channel || input.channel,
+    createdAt: Date.now(),
+    model: data.transcript.model || input.model,
+    sampleSeconds: data.transcript.sampleSeconds || input.sampleSeconds,
+    text: data.transcript.text.trim(),
+  } satisfies TwitchStreamTranscript;
 }
 
 async function getSemanticMemoryContext(
@@ -1530,6 +1576,12 @@ function App() {
     DIRECT_TWITCH_CHAT_ENABLED ? 'Connecting' : 'Offline',
   );
   const [twitchActiveChatterCount, setTwitchActiveChatterCount] = useState(0);
+  const [twitchStreamTranscripts, setTwitchStreamTranscripts] = useState<
+    TwitchStreamTranscript[]
+  >([]);
+  const [twitchStreamTranscriptionStatus, setTwitchStreamTranscriptionStatus] = useState(
+    'Stream transcription idle.',
+  );
   const [relationshipMemory, setRelationshipMemory] = useState<RelationshipMemory>(
     createDefaultRelationshipMemory,
   );
@@ -1594,6 +1646,8 @@ function App() {
   const twitchAiProcessingRef = useRef(false);
   const twitchLastReplyAtRef = useRef(0);
   const twitchBatchTimerRef = useRef<number | null>(null);
+  const twitchStreamTranscriptsRef = useRef<TwitchStreamTranscript[]>([]);
+  const twitchStreamTranscriptionBusyRef = useRef(false);
   const overlayAiStreamsRef = useRef<Map<string, { player: StreamingSpeechPlayer }>>(new Map());
   const subtitleDataRef = useRef<{ text: string; wordBoundaries: WordBoundary[] } | null>(null);
   const subtitleIntervalRef = useRef<number | null>(null);
@@ -1714,6 +1768,63 @@ function App() {
     }
   }, []);
 
+  const captureTwitchStreamTranscript = useCallback(async () => {
+    const currentTwitchSettings = twitchSettingsRef.current;
+    if (
+      !currentTwitchSettings.streamTranscriptionEnabled ||
+      twitchStreamTranscriptionBusyRef.current
+    ) {
+      return;
+    }
+
+    const channel = directTwitchClientRef.current?.channel || twitchChannel || DIRECT_TWITCH_CHANNEL;
+    if (!channel) {
+      return;
+    }
+
+    twitchStreamTranscriptionBusyRef.current = true;
+    setTwitchStreamTranscriptionStatus(`Sampling #${channel} audio for Whisper...`);
+    try {
+      const transcript = await requestTwitchStreamTranscript({
+        channel,
+        llmProvider: 'openai-responses',
+        model: currentTwitchSettings.streamTranscriptionModel || 'whisper-1',
+        providerKeyVaultWorkspaceId,
+        sampleSeconds: currentTwitchSettings.streamTranscriptionSampleSeconds,
+      });
+      setTwitchStreamTranscripts((current) =>
+        [...current, transcript].slice(-currentTwitchSettings.streamTranscriptionContextLimit),
+      );
+      setTwitchStreamTranscriptionStatus(
+        `Last Whisper sample: ${new Date(transcript.createdAt).toLocaleTimeString()} (${transcript.text.slice(0, 90)}${transcript.text.length > 90 ? '...' : ''})`,
+      );
+    } catch (error) {
+      setTwitchStreamTranscriptionStatus(
+        `Stream transcription failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    } finally {
+      twitchStreamTranscriptionBusyRef.current = false;
+    }
+  }, [providerKeyVaultWorkspaceId, twitchChannel]);
+
+  useEffect(() => {
+    if (!hydrated || !twitchSettings.streamTranscriptionEnabled) {
+      return;
+    }
+
+    void captureTwitchStreamTranscript();
+    const interval = window.setInterval(
+      () => void captureTwitchStreamTranscript(),
+      twitchSettings.streamTranscriptionIntervalSeconds * 1000,
+    );
+    return () => window.clearInterval(interval);
+  }, [
+    captureTwitchStreamTranscript,
+    hydrated,
+    twitchSettings.streamTranscriptionEnabled,
+    twitchSettings.streamTranscriptionIntervalSeconds,
+  ]);
+
   useEffect(() => {
     activeRelationshipStateKeyRef.current = activeRelationshipStateKey;
     if (!hydrated) {
@@ -1730,6 +1841,10 @@ function App() {
   useEffect(() => {
     twitchSettingsRef.current = twitchSettings;
   }, [twitchSettings]);
+
+  useEffect(() => {
+    twitchStreamTranscriptsRef.current = twitchStreamTranscripts;
+  }, [twitchStreamTranscripts]);
 
   useEffect(() => {
     availableModelsRef.current = availableModels;
@@ -4312,6 +4427,11 @@ function App() {
         settings.replyLength,
         currentTwitchSettings,
       );
+      const streamTranscriptContext = formatTwitchStreamTranscriptContext(
+        twitchStreamTranscriptsRef.current,
+        currentTwitchSettings.streamTranscriptionContextLimit,
+      );
+      const currentTurnContext = [prompt, streamTranscriptContext].filter(Boolean).join('\n\n');
       const userContent = buildChatTurnMemoryMessage(job.mode, job.messages);
       const userMessage = targetMessage
         ? chatTurnToChatMessage(targetMessage)
@@ -4369,7 +4489,7 @@ function App() {
               sequencerSettingsRef.current.playlist,
             ),
             channelHistory: job.context,
-            currentTurnContext: prompt,
+            currentTurnContext,
             grilloMemory,
             history: requestHistory,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
@@ -5437,6 +5557,8 @@ function App() {
               twitchDirectChatEnabled={DIRECT_TWITCH_CHAT_ENABLED}
               twitchQueueLength={twitchAiQueueRef.current.length}
               twitchSettings={twitchSettings}
+              twitchStreamTranscriptCount={twitchStreamTranscripts.length}
+              twitchStreamTranscriptionStatus={twitchStreamTranscriptionStatus}
               visualSettings={visualSettings}
               voicesError={ttsVoicesError}
               voicesLoading={ttsVoicesLoading}

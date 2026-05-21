@@ -218,6 +218,11 @@ export type TwitchSettings = {
   maxPendingJobs: number;
   mentionRequiredUnderThreshold: boolean;
   replyGapMs: number;
+  streamTranscriptionContextLimit: number;
+  streamTranscriptionEnabled: boolean;
+  streamTranscriptionIntervalSeconds: number;
+  streamTranscriptionModel: string;
+  streamTranscriptionSampleSeconds: number;
 };
 
 export type PersistedChatState = {

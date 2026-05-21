@@ -25,6 +25,7 @@ import {
 } from './tts/RemoteTtsProvider.js';
 import type { TwitchChatSource, TwitchChatSourceHandlers } from './twitch/TwitchChatSource.js';
 import { TwitchIrcSource } from './twitch/TwitchIrcSource.js';
+import { transcribeTwitchStreamSample } from './twitch/TwitchStreamTranscriber.js';
 import { summarizeByokRuntimeHealth } from './byokHealth.js';
 import {
   canUseServerProviderProxy,
@@ -799,6 +800,7 @@ function matchByokApiRoute(url: URL): MatchedByokApiRoute | MalformedByokApiRout
 function getRuntimeApiPath(pathname: string) {
   return pathname.startsWith('/api/ai/') ||
     pathname.startsWith('/api/tts/') ||
+    pathname.startsWith('/api/twitch/') ||
     pathname.startsWith('/api/mock/') ||
     pathname === '/api/health'
     ? pathname.slice('/api'.length)
@@ -1126,6 +1128,59 @@ const httpServer = createServer(async (request, response) => {
       writeJson(response, 200, {
         ok: false,
         error: error instanceof Error ? error.message : 'Embedding request failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/twitch/transcribe-sample') {
+    try {
+      const body = await readRequestJson<{
+        channel?: unknown;
+        model?: unknown;
+        prompt?: unknown;
+        sampleSeconds?: unknown;
+      }>(request);
+      const model =
+        typeof body.model === 'string' && body.model.trim()
+          ? body.model.trim()
+          : 'whisper-1';
+      const sampleSeconds =
+        typeof body.sampleSeconds === 'number' && Number.isFinite(body.sampleSeconds)
+          ? body.sampleSeconds
+          : 15;
+      const providerConfig = getRuntimeProviderConfig(
+        config,
+        request,
+        'openai-responses',
+        allowServerProviderProxy,
+      );
+      if (!providerConfig?.aiApiKey) {
+        writeJson(response, 200, {
+          ok: false,
+          error: 'OpenAI provider key is not configured.',
+        });
+        return;
+      }
+      const transcript = await transcribeTwitchStreamSample({
+        apiBaseUrl: providerConfig.aiApiBaseUrl,
+        apiKey: providerConfig.aiApiKey,
+        channel: typeof body.channel === 'string' ? body.channel : chatSource.channel,
+        model,
+        prompt:
+          typeof body.prompt === 'string'
+            ? body.prompt
+            : 'Twitch livestream audio. Preserve names, game/event terms, music/DJ names, streamer speech, and chat-relevant context.',
+        sampleSeconds,
+      });
+      writeJson(response, 200, {
+        ok: true,
+        transcript,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Twitch stream transcription failed.',
       });
     }
     return;

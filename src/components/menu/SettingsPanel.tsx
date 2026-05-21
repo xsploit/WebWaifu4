@@ -118,6 +118,8 @@ type SettingsPanelProps = {
   twitchDirectChatEnabled: boolean;
   twitchQueueLength: number;
   twitchSettings: TwitchSettings;
+  twitchStreamTranscriptCount: number;
+  twitchStreamTranscriptionStatus: string;
   visualSettings: VisualSettings;
   supabaseAuthStatus: string;
   supabaseConfig: SupabasePublicConfig;
@@ -223,6 +225,8 @@ export function SettingsPanel({
   twitchDirectChatEnabled,
   twitchQueueLength,
   twitchSettings,
+  twitchStreamTranscriptCount,
+  twitchStreamTranscriptionStatus,
   visualSettings,
   supabaseAuthStatus,
   supabaseConfig,
@@ -301,6 +305,8 @@ export function SettingsPanel({
         onToggleChatOverlay={onToggleChatOverlay}
         queueLength={twitchQueueLength}
         setTwitchSettings={setTwitchSettings}
+        streamTranscriptCount={twitchStreamTranscriptCount}
+        streamTranscriptionStatus={twitchStreamTranscriptionStatus}
         twitchSettings={twitchSettings}
       />
     ) : activeTab === 'context' ? (

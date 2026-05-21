@@ -18,6 +18,8 @@ type TwitchTabProps = {
   onToggleChatOverlay: (open: boolean) => void;
   queueLength: number;
   setTwitchSettings: Dispatch<SetStateAction<TwitchSettings>>;
+  streamTranscriptCount: number;
+  streamTranscriptionStatus: string;
   twitchSettings: TwitchSettings;
 };
 
@@ -81,6 +83,8 @@ export function TwitchTab({
   onToggleChatOverlay,
   queueLength,
   setTwitchSettings,
+  streamTranscriptCount,
+  streamTranscriptionStatus,
   twitchSettings,
 }: TwitchTabProps) {
   const [draftChannel, setDraftChannel] = useState(channel);
@@ -309,6 +313,76 @@ export function TwitchTab({
           step={5}
           value={Math.round(twitchSettings.batchFastWaitMs / 1000)}
         />
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">Stream Audio Context</div>
+        <div className="status-grid">
+          <div className="status-copy">
+            Whisper: <strong>{twitchSettings.streamTranscriptionEnabled ? 'On' : 'Off'}</strong>
+          </div>
+          <div className="status-copy">
+            Snippets: <strong>{streamTranscriptCount}</strong>
+          </div>
+          <div className="status-copy">
+            Model: <strong>{twitchSettings.streamTranscriptionModel}</strong>
+          </div>
+        </div>
+        <div className="setting-row">
+          <span>Transcribe Twitch stream audio</span>
+          <Toggle
+            checked={twitchSettings.streamTranscriptionEnabled}
+            onChange={(checked) =>
+              updateTwitchSettings(setTwitchSettings, { streamTranscriptionEnabled: checked })
+            }
+          />
+        </div>
+        <label className="setting-row">
+          <span>Whisper model</span>
+          <input
+            className="input-tech compact-input"
+            onChange={(event) =>
+              updateTwitchSettings(setTwitchSettings, {
+                streamTranscriptionModel: event.target.value.trim() || 'whisper-1',
+              })
+            }
+            spellCheck={false}
+            type="text"
+            value={twitchSettings.streamTranscriptionModel}
+          />
+        </label>
+        <NumberField
+          label="Sample seconds"
+          max={60}
+          min={5}
+          onChange={(value) =>
+            updateTwitchSettings(setTwitchSettings, { streamTranscriptionSampleSeconds: value })
+          }
+          value={twitchSettings.streamTranscriptionSampleSeconds}
+        />
+        <NumberField
+          label="Run every seconds"
+          max={600}
+          min={30}
+          onChange={(value) =>
+            updateTwitchSettings(setTwitchSettings, { streamTranscriptionIntervalSeconds: value })
+          }
+          value={twitchSettings.streamTranscriptionIntervalSeconds}
+        />
+        <NumberField
+          label="Context snippets kept"
+          max={20}
+          min={1}
+          onChange={(value) =>
+            updateTwitchSettings(setTwitchSettings, { streamTranscriptionContextLimit: value })
+          }
+          value={twitchSettings.streamTranscriptionContextLimit}
+        />
+        <div className="field-hint">
+          Uses the browser-vault OpenAI key through the backend. The server also needs ffmpeg plus
+          yt-dlp or streamlink. Transcript snippets are ambient stream context, not chat messages.
+        </div>
+        <div className="status-copy">{streamTranscriptionStatus}</div>
       </div>
 
       <div className="control-group">
