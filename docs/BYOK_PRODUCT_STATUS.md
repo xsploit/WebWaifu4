@@ -477,13 +477,31 @@ src/lib/product/cloud-settings.test.ts src/lib/chat/prompt.test.ts` -> 3 files,
   the server and overlay processes, and verified public health plus frontend
   bundle `assets/index-DlhDWS_t.js`. The VPS has `/usr/bin/ffmpeg`,
   `/usr/bin/yt-dlp`, and `/usr/bin/streamlink`.
+- 2026-05-21: added Twitch stream vision context behind a Twitch tab toggle.
+  The backend exposes `/api/twitch/capture-frame`, resolves the live stream
+  with the same Twitch tooling, captures one scaled JPEG frame with `ffmpeg`,
+  and the chat path attaches the latest fresh frame to the current user prompt
+  only when the selected model appears to support image input.
+- 2026-05-21: `npx vitest run server/src/ai/OpenAiResponsesProvider.test.ts
+src/lib/chat/storage.test.ts src/lib/product/cloud-settings.test.ts
+src/lib/chat/prompt.test.ts` -> 4 files, 42 tests passed.
+- 2026-05-21: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  touched files.
+- 2026-05-21: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
+- 2026-05-21: committed `c75540a` (`feat(twitch): add stream vision context`),
+  pushed `codex/byok-product-spine`, deployed rebuilt runtime files to the VPS,
+  restarted server and overlay processes, and verified public health plus
+  frontend bundle `assets/index-C4RBeZTg.js`. Public frame-capture smoke reached
+  the endpoint and failed with the expected "channel is not currently live"
+  Twitch resolver error for `subsect`.
 
 ## Current Blocker Or Next Patch
 
-Next patch: browser-smoke Twitch stream transcription with a browser-vault
-OpenAI key and a live channel, then decide whether transcript snippets should
-remain prompt-only context or optionally feed a separate stream-audio memory
-source.
+Next patch: browser-smoke Twitch stream transcription and stream frame context
+against a currently live Twitch channel, then decide whether transcript/frame
+context should remain prompt-only or optionally feed a separate stream-context
+memory source.
 
 ## Stop Conditions
 
