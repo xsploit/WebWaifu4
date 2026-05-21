@@ -1618,6 +1618,7 @@ function App() {
     () => personas.find((persona) => persona.id === activePersonaId) ?? personas[0] ?? null,
     [activePersonaId, personas],
   );
+  const activePersonaRef = useRef(activePersona);
   const activePersonaScenePreset = useMemo(
     () => getPersonaScenePreset(activePersona ?? DEFAULT_PERSONA),
     [activePersona],
@@ -1689,6 +1690,29 @@ function App() {
   useEffect(() => {
     relationshipMemoriesRef.current = relationshipMemories;
   }, [relationshipMemories]);
+
+  useEffect(() => {
+    activePersonaRef.current = activePersona;
+  }, [activePersona]);
+
+  const recordRawChatMemoryTurns = useCallback((stateKey: string, turns: ChatTurn[]) => {
+    if (turns.length === 0) {
+      return;
+    }
+    grilloRecentTurnsByStateKeyRef.current[stateKey] = [
+      ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
+      ...turns,
+    ].slice(-24);
+    const nextGrilloMemoryState = recordGrilloMemoryTurn({
+      assistantText: '',
+      persona: activePersonaRef.current ?? DEFAULT_PERSONA,
+      scopeKey: stateKey,
+      turns,
+    });
+    if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
+      setGrilloMemoryState(nextGrilloMemoryState);
+    }
+  }, []);
 
   useEffect(() => {
     activeRelationshipStateKeyRef.current = activeRelationshipStateKey;
@@ -3737,6 +3761,7 @@ function App() {
         return;
       }
 
+      recordRawChatMemoryTurns(getLocalConversationStateKey(persona), [turn]);
       const activeChatterCount = Math.max(
         1,
         pruneActiveTwitchChatters(twitchActiveChattersRef.current, Date.now()),
@@ -3752,7 +3777,7 @@ function App() {
         messages: [turn],
       });
     },
-    [activePersona, chatInput],
+    [activePersona, chatInput, recordRawChatMemoryTurns],
   );
 
   const appendSystemMessage = useCallback((content: string) => {
@@ -4677,6 +4702,13 @@ function App() {
     const client = new DirectTwitchIrcClient(twitchChannel || DIRECT_TWITCH_CHANNEL, {
       onMessage: (message) => {
         const displayTurn = createTwitchChatTurn(message, client.channel, false);
+        recordRawChatMemoryTurns(
+          getTwitchConversationStateKey(
+            client.channel,
+            activePersonaRef.current ?? DEFAULT_PERSONA,
+          ),
+          [displayTurn],
+        );
         setChatHistory((current) =>
           trimChatHistory([...current, chatTurnToChatMessage(displayTurn)]),
         );

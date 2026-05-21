@@ -120,8 +120,8 @@ export function ContextTab({
         </div>
         <div className="field-hint">
           This is the current persona/source memory scope. Twitch and local chat can have different
-          stores. Candidate memories can update every reply; diary thoughts are written by the
-          worker only when there is something worth reflecting on.
+          stores. Candidate memories ingest raw local and Twitch chat turns; diary thoughts are
+          written by the worker only when there is something worth reflecting on.
         </div>
       </div>
 
