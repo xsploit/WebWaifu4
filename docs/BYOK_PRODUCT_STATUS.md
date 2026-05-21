@@ -458,15 +458,32 @@ docs/BYOK_PRODUCT_STATUS.md` -> passed.
   `/home/ubuntu/yourwifey-stream`, restarted `serve-dist.mjs`, and verified the
   public login page serves `assets/index-Bz31DrR8.js`. Remote
   `http://127.0.0.1:8787/health` returned `ok: true`.
+- 2026-05-21: added Twitch stream audio context sampling behind a Twitch tab
+  toggle. The backend resolves live Twitch audio with `yt-dlp` or `streamlink`,
+  captures a short mono sample with `ffmpeg`, transcribes it through OpenAI
+  `whisper-1` by default, and injects recent snippets as ambient prompt context
+  only. Provider keys still come from the browser vault request header and are
+  not synced to cloud.
+- 2026-05-21: `npx vitest run src/lib/chat/storage.test.ts
+src/lib/product/cloud-settings.test.ts src/lib/chat/prompt.test.ts` -> 3 files,
+  15 tests passed.
+- 2026-05-21: `git diff --check` -> passed. Git emitted LF/CRLF warnings for
+  touched files.
+- 2026-05-21: `npm run build` -> passed. Existing Vite warnings remained:
+  onnxruntime-web eval and large bundle chunks.
+- 2026-05-21: committed `3d0bfec` (`feat(twitch): add whisper stream context`),
+  pushed `codex/byok-product-spine`, deployed rebuilt `dist`, `server/dist`,
+  `api-dist`, and `serve-dist.mjs` to `/home/ubuntu/yourwifey-stream`, restarted
+  the server and overlay processes, and verified public health plus frontend
+  bundle `assets/index-DlhDWS_t.js`. The VPS has `/usr/bin/ffmpeg`,
+  `/usr/bin/yt-dlp`, and `/usr/bin/streamlink`.
 
 ## Current Blocker Or Next Patch
 
-Current blocker: Google/GitHub OAuth is disabled in Supabase Auth, not in app
-code. Enable at least one provider in Supabase Auth with its OAuth client ID
-and secret, and register
-`https://btjccsyoevbczmamoamt.supabase.co/auth/v1/callback` in that provider's
-console. After live `/auth/v1/settings` reports `external.google=true` or
-`external.github=true`, the app should show the provider button automatically.
+Next patch: browser-smoke Twitch stream transcription with a browser-vault
+OpenAI key and a live channel, then decide whether transcript snippets should
+remain prompt-only context or optionally feed a separate stream-audio memory
+source.
 
 ## Stop Conditions
 
