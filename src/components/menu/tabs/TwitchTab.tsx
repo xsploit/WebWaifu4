@@ -198,6 +198,16 @@ export function TwitchTab({
           <div className="status-copy">
             Overlay chat: <strong>{chatOverlayOpen ? 'Open' : 'Collapsed'}</strong>
           </div>
+          <div className="status-copy">
+            Direct intake: <strong>{twitchSettings.directChatterLimit} chatters</strong>
+          </div>
+          <div className="status-copy">
+            Batch intake:{' '}
+            <strong>
+              {twitchSettings.batchLowSize}/{twitchSettings.batchMidSize}/
+              {twitchSettings.batchHighSize}/{twitchSettings.batchMaxSize} msgs
+            </strong>
+          </div>
         </div>
         <div className="setting-row">
           <span>AI replies from Twitch</span>
@@ -225,7 +235,7 @@ export function TwitchTab({
           />
         </div>
         <NumberField
-          label="Direct chatter threshold"
+          label="Direct mode up to chatters"
           max={250}
           min={0}
           onChange={(value) =>
@@ -234,7 +244,7 @@ export function TwitchTab({
           value={twitchSettings.directChatterLimit}
         />
         <NumberField
-          label="Context messages"
+          label="Transcript context kept"
           max={300}
           min={10}
           onChange={(value) => updateTwitchSettings(setTwitchSettings, { contextLimit: value })}
@@ -248,7 +258,7 @@ export function TwitchTab({
           value={twitchSettings.maxPendingJobs}
         />
         <NumberField
-          label="Max batch retained"
+          label="Max batch messages retained"
           max={500}
           min={10}
           onChange={(value) =>
@@ -257,8 +267,9 @@ export function TwitchTab({
           value={twitchSettings.maxBatchMessages}
         />
         <div className="field-hint">
-          Under the threshold, tagged Twitch messages and local participant messages queue. Above
-          it, Twitch batches into room-level replies while local trusted controls still work.
+          Direct mode intakes one tagged Twitch/local participant message per reply. Batch mode
+          intakes the configured number of Twitch messages before replying, or fires when the batch
+          timer expires.
         </div>
         <button className="btn-tech danger" onClick={onResetTwitchState} type="button">
           Reset Twitch AI Queue
@@ -304,28 +315,28 @@ export function TwitchTab({
       <div className="control-group">
         <div className="control-label">Batch Sizes</div>
         <NumberField
-          label="Low chat batch"
+          label="Intake msgs, 1-25 chatters"
           max={200}
           min={1}
           onChange={(value) => updateTwitchSettings(setTwitchSettings, { batchLowSize: value })}
           value={twitchSettings.batchLowSize}
         />
         <NumberField
-          label="Medium chat batch"
+          label="Intake msgs, 26-50 chatters"
           max={200}
           min={1}
           onChange={(value) => updateTwitchSettings(setTwitchSettings, { batchMidSize: value })}
           value={twitchSettings.batchMidSize}
         />
         <NumberField
-          label="High chat batch"
+          label="Intake msgs, 51-100 chatters"
           max={200}
           min={1}
           onChange={(value) => updateTwitchSettings(setTwitchSettings, { batchHighSize: value })}
           value={twitchSettings.batchHighSize}
         />
         <NumberField
-          label="Huge chat batch"
+          label="Intake msgs, 100+ chatters"
           max={300}
           min={1}
           onChange={(value) => updateTwitchSettings(setTwitchSettings, { batchMaxSize: value })}
