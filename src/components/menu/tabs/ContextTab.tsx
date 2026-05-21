@@ -82,6 +82,29 @@ export function ContextTab({
           Controls the background memory worker. It writes durable memories, reflective diary
           thoughts, and the relationship profile used in future replies.
         </div>
+        <label className="setting-row">
+          <span>Auto-run every N chat messages</span>
+          <input
+            className="input-tech compact-input"
+            max={100}
+            min={1}
+            onChange={(event) => {
+              const next = Number(event.target.value);
+              if (Number.isFinite(next)) {
+                setAiSettings((current) => ({
+                  ...current,
+                  memoryAgentIntervalMessages: Math.max(1, Math.min(100, Math.round(next))),
+                }));
+              }
+            }}
+            type="number"
+            value={aiSettings.memoryAgentIntervalMessages}
+          />
+        </label>
+        <div className="field-hint">
+          Counts normalized local chat and Twitch chat messages. The worker runs from the same queue
+          as the manual button after this many messages land in the current memory scope.
+        </div>
         <div className="btn-row">
           <button
             className="btn-tech secondary"

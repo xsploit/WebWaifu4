@@ -35,6 +35,7 @@ export type AiSettings = {
   llmProvider: LlmProvider;
   model: string;
   memoryAgentModel: string;
+  memoryAgentIntervalMessages: number;
   aiTransportMode: AiTransportMode;
   openAiStateMode: OpenAiStateMode;
   replyLength: ReplyLengthMode;

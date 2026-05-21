@@ -1,6 +1,6 @@
 import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
 
-export const MEMORY_AGENT_INTERVAL_TURNS = 10;
+export const MEMORY_AGENT_INTERVAL_TURNS = 7;
 export const MEMORY_AGENT_JSON_FORMAT = { type: 'json_object' } as const;
 
 const MEMORY_MODEL_PREFERENCES = [
@@ -37,8 +37,19 @@ const MOODS = [
   'affectionate',
 ].join(', ');
 
-export function shouldRunMemoryAgent(memory: RelationshipMemory) {
-  return memory.turnCount > 0 && memory.turnCount - memory.lastDiaryTurnCount >= MEMORY_AGENT_INTERVAL_TURNS;
+export function normalizeMemoryAgentIntervalMessages(value: number | undefined) {
+  return Math.max(
+    1,
+    Math.min(100, Math.round(Number.isFinite(value) ? value! : MEMORY_AGENT_INTERVAL_TURNS)),
+  );
+}
+
+export function shouldRunMemoryAgent(
+  memory: RelationshipMemory,
+  intervalMessages = MEMORY_AGENT_INTERVAL_TURNS,
+) {
+  const interval = normalizeMemoryAgentIntervalMessages(intervalMessages);
+  return memory.turnCount > 0 && memory.turnCount - memory.lastDiaryTurnCount >= interval;
 }
 
 export function chooseMemoryAgentModel(availableModels: string[], fallbackModel: string) {
@@ -52,9 +63,7 @@ export function getMemoryAgentModelCandidates(
   preferredModel = '',
 ) {
   const lowered = availableModels.map((model) => model.toLowerCase());
-  const availableByLower = new Map(
-    availableModels.map((model) => [model.toLowerCase(), model]),
-  );
+  const availableByLower = new Map(availableModels.map((model) => [model.toLowerCase(), model]));
   const excluded = new Set(excludedModels.map((model) => model.toLowerCase()));
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -66,9 +75,7 @@ export function getMemoryAgentModelCandidates(
     }
 
     const resolvedModel =
-      availableModels.length > 0
-        ? availableByLower.get(normalized.toLowerCase())
-        : normalized;
+      availableModels.length > 0 ? availableByLower.get(normalized.toLowerCase()) : normalized;
 
     if (!resolvedModel) {
       return;
@@ -112,7 +119,10 @@ export function buildMemoryAgentMessages(
   const recentHistory = history
     .filter((message) => message.role === 'user' || message.role === 'assistant')
     .slice(-20)
-    .map((message) => `${message.role === 'user' ? 'User' : (persona?.name ?? 'Riko')}: ${message.content.trim()}`)
+    .map(
+      (message) =>
+        `${message.role === 'user' ? 'User' : (persona?.name ?? 'Riko')}: ${message.content.trim()}`,
+    )
     .join('\n');
 
   const currentMemoryBlock = {

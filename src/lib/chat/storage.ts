@@ -289,6 +289,11 @@ function normalizeAiSettings(value: unknown): AiSettings {
   const requestedMemoryAgentModel = String(
     source.memoryAgentModel ?? defaults.memoryAgentModel,
   ).trim();
+  const memoryAgentIntervalMessages =
+    typeof source.memoryAgentIntervalMessages === 'number' &&
+    Number.isFinite(source.memoryAgentIntervalMessages)
+      ? Math.max(1, Math.min(100, Math.round(source.memoryAgentIntervalMessages)))
+      : defaults.memoryAgentIntervalMessages;
   const aiTransportMode =
     source.aiTransportMode === 'http-stream' || source.aiTransportMode === 'websocket'
       ? source.aiTransportMode
@@ -356,6 +361,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
     llmProvider,
     model: normalizedModel,
     memoryAgentModel: requestedMemoryAgentModel || defaults.memoryAgentModel,
+    memoryAgentIntervalMessages,
     aiTransportMode,
     openAiStateMode,
     replyLength: normalizeReplyLengthMode(source.replyLength),

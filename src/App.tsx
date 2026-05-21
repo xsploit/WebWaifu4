@@ -22,9 +22,9 @@ import {
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
 import {
   buildMemoryAgentMessages,
-  MEMORY_AGENT_INTERVAL_TURNS,
   MEMORY_AGENT_JSON_FORMAT,
   getMemoryAgentModelCandidates,
+  normalizeMemoryAgentIntervalMessages,
   shouldRunMemoryAgent,
 } from './lib/chat/memory-agent';
 import { updateRelationshipMemory } from './lib/chat/memory';
@@ -1479,14 +1479,15 @@ function chatTurnToCommandMessage(turn: ChatTurn): CommandChatMessage {
   };
 }
 
-function getMemoryProgressStatus(memory: RelationshipMemory) {
+function getMemoryProgressStatus(memory: RelationshipMemory, intervalMessages: number | undefined) {
+  const interval = normalizeMemoryAgentIntervalMessages(intervalMessages);
   const turnsSinceDiary = memory.turnCount - memory.lastDiaryTurnCount;
-  const remainingTurns = Math.max(0, MEMORY_AGENT_INTERVAL_TURNS - turnsSinceDiary);
+  const remainingTurns = Math.max(0, interval - turnsSinceDiary);
   if (remainingTurns === 0) {
     return 'Memory updated. Worker pass queued.';
   }
 
-  return `Memory updated. Worker pass in ${remainingTurns} turn${remainingTurns === 1 ? '' : 's'}.`;
+  return `Memory updated. Worker pass in ${remainingTurns} chat message${remainingTurns === 1 ? '' : 's'}.`;
 }
 
 function getAiErrorMessage(error: unknown, context: 'chat' | 'models' = 'chat') {
@@ -1664,23 +1665,19 @@ function App() {
   const [assistantReplyLocked, setAssistantReplyLocked] = useState(false);
   const [chatDisplayOverrides, setChatDisplayOverrides] = useState<Record<string, string>>({});
   const [twitchChannel, setTwitchChannel] = useState(DIRECT_TWITCH_CHANNEL);
-  const [twitchSettings, setTwitchSettings] = useState<TwitchSettings>(
-    createDefaultTwitchSettings,
-  );
+  const [twitchSettings, setTwitchSettings] = useState<TwitchSettings>(createDefaultTwitchSettings);
   const [twitchConnectionLabel, setTwitchConnectionLabel] = useState(
     DIRECT_TWITCH_CHAT_ENABLED ? 'Connecting' : 'Offline',
   );
   const [twitchActiveChatterCount, setTwitchActiveChatterCount] = useState(0);
-  const [twitchStreamTranscripts, setTwitchStreamTranscripts] = useState<
-    TwitchStreamTranscript[]
-  >([]);
+  const [twitchStreamTranscripts, setTwitchStreamTranscripts] = useState<TwitchStreamTranscript[]>(
+    [],
+  );
   const [twitchStreamTranscriptionStatus, setTwitchStreamTranscriptionStatus] = useState(
     'Stream transcription idle.',
   );
   const [twitchStreamFrame, setTwitchStreamFrame] = useState<TwitchStreamFrame | null>(null);
-  const [twitchStreamVisionStatus, setTwitchStreamVisionStatus] = useState(
-    'Stream vision idle.',
-  );
+  const [twitchStreamVisionStatus, setTwitchStreamVisionStatus] = useState('Stream vision idle.');
   const [relationshipMemory, setRelationshipMemory] = useState<RelationshipMemory>(
     createDefaultRelationshipMemory,
   );
@@ -1749,6 +1746,8 @@ function App() {
   const twitchStreamTranscriptionBusyRef = useRef(false);
   const twitchStreamFrameRef = useRef<TwitchStreamFrame | null>(null);
   const twitchStreamVisionBusyRef = useRef(false);
+  const memoryAgentPendingChatTurnCountsRef = useRef<Record<string, number>>({});
+  const scheduleMemoryAgentAfterChatTurnsRef = useRef<(stateKey: string) => void>(() => {});
   const overlayAiStreamsRef = useRef<Map<string, { player: StreamingSpeechPlayer }>>(new Map());
   const subtitleDataRef = useRef<{ text: string; wordBoundaries: WordBoundary[] } | null>(null);
   const subtitleIntervalRef = useRef<number | null>(null);
@@ -1858,6 +1857,8 @@ function App() {
       ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
       ...turns,
     ].slice(-24);
+    memoryAgentPendingChatTurnCountsRef.current[stateKey] =
+      (memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0) + turns.length;
     const nextGrilloMemoryState = recordGrilloMemoryTurn({
       assistantText: '',
       persona: activePersonaRef.current ?? DEFAULT_PERSONA,
@@ -1867,6 +1868,7 @@ function App() {
     if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
       setGrilloMemoryState(nextGrilloMemoryState);
     }
+    scheduleMemoryAgentAfterChatTurnsRef.current(stateKey);
   }, []);
 
   const captureTwitchStreamTranscript = useCallback(async () => {
@@ -1878,7 +1880,8 @@ function App() {
       return;
     }
 
-    const channel = directTwitchClientRef.current?.channel || twitchChannel || DIRECT_TWITCH_CHANNEL;
+    const channel =
+      directTwitchClientRef.current?.channel || twitchChannel || DIRECT_TWITCH_CHANNEL;
     if (!channel) {
       return;
     }
@@ -1910,14 +1913,12 @@ function App() {
 
   const captureTwitchStreamFrame = useCallback(async () => {
     const currentTwitchSettings = twitchSettingsRef.current;
-    if (
-      !currentTwitchSettings.streamVisionContextEnabled ||
-      twitchStreamVisionBusyRef.current
-    ) {
+    if (!currentTwitchSettings.streamVisionContextEnabled || twitchStreamVisionBusyRef.current) {
       return;
     }
 
-    const channel = directTwitchClientRef.current?.channel || twitchChannel || DIRECT_TWITCH_CHANNEL;
+    const channel =
+      directTwitchClientRef.current?.channel || twitchChannel || DIRECT_TWITCH_CHANNEL;
     if (!channel) {
       return;
     }
@@ -3732,6 +3733,7 @@ function App() {
   const handleClearMemory = useCallback(() => {
     commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
+    memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
     setMemoryAgentStatus('Memory cleared for current scope.');
   }, [activeRelationshipStateKey, commitScopedRelationshipMemory]);
 
@@ -3742,6 +3744,7 @@ function App() {
     setChatHistory([]);
     commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
+    memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
     setMemoryAgentStatus('Context and memory cleared for current scope.');
   }, [activeRelationshipStateKey, cancelAssistantPresentation, commitScopedRelationshipMemory]);
 
@@ -3751,7 +3754,8 @@ function App() {
       memorySnapshot: RelationshipMemory,
       stateKey: string,
       scheduledRun: number,
-      reason: 'scheduled' | 'manual',
+      reason: 'chat-cadence' | 'scheduled' | 'manual',
+      processedChatTurnCount = 0,
     ) => {
       const worker = memoryAgentWorkerRef.current;
       if (!worker) {
@@ -3760,7 +3764,11 @@ function App() {
 
       setMemoryAgentBusy(true);
       setMemoryAgentStatus(
-        reason === 'manual' ? 'Running memory worker...' : 'Running background memory worker...',
+        reason === 'manual'
+          ? 'Running memory worker...'
+          : reason === 'chat-cadence'
+            ? 'Running memory worker for chat message cadence...'
+            : 'Running background memory worker...',
       );
 
       try {
@@ -3898,11 +3906,18 @@ function App() {
           return;
         }
 
+        const targetTurnCount =
+          processedChatTurnCount > 0
+            ? Math.max(
+                memorySnapshot.turnCount,
+                memorySnapshot.lastDiaryTurnCount + processedChatTurnCount,
+              )
+            : memorySnapshot.turnCount;
         const mergedMemory = await mergeRelationshipMemoryInWorker(
           worker,
           getScopedRelationshipMemory(stateKey),
           rawContent,
-          memorySnapshot.turnCount,
+          targetTurnCount,
         );
 
         if (memoryAgentRunRef.current !== scheduledRun) {
@@ -3910,6 +3925,12 @@ function App() {
         }
 
         commitScopedRelationshipMemory(stateKey, mergedMemory);
+        if (processedChatTurnCount > 0) {
+          memoryAgentPendingChatTurnCountsRef.current[stateKey] = Math.max(
+            0,
+            (memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0) - processedChatTurnCount,
+          );
+        }
         setMemoryAgentStatus('Memory worker updated.');
       } catch (error) {
         setMemoryAgentStatus('Memory worker failed.');
@@ -3936,7 +3957,9 @@ function App() {
 
   const scheduleRelationshipMemoryRefresh = useCallback(
     (historySnapshot: ChatMessage[], memorySnapshot: RelationshipMemory, stateKey: string) => {
-      if (!shouldRunMemoryAgent(memorySnapshot)) {
+      if (
+        !shouldRunMemoryAgent(memorySnapshot, aiSettingsRef.current.memoryAgentIntervalMessages)
+      ) {
         return;
       }
 
@@ -3945,6 +3968,7 @@ function App() {
       }
 
       const scheduledRun = ++memoryAgentRunRef.current;
+      const processedChatTurnCount = memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0;
       memoryAgentTimeoutRef.current = window.setTimeout(() => {
         memoryAgentTimeoutRef.current = null;
         void runRelationshipMemoryRefresh(
@@ -3953,11 +3977,52 @@ function App() {
           stateKey,
           scheduledRun,
           'scheduled',
+          processedChatTurnCount,
         );
       }, MEMORY_AGENT_DELAY_MS);
     },
     [runRelationshipMemoryRefresh],
   );
+
+  const scheduleMemoryAgentAfterChatTurns = useCallback(
+    (stateKey: string) => {
+      const interval = normalizeMemoryAgentIntervalMessages(
+        aiSettingsRef.current.memoryAgentIntervalMessages,
+      );
+      const pendingCount = memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0;
+      const remaining = Math.max(0, interval - pendingCount);
+      if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
+        setMemoryAgentStatus(
+          remaining > 0
+            ? `Memory pass in ${remaining} chat message${remaining === 1 ? '' : 's'}.`
+            : 'Memory worker queued for chat message cadence.',
+        );
+      }
+      if (pendingCount < interval || memoryAgentTimeoutRef.current !== null) {
+        return;
+      }
+
+      const historySnapshot = [...chatHistoryRef.current];
+      const memorySnapshot = getScopedRelationshipMemory(stateKey);
+      const scheduledRun = ++memoryAgentRunRef.current;
+      memoryAgentTimeoutRef.current = window.setTimeout(() => {
+        memoryAgentTimeoutRef.current = null;
+        void runRelationshipMemoryRefresh(
+          historySnapshot,
+          memorySnapshot,
+          stateKey,
+          scheduledRun,
+          'chat-cadence',
+          pendingCount,
+        );
+      }, MEMORY_AGENT_DELAY_MS);
+    },
+    [getScopedRelationshipMemory, runRelationshipMemoryRefresh],
+  );
+
+  useEffect(() => {
+    scheduleMemoryAgentAfterChatTurnsRef.current = scheduleMemoryAgentAfterChatTurns;
+  }, [scheduleMemoryAgentAfterChatTurns]);
 
   const handleRunMemoryAgentNow = useCallback(() => {
     if (memoryAgentTimeoutRef.current !== null) {
@@ -3969,12 +4034,14 @@ function App() {
     const memorySnapshot = relationshipMemoryRef.current;
     const stateKey = activeRelationshipStateKey;
     const scheduledRun = ++memoryAgentRunRef.current;
+    const processedChatTurnCount = memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0;
     void runRelationshipMemoryRefresh(
       historySnapshot,
       memorySnapshot,
       stateKey,
       scheduledRun,
       'manual',
+      processedChatTurnCount,
     );
   }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
@@ -4751,7 +4818,9 @@ function App() {
           userContent,
         );
         commitScopedRelationshipMemory(stateKey, nextRelationshipMemory);
-        setMemoryAgentStatus(getMemoryProgressStatus(nextRelationshipMemory));
+        setMemoryAgentStatus(
+          getMemoryProgressStatus(nextRelationshipMemory, settings.memoryAgentIntervalMessages),
+        );
         grilloRecentTurnsByStateKeyRef.current[stateKey] = [
           ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
           ...job.messages,

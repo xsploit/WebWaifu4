@@ -51,6 +51,7 @@ describe('chat settings persistence', () => {
       inworldVoiceId: 'inworld-voice',
       llmProvider: 'openrouter-responses',
       maxTokens: 420,
+      memoryAgentIntervalMessages: 7,
       memoryAgentModel: 'gpt-5.4-mini',
       model: 'gpt-5.4',
       openAiStateMode: 'previous-response',

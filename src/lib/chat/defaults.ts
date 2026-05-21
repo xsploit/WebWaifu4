@@ -96,6 +96,7 @@ export function createDefaultAiSettings(): AiSettings {
     llmProvider: 'openai-responses',
     model: DEFAULT_OPENAI_MODEL,
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
+    memoryAgentIntervalMessages: 7,
     aiTransportMode: 'websocket',
     openAiStateMode: 'conversation',
     replyLength: 'balanced',
