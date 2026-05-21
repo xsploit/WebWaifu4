@@ -3,6 +3,7 @@ import type {
   PersonaProfile,
   PersonaVoiceBinding,
   RelationshipMemory,
+  TwitchSettings,
   UiState,
 } from './types';
 import { HIKARI_PIPER_VOICE_KEY, NEURO_PIPER_VOICE_KEY, RIKO_PIPER_VOICE_KEY } from '../tts/piper';
@@ -19,6 +20,7 @@ export const STORAGE_KEYS = {
   currentBundledModelId: 'yourwifey.currentBundledModelId.v1',
   currentCustomVrmModelId: 'yourwifey.currentCustomVrmModelId.v1',
   twitchChannel: 'yourwifey.twitchChannel.v1',
+  twitchSettings: 'yourwifey.twitchSettings.v1',
   sequencerSettings: 'yourwifey.sequencerSettings.v1',
   visualSettings: 'yourwifey.visualSettings.v1',
   personaVoiceBindings: 'yourwifey.personaVoiceBindings.v1',
@@ -148,5 +150,26 @@ export function createDefaultUiState(): UiState {
     menuOpen: false,
     chatLogOpen: true,
     chatDraft: '',
+  };
+}
+
+export function createDefaultTwitchSettings(): TwitchSettings {
+  return {
+    aiEnabled: true,
+    batchFastWaitMs: 45000,
+    batchHighSize: 50,
+    batchLowSize: 10,
+    batchMaxSize: 100,
+    batchMidSize: 20,
+    batchWaitMs: 30000,
+    commandsEnabled: true,
+    contextLimit: 80,
+    directChatterLimit: 10,
+    localDisplayName: 'Subsect',
+    localTrustedControls: true,
+    maxBatchMessages: 120,
+    maxPendingJobs: 8,
+    mentionRequiredUnderThreshold: true,
+    replyGapMs: 2000,
   };
 }

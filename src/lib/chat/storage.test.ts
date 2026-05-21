@@ -7,6 +7,7 @@ import {
   createDefaultPersonas,
   createDefaultRelationshipMemory,
   createDefaultUiState,
+  createDefaultTwitchSettings,
 } from './defaults';
 import { loadPersistedChatState, savePersistedChatState } from './storage';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
@@ -175,6 +176,17 @@ describe('chat settings persistence', () => {
         summary: 'global summary',
       },
       twitchChannel: '#CohhCarnage',
+      twitchSettings: {
+        ...createDefaultTwitchSettings(),
+        batchLowSize: 7,
+        commandsEnabled: false,
+        contextLimit: 120,
+        directChatterLimit: 12,
+        localDisplayName: 'Subby',
+        maxPendingJobs: 5,
+        mentionRequiredUnderThreshold: false,
+        replyGapMs: 1500,
+      },
       sequencerSettings,
       uiState: {
         ...createDefaultUiState(),
@@ -229,6 +241,16 @@ describe('chat settings persistence', () => {
     expect(loaded.currentBundledModelId).toBe('hikari-chan');
     expect(loaded.currentCustomVrmModelId).toBe('custom-vrm-test-avatar');
     expect(loaded.twitchChannel).toBe('cohhcarnage');
+    expect(loaded.twitchSettings).toMatchObject({
+      batchLowSize: 7,
+      commandsEnabled: false,
+      contextLimit: 120,
+      directChatterLimit: 12,
+      localDisplayName: 'Subby',
+      maxPendingJobs: 5,
+      mentionRequiredUnderThreshold: false,
+      replyGapMs: 1500,
+    });
     expect(loaded.uiState).toEqual({
       ...state.uiState,
       menuOpen: false,
@@ -298,6 +320,7 @@ describe('chat settings persistence', () => {
       relationshipMemories: {},
       relationshipMemory: createDefaultRelationshipMemory(),
       twitchChannel: 'subsect',
+      twitchSettings: createDefaultTwitchSettings(),
       sequencerSettings: createDefaultSequencerSettings(),
       uiState: createDefaultUiState(),
       visualSettings: createDefaultVisualSettings(),

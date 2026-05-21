@@ -16,6 +16,7 @@ import {
   createDefaultPersonaVoiceBindings,
   createDefaultRelationshipMemory,
   createDefaultPersonas,
+  createDefaultTwitchSettings,
   createDefaultUiState,
 } from './lib/chat/defaults';
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
@@ -62,7 +63,6 @@ import {
   type ChatTurn,
 } from './lib/chat/chat-turn';
 import {
-  TWITCH_AI_QUEUE_MAX_PENDING_JOBS,
   describeTwitchAiQueueBackpressure,
   enqueueTwitchAiJobWithBackpressure,
   type TwitchAiQueueJob,
@@ -87,6 +87,7 @@ import type {
   PersonaProfile,
   PersonaVoiceBinding,
   RelationshipMemory,
+  TwitchSettings,
   VoiceLabVoice,
 } from './lib/chat/types';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from './lib/menu/defaults';
@@ -364,10 +365,6 @@ const STREAM_DISPLAY_TICK_MS = 22;
 const STREAM_DISPLAY_CHARS_PER_TICK = 4;
 const STREAM_DISPLAY_PUNCTUATION_PAUSE_MS = 70;
 const TWITCH_ACTIVE_CHATTER_WINDOW_MS = 120000;
-const TWITCH_DIRECT_CHATTER_LIMIT = 10;
-const TWITCH_REPLY_GAP_MS = 2000;
-const TWITCH_CONTEXT_LIMIT = 80;
-const TWITCH_BATCH_DEFAULT_MAX_WAIT_MS = 30000;
 
 type ChatAiJob = TwitchAiQueueJob;
 
@@ -1213,21 +1210,21 @@ function twitchMessageMentionsPersona(text: string, persona: PersonaProfile | nu
   return tags.some((tag) => mentions.has(tag));
 }
 
-function getTwitchBatchSize(activeChatters: number) {
+function getTwitchBatchSize(activeChatters: number, settings: TwitchSettings) {
   if (activeChatters <= 25) {
-    return 10;
+    return settings.batchLowSize;
   }
   if (activeChatters <= 50) {
-    return 20;
+    return settings.batchMidSize;
   }
   if (activeChatters <= 100) {
-    return 50;
+    return settings.batchHighSize;
   }
-  return 100;
+  return settings.batchMaxSize;
 }
 
-function getTwitchBatchWaitMs(activeChatters: number) {
-  return activeChatters > 100 ? 45000 : TWITCH_BATCH_DEFAULT_MAX_WAIT_MS;
+function getTwitchBatchWaitMs(activeChatters: number, settings: TwitchSettings) {
+  return activeChatters > 100 ? settings.batchFastWaitMs : settings.batchWaitMs;
 }
 
 function pruneActiveTwitchChatters(chatters: Map<string, number>, now: number) {
@@ -1264,6 +1261,7 @@ function buildChatAiPrompt(
   persona: PersonaProfile | null,
   channel: string,
   replyLength: AiSettings['replyLength'],
+  twitchSettings: TwitchSettings,
 ) {
   const personaName = persona?.name ?? DEFAULT_PERSONA.name;
   const channelName = normalizeStateKeyPart(channel, DIRECT_TWITCH_CHANNEL || 'subsect');
@@ -1271,8 +1269,10 @@ function buildChatAiPrompt(
     .map((tag) => `@${tag}`)
     .join(', ');
   const localControllerNickname = persona?.userNickname.trim();
-  const batchSize = getTwitchBatchSize(job.activeChatterCount);
-  const batchWaitSeconds = Math.round(getTwitchBatchWaitMs(job.activeChatterCount) / 1000);
+  const batchSize = getTwitchBatchSize(job.activeChatterCount, twitchSettings);
+  const batchWaitSeconds = Math.round(
+    getTwitchBatchWaitMs(job.activeChatterCount, twitchSettings) / 1000,
+  );
   const isTwitchTurn = job.messages.some((turn) => turn.source === 'twitch');
   const identityContext = [
     `Current chat room: ${isTwitchTurn ? `#${channelName}` : 'local chat box'}.`,
@@ -1292,7 +1292,7 @@ function buildChatAiPrompt(
       `${sourceLabel} mode: direct queue for ${personaName}.`,
       identityContext,
       `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
-      `Intake policy: active chatters are at or below ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mentions and local trusted turns are queued for a direct reply.`,
+      `Intake policy: active chatters are at or below ${twitchSettings.directChatterLimit}, so Twitch messages ${twitchSettings.mentionRequiredUnderThreshold ? 'need @mentions' : 'can enter directly'} and local turns are queued for a direct reply.`,
       `Current queued message:\n${formatChatTurns(job.messages, 1)}`,
       target ? `Target message metadata: ${formatChatTurnMetadata(target)}` : null,
       target?.isBroadcaster
@@ -1314,7 +1314,7 @@ function buildChatAiPrompt(
     `Live chat mode: balanced batch for ${personaName}.`,
     identityContext,
     `Approx active chatters in the last two minutes: ${job.activeChatterCount}.`,
-    `Intake policy: active chatters are above ${TWITCH_DIRECT_CHATTER_LIMIT}, so @mention gating is disabled; summarize every ${batchSize} messages or after about ${batchWaitSeconds} seconds, whichever fires first.`,
+    `Intake policy: active chatters are above ${twitchSettings.directChatterLimit}, so @mention gating is disabled; summarize every ${batchSize} messages or after about ${batchWaitSeconds} seconds, whichever fires first.`,
     'The chat is busy, so answer the overall energy or strongest shared topic instead of replying to every line.',
     getTurnReplyLengthInstruction(replyLength, 'batch'),
     `Current batch:\n${formatChatTurns(job.messages, 30)}`,
@@ -1523,6 +1523,9 @@ function App() {
   const [assistantReplyLocked, setAssistantReplyLocked] = useState(false);
   const [chatDisplayOverrides, setChatDisplayOverrides] = useState<Record<string, string>>({});
   const [twitchChannel, setTwitchChannel] = useState(DIRECT_TWITCH_CHANNEL);
+  const [twitchSettings, setTwitchSettings] = useState<TwitchSettings>(
+    createDefaultTwitchSettings,
+  );
   const [twitchConnectionLabel, setTwitchConnectionLabel] = useState(
     DIRECT_TWITCH_CHAT_ENABLED ? 'Connecting' : 'Offline',
   );
@@ -1574,6 +1577,7 @@ function App() {
   const relationshipMemoryRef = useRef<RelationshipMemory>(createDefaultRelationshipMemory());
   const relationshipMemoriesRef = useRef<Record<string, RelationshipMemory>>({});
   const aiSettingsRef = useRef<AiSettings>(createDefaultAiSettings());
+  const twitchSettingsRef = useRef<TwitchSettings>(createDefaultTwitchSettings());
   const availableModelsRef = useRef<string[]>([]);
   const sequencerSettingsRef = useRef(createDefaultSequencerSettings());
   const directTwitchClientRef = useRef<DirectTwitchIrcClient | null>(null);
@@ -1624,7 +1628,7 @@ function App() {
   );
   const twitchModeLabel =
     twitchConnectionLabel === 'Live'
-      ? twitchActiveChatterCount > TWITCH_DIRECT_CHATTER_LIMIT
+      ? twitchActiveChatterCount > twitchSettings.directChatterLimit
         ? 'Batch'
         : 'Queue'
       : twitchConnectionLabel;
@@ -1698,6 +1702,10 @@ function App() {
   useEffect(() => {
     aiSettingsRef.current = aiSettings;
   }, [aiSettings]);
+
+  useEffect(() => {
+    twitchSettingsRef.current = twitchSettings;
+  }, [twitchSettings]);
 
   useEffect(() => {
     availableModelsRef.current = availableModels;
@@ -2841,6 +2849,7 @@ function App() {
       setChatInput(persistedState.uiState.chatDraft);
       setActiveTab(persistedState.activeTab);
       setTwitchChannel(hydratedTwitchChannel);
+      setTwitchSettings(persistedState.twitchSettings);
       setCurrentBundledModelId(persistedState.currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID);
       setCurrentCustomVrmModelId(persistedState.currentCustomVrmModelId);
       setSequencerSettings(persistedState.sequencerSettings);
@@ -2923,6 +2932,7 @@ function App() {
           currentBundledModelId,
           currentCustomVrmModelId,
           twitchChannel,
+          twitchSettings,
           sequencerSettings,
           visualSettings,
         }).catch((error) => {
@@ -2967,6 +2977,7 @@ function App() {
     relationshipMemories,
     sequencerSettings,
     twitchChannel,
+    twitchSettings,
     visualSettings,
     voiceLabVoices,
   ]);
@@ -3710,10 +3721,18 @@ function App() {
       }
 
       const persona = activePersona ?? DEFAULT_PERSONA;
-      const turn = createLocalChatTurn({ persona, text: message });
+      const currentTwitchSettings = twitchSettingsRef.current;
+      const turn = createLocalChatTurn({
+        displayName: currentTwitchSettings.localDisplayName,
+        persona,
+        text: message,
+        trustedController: currentTwitchSettings.localTrustedControls,
+      });
       setChatInput('');
 
-      const handledCommand = directTwitchCommandHandlerRef.current(chatTurnToCommandMessage(turn));
+      const handledCommand =
+        currentTwitchSettings.commandsEnabled &&
+        directTwitchCommandHandlerRef.current(chatTurnToCommandMessage(turn));
       if (handledCommand) {
         return;
       }
@@ -3722,12 +3741,14 @@ function App() {
         1,
         pruneActiveTwitchChatters(twitchActiveChattersRef.current, Date.now()),
       );
-      twitchContextRef.current = [...twitchContextRef.current, turn].slice(-TWITCH_CONTEXT_LIMIT);
+      twitchContextRef.current = [...twitchContextRef.current, turn].slice(
+        -currentTwitchSettings.contextLimit,
+      );
       enqueueChatAiJobRef.current({
         id: `local-direct-${turn.id}`,
         mode: 'direct',
         activeChatterCount,
-        context: twitchContextRef.current.slice(-TWITCH_CONTEXT_LIMIT),
+        context: twitchContextRef.current.slice(-currentTwitchSettings.contextLimit),
         messages: [turn],
       });
     },
@@ -4048,7 +4069,7 @@ function App() {
           ? getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA)
           : getTwitchConversationStateKey(currentChannel, activePersona ?? DEFAULT_PERSONA);
         respond(
-          `Direct Twitch IRC: #${currentChannel}, controller=subsect, activeChatters=${activeChatters}, aiQueue=${twitchAiQueueRef.current.length}/${TWITCH_AI_QUEUE_MAX_PENDING_JOBS}, batchPending=${twitchBatchRef.current.length}, state=${chatStateKey}.`,
+          `Direct Twitch IRC: #${currentChannel}, controller=${twitchSettingsRef.current.localDisplayName}, activeChatters=${activeChatters}, aiQueue=${twitchAiQueueRef.current.length}/${twitchSettingsRef.current.maxPendingJobs}, batchPending=${twitchBatchRef.current.length}, state=${chatStateKey}.`,
         );
         return true;
       }
@@ -4073,7 +4094,7 @@ function App() {
         }
 
         respond(
-          `Client AI: route=${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}, state=${getTwitchConversationStateKey(directTwitchClientRef.current?.channel ?? twitchChannel, activePersona ?? DEFAULT_PERSONA)}, queue=${twitchAiQueueRef.current.length}/${TWITCH_AI_QUEUE_MAX_PENDING_JOBS}, batchPending=${twitchBatchRef.current.length}.`,
+          `Client AI: route=${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}, state=${getTwitchConversationStateKey(directTwitchClientRef.current?.channel ?? twitchChannel, activePersona ?? DEFAULT_PERSONA)}, queue=${twitchAiQueueRef.current.length}/${twitchSettingsRef.current.maxPendingJobs}, batchPending=${twitchBatchRef.current.length}.`,
         );
         return true;
       }
@@ -4247,6 +4268,7 @@ function App() {
   const runChatAiJob = useCallback(
     async (job: ChatAiJob) => {
       const settings = aiSettingsRef.current;
+      const currentTwitchSettings = twitchSettingsRef.current;
       const persona = activePersona ?? DEFAULT_PERSONA;
       const channel = directTwitchClientRef.current?.channel ?? twitchChannel;
       const providerModels = getProviderModelPool(settings.llmProvider, availableModelsRef.current);
@@ -4258,7 +4280,13 @@ function App() {
           : DEFAULT_OPENAI_MODEL,
       );
       const targetMessage = job.messages[0];
-      const prompt = buildChatAiPrompt(job, persona, channel, settings.replyLength);
+      const prompt = buildChatAiPrompt(
+        job,
+        persona,
+        channel,
+        settings.replyLength,
+        currentTwitchSettings,
+      );
       const userContent = buildChatTurnMemoryMessage(job.mode, job.messages);
       const userMessage = targetMessage
         ? chatTurnToChatMessage(targetMessage)
@@ -4327,11 +4355,11 @@ function App() {
             turnContext: {
               activeChatters: job.activeChatterCount,
               batchMessages: job.messages.length,
-              batchSize: getTwitchBatchSize(job.activeChatterCount),
+              batchSize: getTwitchBatchSize(job.activeChatterCount, currentTwitchSettings),
               botMentionTags: getPersonaMentionTags(persona)
                 .map((tag) => `@${tag}`)
                 .join(', '),
-              chatterThreshold: TWITCH_DIRECT_CHATTER_LIMIT,
+              chatterThreshold: currentTwitchSettings.directChatterLimit,
               channel,
               conversationScope: targetMessage?.source === 'local' ? 'local-chat' : 'twitch-chat',
               currentTurnText: userContent,
@@ -4339,14 +4367,14 @@ function App() {
               firstTimeChatter: job.firstTimeChatter ?? false,
               intakePolicy:
                 job.mode === 'direct'
-                  ? `activeChatters <= ${TWITCH_DIRECT_CHATTER_LIMIT}; @mentions and local trusted turns enabled; direct queued reply`
-                  : `activeChatters > ${TWITCH_DIRECT_CHATTER_LIMIT}; @mentions disabled; batch every ${getTwitchBatchSize(job.activeChatterCount)} messages or ${Math.round(
-                      getTwitchBatchWaitMs(job.activeChatterCount) / 1000,
+                  ? `activeChatters <= ${currentTwitchSettings.directChatterLimit}; ${currentTwitchSettings.mentionRequiredUnderThreshold ? '@mentions required' : '@mentions optional'}; local turns enabled; direct queued reply`
+                  : `activeChatters > ${currentTwitchSettings.directChatterLimit}; @mentions disabled; batch every ${getTwitchBatchSize(job.activeChatterCount, currentTwitchSettings)} messages or ${Math.round(
+                      getTwitchBatchWaitMs(job.activeChatterCount, currentTwitchSettings) / 1000,
                     )} seconds`,
               isLocal: targetMessage?.isLocal ?? false,
               isTrustedController: targetMessage?.isTrustedController ?? false,
               login: targetMessage?.login ?? '',
-              localControllerNickname: persona.userNickname.trim() || 'not configured',
+              localControllerNickname: currentTwitchSettings.localDisplayName || 'not configured',
               source: targetMessage?.source ?? 'twitch',
               stateKey,
               targetBadges: targetMessage?.badges.join('/') ?? '',
@@ -4476,7 +4504,7 @@ function App() {
     try {
       while (twitchAiQueueRef.current.length > 0) {
         const sinceLastReply = Date.now() - twitchLastReplyAtRef.current;
-        const waitMs = Math.max(0, TWITCH_REPLY_GAP_MS - sinceLastReply);
+        const waitMs = Math.max(0, twitchSettingsRef.current.replyGapMs - sinceLastReply);
         if (waitMs > 0) {
           await delay(waitMs);
         }
@@ -4499,7 +4527,11 @@ function App() {
 
   const enqueueTwitchAiJob = useCallback(
     (job: ChatAiJob) => {
-      const backpressure = enqueueTwitchAiJobWithBackpressure(twitchAiQueueRef.current, job);
+      const currentTwitchSettings = twitchSettingsRef.current;
+      const backpressure = enqueueTwitchAiJobWithBackpressure(twitchAiQueueRef.current, job, {
+        maxBatchMessages: currentTwitchSettings.maxBatchMessages,
+        maxPendingJobs: currentTwitchSettings.maxPendingJobs,
+      });
       const backpressureMessage = describeTwitchAiQueueBackpressure(backpressure);
       if (backpressureMessage) {
         console.warn(`[Twitch AI] ${backpressureMessage}`);
@@ -4537,7 +4569,7 @@ function App() {
         id: `twitch-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         mode: 'batch',
         activeChatterCount,
-        context: twitchContextRef.current.slice(-TWITCH_CONTEXT_LIMIT),
+        context: twitchContextRef.current.slice(-twitchSettingsRef.current.contextLimit),
         messages,
       });
     },
@@ -4550,7 +4582,7 @@ function App() {
         return;
       }
 
-      const waitMs = getTwitchBatchWaitMs(activeChatterCount);
+      const waitMs = getTwitchBatchWaitMs(activeChatterCount, twitchSettingsRef.current);
       twitchBatchTimerRef.current = window.setTimeout(() => {
         flushTwitchBatch('timer');
       }, waitMs);
@@ -4560,6 +4592,11 @@ function App() {
 
   const handleDirectTwitchAiMessage = useCallback(
     (message: DirectTwitchChatMessage) => {
+      const currentTwitchSettings = twitchSettingsRef.current;
+      if (!currentTwitchSettings.aiEnabled) {
+        return;
+      }
+
       const now = Date.now();
       const normalizedUser = message.user.toLowerCase();
       const firstTimeChatter = !twitchKnownUsersRef.current.has(normalizedUser);
@@ -4569,10 +4606,15 @@ function App() {
       twitchActiveChattersRef.current.set(normalizedUser, now);
       const activeChatterCount = pruneActiveTwitchChatters(twitchActiveChattersRef.current, now);
       setTwitchActiveChatterCount(activeChatterCount);
-      twitchContextRef.current = [...twitchContextRef.current, turn].slice(-TWITCH_CONTEXT_LIMIT);
+      twitchContextRef.current = [...twitchContextRef.current, turn].slice(
+        -currentTwitchSettings.contextLimit,
+      );
 
-      if (activeChatterCount <= TWITCH_DIRECT_CHATTER_LIMIT) {
-        if (!twitchMessageMentionsPersona(message.text, activePersona ?? DEFAULT_PERSONA)) {
+      if (activeChatterCount <= currentTwitchSettings.directChatterLimit) {
+        if (
+          currentTwitchSettings.mentionRequiredUnderThreshold &&
+          !twitchMessageMentionsPersona(message.text, activePersona ?? DEFAULT_PERSONA)
+        ) {
           return;
         }
 
@@ -4583,7 +4625,7 @@ function App() {
           id: `twitch-direct-${message.id}`,
           mode: 'direct',
           activeChatterCount,
-          context: twitchContextRef.current.slice(-TWITCH_CONTEXT_LIMIT),
+          context: twitchContextRef.current.slice(-currentTwitchSettings.contextLimit),
           firstTimeChatter,
           messages: [turn],
         });
@@ -4591,7 +4633,7 @@ function App() {
       }
 
       twitchBatchRef.current.push(turn);
-      const batchSize = getTwitchBatchSize(activeChatterCount);
+      const batchSize = getTwitchBatchSize(activeChatterCount, currentTwitchSettings);
       if (twitchBatchRef.current.length >= batchSize) {
         flushTwitchBatch('count');
       } else {
@@ -4638,7 +4680,9 @@ function App() {
         setChatHistory((current) =>
           trimChatHistory([...current, chatTurnToChatMessage(displayTurn)]),
         );
-        const handledCommand = directTwitchCommandHandlerRef.current(message);
+        const handledCommand =
+          twitchSettingsRef.current.commandsEnabled &&
+          directTwitchCommandHandlerRef.current(message);
         if (!handledCommand) {
           directTwitchAiHandlerRef.current(message);
         }
@@ -4858,6 +4902,7 @@ function App() {
       relationshipMemory,
       sequencerSettings,
       twitchChannel,
+      twitchSettings,
       uiState: {
         chatDraft: chatInput,
         chatLogOpen,
@@ -4882,6 +4927,7 @@ function App() {
       relationshipMemory,
       sequencerSettings,
       twitchChannel,
+      twitchSettings,
       visualSettings,
       voiceLabVoices,
     ],
@@ -4965,6 +5011,7 @@ function App() {
       setCurrentBundledModelId(next.currentBundledModelId);
       setCurrentCustomVrmModelId(next.currentCustomVrmModelId);
       setTwitchChannel(next.twitchChannel);
+      setTwitchSettings(next.twitchSettings);
       setSequencerSettings(next.sequencerSettings);
       setVisualSettings(next.visualSettings);
 
@@ -5017,6 +5064,7 @@ function App() {
       setCurrentCustomVrmModelId(next.currentCustomVrmModelId);
       setSequencerSettings(next.sequencerSettings);
       setTwitchChannel(next.twitchChannel);
+      setTwitchSettings(next.twitchSettings);
       setVisualSettings(next.visualSettings);
 
       if (
@@ -5338,6 +5386,7 @@ function App() {
               sequencerSettings={sequencerSettings}
               setAiSettings={setAiSettings}
               setSequencerSettings={setSequencerSettings}
+              setTwitchSettings={setTwitchSettings}
               setVisualSettings={setVisualSettings}
               ttsActiveVoice={activeTtsVoice}
               ttsBusy={ttsBusy}
@@ -5355,6 +5404,7 @@ function App() {
               twitchConnectionLabel={twitchConnectionLabel}
               twitchDirectChatEnabled={DIRECT_TWITCH_CHAT_ENABLED}
               twitchQueueLength={twitchAiQueueRef.current.length}
+              twitchSettings={twitchSettings}
               visualSettings={visualSettings}
               voicesError={ttsVoicesError}
               voicesLoading={ttsVoicesLoading}

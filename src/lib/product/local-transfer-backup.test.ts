@@ -3,6 +3,7 @@ import {
   createDefaultAiSettings,
   createDefaultPersonaVoiceBindings,
   createDefaultRelationshipMemory,
+  createDefaultTwitchSettings,
 } from '../chat/defaults';
 import type { PersistedChatState } from '../chat/types';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
@@ -36,6 +37,7 @@ function createState(): PersistedChatState {
     relationshipMemory: createDefaultRelationshipMemory(),
     sequencerSettings: createDefaultSequencerSettings(),
     twitchChannel: 'subsect',
+    twitchSettings: createDefaultTwitchSettings(),
     uiState: {
       chatDraft: '',
       chatLogOpen: true,

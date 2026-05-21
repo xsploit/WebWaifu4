@@ -5,6 +5,7 @@ import {
   createDefaultPersonaVoiceBindings,
   createDefaultRelationshipMemory,
   createDefaultPersonas,
+  createDefaultTwitchSettings,
   createDefaultUiState,
   STORAGE_KEYS,
 } from './defaults';
@@ -18,6 +19,7 @@ import type {
   PersonaVoiceProvider,
   PersonaProfile,
   RelationshipMemory,
+  TwitchSettings,
   UiState,
   VoiceCreationProvider,
   VoiceLabSample,
@@ -524,6 +526,57 @@ function normalizeTwitchChannel(value: string | null) {
   return /^[a-z0-9_]{1,25}$/.test(normalized) ? normalized : '';
 }
 
+function clampInteger(value: unknown, fallback: number, min: number, max: number) {
+  const next = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback;
+  return Math.max(min, Math.min(max, next));
+}
+
+function normalizeTwitchSettings(value: unknown): TwitchSettings {
+  const defaults = createDefaultTwitchSettings();
+  if (!value || typeof value !== 'object') {
+    return defaults;
+  }
+
+  const source = value as Partial<TwitchSettings>;
+  const localDisplayName = String(source.localDisplayName ?? defaults.localDisplayName)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+
+  return {
+    aiEnabled: typeof source.aiEnabled === 'boolean' ? source.aiEnabled : defaults.aiEnabled,
+    batchFastWaitMs: clampInteger(source.batchFastWaitMs, defaults.batchFastWaitMs, 5000, 120000),
+    batchHighSize: clampInteger(source.batchHighSize, defaults.batchHighSize, 1, 200),
+    batchLowSize: clampInteger(source.batchLowSize, defaults.batchLowSize, 1, 200),
+    batchMaxSize: clampInteger(source.batchMaxSize, defaults.batchMaxSize, 1, 300),
+    batchMidSize: clampInteger(source.batchMidSize, defaults.batchMidSize, 1, 200),
+    batchWaitMs: clampInteger(source.batchWaitMs, defaults.batchWaitMs, 5000, 120000),
+    commandsEnabled:
+      typeof source.commandsEnabled === 'boolean'
+        ? source.commandsEnabled
+        : defaults.commandsEnabled,
+    contextLimit: clampInteger(source.contextLimit, defaults.contextLimit, 10, 300),
+    directChatterLimit: clampInteger(
+      source.directChatterLimit,
+      defaults.directChatterLimit,
+      0,
+      250,
+    ),
+    localDisplayName: localDisplayName || defaults.localDisplayName,
+    localTrustedControls:
+      typeof source.localTrustedControls === 'boolean'
+        ? source.localTrustedControls
+        : defaults.localTrustedControls,
+    maxBatchMessages: clampInteger(source.maxBatchMessages, defaults.maxBatchMessages, 10, 500),
+    maxPendingJobs: clampInteger(source.maxPendingJobs, defaults.maxPendingJobs, 1, 50),
+    mentionRequiredUnderThreshold:
+      typeof source.mentionRequiredUnderThreshold === 'boolean'
+        ? source.mentionRequiredUnderThreshold
+        : defaults.mentionRequiredUnderThreshold,
+    replyGapMs: clampInteger(source.replyGapMs, defaults.replyGapMs, 0, 30000),
+  };
+}
+
 function normalizeHexColor(value: unknown, fallback: string): string {
   if (typeof value !== 'string') {
     return fallback;
@@ -924,6 +977,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     currentBundledModelId: 'neuro-sama',
     currentCustomVrmModelId: '',
     twitchChannel: '',
+    twitchSettings: createDefaultTwitchSettings(),
     sequencerSettings: createDefaultSequencerSettings(),
     visualSettings: createDefaultVisualSettings(),
   };
@@ -943,6 +997,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       currentBundledModelIdRaw,
       currentCustomVrmModelIdRaw,
       twitchChannelRaw,
+      twitchSettingsRaw,
       sequencerSettingsRaw,
       visualSettingsRaw,
     ] = await Promise.all([
@@ -959,6 +1014,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       getPersistedItem(STORAGE_KEYS.currentBundledModelId),
       getPersistedItem(STORAGE_KEYS.currentCustomVrmModelId),
       getPersistedItem(STORAGE_KEYS.twitchChannel),
+      getPersistedItem(STORAGE_KEYS.twitchSettings),
       getPersistedItem(STORAGE_KEYS.sequencerSettings),
       getPersistedItem(STORAGE_KEYS.visualSettings),
     ]);
@@ -992,6 +1048,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
         ? currentCustomVrmModelIdRaw.trim()
         : '';
     const twitchChannel = normalizeTwitchChannel(twitchChannelRaw);
+    const twitchSettings = normalizeTwitchSettings(safeParse(twitchSettingsRaw, null));
     const sequencerSettings = normalizeSequencerSettings(safeParse(sequencerSettingsRaw, null));
     const visualSettings = normalizeVisualSettings(safeParse(visualSettingsRaw, null));
 
@@ -1023,6 +1080,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       currentBundledModelId,
       currentCustomVrmModelId,
       twitchChannel,
+      twitchSettings,
       sequencerSettings,
       visualSettings,
     };
@@ -1052,6 +1110,7 @@ export async function savePersistedChatState(state: PersistedChatState) {
     [STORAGE_KEYS.currentBundledModelId, state.currentBundledModelId],
     [STORAGE_KEYS.currentCustomVrmModelId, state.currentCustomVrmModelId],
     [STORAGE_KEYS.twitchChannel, normalizeTwitchChannel(state.twitchChannel)],
+    [STORAGE_KEYS.twitchSettings, JSON.stringify(normalizeTwitchSettings(state.twitchSettings))],
     [
       STORAGE_KEYS.sequencerSettings,
       JSON.stringify({

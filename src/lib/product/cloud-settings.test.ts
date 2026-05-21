@@ -3,6 +3,7 @@ import {
   createDefaultAiSettings,
   createDefaultPersonaVoiceBindings,
   createDefaultPersonas,
+  createDefaultTwitchSettings,
   createDefaultUiState,
 } from '../chat/defaults';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
@@ -33,6 +34,7 @@ describe('cloud settings adapter', () => {
       'uiState',
       'character.vrmModelId',
       'scene.twitchChannel',
+      'twitchSettings',
       'sequencerSettings',
       'visualSettings',
     ]);
@@ -113,6 +115,14 @@ describe('cloud settings adapter', () => {
         workspaceId: 'workspace-1',
       },
       {
+        id: 'twitchSettings',
+        key: 'twitchSettings',
+        storageClass: 'synced-private',
+        updatedAt: '2026-05-15T12:00:00.000Z',
+        valueJson: '{"directChatterLimit":25,"localDisplayName":"Cloud Subby"}',
+        workspaceId: 'workspace-1',
+      },
+      {
         id: 'relationshipMemory',
         key: 'relationshipMemory',
         storageClass: 'synced-private',
@@ -123,6 +133,8 @@ describe('cloud settings adapter', () => {
     ]);
 
     expect(next.twitchChannel).toBe('newchannel');
+    expect(next.twitchSettings.directChatterLimit).toBe(25);
+    expect(next.twitchSettings.localDisplayName).toBe('Cloud Subby');
     expect(next.relationshipMemory.facts).toEqual(['local-only fact']);
   });
 });
@@ -166,6 +178,7 @@ function createState(): PersistedChatState {
     },
     sequencerSettings: createDefaultSequencerSettings(),
     twitchChannel: 'subsect',
+    twitchSettings: createDefaultTwitchSettings(),
     uiState: createDefaultUiState(),
     visualSettings: createDefaultVisualSettings(),
     voiceLabVoices: [],

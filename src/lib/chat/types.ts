@@ -201,6 +201,25 @@ export type UiState = {
   chatDraft: string;
 };
 
+export type TwitchSettings = {
+  aiEnabled: boolean;
+  batchFastWaitMs: number;
+  batchHighSize: number;
+  batchLowSize: number;
+  batchMaxSize: number;
+  batchMidSize: number;
+  batchWaitMs: number;
+  commandsEnabled: boolean;
+  contextLimit: number;
+  directChatterLimit: number;
+  localDisplayName: string;
+  localTrustedControls: boolean;
+  maxBatchMessages: number;
+  maxPendingJobs: number;
+  mentionRequiredUnderThreshold: boolean;
+  replyGapMs: number;
+};
+
 export type PersistedChatState = {
   personas: PersonaProfile[];
   activePersonaId: string;
@@ -215,6 +234,7 @@ export type PersistedChatState = {
   currentBundledModelId: string;
   currentCustomVrmModelId: string;
   twitchChannel: string;
+  twitchSettings: TwitchSettings;
   sequencerSettings: SequencerSettings;
   visualSettings: VisualSettings;
 };

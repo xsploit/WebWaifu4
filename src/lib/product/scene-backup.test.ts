@@ -3,6 +3,7 @@ import {
   createDefaultAiSettings,
   createDefaultPersonaVoiceBindings,
   createDefaultPersonas,
+  createDefaultTwitchSettings,
   createDefaultUiState,
 } from '../chat/defaults';
 import type { PersistedChatState } from '../chat/types';
@@ -90,6 +91,7 @@ function createState(): PersistedChatState {
     },
     sequencerSettings: createDefaultSequencerSettings(),
     twitchChannel: 'subsect',
+    twitchSettings: createDefaultTwitchSettings(),
     uiState: createDefaultUiState(),
     visualSettings: createDefaultVisualSettings(),
     voiceLabVoices: [],

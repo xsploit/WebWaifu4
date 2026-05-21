@@ -20,19 +20,23 @@ export type ChatTurn = {
 };
 
 type CreateLocalChatTurnOptions = {
+  displayName?: string;
   id?: string;
   persona: PersonaProfile | null;
   text: string;
   timestamp?: number;
+  trustedController?: boolean;
 };
 
 export function createLocalChatTurn({
+  displayName: requestedDisplayName,
   id,
   persona,
   text,
   timestamp = Date.now(),
+  trustedController = true,
 }: CreateLocalChatTurnOptions): ChatTurn {
-  const displayName = persona?.userNickname.trim() || 'Subsect';
+  const displayName = requestedDisplayName?.trim() || persona?.userNickname.trim() || 'Subsect';
   const login = displayName.toLowerCase().replace(/[^a-z0-9_]+/g, '_') || 'local_viewer';
   return {
     id: id ?? `local-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
@@ -42,11 +46,11 @@ export function createLocalChatTurn({
     displayName,
     text,
     timestamp,
-    badges: ['local-controller'],
-    isMod: true,
-    isBroadcaster: true,
+    badges: trustedController ? ['local-controller'] : ['local-viewer'],
+    isMod: trustedController,
+    isBroadcaster: trustedController,
     isLocal: true,
-    isTrustedController: true,
+    isTrustedController: trustedController,
   };
 }
 

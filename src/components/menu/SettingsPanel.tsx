@@ -7,6 +7,7 @@ import type {
   PersonaProfile,
   PersonaVoiceBinding,
   RelationshipMemory,
+  TwitchSettings,
   VoiceLabVoice,
 } from '../../lib/chat/types';
 import type {
@@ -99,6 +100,7 @@ type SettingsPanelProps = {
   memoryAgentStatus: string;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
   setSequencerSettings: Dispatch<SetStateAction<SequencerSettings>>;
+  setTwitchSettings: Dispatch<SetStateAction<TwitchSettings>>;
   setVisualSettings: Dispatch<SetStateAction<VisualSettings>>;
   sequencerSettings: SequencerSettings;
   ttsActiveVoice: PiperVoiceProfile | null;
@@ -115,6 +117,7 @@ type SettingsPanelProps = {
   twitchConnectionLabel: string;
   twitchDirectChatEnabled: boolean;
   twitchQueueLength: number;
+  twitchSettings: TwitchSettings;
   visualSettings: VisualSettings;
   supabaseAuthStatus: string;
   supabaseConfig: SupabasePublicConfig;
@@ -202,6 +205,7 @@ export function SettingsPanel({
   memoryAgentStatus,
   setAiSettings,
   setSequencerSettings,
+  setTwitchSettings,
   setVisualSettings,
   sequencerSettings,
   ttsActiveVoice,
@@ -218,6 +222,7 @@ export function SettingsPanel({
   twitchConnectionLabel,
   twitchDirectChatEnabled,
   twitchQueueLength,
+  twitchSettings,
   visualSettings,
   supabaseAuthStatus,
   supabaseConfig,
@@ -295,6 +300,8 @@ export function SettingsPanel({
         onSetChannel={onSetTwitchChannel}
         onToggleChatOverlay={onToggleChatOverlay}
         queueLength={twitchQueueLength}
+        setTwitchSettings={setTwitchSettings}
+        twitchSettings={twitchSettings}
       />
     ) : activeTab === 'context' ? (
       <ContextTab

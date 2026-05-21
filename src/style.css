@@ -396,6 +396,29 @@ select {
   font-size: 0.9rem;
 }
 
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--c-border);
+  color: var(--text-muted);
+  font-family: var(--font-tech);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.setting-row span {
+  min-width: 0;
+}
+
+.compact-input {
+  width: 96px;
+  flex: 0 0 96px;
+  text-align: right;
+}
+
 .switch {
   position: relative;
   display: inline-block;

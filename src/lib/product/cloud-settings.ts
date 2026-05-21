@@ -4,6 +4,7 @@ import type {
   PersistedChatState,
   PersonaProfile,
   PersonaVoiceBinding,
+  TwitchSettings,
   UiState,
   VoiceLabSample,
   VoiceLabVoice,
@@ -21,6 +22,7 @@ export type CloudSyncSettingKey =
   | 'personas'
   | 'scene.twitchChannel'
   | 'sequencerSettings'
+  | 'twitchSettings'
   | 'uiState'
   | 'visualSettings'
   | 'voiceLabVoices';
@@ -62,6 +64,10 @@ const SAFE_STATE_TO_CLOUD_SETTINGS = [
   {
     key: 'scene.twitchChannel',
     read: (state: PersistedChatState) => state.twitchChannel,
+  },
+  {
+    key: 'twitchSettings',
+    read: (state: PersistedChatState) => state.twitchSettings,
   },
   {
     key: 'sequencerSettings',
@@ -144,6 +150,7 @@ export function applyCloudSettingRecords(
     },
     uiState: { ...state.uiState },
     visualSettings: { ...state.visualSettings },
+    twitchSettings: { ...state.twitchSettings },
   };
 
   for (const record of records) {
@@ -197,6 +204,9 @@ export function applyCloudSettingRecords(
           next.twitchChannel = value.trim().toLowerCase().replace(/^#/, '');
         }
         break;
+      case 'twitchSettings':
+        next.twitchSettings = normalizeTwitchSettings(value, next.twitchSettings);
+        break;
       case 'sequencerSettings':
         if (isPlainObject(value)) {
           next.sequencerSettings = {
@@ -217,6 +227,48 @@ export function applyCloudSettingRecords(
   }
 
   return next;
+}
+
+function normalizeTwitchSettings(value: unknown, fallback: TwitchSettings): TwitchSettings {
+  if (!isPlainObject(value)) {
+    return fallback;
+  }
+
+  const source = value as Partial<TwitchSettings>;
+  const localDisplayName = String(source.localDisplayName ?? fallback.localDisplayName)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+  const numberValue = (raw: unknown, current: number, min: number, max: number) => {
+    const next = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : current;
+    return Math.max(min, Math.min(max, next));
+  };
+
+  return {
+    aiEnabled: typeof source.aiEnabled === 'boolean' ? source.aiEnabled : fallback.aiEnabled,
+    batchFastWaitMs: numberValue(source.batchFastWaitMs, fallback.batchFastWaitMs, 5000, 120000),
+    batchHighSize: numberValue(source.batchHighSize, fallback.batchHighSize, 1, 200),
+    batchLowSize: numberValue(source.batchLowSize, fallback.batchLowSize, 1, 200),
+    batchMaxSize: numberValue(source.batchMaxSize, fallback.batchMaxSize, 1, 300),
+    batchMidSize: numberValue(source.batchMidSize, fallback.batchMidSize, 1, 200),
+    batchWaitMs: numberValue(source.batchWaitMs, fallback.batchWaitMs, 5000, 120000),
+    commandsEnabled:
+      typeof source.commandsEnabled === 'boolean' ? source.commandsEnabled : fallback.commandsEnabled,
+    contextLimit: numberValue(source.contextLimit, fallback.contextLimit, 10, 300),
+    directChatterLimit: numberValue(source.directChatterLimit, fallback.directChatterLimit, 0, 250),
+    localDisplayName: localDisplayName || fallback.localDisplayName,
+    localTrustedControls:
+      typeof source.localTrustedControls === 'boolean'
+        ? source.localTrustedControls
+        : fallback.localTrustedControls,
+    maxBatchMessages: numberValue(source.maxBatchMessages, fallback.maxBatchMessages, 10, 500),
+    maxPendingJobs: numberValue(source.maxPendingJobs, fallback.maxPendingJobs, 1, 50),
+    mentionRequiredUnderThreshold:
+      typeof source.mentionRequiredUnderThreshold === 'boolean'
+        ? source.mentionRequiredUnderThreshold
+        : fallback.mentionRequiredUnderThreshold,
+    replyGapMs: numberValue(source.replyGapMs, fallback.replyGapMs, 0, 30000),
+  };
 }
 
 export function isSafeCloudSyncKey(key: string): key is CloudSyncSettingKey {

@@ -142,6 +142,7 @@ const PUBLIC_OVERLAY_SETTING_KEYS = new Set([
   'character.backgroundassetid',
   'visualsettings',
   'sequencersettings',
+  'twitchsettings',
 ]);
 
 const SERVER_ONLY_SETTING_KEYS = new Set([
