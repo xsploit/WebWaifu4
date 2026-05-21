@@ -6,6 +6,7 @@ import {
   type OpenAiFunctionCall,
   type TavilyToolOptions,
 } from '../../server/src/ai/TavilyTools.js';
+import { resolveServerProviderProxyModel } from '../../server/src/runtimeSafety.js';
 import { getServerProviderProxyAuthContext } from './provider-proxy-auth.js';
 
 type ApiRequest = {
@@ -899,7 +900,18 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   }
 
   const { instructions, input } = splitMessages(messages);
-  const model = body.model?.trim() || process.env['OPENAI_MODEL'] || 'gpt-5-nano';
+  const configuredModel = process.env['OPENAI_MODEL'] || 'gpt-5-nano';
+  const modelDecision = resolveServerProviderProxyModel({
+    browserProviderKeyPresent: Boolean(browserLlmApiKey),
+    configuredModel,
+    defaultModel: 'gpt-5-nano',
+    requestedModel: body.model,
+  });
+  if (!modelDecision.allowed) {
+    response.status(403).json({ ok: false, error: modelDecision.error });
+    return;
+  }
+  const model = modelDecision.model;
   const configuredStateMode = process.env['OPENAI_STATE_MODE'] || 'conversation';
   const stateMode =
     configuredStateMode === 'conversation' ||

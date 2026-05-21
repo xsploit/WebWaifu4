@@ -1,3 +1,4 @@
+import { resolveServerProviderProxyModel } from '../../server/src/runtimeSafety.js';
 import { hasServerProviderProxyAuth } from './provider-proxy-auth.js';
 
 type ApiRequest = {
@@ -77,10 +78,22 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     /\/+$/,
     '',
   );
-  const model =
-    typeof body.model === 'string' && body.model.trim()
-      ? body.model.trim()
-      : process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small';
+  const configuredModel = process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small';
+  const modelDecision = resolveServerProviderProxyModel({
+    allowlistEnvNames: [
+      'BYOK_SERVER_PROVIDER_PROXY_EMBEDDING_MODEL_ALLOWLIST',
+      'SERVER_PROVIDER_PROXY_EMBEDDING_MODEL_ALLOWLIST',
+    ],
+    browserProviderKeyPresent: false,
+    configuredModel,
+    defaultModel: 'text-embedding-3-small',
+    requestedModel: body.model,
+  });
+  if (!modelDecision.allowed) {
+    response.status(403).json({ ok: false, error: modelDecision.error });
+    return;
+  }
+  const model = modelDecision.model;
 
   const openAiResponse = await fetch(`${apiBaseUrl}/embeddings`, {
     method: 'POST',

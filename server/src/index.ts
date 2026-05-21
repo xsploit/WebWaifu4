@@ -34,6 +34,7 @@ import { summarizeByokRuntimeHealth } from './byokHealth.js';
 import {
   canUseServerProviderProxy,
   getRawPathParts,
+  resolveServerProviderProxyModel,
   resolveRuntimeHealthStateKey,
   safeDecodePathParts,
 } from './runtimeSafety.js';
@@ -1310,12 +1311,25 @@ const httpServer = createServer(async (request, response) => {
         body.stateKey,
         `twitch:${config.twitchChannel}:persona:riko`,
       );
+      const requestedModel = typeof body.model === 'string' ? body.model : '';
+      const modelDecision = resolveServerProviderProxyModel({
+        browserProviderKeyPresent: Boolean(
+          getHeaderSecret(request, 'x-yourwifey-llm-provider-key'),
+        ),
+        configuredModel: config.aiModel,
+        defaultModel: 'gpt-5-nano',
+        requestedModel,
+      });
+      if (!modelDecision.allowed) {
+        writeJson(response, 403, { ok: false, error: modelDecision.error });
+        return;
+      }
 
       const runtimeProvider = getRuntimeChatProvider(
         config,
         request,
         body.llmProvider,
-        body.model,
+        modelDecision.model,
         allowServerProviderProxy,
       );
       if (!runtimeProvider) {
@@ -1325,9 +1339,7 @@ const httpServer = createServer(async (request, response) => {
         });
         return;
       }
-      if (typeof body.model === 'string' && body.model.trim()) {
-        runtimeProvider.setModel?.(body.model);
-      }
+      runtimeProvider.setModel?.(modelDecision.model);
 
       const providerRequest: ChatProviderRequest = {
         mode: body.mode === 'batch' ? 'batch' : 'direct',

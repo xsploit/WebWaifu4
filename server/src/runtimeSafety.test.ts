@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canUseServerProviderProxy,
   getRawPathParts,
+  resolveServerProviderProxyModel,
   resolveRuntimeHealthStateKey,
   safeDecodePathParts,
 } from './runtimeSafety.js';
@@ -36,5 +37,50 @@ describe('runtimeSafety', () => {
         requestedStateKey: 'local:persona:hikari',
       }),
     ).toBe('local:persona:hikari');
+  });
+
+  it('blocks client-selected premium models when spending server provider keys', () => {
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: false,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
+        requestedModel: 'gpt-5_4-pro',
+      }),
+    ).toMatchObject({ allowed: false });
+
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: false,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
+        requestedModel: 'gpt-5.4-nano',
+      }),
+    ).toEqual({ allowed: true, model: 'gpt-5.4-nano' });
+  });
+
+  it('allows arbitrary model selection only when a browser provider key is present', () => {
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: true,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
+        requestedModel: 'gpt-5_4-pro',
+      }),
+    ).toEqual({ allowed: true, model: 'gpt-5_4-pro' });
+  });
+
+  it('supports an explicit server model allowlist for trusted deployments', () => {
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: false,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
+        env: {
+          BYOK_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST: 'gpt-5.4-mini,gpt-5_4-pro',
+        },
+        requestedModel: 'gpt-5_4-pro',
+      }),
+    ).toEqual({ allowed: true, model: 'gpt-5_4-pro' });
   });
 });
