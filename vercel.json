@@ -20,6 +20,14 @@
       "destination": "/index.html"
     },
     {
+      "source": "/home",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/editor",
+      "destination": "/index.html"
+    },
+    {
       "source": "/auth/callback",
       "destination": "/index.html"
     },

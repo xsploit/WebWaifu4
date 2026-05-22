@@ -16,9 +16,12 @@ This fork is designed to run in two modes:
 3. Enable the OAuth providers you plan to expose, usually Google and/or GitHub,
    in Supabase Auth. Configure each provider with its OAuth client ID and
    secret first.
-4. Add the hosted app URL to Supabase Auth redirect URLs:
-   - `https://your-domain.example/auth/callback`
+4. Set Supabase Auth URL Configuration for the hosted app:
+   - Site URL: `https://your-domain.example`
+   - Redirect URL: `https://your-domain.example/auth/callback`
    - local dev: `http://localhost:5173/auth/callback`
+   Remove stale VPS or tunnel URLs from this config before production, or OAuth
+   can bounce back to the wrong frontend after Google/GitHub login.
 5. Create a storage bucket named `yourwifey-assets` if asset upload work is
    enabled later. The current BYOK MVP does not require uploads to use auth,
    sync, backups, or OBS overlay tokens.
@@ -78,8 +81,8 @@ api/byok/*
 ```
 
 `vercel.json` pins the build command, `dist` output directory, and SPA rewrites
-for `/login`, `/auth/callback`, `/account`, `/dashboard`, and
-`/overlay/:sceneId`.
+for `/home`, `/login`, `/auth/callback`, `/account`, `/dashboard`, `/editor`,
+and `/overlay/:sceneId`.
 
 The local/VPS bot server still exists for streaming and power-user workflows,
 but the BYOK account/cloud-sync path is Vercel-shaped.

@@ -80,6 +80,9 @@ export function appRouteNeedsAuth(route: AppRoute, input: { overlayTokenPresent?
     return false;
   }
   if (route.kind === 'overlay') {
+    if (route.sceneId === 'private-preview') {
+      return false;
+    }
     return !input.overlayTokenPresent;
   }
   return true;
@@ -164,6 +167,13 @@ function normalizeSafeInternalNextPath(value: string | null | undefined) {
 
   const route = parseAppRoute(parsed);
   if (route.kind === 'home' || route.kind === 'login' || route.kind === 'auth-callback') {
+    return null;
+  }
+  if (
+    (route.kind === 'editor' && parsed.pathname !== '/editor') ||
+    (route.kind === 'account' && parsed.pathname !== '/account') ||
+    (route.kind === 'dashboard' && parsed.pathname !== '/dashboard')
+  ) {
     return null;
   }
   return `${parsed.pathname || '/'}${parsed.search}${parsed.hash}`;

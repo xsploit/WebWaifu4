@@ -173,7 +173,6 @@ import {
   parseLocalTransferBackup,
   serializeLocalTransferBackup,
 } from './lib/product/local-transfer-backup';
-import { getCanonicalProductRedirectUrl } from './lib/product/canonical-origin';
 import './style.css';
 
 type SafeAreaInsets = {
@@ -1569,18 +1568,6 @@ function mergeRelationshipMemoryInWorker(
 }
 
 function App() {
-  const canonicalRedirectUrl =
-    typeof window === 'undefined'
-      ? null
-      : getCanonicalProductRedirectUrl(
-          window.location,
-          import.meta.env as Record<string, string | undefined>,
-        );
-  if (canonicalRedirectUrl) {
-    window.location.replace(canonicalRedirectUrl);
-    return null;
-  }
-
   const safeArea = DEFAULT_SAFE_AREA;
   const sceneActive = true;
   const supabaseConfig = useMemo(

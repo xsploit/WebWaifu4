@@ -1173,7 +1173,7 @@ function DashboardPage(
   const [pulling, setPulling] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
-  const previewOverlayUrl = '/overlay/private-preview';
+  const previewOverlayUrl = '/overlay/private-preview?controls=1';
 
   useEffect(() => {
     if (!isCloud) {
@@ -1530,7 +1530,10 @@ function ProductShell(props: ProductPagesProps & { children: ReactNode }) {
           >
             Account
           </NavLink>
-          <NavLink active={false} onClick={() => props.onNavigate('/overlay/private-preview')}>
+          <NavLink
+            active={props.route.kind === 'overlay'}
+            onClick={() => props.onNavigate('/overlay/private-preview?controls=1')}
+          >
             Overlay
           </NavLink>
         </nav>

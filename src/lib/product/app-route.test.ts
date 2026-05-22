@@ -43,6 +43,7 @@ describe('product app route parser', () => {
     expect(appRouteNeedsAuth(parseAppRoute('/account'))).toBe(true);
     expect(appRouteNeedsAuth(parseAppRoute('/dashboard'))).toBe(true);
     expect(appRouteNeedsAuth(parseAppRoute('/overlay/main-scene'))).toBe(true);
+    expect(appRouteNeedsAuth(parseAppRoute('/overlay/private-preview'))).toBe(false);
     expect(
       appRouteNeedsAuth(parseAppRoute('/overlay/main-scene'), { overlayTokenPresent: true }),
     ).toBe(false);
@@ -56,6 +57,7 @@ describe('product app route parser', () => {
     );
     expect(getSafeLoginNextPath('/login?next=https%3A%2F%2Fevil.test')).toBe('/dashboard');
     expect(getSafeLoginNextPath('/login?next=%2Flogin')).toBe('/dashboard');
+    expect(getSafeLoginNextPath('/login?next=%2Fsettings')).toBe('/dashboard');
     expect(getInternalAppPath('/editor?tab=voice#settings')).toBe('/editor?tab=voice#settings');
   });
 
@@ -68,6 +70,7 @@ describe('product app route parser', () => {
     expect(storage.getItem(LOGIN_NEXT_STORAGE_KEY)).toBeNull();
 
     expect(storeLoginNextPath('https://evil.test/editor', storage)).toBe(false);
+    expect(storeLoginNextPath('/settings', storage)).toBe(false);
     expect(consumeStoredLoginNextPath(storage)).toBe('/dashboard');
   });
 });
