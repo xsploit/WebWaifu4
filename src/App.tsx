@@ -306,6 +306,8 @@ function getPresetPersonaVoiceBinding(preset: PersonaScenePreset): PersonaVoiceB
 
 const PERSIST_DEBOUNCE_MS = 900;
 const MEMORY_AGENT_DELAY_MS = 2500;
+const AI_CHAT_HARD_TIMEOUT_MS = 120000;
+const AI_CHAT_STREAM_IDLE_TIMEOUT_MS = 25000;
 const OVERLAY_RECONNECT_MS = 3000;
 const DIRECT_TWITCH_CHANNEL = (import.meta.env['VITE_TWITCH_CHANNEL'] || 'subsect').trim();
 const DIRECT_TWITCH_CHAT_ENABLED = import.meta.env['VITE_DIRECT_TWITCH_CHAT'] !== 'false';
@@ -696,6 +698,7 @@ async function readAiProxyStream(
   response: Response,
   onTextDelta?: (delta: string) => void,
   onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void,
+  signal?: AbortSignal,
 ): Promise<{ meta?: AiProxyHealth['providerState']; text: string }> {
   if (!response.body) {
     throw new Error('Stream bot AI proxy did not return a readable stream.');
@@ -746,29 +749,75 @@ async function readAiProxyStream(
     }
   };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
+  try {
+    while (true) {
+      const { value, done } = await readStreamChunkWithIdleTimeout(
+        reader,
+        AI_CHAT_STREAM_IDLE_TIMEOUT_MS,
+        signal,
+      );
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop() ?? '';
+      for (const block of blocks) {
+        handleBlock(block);
+      }
     }
 
-    buffer += decoder.decode(value, { stream: true });
-    const blocks = buffer.split(/\r?\n\r?\n/);
-    buffer = blocks.pop() ?? '';
-    for (const block of blocks) {
-      handleBlock(block);
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      handleBlock(buffer);
     }
-  }
-
-  buffer += decoder.decode();
-  if (buffer.trim()) {
-    handleBlock(buffer);
+  } finally {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => {});
+    }
+    reader.releaseLock();
   }
 
   return {
     meta: finalMeta,
     text: finalText || streamedText.trim(),
   };
+}
+
+function readStreamChunkWithIdleTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  idleTimeoutMs: number,
+  signal?: AbortSignal,
+) {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException('AI chat request aborted.', 'AbortError'));
+  }
+
+  return new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      void reader.cancel().catch(() => {});
+      reject(new Error(`AI proxy stream was idle for ${Math.round(idleTimeoutMs / 1000)}s.`));
+    }, idleTimeoutMs);
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      void reader.cancel().catch(() => {});
+      reject(new DOMException('AI chat request aborted.', 'AbortError'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    reader.read().then(
+      (result) => {
+        window.clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        resolve(result);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function requestChatCompletion({
@@ -789,6 +838,7 @@ async function requestChatCompletion({
   transportMode,
   ttsBridge,
   providerKeyVaultWorkspaceId,
+  signal,
 }: {
   activeChatters?: number;
   disableState?: boolean;
@@ -807,6 +857,7 @@ async function requestChatCompletion({
   transportMode?: AiSettings['aiTransportMode'];
   ttsBridge?: RemoteTtsRequest;
   providerKeyVaultWorkspaceId?: string;
+  signal?: AbortSignal;
 }): Promise<AppCompletionResponse> {
   const headers = await buildBackendProviderHeaders({
     llmProvider,
@@ -817,6 +868,7 @@ async function requestChatCompletion({
   const response = await fetch(getAiProxyUrl(), {
     method: 'POST',
     headers,
+    signal,
     body: JSON.stringify({
       activeChatters,
       disableState,
@@ -841,7 +893,7 @@ async function requestChatCompletion({
   }
 
   if (onTextDelta && response.headers.get('content-type')?.includes('text/event-stream')) {
-    const streamResult = await readAiProxyStream(response, onTextDelta, onAudioChunk);
+    const streamResult = await readAiProxyStream(response, onTextDelta, onAudioChunk, signal);
     const text = streamResult.text;
     if (!text.trim()) {
       throw new Error('Stream bot AI proxy returned an empty response.');
@@ -4486,6 +4538,10 @@ function App() {
         settings.remoteTtsMode === 'live-bridge'
           ? createRemoteTtsRequest('', settings)
           : undefined;
+      const chatAbortController = new AbortController();
+      const chatHardTimeout = window.setTimeout(() => {
+        chatAbortController.abort();
+      }, AI_CHAT_HARD_TIMEOUT_MS);
       setChatHistory((current) => {
         const hasUserMessage = current.some((message) => message.id === userMessage.id);
         return trimChatHistory([
@@ -4584,6 +4640,7 @@ function App() {
           transportMode: settings.aiTransportMode,
           ttsBridge,
           providerKeyVaultWorkspaceId,
+          signal: chatAbortController.signal,
         });
         if (response.meta) {
           setAiProxyHealth((current) => ({
@@ -4665,6 +4722,7 @@ function App() {
         );
         appendSystemMessage(`[Chat] AI reply failed: ${message}`);
       } finally {
+        window.clearTimeout(chatHardTimeout);
         setChatGenerating(false);
         setAssistantReplyLock(false);
       }

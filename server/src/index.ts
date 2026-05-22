@@ -38,6 +38,7 @@ import {
   normalizeRuntimeLlmProvider,
   providerModelsCanBeListedWithoutKey,
   providerUsesAppOwnedState,
+  type RuntimeLlmProvider,
 } from './runtimeProviderRouting.js';
 
 type OpenAiEmbeddingPayload = {
@@ -58,6 +59,7 @@ type ProviderModelsPayload = {
 
 const CORS_REQUEST_HEADERS =
   'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
+const LIVE_TTS_BRIDGE_FINAL_WAIT_MS = 15000;
 
 function createCorsHeaders(request?: IncomingMessage) {
   const requestedHeaders = request?.headers['access-control-request-headers'];
@@ -82,27 +84,65 @@ function writeCorsPreflight(request: IncomingMessage, response: ServerResponse) 
   response.end();
 }
 
-function createProvider(config: StreamBotConfig): ChatProvider {
+function waitForLiveTtsBridge(done: Promise<void>, onTimeout: () => void) {
+  return new Promise<boolean>((resolve) => {
+    const timeout = setTimeout(() => {
+      onTimeout();
+      resolve(false);
+    }, LIVE_TTS_BRIDGE_FINAL_WAIT_MS);
+    done.then(
+      () => {
+        clearTimeout(timeout);
+        resolve(true);
+      },
+      () => {
+        clearTimeout(timeout);
+        resolve(false);
+      },
+    );
+  });
+}
+
+function createProvider(
+  config: StreamBotConfig,
+  options: {
+    closeWebSocketAfterRequest?: boolean;
+    providerName?: RuntimeLlmProvider;
+  } = {},
+): ChatProvider {
   if (!config.providerProxyEnabled) {
     return new MockChatProvider();
   }
-  if (config.aiProvider === 'openai-responses' || config.aiProvider === 'openai-responses-ws') {
+  if (
+    config.aiProvider === 'openai-responses' ||
+    config.aiProvider === 'openai-responses-ws' ||
+    config.aiProvider === 'openrouter-responses'
+  ) {
     if (!config.aiApiKey) {
-      throw new Error(`${config.aiProvider} requires OPENAI_API_KEY or AI_API_KEY.`);
+      throw new Error(
+        `${config.aiProvider} requires ${
+          config.aiProvider === 'openrouter-responses' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY or AI_API_KEY'
+        }.`,
+      );
     }
+    const isOpenRouter = config.aiProvider === 'openrouter-responses';
     return new OpenAiResponsesProvider({
       apiBaseUrl: config.aiApiBaseUrl,
       apiKey: config.aiApiKey,
+      closeWebSocketAfterRequest: options.closeWebSocketAfterRequest,
       model: config.aiModel,
       maxOutputTokens: 180,
       temperature: 0.7,
-      stateMode: config.openAiStateMode,
-      conversationId: config.openAiConversationId || undefined,
-      promptCacheKey: config.openAiPromptCacheKey || undefined,
-      promptCacheRetention: config.openAiPromptCacheRetention || undefined,
+      stateMode: isOpenRouter ? 'stateless' : config.openAiStateMode,
+      conversationId: isOpenRouter ? undefined : config.openAiConversationId || undefined,
+      promptCacheKey: isOpenRouter ? undefined : config.openAiPromptCacheKey || undefined,
+      promptCacheRetention: isOpenRouter
+        ? undefined
+        : config.openAiPromptCacheRetention || undefined,
+      providerName: options.providerName ?? (isOpenRouter ? 'openrouter-responses' : undefined),
       reasoningEffort: config.openAiReasoningEffort,
       safetyIdentifier: config.openAiSafetyIdentifier || undefined,
-      store: config.openAiStore,
+      store: isOpenRouter ? false : config.openAiStore,
       tavilyTools: config.tavilyApiKey
         ? {
             apiKey: config.tavilyApiKey,
@@ -112,8 +152,8 @@ function createProvider(config: StreamBotConfig): ChatProvider {
             timeoutMs: config.tavilyTimeoutMs,
           }
         : undefined,
-      useWebSocket: config.aiProvider === 'openai-responses-ws',
-      webSocketUrl: config.openAiWebSocketUrl || undefined,
+      useWebSocket: isOpenRouter ? false : config.aiProvider === 'openai-responses-ws',
+      webSocketUrl: isOpenRouter ? undefined : config.openAiWebSocketUrl || undefined,
     });
   }
 
@@ -305,6 +345,33 @@ function getHeaderSecret(request: IncomingMessage, name: string) {
   return getHeaderValue(request, name)?.trim() ?? '';
 }
 
+function stripAuthScheme(value: string, scheme: 'bearer' | 'basic') {
+  return value.replace(new RegExp(`^${scheme}\\s+`, 'i'), '').trim();
+}
+
+function normalizeRuntimeTtsApiKey(providerName: RemoteTtsProvider, value: string) {
+  return providerName === 'inworld'
+    ? stripAuthScheme(value, 'basic')
+    : stripAuthScheme(value, 'bearer');
+}
+
+function getConfiguredModelForProvider(providerName: RuntimeLlmProvider, config: StreamBotConfig) {
+  if (providerName === 'openrouter-responses') {
+    return process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4o-mini';
+  }
+  return config.aiModel;
+}
+
+function getDefaultModelForProvider(providerName: RuntimeLlmProvider) {
+  return providerName === 'openrouter-responses' ? 'openai/gpt-4o-mini' : 'gpt-5-nano';
+}
+
+function getAllowlistEnvNamesForProvider(providerName: RuntimeLlmProvider) {
+  return providerName === 'openrouter-responses'
+    ? ['OPENROUTER_MODEL_ALLOWLIST', 'OPENROUTER_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST']
+    : ['OPENAI_MODEL_ALLOWLIST', 'OPENAI_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
+}
+
 function getRuntimeTavilyApiKeyWithAuth(
   baseConfig: StreamBotConfig,
   request: IncomingMessage,
@@ -344,14 +411,19 @@ function getRuntimeChatProvider(
     aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
     aiApiKey: effectiveApiKey,
     aiModel: model?.trim() || baseConfig.aiModel,
-    aiProvider: 'openai-responses',
+    aiProvider: providerName,
     tavilyApiKey,
     openAiStateMode: appOwnedState ? 'stateless' : baseConfig.openAiStateMode,
     openAiStore: appOwnedState ? false : baseConfig.openAiStore,
+    openAiPromptCacheKey: appOwnedState ? '' : baseConfig.openAiPromptCacheKey,
+    openAiPromptCacheRetention: appOwnedState ? '' : baseConfig.openAiPromptCacheRetention,
     openAiWebSocketUrl: appOwnedState ? '' : baseConfig.openAiWebSocketUrl,
     providerProxyEnabled: true,
   };
-  const runtimeProvider = createProvider(runtimeConfig);
+  const runtimeProvider = createProvider(runtimeConfig, {
+    closeWebSocketAfterRequest: true,
+    providerName,
+  });
   runtimeProvider.setModel?.(runtimeConfig.aiModel);
   return runtimeProvider;
 }
@@ -445,7 +517,10 @@ function getRuntimeTtsConfig(
   request: IncomingMessage,
   allowServerProxy = false,
 ) {
-  const apiKey = getHeaderSecret(request, 'x-yourwifey-tts-provider-key');
+  const apiKey = normalizeRuntimeTtsApiKey(
+    providerName,
+    getHeaderSecret(request, 'x-yourwifey-tts-provider-key'),
+  );
   if (!apiKey) {
     return allowServerProxy && baseConfig.providerProxyEnabled ? baseConfig : null;
   }
@@ -1126,11 +1201,12 @@ const httpServer = createServer(async (request, response) => {
       const appOwnedState = providerUsesAppOwnedState(providerName);
       const requestedModel = typeof body.model === 'string' ? body.model : '';
       const modelDecision = resolveServerProviderProxyModel({
+        allowlistEnvNames: getAllowlistEnvNamesForProvider(providerName),
         browserProviderKeyPresent: Boolean(
           getHeaderSecret(request, 'x-yourwifey-llm-provider-key'),
         ),
-        configuredModel: config.aiModel,
-        defaultModel: 'gpt-5-nano',
+        configuredModel: getConfiguredModelForProvider(providerName, config),
+        defaultModel: getDefaultModelForProvider(providerName),
         requestedModel,
       });
       if (!modelDecision.allowed) {
@@ -1185,9 +1261,13 @@ const httpServer = createServer(async (request, response) => {
           });
         }
         const bridge = bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge() : null;
+        let sseOpen = true;
         const bridgeDone = bridge
           ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
               onAudioChunk: (chunk) => {
+                if (!sseOpen || response.writableEnded) {
+                  return;
+                }
                 writeSseEvent(response, {
                   type: 'audio',
                   audio: chunk.audio.toString('base64'),
@@ -1214,16 +1294,26 @@ const httpServer = createServer(async (request, response) => {
             })) ?? (await runtimeProvider.complete(providerRequest));
           bridge?.close();
           if (bridgeDone) {
-            await bridgeDone;
+            const bridgeFinished = await waitForLiveTtsBridge(bridgeDone, () => {
+              bridge?.fail(new Error('Live TTS bridge finalization timed out.'));
+            });
+            if (!bridgeFinished && !response.writableEnded) {
+              writeSseEvent(response, {
+                type: 'tts-error',
+                ok: false,
+                error: 'Live TTS bridge finalization timed out.',
+              });
+            }
           }
         } catch (error) {
           bridge?.fail(error instanceof Error ? error : new Error(String(error)));
           if (bridgeDone) {
-            await bridgeDone.catch(() => {});
+            await waitForLiveTtsBridge(bridgeDone, () => {});
           }
           throw error;
         }
 
+        sseOpen = false;
         writeSseEvent(response, {
           type: 'done',
           ok: true,

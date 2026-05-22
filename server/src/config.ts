@@ -1,8 +1,11 @@
-import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
 import type {
   OpenAiReasoningEffort,
   OpenAiResponsesStateMode,
 } from './ai/OpenAiResponsesProvider.js';
+
+loadDotenv({ path: '.env' });
+loadDotenv({ path: '.env.local', override: true });
 
 export type StreamBotConfig = {
   twitchChannel: string;
@@ -17,7 +20,12 @@ export type StreamBotConfig = {
   commandAdmins: string[];
   commandAllowMods: boolean;
   botAliases: string[];
-  aiProvider: 'mock' | 'openai-compatible' | 'openai-responses' | 'openai-responses-ws';
+  aiProvider:
+    | 'mock'
+    | 'openai-compatible'
+    | 'openai-responses'
+    | 'openai-responses-ws'
+    | 'openrouter-responses';
   aiApiBaseUrl: string;
   aiApiKey: string;
   aiModel: string;
@@ -86,8 +94,20 @@ function aliasesFromEnv(botUsername: string) {
 
 function parseAiProvider(): StreamBotConfig['aiProvider'] {
   const raw = process.env.AI_PROVIDER?.trim().toLowerCase();
-  if (raw === 'openai-compatible' || raw === 'openai-responses' || raw === 'openai-responses-ws') {
+  if (
+    raw === 'openai-compatible' ||
+    raw === 'openai-responses' ||
+    raw === 'openai-responses-ws' ||
+    raw === 'openrouter-responses'
+  ) {
     return raw;
+  }
+  if (
+    process.env.OPENROUTER_API_KEY?.trim() &&
+    !process.env.OPENAI_API_KEY?.trim() &&
+    !process.env.AI_API_KEY?.trim()
+  ) {
+    return 'openrouter-responses';
   }
   if (process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim()) {
     return 'openai-responses';
@@ -150,6 +170,11 @@ function parseFishSpeechMp3Bitrate(): StreamBotConfig['fishSpeechMp3Bitrate'] {
   return parsed === 64 || parsed === 192 ? parsed : 128;
 }
 
+function stripAuthScheme(value: string | undefined, scheme: 'bearer' | 'basic') {
+  const raw = value?.trim() ?? '';
+  return raw.replace(new RegExp(`^${scheme}\\s+`, 'i'), '').trim();
+}
+
 function normalizeBaseUrl(value: string | undefined, endpointSuffix: string) {
   const raw = value?.trim();
   if (!raw) {
@@ -202,6 +227,8 @@ export function loadConfig(): StreamBotConfig {
   const aiProvider = parseAiProvider();
   const isOpenAiResponsesProvider =
     aiProvider === 'openai-responses' || aiProvider === 'openai-responses-ws';
+  const isOpenRouterProvider = aiProvider === 'openrouter-responses';
+  const isResponsesProvider = isOpenAiResponsesProvider || isOpenRouterProvider;
 
   return {
     twitchChannel: process.env.TWITCH_CHANNEL?.trim() || 'subsect',
@@ -225,14 +252,20 @@ export function loadConfig(): StreamBotConfig {
     botAliases: aliasesFromEnv(twitchBotUsername),
     aiProvider,
     aiApiBaseUrl:
-      process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-      process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-      (isOpenAiResponsesProvider ? 'https://api.openai.com/v1' : 'http://127.0.0.1:1234/v1'),
-    aiApiKey: process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || '',
+      (isOpenRouterProvider
+        ? process.env.OPENROUTER_BASE_URL?.trim().replace(/\/+$/, '') ||
+          'https://openrouter.ai/api/v1'
+        : process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
+          process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
+          (isOpenAiResponsesProvider ? 'https://api.openai.com/v1' : 'http://127.0.0.1:1234/v1')),
+    aiApiKey: isOpenRouterProvider
+      ? process.env.OPENROUTER_API_KEY?.trim() || ''
+      : process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || '',
     aiModel:
-      process.env.OPENAI_MODEL?.trim() ||
-      process.env.AI_MODEL?.trim() ||
-      (isOpenAiResponsesProvider ? 'gpt-5-nano' : 'local-model'),
+      (isOpenRouterProvider
+        ? process.env.OPENROUTER_MODEL?.trim() || process.env.AI_MODEL?.trim()
+        : process.env.OPENAI_MODEL?.trim() || process.env.AI_MODEL?.trim()) ||
+      (isOpenRouterProvider ? 'openai/gpt-4o-mini' : isResponsesProvider ? 'gpt-5-nano' : 'local-model'),
     openAiWebSocketUrl: process.env.OPENAI_WS_URL?.trim() ?? '',
     openAiStateMode: parseOpenAiStateMode(),
     openAiConversationId: process.env.OPENAI_CONVERSATION_ID?.trim() ?? '',
@@ -249,7 +282,7 @@ export function loadConfig(): StreamBotConfig {
     tavilyCrawlLimit: numberFromEnv('TAVILY_CRAWL_LIMIT', 8),
     tavilyTimeoutMs: numberFromEnv('TAVILY_TIMEOUT_MS', 10000),
     fishSpeechApiKey:
-      process.env.FISH_AUDIO_API_KEY?.trim() || process.env.FISHSPEECH_API_KEY?.trim() || '',
+      stripAuthScheme(process.env.FISH_AUDIO_API_KEY || process.env.FISHSPEECH_API_KEY, 'bearer'),
     fishSpeechBaseUrl:
       process.env.FISH_AUDIO_BASE_URL?.trim() ||
       process.env.FISH_SPEECH_BASE_URL?.trim() ||
@@ -266,7 +299,7 @@ export function loadConfig(): StreamBotConfig {
       'FISH_SPEECH_CONDITION_ON_PREVIOUS_CHUNKS',
       true,
     ),
-    inworldApiKey: process.env.INWORLD_API_KEY?.trim() ?? '',
+    inworldApiKey: stripAuthScheme(process.env.INWORLD_API_KEY, 'basic'),
     inworldBaseUrl:
       process.env.INWORLD_TTS_BASE_URL?.trim() ||
       normalizeBaseUrl(
@@ -279,8 +312,8 @@ export function loadConfig(): StreamBotConfig {
     inworldSampleRate: numberFromEnv('INWORLD_TTS_SAMPLE_RATE', 22050),
     inworldBufferCharThreshold: numberFromEnv('INWORLD_TTS_BUFFER_CHARS', 90),
     providerProxyEnabled:
-      booleanFromEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', false) ||
-      booleanFromEnv('SERVER_PROVIDER_PROXY_ENABLED', false),
+      booleanFromEnv('SERVER_PROVIDER_PROXY_ENABLED', false) ||
+      booleanFromEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', false),
     overlayPort: numberFromEnv('OVERLAY_PORT', 5173),
     botPort: numberFromEnv('BOT_PORT', 8797),
   };

@@ -49,6 +49,8 @@ export class TtsManager {
   isPlaying = false;
   currentSource: AudioBufferSourceNode | null = null;
   currentAudio: HTMLAudioElement | null = null;
+  private currentAudioSettler: { reject: (error: Error) => void; resolve: () => void } | null =
+    null;
   private currentStreamSources = new Set<AudioBufferSourceNode>();
   private currentStreamGains = new Set<GainNode>();
   private streamPlaybackEndTime = 0;
@@ -97,7 +99,23 @@ export class TtsManager {
     this.wordBoundaryStartTime = null;
   }
 
-  private teardownCurrentAudio(audioUrl?: string | null) {
+  private settleCurrentAudioPlayback(error?: Error) {
+    const settler = this.currentAudioSettler;
+    this.currentAudioSettler = null;
+    if (!settler) {
+      return;
+    }
+    if (error) {
+      settler.reject(error);
+    } else {
+      settler.resolve();
+    }
+  }
+
+  private teardownCurrentAudio(audioUrl?: string | null, settlePlayback = true) {
+    if (settlePlayback) {
+      this.settleCurrentAudioPlayback();
+    }
     const nextAudioUrl =
       audioUrl ?? (this.currentAudio?.src?.startsWith('blob:') ? this.currentAudio.src : null);
 
@@ -701,6 +719,7 @@ export class TtsManager {
 
       const audioUrl = URL.createObjectURL(audioBlob);
       this.currentAudio = new Audio(audioUrl);
+      this.currentAudioSettler = { reject, resolve };
       this.currentAudio.autoplay = true;
       this.currentAudio.preload = 'auto';
       this.currentAudio.playbackRate = this.playbackRate;
@@ -752,21 +771,22 @@ export class TtsManager {
       };
 
       this.currentAudio.onended = () => {
-        this.teardownCurrentAudio(audioUrl);
+        this.settleCurrentAudioPlayback();
+        this.teardownCurrentAudio(audioUrl, false);
         this.onSpeechFinished?.();
-        resolve();
       };
 
       this.currentAudio.onerror = () => {
-        this.teardownCurrentAudio(audioUrl);
-        reject(new Error('Audio playback failed.'));
+        const error = new Error('Audio playback failed.');
+        this.settleCurrentAudioPlayback(error);
+        this.teardownCurrentAudio(audioUrl, false);
       };
 
       this.currentAudio.play().catch((error) => {
         const nextError = error instanceof Error ? error : new Error(String(error));
-        this.teardownCurrentAudio(audioUrl);
+        this.settleCurrentAudioPlayback(nextError);
+        this.teardownCurrentAudio(audioUrl, false);
         this.onError?.(nextError);
-        reject(nextError);
       });
     });
   }

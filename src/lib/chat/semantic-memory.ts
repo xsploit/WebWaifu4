@@ -23,6 +23,7 @@ const SEMANTIC_STORE = 'semanticRecords';
 const SCOPE_INDEX = 'scopeKey';
 const MAX_RECORDS_PER_SCOPE = 160;
 const LEGACY_MAX_RECORDS_PER_SCOPE = 80;
+const semanticMemoryWriteQueues = new Map<string, Promise<void>>();
 
 export function buildSemanticMemoryTurnText(
   userText: string,
@@ -110,19 +111,21 @@ export async function addSemanticMemoryTurn({
     return;
   }
 
-  const records = await loadSemanticMemory(scopeKey);
-  const record: SemanticMemoryRecord = {
-    id: `${Date.now()}-${hashText(text).toString(36)}`,
-    createdAt: Date.now(),
-    personaId: persona?.id ?? 'unknown',
-    scopeKey,
-    text,
-    userText: userText.trim().slice(0, 1200),
-    assistantText: assistantText.trim().slice(0, 1200),
-    embedding: normalizeEmbedding(embedding),
-  };
+  await enqueueSemanticMemoryWrite(scopeKey, async () => {
+    const records = await loadSemanticMemory(scopeKey);
+    const record: SemanticMemoryRecord = {
+      id: `${Date.now()}-${hashText(text).toString(36)}`,
+      createdAt: Date.now(),
+      personaId: persona?.id ?? 'unknown',
+      scopeKey,
+      text,
+      userText: userText.trim().slice(0, 1200),
+      assistantText: assistantText.trim().slice(0, 1200),
+      embedding: normalizeEmbedding(embedding),
+    };
 
-  await saveSemanticMemory(scopeKey, [record, ...records]);
+    await saveSemanticMemory(scopeKey, [record, ...records]);
+  });
 }
 
 export async function findSemanticMemoryMatches(
@@ -178,6 +181,19 @@ function scoreSemanticMemory(
     1 - (Date.now() - record.createdAt) / (1000 * 60 * 60 * 24 * 30),
   );
   return vectorScore * 0.78 + lexicalScore * 0.18 + recencyScore * 0.04;
+}
+
+function enqueueSemanticMemoryWrite(scopeKey: string, task: () => Promise<void>) {
+  const key = scopeKey.trim() || 'default';
+  const previous = semanticMemoryWriteQueues.get(key) ?? Promise.resolve();
+  const queued = previous.catch(() => undefined).then(task);
+  semanticMemoryWriteQueues.set(key, queued);
+  void queued.finally(() => {
+    if (semanticMemoryWriteQueues.get(key) === queued) {
+      semanticMemoryWriteQueues.delete(key);
+    }
+  });
+  return queued;
 }
 
 function cosineSimilarity(a: number[], b: number[]) {

@@ -22,6 +22,7 @@ export type OpenAiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'hig
 export type OpenAiResponsesProviderOptions = {
   apiBaseUrl: string;
   apiKey: string;
+  closeWebSocketAfterRequest?: boolean;
   model: string;
   maxOutputTokens: number;
   temperature: number;
@@ -37,6 +38,7 @@ export type OpenAiResponsesProviderOptions = {
   tavilyTools?: TavilyToolOptions;
   requestTimeoutMs?: number;
   fetcher?: typeof fetch;
+  providerName?: 'openai-responses' | 'openrouter-responses';
 };
 
 type ResponsesInputMessage = {
@@ -561,7 +563,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       snapshots.find((snapshot) => snapshot.stateKey === activeStateKey) ??
       this.getStateSnapshot(activeStateKey, null);
     return {
-      provider: runtime.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
+      provider: this.getRuntimeProviderName(runtime),
       stateMode: runtime.stateMode,
       activeState,
       activeStateKey,
@@ -580,7 +582,11 @@ export class OpenAiResponsesProvider implements ChatProvider {
       websocketConfigured: runtime.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
       websocketStatus: runtime.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
-      websocketLifecycle: runtime.useWebSocket ? 'persistent' : 'disabled',
+      websocketLifecycle: runtime.useWebSocket
+        ? this.options.closeWebSocketAfterRequest
+          ? 'per-reply'
+          : 'persistent'
+        : 'disabled',
     };
   }
 
@@ -604,6 +610,13 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return { stateMode, useWebSocket };
   }
 
+  private getRuntimeProviderName(runtime: OpenAiRequestRuntime) {
+    if (this.options.providerName === 'openrouter-responses') {
+      return 'openrouter-responses';
+    }
+    return runtime.useWebSocket ? 'openai-responses-ws' : 'openai-responses';
+  }
+
   private canUsePreviousResponseFor(runtime: OpenAiRequestRuntime) {
     return (
       runtime.stateMode === 'previous-response' && (this.options.store || runtime.useWebSocket)
@@ -613,6 +626,18 @@ export class OpenAiResponsesProvider implements ChatProvider {
   resetState() {
     this.states.clear();
     this.states.set('default', this.createInitialState());
+  }
+
+  dispose() {
+    const socket = this.ws;
+    this.ws = null;
+    this.wsReady = null;
+    if (
+      socket &&
+      (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+    ) {
+      socket.close();
+    }
   }
 
   async complete(request: ChatProviderRequest): Promise<ChatProviderResponse> {
@@ -743,7 +768,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       runtime.stateMode === 'stateless';
     const reasoningEffort = this.getReasoningEffort();
     return {
-      provider: runtime.useWebSocket ? 'openai-responses-ws' : 'openai-responses',
+      provider: this.getRuntimeProviderName(runtime),
       stateKey: key,
       stateMode: stateDisabled ? 'stateless' : runtime.stateMode,
       stateScope: request.stateScope ?? 'chat',
@@ -756,7 +781,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       cachedTokens: stateDisabled ? 0 : state.cachedTokens,
       maxOutputTokens: normalizeMaxOutputTokens(request.maxTokens, this.options.maxOutputTokens),
       reasoningEffort,
-      store: this.options.store,
+      store: request.stateScope === 'memory' ? false : this.options.store,
       temperature: this.supportsTemperature(reasoningEffort)
         ? normalizeTemperature(request.temperature, this.options.temperature)
         : null,
@@ -765,7 +790,11 @@ export class OpenAiResponsesProvider implements ChatProvider {
       websocketConfigured: runtime.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
       websocketStatus: runtime.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
-      websocketLifecycle: runtime.useWebSocket ? 'persistent' : 'disabled',
+      websocketLifecycle: runtime.useWebSocket
+        ? this.options.closeWebSocketAfterRequest
+          ? 'per-reply'
+          : 'persistent'
+        : 'disabled',
     };
   }
 
@@ -810,7 +839,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       model: this.options.model,
       input: requestInput,
       max_output_tokens: normalizeMaxOutputTokens(request.maxTokens, this.options.maxOutputTokens),
-      store: this.options.store,
+      store: request.stateScope === 'memory' ? false : this.options.store,
     };
 
     if (request.responseFormat?.type === 'json_object') {
@@ -1185,13 +1214,13 @@ export class OpenAiResponsesProvider implements ChatProvider {
         const finish = (response: OpenAiResponsePayload) => {
           const output = [...(response.output ?? [])];
           mergeStreamingFunctionCalls(output, functionCalls);
-          cleanup();
+          cleanup(this.options.closeWebSocketAfterRequest === true);
           const payload = text ? { ...response, output_text: text } : response;
           resolve(output.length > 0 ? { ...payload, output } : payload);
         };
 
         const fail = (error: Error, closeSocket = false) => {
-          cleanup(closeSocket);
+          cleanup(closeSocket || this.options.closeWebSocketAfterRequest === true);
           reject(error);
         };
 
