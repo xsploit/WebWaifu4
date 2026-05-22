@@ -126,10 +126,10 @@ describe('Supabase auth shell', () => {
   });
 
   it('can force a canonical public OAuth callback instead of the current localhost page', () => {
-    vi.stubEnv('VITE_PUBLIC_APP_URL', 'https://148-113-191-103.sslip.io/');
+    vi.stubEnv('VITE_PUBLIC_APP_URL', 'https://yourwifey-byok.vercel.app/');
 
     expect(getProductAuthCallbackUrl('http://localhost:3000/login')).toBe(
-      'https://148-113-191-103.sslip.io/auth/callback',
+      'https://yourwifey-byok.vercel.app/auth/callback',
     );
 
     vi.unstubAllEnvs();
