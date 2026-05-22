@@ -123,11 +123,22 @@ describe('serverless AI embeddings route', () => {
   });
 
   it('uses browser-vault Vercel AI Gateway keys for embeddings', async () => {
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'vck-app-gateway');
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       expect(String(input)).toBe('https://ai-gateway.vercel.sh/v1/embeddings');
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer vck-app-gateway',
+      });
       expect(JSON.parse(String(init?.body))).toMatchObject({
         input: 'remember this',
         model: 'openai/text-embedding-3-small',
+        providerOptions: {
+          gateway: {
+            byok: {
+              openai: [{ apiKey: 'sk-user-openai' }],
+            },
+          },
+        },
       });
       return new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3] }] }), {
         status: 200,
@@ -142,7 +153,8 @@ describe('serverless AI embeddings route', () => {
         method: 'POST',
         headers: {
           'x-yourwifey-llm-provider': 'vercel-gateway-responses',
-          'x-yourwifey-llm-provider-key': 'vck-test-gateway',
+          'x-yourwifey-llm-provider-key': 'sk-user-openai',
+          'x-yourwifey-llm-provider-key-kind': 'openai',
         },
         body: {
           input: 'remember this',
@@ -158,6 +170,35 @@ describe('serverless AI embeddings route', () => {
       embedding: [0.1, 0.2, 0.3],
       model: 'openai/text-embedding-3-small',
       ok: true,
+    });
+  });
+
+  it('fails closed for Vercel Gateway embedding BYOK without backend gateway auth', async () => {
+    const fetchMock = vi.fn() as unknown as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          'x-yourwifey-llm-provider': 'vercel-gateway-responses',
+          'x-yourwifey-llm-provider-key': 'sk-user-openai',
+          'x-yourwifey-llm-provider-key-kind': 'openai',
+        },
+        body: {
+          input: 'remember this',
+          llmProvider: 'vercel-gateway-responses',
+          model: 'openai/text-embedding-3-small',
+        },
+      },
+      response,
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.jsonBody).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('AI_GATEWAY_API_KEY'),
     });
   });
 });

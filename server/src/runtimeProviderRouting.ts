@@ -40,7 +40,7 @@ export function getProviderEnvApiKey(
   env: Record<string, string | undefined> = process.env,
 ) {
   if (provider === 'vercel-gateway-responses') {
-    return env['AI_GATEWAY_API_KEY']?.trim() || '';
+    return env['AI_GATEWAY_API_KEY']?.trim() || env['VERCEL_OIDC_TOKEN']?.trim() || '';
   }
   if (provider === 'openrouter-responses') {
     return env['OPENROUTER_API_KEY']?.trim() || '';

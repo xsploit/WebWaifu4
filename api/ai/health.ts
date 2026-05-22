@@ -21,7 +21,7 @@ export default function handler(request: ApiRequest, response: ApiResponse) {
   response.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   response.setHeader(
     'Access-Control-Allow-Headers',
-    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tavily-provider-key',
+    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-llm-provider-key-kind,x-yourwifey-tavily-provider-key',
   );
 
   if (request.method === 'OPTIONS') {

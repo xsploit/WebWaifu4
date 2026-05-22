@@ -30,7 +30,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   response.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   response.setHeader(
     'Access-Control-Allow-Headers',
-    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key',
+    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-llm-provider-key-kind',
   );
 
   if (request.method === 'OPTIONS') {
@@ -47,11 +47,20 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     getHeaderValue(request, 'x-yourwifey-llm-provider') || getQueryValue(request, 'provider'),
   );
   const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const gatewayByokProvider = getHeaderValue(request, 'x-yourwifey-llm-provider-key-kind')
+    ?.trim()
+    .toLowerCase();
   const proxyAuthContext = isServerAiProxyEnabled()
     ? await getServerProviderProxyAuthContext(request)
     : ({ ok: false, principal: null } as const);
+  const gatewayApiKey =
+    providerName === 'vercel-gateway-responses'
+      ? getProviderEnvApiKey(providerName) || getHeaderSecret(request, 'x-vercel-oidc-token')
+      : '';
   const apiKey =
-    browserLlmApiKey || (proxyAuthContext.ok ? getProviderEnvApiKey(providerName) : '');
+    providerName === 'vercel-gateway-responses' && gatewayByokProvider
+      ? gatewayApiKey
+      : browserLlmApiKey || (proxyAuthContext.ok ? getProviderEnvApiKey(providerName) : '');
 
   if (!apiKey && !providerModelsCanBeListedWithoutKey(providerName)) {
     response

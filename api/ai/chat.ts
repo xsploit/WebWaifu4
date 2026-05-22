@@ -90,6 +90,7 @@ type OpenAiConversationPayload = {
 
 type OpenAiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 type UnsupportedOpenAiParam = 'reasoning' | 'temperature';
+type GatewayByokProvider = 'openai';
 
 type ResponsesFunctionCallOutput = {
   type: 'function_call_output';
@@ -592,6 +593,59 @@ function getOpenAiHeaders(apiKey: string) {
   return headers;
 }
 
+function normalizeGatewayByokProvider(value: unknown): GatewayByokProvider | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  return value.trim().toLowerCase() === 'openai' ? 'openai' : null;
+}
+
+function buildGatewayByokProviderOptions(provider: GatewayByokProvider, apiKey: string) {
+  return {
+    gateway: {
+      byok: {
+        [provider]: [{ apiKey }],
+      },
+    },
+  };
+}
+
+function resolveGatewayRequestAuth(input: {
+  browserLlmApiKey: string;
+  gatewayApiKey: string;
+  gatewayByokProvider: GatewayByokProvider | null;
+  providerName: ReturnType<typeof normalizeRuntimeLlmProvider>;
+  proxyAuthContext: Awaited<ReturnType<typeof getServerProviderProxyAuthContext>>;
+}) {
+  if (input.providerName !== 'vercel-gateway-responses') {
+    return {
+      apiKey:
+        input.browserLlmApiKey ||
+        (input.proxyAuthContext.ok ? getProviderEnvApiKey(input.providerName) : ''),
+      providerOptions: null as Record<string, unknown> | null,
+    };
+  }
+
+  if (input.gatewayByokProvider && input.browserLlmApiKey) {
+    return {
+      apiKey: input.gatewayApiKey,
+      providerOptions: buildGatewayByokProviderOptions(
+        input.gatewayByokProvider,
+        input.browserLlmApiKey,
+      ),
+    };
+  }
+
+  return {
+    apiKey:
+      input.browserLlmApiKey ||
+      (input.proxyAuthContext.ok
+        ? input.gatewayApiKey || getProviderEnvApiKey(input.providerName)
+        : ''),
+    providerOptions: null as Record<string, unknown> | null,
+  };
+}
+
 function getHeaderValue(request: ApiRequest, name: string) {
   const value = request.headers?.[name.toLowerCase()] ?? request.headers?.[name];
   return Array.isArray(value) ? value[0] : value;
@@ -599,6 +653,16 @@ function getHeaderValue(request: ApiRequest, name: string) {
 
 function getHeaderSecret(request: ApiRequest, name: string) {
   return getHeaderValue(request, name)?.trim() ?? '';
+}
+
+function getVercelGatewayApiKey(
+  request: ApiRequest,
+  providerName: ReturnType<typeof normalizeRuntimeLlmProvider>,
+) {
+  if (providerName !== 'vercel-gateway-responses') {
+    return '';
+  }
+  return getProviderEnvApiKey(providerName) || getHeaderSecret(request, 'x-vercel-oidc-token');
 }
 
 function numberFromEnv(name: string, fallback: number) {
@@ -854,7 +918,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   response.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   response.setHeader(
     'Access-Control-Allow-Headers',
-    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tavily-provider-key',
+    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-llm-provider-key-kind,x-yourwifey-tavily-provider-key',
   );
 
   if (request.method === 'OPTIONS') {
@@ -883,6 +947,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider,
   );
   const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const gatewayByokProvider = normalizeGatewayByokProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider-key-kind'),
+  );
   const proxyAuthContext = isServerAiProxyEnabled()
     ? await getServerProviderProxyAuthContext(request)
     : ({ ok: false, principal: null } as const);
@@ -895,10 +962,22 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const apiKey =
-    browserLlmApiKey || (proxyAuthContext.ok ? getProviderEnvApiKey(providerName) : '');
+  const gatewayAuth = resolveGatewayRequestAuth({
+    browserLlmApiKey,
+    gatewayApiKey: getVercelGatewayApiKey(request, providerName),
+    gatewayByokProvider,
+    providerName,
+    proxyAuthContext,
+  });
+  const apiKey = gatewayAuth.apiKey;
   if (!apiKey) {
-    response.status(200).json({ ok: false, error: 'AI provider key is not configured.' });
+    response.status(200).json({
+      ok: false,
+      error:
+        providerName === 'vercel-gateway-responses' && gatewayByokProvider
+          ? 'Vercel AI Gateway requires AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN on the backend for request-scoped BYOK.'
+          : 'AI provider key is not configured.',
+    });
     return;
   }
   const messages = normalizeMessages(body.messages);
@@ -986,6 +1065,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     model,
     store,
   };
+  if (gatewayAuth.providerOptions) {
+    payload.providerOptions = gatewayAuth.providerOptions;
+  }
 
   if (responseFormat?.type === 'json_object') {
     payload.text = {

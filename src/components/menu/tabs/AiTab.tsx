@@ -112,8 +112,8 @@ export function AiTab({
         </select>
         <div className="field-hint">
           OpenRouter and Vercel AI Gateway use Responses-compatible endpoints with YourWifey-owned
-          history, diary, semantic memory, and prompt compaction. OpenAI can still use Conversations
-          or previous response IDs when available.
+          history, diary, semantic memory, and prompt compaction. Gateway models like `openai/...`
+          use your browser-vault OpenAI key as request-scoped BYOK through the backend.
         </div>
       </div>
 

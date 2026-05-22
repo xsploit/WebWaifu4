@@ -25,6 +25,8 @@ type OpenAiEmbeddingPayload = {
   }>;
 };
 
+type GatewayByokProvider = 'openai';
+
 function getOpenAiHeaders(apiKey: string) {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
@@ -37,6 +39,23 @@ function getOpenAiHeaders(apiKey: string) {
   return headers;
 }
 
+function normalizeGatewayByokProvider(value: unknown): GatewayByokProvider | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  return value.trim().toLowerCase() === 'openai' ? 'openai' : null;
+}
+
+function buildGatewayByokProviderOptions(provider: GatewayByokProvider, apiKey: string) {
+  return {
+    gateway: {
+      byok: {
+        [provider]: [{ apiKey }],
+      },
+    },
+  };
+}
+
 function normalizeInput(value: unknown) {
   return typeof value === 'string' ? value.trim().slice(0, 4000) : '';
 }
@@ -46,7 +65,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   response.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   response.setHeader(
     'Access-Control-Allow-Headers',
-    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key',
+    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-llm-provider-key-kind',
   );
 
   if (request.method === 'OPTIONS') {
@@ -64,6 +83,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider,
   );
   const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const gatewayByokProvider = normalizeGatewayByokProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider-key-kind'),
+  );
   const serverProxyAllowed =
     isServerAiProxyEnabled() && (await hasServerProviderProxyAuth(request));
 
@@ -78,9 +100,26 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const apiKey = browserLlmApiKey || (serverProxyAllowed ? getProviderEnvApiKey(providerName) : '');
+  const gatewayProviderOptions =
+    providerName === 'vercel-gateway-responses' && gatewayByokProvider && browserLlmApiKey
+      ? buildGatewayByokProviderOptions(gatewayByokProvider, browserLlmApiKey)
+      : null;
+  const gatewayApiKey =
+    providerName === 'vercel-gateway-responses'
+      ? getProviderEnvApiKey(providerName) || getHeaderSecret(request, 'x-vercel-oidc-token')
+      : '';
+  const apiKey =
+    providerName === 'vercel-gateway-responses' && gatewayProviderOptions
+      ? gatewayApiKey
+      : browserLlmApiKey || (serverProxyAllowed ? getProviderEnvApiKey(providerName) : '');
   if (!apiKey) {
-    response.status(200).json({ ok: false, error: 'AI provider key is not configured.' });
+    response.status(200).json({
+      ok: false,
+      error:
+        providerName === 'vercel-gateway-responses' && gatewayByokProvider
+          ? 'Vercel AI Gateway requires AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN on the backend for request-scoped BYOK.'
+          : 'AI provider key is not configured.',
+    });
     return;
   }
 
@@ -120,6 +159,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     body: JSON.stringify({
       input,
       model,
+      ...(gatewayProviderOptions ? { providerOptions: gatewayProviderOptions } : {}),
     }),
   });
 

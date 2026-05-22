@@ -20,8 +20,8 @@ This fork is designed to run in two modes:
    - Site URL: `https://your-domain.example`
    - Redirect URL: `https://your-domain.example/auth/callback`
    - local dev: `http://localhost:5173/auth/callback`
-   Remove stale VPS or tunnel URLs from this config before production, or OAuth
-   can bounce back to the wrong frontend after Google/GitHub login.
+     Remove stale VPS or tunnel URLs from this config before production, or OAuth
+     can bounce back to the wrong frontend after Google/GitHub login.
 5. Create a storage bucket named `yourwifey-assets` if asset upload work is
    enabled later. The current BYOK MVP does not require uploads to use auth,
    sync, backups, or OBS overlay tokens.
@@ -52,6 +52,21 @@ SUPABASE_JWT_SECRET
 SUPABASE_STORAGE_BUCKET
 OVERLAY_SIGNING_SECRET
 ```
+
+Optional AI Gateway:
+
+```text
+AI_GATEWAY_API_KEY
+```
+
+`vercel-gateway-responses` uses `AI_GATEWAY_API_KEY`, Vercel's automatic
+`VERCEL_OIDC_TOKEN`, or Vercel's `x-vercel-oidc-token` function request header
+only as the backend credential for Vercel AI Gateway. For `openai/...` Gateway
+models, the browser vault still supplies the user's local OpenAI key per request
+through `providerOptions.gateway.byok.openai`, so the app does not upload or
+store that provider key in Supabase. If no Gateway backend credential is
+available, request-scoped Gateway BYOK fails closed with a configuration error
+instead of treating an OpenAI key as a Vercel bearer token.
 
 Legacy `VITE_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`, and
 `SUPABASE_SERVICE_ROLE_KEY` names still work, but Supabase's new

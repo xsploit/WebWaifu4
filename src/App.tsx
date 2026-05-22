@@ -685,7 +685,12 @@ async function getBrowserProviderApiKey({
   return providerVault.getSecret(provider, keyName);
 }
 
-function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
+function getVercelGatewayByokProvider(model?: string) {
+  const providerPrefix = model?.split('/')[0]?.trim().toLowerCase() ?? '';
+  return providerPrefix === 'openai' ? 'openai' : '';
+}
+
+function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider'], model?: string) {
   if (llmProvider === 'openrouter-responses') {
     return {
       keyName: 'openrouter.apiKey',
@@ -694,6 +699,15 @@ function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
     };
   }
   if (llmProvider === 'vercel-gateway-responses') {
+    const gatewayByokProvider = getVercelGatewayByokProvider(model);
+    if (gatewayByokProvider === 'openai') {
+      return {
+        gatewayByokProvider,
+        keyName: 'openai.apiKey',
+        label: 'OpenAI via Vercel AI Gateway',
+        provider: 'openai' as const,
+      };
+    }
     return {
       keyName: 'vercelGateway.apiKey',
       label: 'Vercel AI Gateway',
@@ -728,21 +742,26 @@ async function getBrowserRemoteTtsApiKey(
 
 async function buildBackendProviderHeaders({
   llmProvider,
+  model,
   providerKeyVaultWorkspaceId,
   ttsBridge,
 }: {
   llmProvider: AiSettings['llmProvider'];
+  model?: string;
   providerKeyVaultWorkspaceId?: string;
   ttsBridge?: RemoteTtsRequest;
 }) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const providerConfig = getBrowserLlmProviderConfig(llmProvider);
+  const providerConfig = getBrowserLlmProviderConfig(llmProvider, model);
   const apiKey = await getBrowserProviderApiKey({
     keyName: providerConfig.keyName,
     provider: providerConfig.provider,
     providerKeyVaultWorkspaceId,
   });
   headers['x-yourwifey-llm-provider'] = llmProvider;
+  if ('gatewayByokProvider' in providerConfig && providerConfig.gatewayByokProvider) {
+    headers['x-yourwifey-llm-provider-key-kind'] = providerConfig.gatewayByokProvider;
+  }
   if (apiKey) {
     headers['x-yourwifey-llm-provider-key'] = apiKey;
   }
@@ -892,6 +911,7 @@ async function requestChatCompletion({
 }): Promise<AppCompletionResponse> {
   const headers = await buildBackendProviderHeaders({
     llmProvider,
+    model,
     providerKeyVaultWorkspaceId,
     ttsBridge,
   });
@@ -977,6 +997,10 @@ async function requestTextEmbedding(
   try {
     const headers = await buildBackendProviderHeaders({
       llmProvider,
+      model:
+        llmProvider === 'vercel-gateway-responses'
+          ? DEFAULT_VERCEL_GATEWAY_EMBEDDING_MODEL
+          : undefined,
       providerKeyVaultWorkspaceId,
     });
     const response = await fetch(getAiEmbeddingUrl(), {
@@ -1022,6 +1046,7 @@ async function requestTwitchStreamTranscript(input: {
     }),
     headers: await buildBackendProviderHeaders({
       llmProvider: input.llmProvider,
+      model: input.model,
       providerKeyVaultWorkspaceId: input.providerKeyVaultWorkspaceId,
     }),
     method: 'POST',
@@ -2074,6 +2099,7 @@ function App() {
       const llmProvider = aiSettingsRef.current.llmProvider;
       const headers = await buildBackendProviderHeaders({
         llmProvider,
+        model: aiSettingsRef.current.model,
         providerKeyVaultWorkspaceId,
       });
       const response = await fetch(getAiModelsUrl(llmProvider), {
@@ -2104,6 +2130,7 @@ function App() {
     try {
       const providerHeaders = await buildBackendProviderHeaders({
         llmProvider: aiSettingsRef.current.llmProvider,
+        model: aiSettingsRef.current.model,
         providerKeyVaultWorkspaceId,
       });
       const response = await fetch(

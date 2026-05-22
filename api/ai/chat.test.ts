@@ -4,6 +4,7 @@ import handler from './chat.js';
 type FetchCall = {
   url: string;
   body: Record<string, unknown>;
+  headers?: HeadersInit;
 };
 
 function createStreamResponse(events: unknown[]) {
@@ -522,11 +523,12 @@ describe('serverless AI chat route', () => {
   });
 
   it('routes Vercel AI Gateway requests to the gateway Responses endpoint with app-owned state', async () => {
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'vck-app-gateway');
     const openAiCalls: FetchCall[] = [];
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-      openAiCalls.push({ url, body });
+      openAiCalls.push({ url, body, headers: init?.headers });
       return new Response(
         JSON.stringify({
           id: 'resp_gateway',
@@ -543,7 +545,8 @@ describe('serverless AI chat route', () => {
         method: 'POST',
         headers: {
           'x-yourwifey-llm-provider': 'vercel-gateway-responses',
-          'x-yourwifey-llm-provider-key': 'vck-test-gateway',
+          'x-yourwifey-llm-provider-key': 'sk-user-openai',
+          'x-yourwifey-llm-provider-key-kind': 'openai',
         },
         body: {
           messages: [{ role: 'user', content: 'hello' }],
@@ -562,8 +565,90 @@ describe('serverless AI chat route', () => {
       },
     });
     expect(openAiCalls[0]?.url).toBe('https://ai-gateway.vercel.sh/v1/responses');
+    expect(openAiCalls[0]?.headers).toMatchObject({
+      Authorization: 'Bearer vck-app-gateway',
+    });
+    expect(openAiCalls[0]?.body).toMatchObject({
+      providerOptions: {
+        gateway: {
+          byok: {
+            openai: [{ apiKey: 'sk-user-openai' }],
+          },
+        },
+      },
+    });
     expect(openAiCalls[0]?.body).not.toHaveProperty('conversation');
     expect(openAiCalls[0]?.body).not.toHaveProperty('previous_response_id');
+  });
+
+  it('fails closed for request-scoped Vercel Gateway BYOK without backend gateway auth', async () => {
+    const fetchMock = vi.fn() as unknown as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          'x-yourwifey-llm-provider': 'vercel-gateway-responses',
+          'x-yourwifey-llm-provider-key': 'sk-user-openai',
+          'x-yourwifey-llm-provider-key-kind': 'openai',
+        },
+        body: {
+          messages: [{ role: 'user', content: 'hello' }],
+          model: 'openai/gpt-5-nano',
+        },
+      },
+      response,
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.jsonBody).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('AI_GATEWAY_API_KEY'),
+    });
+  });
+
+  it('can authenticate Vercel Gateway requests with the Vercel OIDC request token', async () => {
+    const openAiCalls: FetchCall[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      openAiCalls.push({
+        body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+        headers: init?.headers,
+        url: String(input),
+      });
+      return new Response(
+        JSON.stringify({
+          id: 'resp_gateway_oidc',
+          output: [{ type: 'message', content: [{ type: 'output_text', text: 'oidc ok' }] }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          'x-vercel-oidc-token': 'oidc-vercel-token',
+          'x-yourwifey-llm-provider': 'vercel-gateway-responses',
+          'x-yourwifey-llm-provider-key': 'sk-user-openai',
+          'x-yourwifey-llm-provider-key-kind': 'openai',
+        },
+        body: {
+          messages: [{ role: 'user', content: 'hello' }],
+          model: 'openai/gpt-5-nano',
+        },
+      },
+      response,
+    );
+
+    expect(response.jsonBody).toMatchObject({ ok: true, text: 'oidc ok' });
+    expect(openAiCalls[0]?.headers).toMatchObject({
+      Authorization: 'Bearer oidc-vercel-token',
+    });
   });
 
   it('rejects anonymous server-key proxy use when proxy mode is enabled', async () => {
