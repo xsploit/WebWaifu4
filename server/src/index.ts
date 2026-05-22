@@ -57,7 +57,30 @@ type ProviderModelsPayload = {
 };
 
 const CORS_REQUEST_HEADERS =
-  'authorization,content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
+  'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
+
+function createCorsHeaders(request?: IncomingMessage) {
+  const requestedHeaders = request?.headers['access-control-request-headers'];
+  return {
+    'Access-Control-Allow-Headers':
+      typeof requestedHeaders === 'string' && requestedHeaders.trim()
+        ? requestedHeaders
+        : CORS_REQUEST_HEADERS,
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Private-Network': 'true',
+    Vary: 'Origin, Access-Control-Request-Headers',
+  };
+}
+
+function writeCorsPreflight(request: IncomingMessage, response: ServerResponse) {
+  response.writeHead(204, {
+    ...createCorsHeaders(request),
+    'Access-Control-Max-Age': '86400',
+    'Content-Length': '0',
+  });
+  response.end();
+}
 
 function createProvider(config: StreamBotConfig): ChatProvider {
   if (!config.providerProxyEnabled) {
@@ -133,9 +156,7 @@ function readRequestJson<T>(request: IncomingMessage) {
 
 function writeJson(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
-    'Access-Control-Allow-Headers': CORS_REQUEST_HEADERS,
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Origin': '*',
+    ...createCorsHeaders(),
     'Content-Type': 'application/json',
   });
   response.end(JSON.stringify(body));
@@ -144,9 +165,7 @@ function writeJson(response: ServerResponse, status: number, body: unknown) {
 function writeSseHead(response: ServerResponse) {
   response.socket?.setNoDelay(true);
   response.writeHead(200, {
-    'Access-Control-Allow-Headers': CORS_REQUEST_HEADERS,
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Origin': '*',
+    ...createCorsHeaders(),
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -164,9 +183,7 @@ function writeSseEvent(response: ServerResponse, body: unknown) {
 function writeNdjsonHead(response: ServerResponse) {
   response.socket?.setNoDelay(true);
   response.writeHead(200, {
-    'Access-Control-Allow-Headers': CORS_REQUEST_HEADERS,
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Origin': '*',
+    ...createCorsHeaders(),
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
     'Content-Type': 'application/x-ndjson; charset=utf-8',
@@ -712,7 +729,7 @@ const httpServer = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
 
   if (request.method === 'OPTIONS') {
-    writeJson(response, 204, {});
+    writeCorsPreflight(request, response);
     return;
   }
 

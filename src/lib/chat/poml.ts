@@ -171,15 +171,7 @@ function getPomlRenderUrl() {
     return 'http://127.0.0.1:8787/ai/poml/render';
   }
 
-  const url = new URL('/ai/poml/render', window.location.href);
-  const isLocalDev =
-    ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname) ||
-    window.location.hostname.endsWith('.local');
-  if (isLocalDev && (url.port === '5173' || url.port === '4173')) {
-    url.port = '8787';
-  } else if (!isLocalDev) {
-    url.pathname = '/api/ai/poml/render';
-  }
+  const url = new URL('/api/ai/poml/render', window.location.href);
   return url.toString();
 }
 

@@ -470,15 +470,7 @@ function getAiProxyUrl() {
     return AI_PROXY_URL;
   }
 
-  const isLocalDev =
-    ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname) ||
-    window.location.hostname.endsWith('.local');
-  const url = new URL('/ai/chat', window.location.href);
-  if (isLocalDev && (url.port === '5173' || url.port === '4173')) {
-    url.port = '8787';
-  } else if (!isLocalDev) {
-    url.pathname = '/api/ai/chat';
-  }
+  const url = new URL('/api/ai/chat', window.location.href);
   return url.toString();
 }
 
