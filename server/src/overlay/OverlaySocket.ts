@@ -66,14 +66,7 @@ function verifyOverlayToken(secret: string, token: string | null | undefined): b
 export function readOverlaySocketSigningSecret(
   env: Record<string, string | undefined> = process.env,
 ) {
-  return (
-    env.BYOK_OVERLAY_SIGNING_SECRET?.trim() ||
-    env.OVERLAY_SIGNING_SECRET?.trim() ||
-    env.SUPABASE_JWT_SECRET?.trim() ||
-    env.SUPABASE_SECRET_KEY?.trim() ||
-    env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    ''
-  );
+  return env.BYOK_OVERLAY_SIGNING_SECRET?.trim() || env.OVERLAY_SIGNING_SECRET?.trim() || '';
 }
 
 export function readOverlaySocketToken(request: Pick<IncomingMessage, 'headers' | 'url'>) {
@@ -109,7 +102,7 @@ function isOverlaySocketLocalDevRequest(
   env: Record<string, string | undefined>,
   allowedOrigins: readonly string[] | undefined,
 ) {
-  if (env.NODE_ENV === 'production' || env.VERCEL_ENV === 'production') {
+  if (env.NODE_ENV === 'production') {
     return false;
   }
 

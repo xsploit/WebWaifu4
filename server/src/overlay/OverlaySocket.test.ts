@@ -7,13 +7,13 @@ import {
 } from './OverlaySocket.js';
 
 describe('OverlaySocket auth', () => {
-  it('reads the dedicated overlay signing secret before broad Supabase secrets', () => {
+  it('reads the dedicated overlay signing secret only', () => {
     expect(
       readOverlaySocketSigningSecret({
         OVERLAY_SIGNING_SECRET: 'overlay-secret',
-        SUPABASE_SERVICE_ROLE_KEY: 'service-role',
       }),
     ).toBe('overlay-secret');
+    expect(readOverlaySocketSigningSecret({ SUPABASE_SERVICE_ROLE_KEY: 'ignored' })).toBe('');
   });
 
   it('requires a valid signed token when a signing secret is configured', () => {

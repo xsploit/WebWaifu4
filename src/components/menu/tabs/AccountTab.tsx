@@ -1,30 +1,11 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ByokAccountMode } from '../../../lib/product/account-mode';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ProviderKind, ProviderSecretDescriptor } from '../../../lib/product/byok';
 import { createBrowserProviderKeyVault } from '../../../lib/product/provider-key-vault';
-import {
-  buildSupabaseOAuthRequest,
-  describeByokAccountShell,
-  fetchSupabaseEnabledOAuthProviders,
-  getEnabledSupabaseOAuthProviders,
-  getSupabaseOAuthProviderLabel,
-  normalizeAccountEmail,
-  requestSupabaseMagicLink,
-} from '../../../lib/product/supabase-auth-shell';
-import type {
-  SupabaseOAuthProvider,
-  SupabasePublicConfig,
-} from '../../../lib/product/supabase-env';
-import { getProductAuthCallbackUrl } from '../../../lib/product/auth-redirect';
 
 type AccountTabProps = {
-  accountMode: ByokAccountMode;
-  authStatus: string;
   localTransferStatus: string;
   onExportLocalBackup: () => void;
   onImportLocalBackup: (file: File) => void;
-  onSignOut: () => void;
-  supabaseConfig: SupabasePublicConfig;
 };
 
 type LocalProviderKeyConfig = {
@@ -36,26 +17,10 @@ type LocalProviderKeyConfig = {
 const LOCAL_PROVIDER_KEYS: LocalProviderKeyConfig[] = [
   { provider: 'openai', keyName: 'openai.apiKey', label: 'OpenAI' },
   { provider: 'openrouter', keyName: 'openrouter.apiKey', label: 'OpenRouter' },
-  {
-    provider: 'vercel_gateway',
-    keyName: 'vercelGateway.apiKey',
-    label: 'Vercel AI Gateway API key',
-  },
   { provider: 'fish_speech', keyName: 'fishSpeech.apiKey', label: 'Fish Speech' },
   { provider: 'inworld', keyName: 'inworld.apiKey', label: 'Inworld' },
   { provider: 'tavily', keyName: 'tavily.apiKey', label: 'Tavily' },
 ];
-
-function formatList(values: readonly string[]) {
-  return values.length > 0 ? values.join(', ') : 'none';
-}
-
-function getProviderVaultWorkspaceId(accountMode: ByokAccountMode) {
-  if (accountMode.kind === 'supabase-cloud-sync') {
-    return `user:${accountMode.user.id}`;
-  }
-  return 'local-browser';
-}
 
 function findProviderDescriptor(
   descriptors: ProviderSecretDescriptor[],
@@ -68,45 +33,23 @@ function findProviderDescriptor(
 }
 
 export function AccountTab({
-  accountMode,
-  authStatus,
   localTransferStatus,
   onExportLocalBackup,
   onImportLocalBackup,
-  onSignOut,
-  supabaseConfig,
 }: AccountTabProps) {
-  const summary = useMemo(() => describeByokAccountShell(accountMode), [accountMode]);
-  const [email, setEmail] = useState(accountMode.user?.email ?? '');
-  const [loginStatus, setLoginStatus] = useState(summary.detail);
-  const [sending, setSending] = useState(false);
   const mountedRef = useRef(true);
-  const providerVaultWorkspaceId = useMemo(
-    () => getProviderVaultWorkspaceId(accountMode),
-    [accountMode],
-  );
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const providerVault = useMemo(
     () =>
       createBrowserProviderKeyVault({
-        mode: accountMode.providerKeyMode,
-        workspaceId: providerVaultWorkspaceId,
+        mode: 'local-indexeddb',
+        workspaceId: 'local-browser',
       }),
-    [accountMode.providerKeyMode, providerVaultWorkspaceId],
+    [],
   );
   const [providerInputs, setProviderInputs] = useState<Record<string, string>>({});
   const [providerDescriptors, setProviderDescriptors] = useState<ProviderSecretDescriptor[]>([]);
   const [providerStatus, setProviderStatus] = useState('Provider keys stay in this browser only.');
-  const importInputRef = useRef<HTMLInputElement | null>(null);
-  const normalizedEmail = normalizeAccountEmail(email);
-  const [liveOAuthProviders, setLiveOAuthProviders] = useState<SupabaseOAuthProvider[] | null>(
-    null,
-  );
-  const configuredOAuthProviders = useMemo(
-    () => getEnabledSupabaseOAuthProviders(supabaseConfig),
-    [supabaseConfig],
-  );
-  const enabledOAuthProviders = liveOAuthProviders ?? configuredOAuthProviders;
-  const loginAvailable = accountMode.loginAvailable && supabaseConfig.status === 'configured';
 
   const refreshProviderDescriptors = useCallback(async () => {
     const descriptors = await providerVault.listSecretDescriptors();
@@ -117,90 +60,11 @@ export function AccountTab({
 
   useEffect(() => {
     mountedRef.current = true;
+    void refreshProviderDescriptors();
     return () => {
       mountedRef.current = false;
     };
-  }, []);
-
-  useEffect(() => {
-    setLoginStatus(authStatus || summary.detail);
-  }, [authStatus, summary.detail]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLiveOAuthProviders(null);
-    if (supabaseConfig.status !== 'configured') {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    fetchSupabaseEnabledOAuthProviders({ config: supabaseConfig })
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        if (result.ok) {
-          setLiveOAuthProviders(result.providers);
-          if (result.providers.length === 0) {
-            setLoginStatus(
-              'Supabase Auth currently reports Google and GitHub disabled for this project.',
-            );
-          }
-          return;
-        }
-        setLoginStatus(result.message);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setLoginStatus(error instanceof Error ? error.message : 'Supabase OAuth check failed.');
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabaseConfig]);
-
-  useEffect(() => {
-    void refreshProviderDescriptors();
   }, [refreshProviderDescriptors]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (sending) {
-      return;
-    }
-
-    setSending(true);
-    try {
-      const result = await requestSupabaseMagicLink({
-        config: supabaseConfig,
-        email,
-        redirectTo: getProductAuthCallbackUrl(),
-      });
-      if (mountedRef.current) {
-        setLoginStatus(result.message);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setSending(false);
-      }
-    }
-  }
-
-  function handleOAuth(provider: SupabaseOAuthProvider) {
-    const request = buildSupabaseOAuthRequest({
-      config: { ...supabaseConfig, oauthProviders: enabledOAuthProviders },
-      provider,
-      redirectTo: getProductAuthCallbackUrl(),
-    });
-    if (!request.ok) {
-      setLoginStatus(request.message);
-      return;
-    }
-    window.location.assign(request.url);
-  }
 
   async function handleSaveProviderKey(config: LocalProviderKeyConfig) {
     const secret = providerInputs[config.keyName]?.trim() ?? '';
@@ -243,92 +107,33 @@ export function AccountTab({
   return (
     <>
       <div className="control-group">
-        <div className="control-label">Account Mode</div>
+        <div className="control-label">Local Mode</div>
         <div className="status-grid">
           <div className="status-copy">
-            Mode: <strong>{summary.modeLabel}</strong>
+            Storage: <strong>IndexedDB + local browser vault</strong>
           </div>
           <div className="status-copy">
-            Storage: <strong>{summary.storageLabel}</strong>
+            Cloud sync: <strong>disabled</strong>
           </div>
           <div className="status-copy">
-            Cloud sync: <strong>{summary.cloudSyncLabel}</strong>
+            Login: <strong>not required</strong>
           </div>
           <div className="status-copy">
-            Local mode: <strong>{summary.localOnlyLabel}</strong>
-          </div>
-          <div className="status-copy">
-            Provider keys: <strong>{summary.providerKeyLabel}</strong>
-          </div>
-          <div className="status-copy">
-            Login: <strong>{summary.loginLabel}</strong>
+            Provider keys: <strong>local only</strong>
           </div>
         </div>
-        <div className="field-hint">{summary.detail}</div>
-      </div>
-
-      <div className="control-group">
-        <div className="control-label">Account Login</div>
         <div className="field-hint">
-          Use Google or GitHub for the product login. Email links are only a fallback.
+          This fork is a local streaming app. Settings, memories, saved VRMs, voices, and provider
+          keys stay on this machine unless you export a backup JSON.
         </div>
-        <div className="btn-row">
-          {enabledOAuthProviders.map((provider) => (
-            <button
-              className="btn-tech secondary"
-              disabled={!loginAvailable}
-              key={provider}
-              onClick={() => handleOAuth(provider)}
-              type="button"
-            >
-              {getSupabaseOAuthProviderLabel(provider)}
-            </button>
-          ))}
-          {accountMode.kind === 'supabase-cloud-sync' ? (
-            <button className="btn-tech secondary" onClick={onSignOut} type="button">
-              Sign Out
-            </button>
-          ) : null}
-        </div>
-        {enabledOAuthProviders.length === 0 ? (
-          <div className="field-hint">
-            Supabase Auth reports Google/GitHub disabled. Enable a provider with its OAuth client ID
-            and secret, then add the Supabase callback URL in that provider console.
-          </div>
-        ) : null}
-        <div className="status-copy">{loginStatus}</div>
       </div>
-
-      <form className="control-group" onSubmit={handleSubmit}>
-        <div className="control-label">Email Fallback</div>
-        <input
-          autoComplete="email"
-          className="input-tech"
-          disabled={!loginAvailable || sending}
-          inputMode="email"
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="streamer@example.com"
-          spellCheck={false}
-          type="email"
-          value={email}
-        />
-        <div className="btn-row">
-          <button
-            className="btn-tech secondary"
-            disabled={!loginAvailable || !normalizedEmail || sending}
-            type="submit"
-          >
-            {sending ? 'Sending Link...' : 'Send Email Link'}
-          </button>
-        </div>
-        <div className="status-copy">{loginStatus}</div>
-      </form>
 
       <div className="control-group">
         <div className="control-label">Browser Provider Keys</div>
         <div className="field-hint">
-          These keys are saved only in this browser vault for BYOK mode. Cloud sync stores status
-          descriptors only, never the secret values.
+          Keys are read from this browser vault and sent only to the local backend for the current
+          request. They are included in local transfer exports so another streaming PC can be cloned
+          1:1.
         </div>
         <div className="provider-key-list">
           {LOCAL_PROVIDER_KEYS.map((config) => {
@@ -415,28 +220,6 @@ export function AccountTab({
           type="file"
         />
         <div className="status-copy">{localTransferStatus}</div>
-      </div>
-
-      <div className="control-group">
-        <div className="control-label">Cloud Sync Config</div>
-        <div className="status-grid">
-          <div className="status-copy">
-            Supabase: <strong>{supabaseConfig.status}</strong>
-          </div>
-          <div className="status-copy">
-            Project: <strong>{supabaseConfig.url ?? 'none'}</strong>
-          </div>
-          <div className="status-copy">
-            Missing: <strong>{formatList(supabaseConfig.missing)}</strong>
-          </div>
-          <div className="status-copy">
-            Problems: <strong>{formatList(supabaseConfig.problems)}</strong>
-          </div>
-        </div>
-        <div className="field-hint">
-          Browser cloud sync uses the public anon key only. Provider API keys stay in the local key
-          vault and are not sent to account storage.
-        </div>
       </div>
     </>
   );

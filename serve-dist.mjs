@@ -65,6 +65,7 @@ function getUpstreamApiPath(path) {
   if (
     url.pathname.startsWith('/api/ai/') ||
     url.pathname.startsWith('/api/tts/') ||
+    url.pathname.startsWith('/api/twitch/') ||
     url.pathname.startsWith('/api/mock/')
   ) {
     url.pathname = url.pathname.slice('/api'.length);
@@ -109,8 +110,8 @@ createServer((request, response) => {
 function isAllowedApiProxyPath(pathname) {
   return (
     pathname.startsWith('/api/ai/') ||
-    pathname.startsWith('/api/byok/') ||
     pathname === '/api/health' ||
+    pathname.startsWith('/api/twitch/') ||
     pathname.startsWith('/api/tts/') ||
     pathname.startsWith('/api/mock/')
   );

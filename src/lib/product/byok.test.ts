@@ -1,21 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  assertOverlayTokenClaims,
-  assertSettingCanSync,
   BYOK_STACK_DECISION,
-  classifyByokSetting,
+  classifyLocalSetting,
   createProviderSecretDescriptor,
   isValidTwitchChannelName,
   redactProviderSecret,
-  type SyncedSettingRecord,
 } from './byok';
 
-describe('BYOK product contracts', () => {
-  it('locks the BYOK product stack to Supabase without payments or managed credits', () => {
+describe('local product contracts', () => {
+  it('locks the fork to local storage without auth, payments, or hosted database state', () => {
     expect(BYOK_STACK_DECISION).toEqual({
-      authProvider: 'supabase',
-      databaseProvider: 'supabase-postgres',
-      assetStorageProvider: 'supabase-storage',
+      authProvider: 'local',
+      databaseProvider: 'indexeddb',
+      assetStorageProvider: 'indexeddb',
       defaultStorageMode: 'local-only',
       defaultProviderKeyMode: 'local-indexeddb',
       localOnlySupported: true,
@@ -23,63 +20,15 @@ describe('BYOK product contracts', () => {
     });
   });
 
-  it('keeps provider keys out of synced settings by default', () => {
-    expect(classifyByokSetting('openai.apiKey', 'local-indexeddb')).toBe('local-secret');
-    expect(classifyByokSetting('openai.apiKey', 'hosted-encrypted-vault')).toBe('hosted-secret');
-    expect(classifyByokSetting('openrouter.apiKey', 'local-indexeddb')).toBe('local-secret');
-    expect(classifyByokSetting('openrouter.apiKey', 'hosted-encrypted-vault')).toBe(
-      'hosted-secret',
-    );
-    expect(classifyByokSetting('vercelGateway.apiKey', 'local-indexeddb')).toBe('local-secret');
-    expect(classifyByokSetting('vercelGateway.apiKey', 'hosted-encrypted-vault')).toBe(
-      'hosted-secret',
-    );
-    expect(classifyByokSetting('visualSettings', 'local-indexeddb')).toBe('public-overlay');
-    expect(classifyByokSetting('aiSettings.model', 'local-indexeddb')).toBe('synced-private');
-    expect(classifyByokSetting('auth.supabaseServiceRoleKey', 'local-indexeddb')).toBe(
-      'server-only',
-    );
-    expect(classifyByokSetting(' AUTH.SUPABASESERVICEROLEKEY ', 'local-indexeddb')).toBe(
-      'server-only',
-    );
-    expect(classifyByokSetting('OpenAI.ApiKey', 'local-indexeddb')).toBe('local-secret');
-  });
-
-  it('rejects accidental API key sync records', () => {
-    const record: SyncedSettingRecord = {
-      id: 'setting_1',
-      workspaceId: 'workspace_1',
-      key: 'openai.apiKey',
-      storageClass: 'synced-private',
-      valueJson: '"sk-test"',
-      updatedAt: '2026-05-15T12:00:00.000Z',
-    };
-
-    expect(() => assertSettingCanSync(record)).toThrow(/key vault/i);
-  });
-
-  it('derives sync safety from the key instead of trusting caller labels', () => {
-    expect(() =>
-      assertSettingCanSync({
-        id: 'setting_2',
-        workspaceId: 'workspace_1',
-        key: 'overlay.signingSecret',
-        storageClass: 'synced-private',
-        valueJson: '"server-secret"',
-        updatedAt: '2026-05-15T12:00:00.000Z',
-      }),
-    ).toThrow(/server-only/i);
-
-    expect(() =>
-      assertSettingCanSync({
-        id: 'setting_3',
-        workspaceId: 'workspace_1',
-        key: 'TAVILY.ApiKey',
-        storageClass: 'synced-private',
-        valueJson: '"tvly-test"',
-        updatedAt: '2026-05-15T12:00:00.000Z',
-      }),
-    ).toThrow(/key vault/i);
+  it('keeps provider keys classified as local secrets', () => {
+    expect(classifyLocalSetting('openai.apiKey')).toBe('local-secret');
+    expect(classifyLocalSetting('openrouter.apiKey')).toBe('local-secret');
+    expect(classifyLocalSetting('fishSpeech.apiKey')).toBe('local-secret');
+    expect(classifyLocalSetting('inworld.apiKey')).toBe('local-secret');
+    expect(classifyLocalSetting('tavily.apiKey')).toBe('local-secret');
+    expect(classifyLocalSetting('visualSettings')).toBe('public-overlay');
+    expect(classifyLocalSetting('aiSettings.model')).toBe('local-setting');
+    expect(classifyLocalSetting('overlay.signingSecret')).toBe('server-only');
   });
 
   it('redacts provider secrets and stores only descriptors', () => {
@@ -87,7 +36,7 @@ describe('BYOK product contracts', () => {
     expect(
       createProviderSecretDescriptor({
         id: 'secret_1',
-        workspaceId: 'workspace_1',
+        workspaceId: 'local-browser',
         provider: 'openai',
         keyName: ' openai.apiKey ',
         mode: 'local-indexeddb',
@@ -100,30 +49,8 @@ describe('BYOK product contracts', () => {
     });
   });
 
-  it('validates Twitch channel names for scene ownership', () => {
+  it('validates Twitch channel names for local scene settings', () => {
     expect(isValidTwitchChannelName('#subsect')).toBe(true);
     expect(isValidTwitchChannelName('bad channel')).toBe(false);
-  });
-
-  it('requires scoped future-dated overlay tokens', () => {
-    vi.setSystemTime(new Date('2026-05-15T12:00:00.000Z'));
-
-    expect(() =>
-      assertOverlayTokenClaims({
-        workspaceId: 'workspace_1',
-        sceneId: 'scene_1',
-        scopes: ['overlay:read'],
-        expiresAt: '2026-05-15T13:00:00.000Z',
-      }),
-    ).not.toThrow();
-
-    expect(() =>
-      assertOverlayTokenClaims({
-        workspaceId: 'workspace_1',
-        sceneId: 'scene_1',
-        scopes: [],
-        expiresAt: '2026-05-15T13:00:00.000Z',
-      }),
-    ).toThrow(/scope/i);
   });
 });

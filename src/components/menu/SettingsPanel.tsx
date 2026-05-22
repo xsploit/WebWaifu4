@@ -22,8 +22,6 @@ import type { PiperVoiceProfile } from '../../lib/tts/piper';
 import type { RemoteTtsProvider, RemoteTtsVoice } from '../../lib/tts/remote';
 import { DEFAULT_PERSONA } from '../../lib/chat/defaults';
 import type { GrilloMemoryState } from '../../lib/chat/grillo-memory';
-import type { ByokAccountMode } from '../../lib/product/account-mode';
-import type { SupabasePublicConfig } from '../../lib/product/supabase-env';
 import { AccountTab } from './tabs/AccountTab';
 import { AiTab } from './tabs/AiTab';
 import { AnimTab } from './tabs/AnimTab';
@@ -35,7 +33,6 @@ import { VoiceLabTab } from './tabs/VoiceLabTab';
 import { VrmTab } from './tabs/VrmTab';
 
 type SettingsPanelProps = {
-  accountMode: ByokAccountMode;
   activePersona: PersonaProfile | null;
   activeTab: SettingsTabId;
   activeTwitchChatters: number;
@@ -84,7 +81,6 @@ type SettingsPanelProps = {
   onSetTwitchChannel: (channel: string) => void;
   onSpeakLastReply: () => void;
   onStopTts: () => void;
-  onSupabaseLocalSignOut: () => void;
   onTabChange: (tab: SettingsTabId) => void;
   onTestVoice: () => void;
   onToggleChatOverlay: (open: boolean) => void;
@@ -122,8 +118,6 @@ type SettingsPanelProps = {
   twitchStreamTranscriptionStatus: string;
   twitchStreamVisionStatus: string;
   visualSettings: VisualSettings;
-  supabaseAuthStatus: string;
-  supabaseConfig: SupabasePublicConfig;
   modelsError: string | null;
   modelsLoading: boolean;
   voicesError: string | null;
@@ -143,7 +137,6 @@ const TABS: { id: SettingsTabId; label: string }[] = [
 ];
 
 export function SettingsPanel({
-  accountMode,
   activePersona,
   activeTab,
   activeTwitchChatters,
@@ -192,7 +185,6 @@ export function SettingsPanel({
   onSetTwitchChannel,
   onSpeakLastReply,
   onStopTts,
-  onSupabaseLocalSignOut,
   onTabChange,
   onTestVoice,
   onToggleChatOverlay,
@@ -230,8 +222,6 @@ export function SettingsPanel({
   twitchStreamTranscriptionStatus,
   twitchStreamVisionStatus,
   visualSettings,
-  supabaseAuthStatus,
-  supabaseConfig,
   modelsError,
   modelsLoading,
   voicesError,
@@ -243,13 +233,9 @@ export function SettingsPanel({
   const activeContent =
     activeTab === 'account' ? (
       <AccountTab
-        accountMode={accountMode}
-        authStatus={supabaseAuthStatus}
         localTransferStatus={localTransferStatus}
         onExportLocalBackup={onExportLocalBackup}
         onImportLocalBackup={onImportLocalBackup}
-        onSignOut={onSupabaseLocalSignOut}
-        supabaseConfig={supabaseConfig}
       />
     ) : activeTab === 'anim' ? (
       <AnimTab

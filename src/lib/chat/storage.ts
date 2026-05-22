@@ -284,10 +284,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
 
   const source = value as Partial<AiSettings>;
   const llmProvider =
-    source.llmProvider === 'openrouter-responses' ||
-    source.llmProvider === 'vercel-gateway-responses'
-      ? source.llmProvider
-      : defaults.llmProvider;
+    source.llmProvider === 'openrouter-responses' ? source.llmProvider : defaults.llmProvider;
   const requestedModel = String(source.model ?? defaults.model);
   const normalizedModel = requestedModel === 'gpt-5-mini' ? defaults.model : requestedModel;
   const requestedMemoryAgentModel = String(
@@ -1019,10 +1016,10 @@ function mergeBuiltInPersonas(
   return [...mergedBuiltIns, ...customPersonas];
 }
 
-export async function loadPersistedChatState(): Promise<PersistedChatState> {
+export function createDefaultPersistedChatState(): PersistedChatState {
   const defaultPersonas = createDefaultPersonas();
   const defaultActivePersonaId = defaultPersonas[0]?.id ?? '';
-  const defaults: PersistedChatState = {
+  return {
     personas: defaultPersonas,
     activePersonaId: defaultActivePersonaId,
     aiSettings: createDefaultAiSettings(),
@@ -1040,6 +1037,76 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
     sequencerSettings: createDefaultSequencerSettings(),
     visualSettings: createDefaultVisualSettings(),
   };
+}
+
+export function normalizePersistedChatStateSnapshot(value: unknown): PersistedChatState {
+  const defaults = createDefaultPersistedChatState();
+  if (!value || typeof value !== 'object') {
+    return defaults;
+  }
+
+  const source = value as Partial<PersistedChatState>;
+  const defaultPersonas = createDefaultPersonas();
+  const personas = Array.isArray(source.personas)
+    ? source.personas
+        .map(normalizePersonaProfile)
+        .filter((persona): persona is PersonaProfile => Boolean(persona))
+    : [];
+  const nextPersonas =
+    personas.length > 0
+      ? mergeBuiltInPersonas(personas, defaultPersonas)
+      : defaultPersonas.map((persona) => ({ ...persona }));
+  const requestedActivePersonaId =
+    typeof source.activePersonaId === 'string' && source.activePersonaId.trim()
+      ? source.activePersonaId.trim()
+      : (nextPersonas[0]?.id ?? defaults.activePersonaId);
+  const activePersonaId = nextPersonas.some((persona) => persona.id === requestedActivePersonaId)
+    ? requestedActivePersonaId
+    : (nextPersonas[0]?.id ?? defaults.activePersonaId);
+  const persistedPersonaVoiceBindings = normalizePersonaVoiceBindings(source.personaVoiceBindings);
+  const currentBundledModelId =
+    typeof source.currentBundledModelId === 'string' && source.currentBundledModelId.trim()
+      ? source.currentBundledModelId.trim()
+      : defaults.currentBundledModelId;
+  const currentCustomVrmModelId =
+    typeof source.currentCustomVrmModelId === 'string' &&
+    /^custom-vrm-[a-z0-9-]+$/i.test(source.currentCustomVrmModelId.trim())
+      ? source.currentCustomVrmModelId.trim()
+      : '';
+
+  return {
+    personas: nextPersonas,
+    activePersonaId,
+    aiSettings: normalizeAiSettings(source.aiSettings),
+    chatHistory: Array.isArray(source.chatHistory)
+      ? source.chatHistory
+          .map(normalizeChatMessage)
+          .filter((message): message is ChatMessage => Boolean(message))
+      : [],
+    relationshipMemory: normalizeRelationshipMemory(source.relationshipMemory),
+    relationshipMemories: normalizeRelationshipMemories(source.relationshipMemories),
+    personaVoiceBindings: {
+      ...createDefaultPersonaVoiceBindings(),
+      ...persistedPersonaVoiceBindings,
+    },
+    voiceLabVoices: normalizeVoiceLabVoices(source.voiceLabVoices),
+    uiState: normalizeUiState(source.uiState),
+    activeTab: normalizeSettingsTab(typeof source.activeTab === 'string' ? source.activeTab : null),
+    currentBundledModelId,
+    currentCustomVrmModelId,
+    twitchChannel: normalizeTwitchChannel(
+      typeof source.twitchChannel === 'string' ? source.twitchChannel : null,
+    ),
+    twitchSettings: normalizeTwitchSettings(source.twitchSettings),
+    sequencerSettings: normalizeSequencerSettings(source.sequencerSettings),
+    visualSettings: normalizeVisualSettings(source.visualSettings),
+  };
+}
+
+export async function loadPersistedChatState(): Promise<PersistedChatState> {
+  const defaults = createDefaultPersistedChatState();
+  const defaultPersonas = defaults.personas;
+  const defaultActivePersonaId = defaults.activePersonaId;
 
   try {
     const [

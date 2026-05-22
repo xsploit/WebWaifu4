@@ -165,20 +165,6 @@ const CAMERA_PRESETS = {
   },
 } as const;
 
-const ROUTELET_URL_PARAMS =
-  typeof window === 'undefined'
-    ? new URLSearchParams()
-    : new URLSearchParams(window.location.search);
-const ROUTELET_RENDER_MODE = ROUTELET_URL_PARAMS.get('routelet') === '1';
-const ROUTELET_QUALITY_MODE =
-  ROUTELET_RENDER_MODE && ROUTELET_URL_PARAMS.get('routeletQuality') === '1';
-const ROUTELET_PIXEL_RATIO = ROUTELET_RENDER_MODE
-  ? THREE.MathUtils.clamp(
-      Number(ROUTELET_URL_PARAMS.get('routeletDpr') ?? (ROUTELET_QUALITY_MODE ? 1.25 : 1)) || 1,
-      1,
-      2,
-    )
-  : 1;
 const BLINK_CLOSE_SECONDS = 0.045;
 const BLINK_HOLD_SECONDS = 0.028;
 const BLINK_OPEN_SECONDS = 0.105;
@@ -1063,20 +1049,7 @@ function updateVrmFrame(
     updateLipSync(vrm, ttsManager);
   }
 
-  if (!ROUTELET_RENDER_MODE) {
-    vrm.update(delta);
-    return;
-  }
-
-  vrm.humanoid.update();
-  if (vrm.lookAt?.autoUpdate !== false) {
-    vrm.lookAt?.update(delta);
-  }
-  vrm.expressionManager?.update();
-  vrm.materials?.forEach((material) => {
-    const updatableMaterial = material as THREE.Material & { update?: (delta: number) => void };
-    updatableMaterial.update?.(delta);
-  });
+  vrm.update(delta);
 }
 
 function SceneRuntime({
@@ -1102,9 +1075,7 @@ function SceneRuntime({
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
     const cameraRig = getCameraRigVectors(visualSettings);
 
-    gl.setPixelRatio(
-      ROUTELET_RENDER_MODE ? ROUTELET_PIXEL_RATIO : Math.min(window.devicePixelRatio, 2),
-    );
+    gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     gl.setClearColor(0x02040a, 0);
     gl.autoClear = true;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1122,11 +1093,9 @@ function SceneRuntime({
     cameraLookAtRef.current.copy(cameraRig.target);
     cameraLookAtTargetRef.current.copy(cameraRig.target);
 
-    if (!ROUTELET_RENDER_MODE) {
-      const postProcessing = initPostProcessing(gl, scene, perspectiveCamera);
-      postProcessingRef.current = postProcessing;
-      applyPostProcessingSettings(postProcessing, visualSettings);
-    }
+    const postProcessing = initPostProcessing(gl, scene, perspectiveCamera);
+    postProcessingRef.current = postProcessing;
+    applyPostProcessingSettings(postProcessing, visualSettings);
 
     return () => {
       postProcessingRef.current?.composer.dispose();
@@ -1906,12 +1875,12 @@ export function VrmStage({
       onWheel={handleWheel}
     >
       <Canvas
-        dpr={ROUTELET_RENDER_MODE ? ROUTELET_PIXEL_RATIO : [1, 2]}
+        dpr={[1, 2]}
         gl={{
           alpha: true,
-          antialias: !ROUTELET_RENDER_MODE || ROUTELET_QUALITY_MODE,
+          antialias: true,
           powerPreference: 'high-performance',
-          precision: ROUTELET_RENDER_MODE && !ROUTELET_QUALITY_MODE ? 'mediump' : 'highp',
+          precision: 'highp',
           stencil: false,
         }}
       >

@@ -15,10 +15,7 @@ const LIP_SYNC_PROFILE_URL =
         `${import.meta.env.BASE_URL}assets/lipsync-profile.json`,
         window.location.href,
       ).toString();
-const AUTO_RESUME_AUDIO =
-  import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true' ||
-  (typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('routelet') === '1');
+const AUTO_RESUME_AUDIO = import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true';
 const REMOTE_PCM_FADE_SECONDS = 0.006;
 const REMOTE_PCM_CROSSFADE_SECONDS = 0.004;
 

@@ -7,5 +7,4 @@ interface Window {
     resume: () => Promise<string>;
   };
   __YOURWIFEY_AUDIO_STREAM__?: () => MediaStream | null;
-  __yourwifeyRouteletSpeak?: (text: string) => Promise<void>;
 }

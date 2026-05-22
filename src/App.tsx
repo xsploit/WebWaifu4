@@ -5,11 +5,9 @@ import { ChatLog } from './components/chat/ChatLog';
 import { VrmStage } from './components/VrmStage';
 import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
-import { ProductPages } from './components/product/ProductPages';
 import {
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
-  DEFAULT_VERCEL_GATEWAY_EMBEDDING_MODEL,
   DEFAULT_PERSONA,
   DEFAULT_OPENAI_MODEL,
   createDefaultAiSettings,
@@ -102,7 +100,6 @@ import type {
   ManualPlayRequest,
   SavedVrmModelSummary,
   SettingsTabId,
-  VisualSettings,
 } from './lib/menu/types';
 import { fetchGameAssetBlob } from './lib/cdn/assets';
 import {
@@ -134,7 +131,6 @@ import type {
 } from './lib/tts/remote';
 import {
   getOverlaySocketProtocols,
-  getOverlaySocketToken,
   getOverlaySocketUrl,
   parseOverlayServerEvent,
   type OverlayServerEvent,
@@ -148,23 +144,7 @@ import {
   type TwitchStreamTranscript,
   type TwitchStreamTranscriptionResponse,
 } from './lib/twitch/stream-transcription';
-import { resolveByokAccountMode, type SupabaseAuthIdentity } from './lib/product/account-mode';
-import {
-  appRouteNeedsAuth,
-  buildLoginRedirectPath,
-  consumeStoredLoginNextPath,
-  getInternalAppPath,
-  navigateToAppPath,
-  parseAppRoute,
-} from './lib/product/app-route';
-import {
-  signOutSupabaseSdkAuth,
-  startSupabaseSdkAuthSessionLifecycle,
-} from './lib/product/supabase-sdk-auth';
-import { readSupabaseBrowserEnv } from './lib/product/supabase-env';
-import { applyCloudSettingRecords } from './lib/product/cloud-settings';
-import { fetchByokOverlayConfig, getSupabaseAccessToken } from './lib/product/byok-api';
-import type { ProviderKind, SyncedSettingRecord } from './lib/product/byok';
+import type { ProviderKind } from './lib/product/byok';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
 import {
   base64ToBlob,
@@ -334,50 +314,7 @@ const STREAM_BOT_WS_ENABLED =
   import.meta.env['VITE_OVERLAY_WS_ENABLED'] === 'true';
 const DIRECT_COMMAND_PREFIXES = ['!yw', '!yourwifey', '!waifu'];
 const AI_PROXY_URL = (import.meta.env['VITE_AI_PROXY_URL'] || '').trim();
-const BROWSER_URL_PARAMS =
-  typeof window === 'undefined'
-    ? new URLSearchParams()
-    : new URLSearchParams(window.location.search);
-const ROUTELET_MODE = BROWSER_URL_PARAMS.get('routelet') === '1';
-const AUTO_RESUME_BROWSER_AUDIO =
-  import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true' || ROUTELET_MODE;
-const ROUTELET_SAY_TEXT = ROUTELET_MODE
-  ? (BROWSER_URL_PARAMS.get('routeletSay') ?? '').trim().slice(0, 240)
-  : '';
-const ROUTELET_SAY_DELAY_MS = ROUTELET_MODE
-  ? Math.min(Math.max(Number(BROWSER_URL_PARAMS.get('routeletSayDelayMs') ?? 0) || 0, 0), 60000)
-  : 0;
-
-function stripOverlayTokenFromLocation() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  const url = new URL(window.location.href);
-  if (!url.searchParams.has('token')) {
-    return;
-  }
-  url.searchParams.delete('token');
-  window.history.replaceState(window.history.state, document.title, url.toString());
-}
-
-function getOverlayControlsEnabled() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  const params = new URLSearchParams(window.location.search);
-  return ['controls', 'settings', 'editor'].some((key) => {
-    const value = params.get(key)?.trim().toLowerCase();
-    return value === '1' || value === 'true' || value === 'yes';
-  });
-}
-
-function getRouteletVisualSettings(settings: VisualSettings): VisualSettings {
-  return {
-    ...settings,
-    outline: false,
-    colorCorr: false,
-  };
-}
+const AUTO_RESUME_BROWSER_AUDIO = import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true';
 const PIPER_TIMING_TICKS_PER_SECOND = 10000000;
 const SUBTITLE_WORD_WINDOW = 14;
 const SUBTITLE_CLEAR_DELAY_MS = 1200;
@@ -685,33 +622,12 @@ async function getBrowserProviderApiKey({
   return providerVault.getSecret(provider, keyName);
 }
 
-function getVercelGatewayByokProvider(model?: string) {
-  const providerPrefix = model?.split('/')[0]?.trim().toLowerCase() ?? '';
-  return providerPrefix === 'openai' ? 'openai' : '';
-}
-
-function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider'], model?: string) {
+function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
   if (llmProvider === 'openrouter-responses') {
     return {
       keyName: 'openrouter.apiKey',
       label: 'OpenRouter',
       provider: 'openrouter' as const,
-    };
-  }
-  if (llmProvider === 'vercel-gateway-responses') {
-    const gatewayByokProvider = getVercelGatewayByokProvider(model);
-    if (gatewayByokProvider === 'openai') {
-      return {
-        gatewayByokProvider,
-        keyName: 'openai.apiKey',
-        label: 'OpenAI via Vercel AI Gateway',
-        provider: 'openai' as const,
-      };
-    }
-    return {
-      keyName: 'vercelGateway.apiKey',
-      label: 'Vercel AI Gateway',
-      provider: 'vercel_gateway' as const,
     };
   }
   return {
@@ -742,7 +658,6 @@ async function getBrowserRemoteTtsApiKey(
 
 async function buildBackendProviderHeaders({
   llmProvider,
-  model,
   providerKeyVaultWorkspaceId,
   ttsBridge,
 }: {
@@ -752,16 +667,13 @@ async function buildBackendProviderHeaders({
   ttsBridge?: RemoteTtsRequest;
 }) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const providerConfig = getBrowserLlmProviderConfig(llmProvider, model);
+  const providerConfig = getBrowserLlmProviderConfig(llmProvider);
   const apiKey = await getBrowserProviderApiKey({
     keyName: providerConfig.keyName,
     provider: providerConfig.provider,
     providerKeyVaultWorkspaceId,
   });
   headers['x-yourwifey-llm-provider'] = llmProvider;
-  if ('gatewayByokProvider' in providerConfig && providerConfig.gatewayByokProvider) {
-    headers['x-yourwifey-llm-provider-key-kind'] = providerConfig.gatewayByokProvider;
-  }
   if (apiKey) {
     headers['x-yourwifey-llm-provider-key'] = apiKey;
   }
@@ -783,11 +695,6 @@ async function buildBackendProviderHeaders({
     if (ttsApiKey) {
       headers['x-yourwifey-tts-provider-key'] = ttsApiKey;
     }
-  }
-
-  const accessToken = getSupabaseAccessToken();
-  if (accessToken) {
-    headers['authorization'] = `Bearer ${accessToken}`;
   }
 
   return headers;
@@ -997,10 +904,6 @@ async function requestTextEmbedding(
   try {
     const headers = await buildBackendProviderHeaders({
       llmProvider,
-      model:
-        llmProvider === 'vercel-gateway-responses'
-          ? DEFAULT_VERCEL_GATEWAY_EMBEDDING_MODEL
-          : undefined,
       providerKeyVaultWorkspaceId,
     });
     const response = await fetch(getAiEmbeddingUrl(), {
@@ -1011,11 +914,7 @@ async function requestTextEmbedding(
         input: text.slice(0, 4000),
         llmProvider,
         model:
-          llmProvider === 'openrouter-responses'
-            ? DEFAULT_OPENROUTER_EMBEDDING_MODEL
-            : llmProvider === 'vercel-gateway-responses'
-              ? DEFAULT_VERCEL_GATEWAY_EMBEDDING_MODEL
-              : undefined,
+          llmProvider === 'openrouter-responses' ? DEFAULT_OPENROUTER_EMBEDDING_MODEL : undefined,
       }),
     });
     if (!response.ok) {
@@ -1595,83 +1494,7 @@ function mergeRelationshipMemoryInWorker(
 function App() {
   const safeArea = DEFAULT_SAFE_AREA;
   const sceneActive = true;
-  const supabaseConfig = useMemo(
-    () => readSupabaseBrowserEnv(import.meta.env as Record<string, string | undefined>),
-    [],
-  );
-  const [supabaseAuthUser, setSupabaseAuthUser] = useState<SupabaseAuthIdentity | null>(null);
-  const [supabaseAuthStatus, setSupabaseAuthStatus] = useState('Checking Supabase session state.');
-  const [supabaseAuthChecked, setSupabaseAuthChecked] = useState(false);
-  const [appRoute, setAppRoute] = useState(() =>
-    parseAppRoute(typeof window === 'undefined' ? '/' : window.location),
-  );
-  const accountMode = useMemo(
-    () =>
-      resolveByokAccountMode({
-        authUser: supabaseAuthUser,
-        supabaseConfig,
-      }),
-    [supabaseAuthUser, supabaseConfig],
-  );
-  const providerKeyVaultWorkspaceId = useMemo(
-    () =>
-      accountMode.kind === 'supabase-cloud-sync' ? `user:${accountMode.user.id}` : 'local-browser',
-    [accountMode],
-  );
-  const handleNavigate = useCallback((path: string) => {
-    setAppRoute(navigateToAppPath(path));
-  }, []);
-  useEffect(() => {
-    const handlePopState = () => {
-      setAppRoute(parseAppRoute(window.location));
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, []);
-  useEffect(() => {
-    const lifecycle = startSupabaseSdkAuthSessionLifecycle({
-      config: supabaseConfig,
-      onResult(result) {
-        if (
-          result.cleanUrl &&
-          typeof window !== 'undefined' &&
-          result.cleanUrl !== window.location.href
-        ) {
-          window.history.replaceState(window.history.state, document.title, result.cleanUrl);
-          setAppRoute(parseAppRoute(window.location));
-        }
-
-        setSupabaseAuthUser(result.user);
-        setSupabaseAuthStatus(result.message);
-        setSupabaseAuthChecked(true);
-        if (result.status === 'authenticated' && typeof window !== 'undefined') {
-          const currentRoute = parseAppRoute(window.location);
-          if (
-            currentRoute.kind === 'home' ||
-            currentRoute.kind === 'login' ||
-            currentRoute.kind === 'auth-callback'
-          ) {
-            const nextPath = consumeStoredLoginNextPath(undefined, '/dashboard');
-            setAppRoute(navigateToAppPath(nextPath));
-          }
-        }
-      },
-      onStatus: setSupabaseAuthStatus,
-    });
-
-    return () => {
-      lifecycle.stop();
-    };
-  }, [supabaseConfig]);
-
-  const handleSupabaseLocalSignOut = useCallback(() => {
-    void signOutSupabaseSdkAuth(supabaseConfig);
-    setSupabaseAuthUser(null);
-    setSupabaseAuthChecked(true);
-    setSupabaseAuthStatus('Signed out locally. Sign in to open the editor and cloud settings.');
-  }, [supabaseConfig]);
+  const providerKeyVaultWorkspaceId = 'local-browser';
   const [menuOpen, setMenuOpen] = useState(() => createDefaultUiState().menuOpen);
   const [chatBarOpen, setChatBarOpen] = useState(false);
   const [chatLogOpen, setChatLogOpen] = useState(() => createDefaultUiState().chatLogOpen);
@@ -1790,7 +1613,6 @@ function App() {
   const subtitleClearTimeoutRef = useRef<number | null>(null);
   const liveBridgeSubtitleActiveRef = useRef(false);
   const startupStatusSentRef = useRef(false);
-  const routeletSaySpokenRef = useRef(false);
   const appliedPersonaSceneKeyRef = useRef<string | null>(null);
   const memoryAgentWorkerRef = useRef<Worker | null>(null);
   const memoryAgentTimeoutRef = useRef<number | null>(null);
@@ -2316,19 +2138,6 @@ function App() {
     },
     [aiSettings, providerKeyVaultWorkspaceId, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
   );
-
-  useEffect(() => {
-    if (!ROUTELET_MODE) {
-      return;
-    }
-
-    window.__yourwifeyRouteletSpeak = (text: string) =>
-      speakWithSelectedTts(String(text ?? '').slice(0, 240), 'routelet speech');
-
-    return () => {
-      delete window.__yourwifeyRouteletSpeak;
-    };
-  }, [speakWithSelectedTts]);
 
   const updateAssistantMessageContent = useCallback((messageId: string, content: string) => {
     setChatHistory((current) =>
@@ -2926,35 +2735,6 @@ function App() {
     void speakWithSelectedTts(latestAssistantMessage.content, 'latest reply');
   }, [aiSettings.ttsEnabled, latestAssistantMessage, speakWithSelectedTts]);
 
-  useEffect(() => {
-    if (
-      !hydrated ||
-      !ROUTELET_SAY_TEXT ||
-      routeletSaySpokenRef.current ||
-      !aiSettings.ttsEnabled ||
-      (aiSettings.ttsProvider === 'piper' && !selectedTtsVoice)
-    ) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      if (routeletSaySpokenRef.current) {
-        return;
-      }
-
-      routeletSaySpokenRef.current = true;
-      void speakWithSelectedTts(ROUTELET_SAY_TEXT, 'routelet smoke line');
-    }, ROUTELET_SAY_DELAY_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [
-    aiSettings.ttsEnabled,
-    aiSettings.ttsProvider,
-    hydrated,
-    selectedTtsVoice,
-    speakWithSelectedTts,
-  ]);
-
   const stopSubtitleTracking = useCallback((clearNow = false) => {
     if (subtitleIntervalRef.current !== null) {
       window.clearInterval(subtitleIntervalRef.current);
@@ -3188,11 +2968,7 @@ function App() {
       setCurrentBundledModelId(persistedState.currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID);
       setCurrentCustomVrmModelId(persistedState.currentCustomVrmModelId);
       setSequencerSettings(persistedState.sequencerSettings);
-      setVisualSettings(
-        ROUTELET_MODE
-          ? getRouteletVisualSettings(persistedState.visualSettings)
-          : persistedState.visualSettings,
-      );
+      setVisualSettings(persistedState.visualSettings);
 
       setHydrated(true);
       void loadAvailableModels();
@@ -5286,42 +5062,9 @@ function App() {
     playAssistantResponse,
   ]);
 
-  const productPageActive = ['account', 'auth-callback', 'dashboard', 'home', 'login'].includes(
-    appRoute.kind,
-  );
-  const overlayPageActive = appRoute.kind === 'overlay';
-  const overlayControlsActive = overlayPageActive && getOverlayControlsEnabled();
-  const overlayConfigLoadRef = useRef('');
-  const [overlayConfigStatus, setOverlayConfigStatus] = useState('');
-  const [overlayConfigReady, setOverlayConfigReady] = useState(false);
-  const overlayToken = useMemo(() => {
-    if (appRoute.kind !== 'overlay' || typeof window === 'undefined') {
-      return '';
-    }
-    return getOverlaySocketToken();
-  }, [appRoute]);
-  const routeNeedsAuth = appRouteNeedsAuth(appRoute, {
-    overlayTokenPresent: Boolean(overlayToken),
-  });
-  const routeAuthPending = routeNeedsAuth && !supabaseAuthChecked;
-  const routeAuthBlocked =
-    routeNeedsAuth && supabaseAuthChecked && accountMode.kind !== 'supabase-cloud-sync';
-  const productShellActive = productPageActive || routeAuthPending || routeAuthBlocked;
-  useEffect(() => {
-    if (overlayControlsActive) {
-      setMenuOpen(true);
-    }
-  }, [overlayControlsActive]);
-  useEffect(() => {
-    if (!routeAuthBlocked) {
-      return;
-    }
-
-    const nextPath =
-      typeof window === 'undefined' ? appRoute.path : getInternalAppPath(window.location);
-    setSupabaseAuthStatus('Sign in to open the editor, dashboard, and waifu settings.');
-    setAppRoute(navigateToAppPath(buildLoginRedirectPath(nextPath)));
-  }, [appRoute, routeAuthBlocked]);
+  const productShellActive = false;
+  const overlayPageActive = false;
+  const overlayControlsActive = false;
   const persistedStateSnapshot = useMemo<PersistedChatState>(
     () => ({
       activePersonaId,
@@ -5369,7 +5112,7 @@ function App() {
   const handleExportLocalTransferBackup = useCallback(async () => {
     setLocalTransferStatus('Preparing local transfer backup...');
     const providerVault = createBrowserProviderKeyVault({
-      mode: accountMode.providerKeyMode,
+      mode: 'local-indexeddb',
       workspaceId: providerKeyVaultWorkspaceId,
     });
     const models = await listSavedVrmModels();
@@ -5405,14 +5148,14 @@ function App() {
     setLocalTransferStatus(
       `Exported ${fileName} with ${backup.providerSecrets.length} keys and ${backup.savedVrmModels.length} saved VRMs.`,
     );
-  }, [accountMode.providerKeyMode, persistedStateSnapshot, providerKeyVaultWorkspaceId]);
+  }, [persistedStateSnapshot, providerKeyVaultWorkspaceId]);
 
   const handleImportLocalTransferBackup = useCallback(
     async (file: File) => {
       setLocalTransferStatus(`Importing ${file.name}...`);
       const backup = parseLocalTransferBackup(await file.text());
       const providerVault = createBrowserProviderKeyVault({
-        mode: accountMode.providerKeyMode,
+        mode: 'local-indexeddb',
         workspaceId: providerKeyVaultWorkspaceId,
       });
       await providerVault.importSecrets(backup.providerSecrets);
@@ -5476,7 +5219,6 @@ function App() {
       );
     },
     [
-      accountMode.providerKeyMode,
       handleLoadBundledModel,
       prepareForModelSwap,
       providerKeyVaultWorkspaceId,
@@ -5484,94 +5226,6 @@ function App() {
       savedVrmStatus,
     ],
   );
-  const handleApplyCloudSettings = useCallback(
-    (records: SyncedSettingRecord[]) => {
-      const next = applyCloudSettingRecords(persistedStateSnapshot, records);
-      setPersonas(next.personas);
-      setActivePersonaId(next.activePersonaId);
-      setPersonaVoiceBindings(next.personaVoiceBindings);
-      setVoiceLabVoices(next.voiceLabVoices);
-      setAiSettings(next.aiSettings);
-      setChatInput(next.uiState.chatDraft);
-      setChatLogOpen(next.uiState.chatLogOpen);
-      setCurrentBundledModelId(next.currentBundledModelId);
-      setCurrentCustomVrmModelId(next.currentCustomVrmModelId);
-      setSequencerSettings(next.sequencerSettings);
-      setTwitchChannel(next.twitchChannel);
-      setTwitchSettings(next.twitchSettings);
-      setVisualSettings(next.visualSettings);
-
-      if (
-        next.currentBundledModelId &&
-        next.currentBundledModelId !== currentBundledModelId &&
-        BUNDLED_VRM_MODELS.some((model) => model.id === next.currentBundledModelId)
-      ) {
-        void handleLoadBundledModel(next.currentBundledModelId).catch(() => {});
-      }
-    },
-    [currentBundledModelId, handleLoadBundledModel, persistedStateSnapshot],
-  );
-  const handleApplyCloudSettingsRef = useRef(handleApplyCloudSettings);
-  useEffect(() => {
-    handleApplyCloudSettingsRef.current = handleApplyCloudSettings;
-  }, [handleApplyCloudSettings]);
-  const overlaySceneId = appRoute.kind === 'overlay' ? appRoute.sceneId : '';
-  useEffect(() => {
-    if (appRoute.kind !== 'overlay' || !overlaySceneId) {
-      setOverlayConfigStatus('');
-      setOverlayConfigReady(false);
-      return;
-    }
-
-    if (!overlayToken) {
-      overlayConfigLoadRef.current = '';
-      const privatePreview = overlaySceneId === 'private-preview';
-      setOverlayConfigStatus(privatePreview ? '' : 'Signed OBS overlay token required.');
-      setOverlayConfigReady(privatePreview);
-      return;
-    }
-
-    const loadKey = `${overlaySceneId}:${overlayToken}`;
-    if (overlayConfigLoadRef.current === loadKey) {
-      return;
-    }
-
-    let cancelled = false;
-    overlayConfigLoadRef.current = loadKey;
-    setOverlayConfigStatus('Loading OBS overlay config...');
-    setOverlayConfigReady(false);
-    fetchByokOverlayConfig({
-      sceneId: overlaySceneId,
-      token: overlayToken,
-    })
-      .then((response) => {
-        if (cancelled) {
-          return;
-        }
-        handleApplyCloudSettingsRef.current(response.settings);
-        if (response.scene.twitchChannel) {
-          setTwitchChannel(response.scene.twitchChannel);
-        }
-        stripOverlayTokenFromLocation();
-        setOverlayConfigStatus('');
-        setOverlayConfigReady(true);
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-        overlayConfigLoadRef.current = '';
-        const message = error instanceof Error ? error.message : 'OBS overlay config failed.';
-        console.error(`[BYOK Overlay] ${message}`);
-        setOverlayConfigStatus(message);
-        setOverlayConfigReady(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [appRoute.kind, overlaySceneId, overlayToken]);
-
   return (
     <div
       className={`shell ${productShellActive ? 'product-shell-mode' : ''} ${
@@ -5594,47 +5248,6 @@ function App() {
         setVisualSettings={setVisualSettings}
         visualSettings={visualSettings}
       />
-
-      {productPageActive ? (
-        <ProductPages
-          accountMode={accountMode}
-          authStatus={supabaseAuthStatus}
-          onApplyCloudSettings={handleApplyCloudSettings}
-          onNavigate={handleNavigate}
-          onSignOut={handleSupabaseLocalSignOut}
-          persistedState={persistedStateSnapshot}
-          route={appRoute}
-          supabaseConfig={supabaseConfig}
-          twitchChannel={twitchChannel}
-        />
-      ) : null}
-
-      {routeAuthPending || routeAuthBlocked ? (
-        <section className="product-card product-card-narrow product-auth-gate">
-          <p className="product-eyebrow">Account required</p>
-          <h1>Checking your session…</h1>
-          <p>
-            YourWifey syncs the waifu setup to your account, while provider API keys stay in this
-            browser vault.
-          </p>
-          <p className="product-status">{supabaseAuthStatus}</p>
-        </section>
-      ) : null}
-
-      {overlayPageActive && overlayConfigStatus ? (
-        <div className="overlay-config-status">{overlayConfigStatus}</div>
-      ) : null}
-
-      {overlayPageActive && overlayConfigReady ? (
-        <div
-          aria-hidden="true"
-          className="overlay-ready-marker"
-          data-scene-id={overlaySceneId}
-          data-testid="obs-overlay-ready"
-        >
-          OBS overlay ready
-        </div>
-      ) : null}
 
       {!productShellActive && (!overlayPageActive || overlayControlsActive) ? (
         <div className="ui-layer">
@@ -5660,7 +5273,6 @@ function App() {
 
           {menuOpen ? (
             <SettingsPanel
-              accountMode={accountMode}
               activePersona={activePersona}
               activeTab={activeTab}
               activeTwitchChatters={twitchActiveChatterCount}
@@ -5803,7 +5415,6 @@ function App() {
               }}
               onSpeakLastReply={handleSpeakLastReply}
               onStopTts={handleStopTts}
-              onSupabaseLocalSignOut={handleSupabaseLocalSignOut}
               onTabChange={setActiveTab}
               onTestVoice={handleTestTtsVoice}
               onToggleChatOverlay={setChatLogOpen}
@@ -5831,8 +5442,6 @@ function App() {
               remoteVoicesError={remoteTtsVoicesError}
               remoteVoicesLoading={remoteTtsVoicesLoading}
               voiceLabVoices={voiceLabVoices}
-              supabaseAuthStatus={supabaseAuthStatus}
-              supabaseConfig={supabaseConfig}
               twitchAiModeLabel={twitchModeLabel}
               twitchChannel={twitchChannel}
               twitchConnectionLabel={twitchConnectionLabel}

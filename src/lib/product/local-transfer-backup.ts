@@ -1,8 +1,10 @@
 import type { PersistedChatState } from '../chat/types';
+import { normalizePersistedChatStateSnapshot } from '../chat/storage';
 import type { SavedVrmModelSummary } from '../menu/types';
 import type { ProviderSecretRecord } from './provider-key-vault';
 
-export const LOCAL_TRANSFER_BACKUP_APP = 'yourwifey-byok';
+export const LOCAL_TRANSFER_BACKUP_APP = 'yourwifey-local';
+const LEGACY_LOCAL_TRANSFER_BACKUP_APPS = new Set(['yourwifey-byok']);
 export const LOCAL_TRANSFER_BACKUP_KIND = 'local-transfer-backup';
 export const LOCAL_TRANSFER_BACKUP_VERSION = 1;
 
@@ -64,7 +66,8 @@ export function parseLocalTransferBackup(value: string): YourWifeyLocalTransferB
 
   const backup = parsed as Partial<YourWifeyLocalTransferBackupV1>;
   if (
-    backup.app !== LOCAL_TRANSFER_BACKUP_APP ||
+    (backup.app !== LOCAL_TRANSFER_BACKUP_APP &&
+      !LEGACY_LOCAL_TRANSFER_BACKUP_APPS.has(String(backup.app ?? ''))) ||
     backup.kind !== LOCAL_TRANSFER_BACKUP_KIND ||
     backup.formatVersion !== LOCAL_TRANSFER_BACKUP_VERSION
   ) {
@@ -98,7 +101,7 @@ export function parseLocalTransferBackup(value: string): YourWifeyLocalTransferB
           .map(normalizeSavedVrmModel)
           .filter((model): model is LocalTransferSavedVrmModel => Boolean(model))
       : [],
-    state: backup.state as PersistedChatState,
+    state: normalizePersistedChatStateSnapshot(backup.state),
   };
 }
 
@@ -134,7 +137,7 @@ function normalizeProviderSecretRecord(value: unknown): ProviderSecretRecord | n
     workspaceId: String(record.workspaceId ?? ''),
     provider: record.provider,
     keyName: String(record.keyName),
-    mode: record.mode === 'hosted-encrypted-vault' ? 'hosted-encrypted-vault' : 'local-indexeddb',
+    mode: 'local-indexeddb',
     redactedLabel: String(record.redactedLabel ?? ''),
     createdAt: String(record.createdAt ?? new Date().toISOString()),
     updatedAt: String(record.updatedAt ?? new Date().toISOString()),

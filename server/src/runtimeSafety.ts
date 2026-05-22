@@ -1,7 +1,3 @@
-export function canUseServerProviderProxy(providerProxyEnabled: boolean, proxyAuthOk: boolean) {
-  return providerProxyEnabled && proxyAuthOk;
-}
-
 export type ServerProviderProxyModelDecision =
   | {
       allowed: true;

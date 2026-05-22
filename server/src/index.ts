@@ -30,14 +30,7 @@ import {
   captureTwitchStreamFrame,
   transcribeTwitchStreamSample,
 } from './twitch/TwitchStreamTranscriber.js';
-import { summarizeByokRuntimeHealth } from './byokHealth.js';
-import {
-  canUseServerProviderProxy,
-  getRawPathParts,
-  resolveServerProviderProxyModel,
-  resolveRuntimeHealthStateKey,
-  safeDecodePathParts,
-} from './runtimeSafety.js';
+import { resolveServerProviderProxyModel, resolveRuntimeHealthStateKey } from './runtimeSafety.js';
 import {
   getProviderEmbeddingModel,
   getProviderEnvApiKey,
@@ -61,33 +54,6 @@ type ProviderModelsPayload = {
   error?: {
     message?: string;
   };
-};
-
-type ByokApiHandlerRequest = {
-  body?: unknown;
-  headers?: Record<string, string | string[] | undefined>;
-  method?: string;
-  query?: Record<string, string | string[] | undefined>;
-};
-
-type ByokApiHandlerResponse = {
-  json: (body: unknown) => void;
-  setHeader: (name: string, value: string | number | readonly string[]) => void;
-  status: (code: number) => ByokApiHandlerResponse;
-};
-
-type ByokApiHandler = (
-  request: ByokApiHandlerRequest,
-  response: ByokApiHandlerResponse,
-) => Promise<void> | void;
-
-type MatchedByokApiRoute = {
-  modulePath: string;
-  query: Record<string, string | string[] | undefined>;
-};
-
-type MalformedByokApiRoute = {
-  malformed: true;
 };
 
 const CORS_REQUEST_HEADERS =
@@ -322,37 +288,6 @@ function getHeaderSecret(request: IncomingMessage, name: string) {
   return getHeaderValue(request, name)?.trim() ?? '';
 }
 
-function readBearerToken(request: IncomingMessage) {
-  const authorization = getHeaderValue(request, 'authorization') ?? '';
-  const match = authorization.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || null;
-}
-
-async function hasServerProviderProxyAuth(request: IncomingMessage) {
-  const token = readBearerToken(request);
-  if (!token) {
-    return false;
-  }
-  const supabaseUrl =
-    process.env.SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim() || '';
-  const supabaseAnonKey =
-    process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ||
-    process.env.SUPABASE_ANON_KEY?.trim() ||
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
-    process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
-    '';
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return false;
-  }
-  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
-    headers: {
-      apikey: supabaseAnonKey,
-      authorization: `Bearer ${token}`,
-    },
-  }).catch(() => null);
-  return Boolean(response?.ok);
-}
-
 function getRuntimeTavilyApiKeyWithAuth(
   baseConfig: StreamBotConfig,
   request: IncomingMessage,
@@ -371,10 +306,7 @@ function getRuntimeChatProvider(
   model?: string,
   allowServerProxy = false,
 ) {
-  const allowServerKeys = canUseServerProviderProxy(
-    baseConfig.providerProxyEnabled,
-    allowServerProxy,
-  );
+  const allowServerKeys = baseConfig.providerProxyEnabled && allowServerProxy;
   const providerName = normalizeRuntimeLlmProvider(
     getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
   );
@@ -758,75 +690,6 @@ async function createOpenAiEmbedding(config: StreamBotConfig, input: string, mod
   return embedding;
 }
 
-function matchByokApiRoute(url: URL): MatchedByokApiRoute | MalformedByokApiRoute | null {
-  const rawParts = getRawPathParts(url.pathname);
-  if (rawParts[0] !== 'api' || rawParts[1] !== 'byok') {
-    return null;
-  }
-
-  const parts = safeDecodePathParts(url.pathname);
-  if (!parts) {
-    return { malformed: true };
-  }
-
-  if (parts[0] !== 'api' || parts[1] !== 'byok') {
-    return null;
-  }
-
-  const query = Object.fromEntries(url.searchParams.entries()) as Record<
-    string,
-    string | string[] | undefined
-  >;
-  const route = (...path: string[]) =>
-    new URL(`../../api-dist/api/byok/${path.join('/')}`, import.meta.url).href;
-
-  if (parts.length === 3 && parts[2] === 'profile') {
-    return { modulePath: route('profile.js'), query };
-  }
-
-  if (parts.length === 5 && parts[2] === 'overlay' && parts[4] === 'config') {
-    return {
-      modulePath: route('overlay/[sceneId]/config.js'),
-      query: { ...query, sceneId: parts[3] },
-    };
-  }
-
-  if (parts[2] !== 'workspaces' || !parts[3]) {
-    return null;
-  }
-
-  const workspaceId = parts[3];
-  if (parts.length === 4) {
-    return {
-      modulePath: route('workspaces/[workspaceId].js'),
-      query: { ...query, workspaceId },
-    };
-  }
-
-  if (parts.length === 5 && parts[4] === 'settings') {
-    return {
-      modulePath: route('workspaces/[workspaceId]/settings/index.js'),
-      query: { ...query, workspaceId },
-    };
-  }
-
-  if (parts.length === 6 && parts[4] === 'settings') {
-    return {
-      modulePath: route('workspaces/[workspaceId]/settings/[settingId].js'),
-      query: { ...query, settingId: parts[5], workspaceId },
-    };
-  }
-
-  if (parts.length === 7 && parts[4] === 'scenes' && parts[6] === 'overlay-tokens' && parts[5]) {
-    return {
-      modulePath: route('workspaces/[workspaceId]/scenes/[sceneId]/overlay-tokens.js'),
-      query: { ...query, sceneId: parts[5], workspaceId },
-    };
-  }
-
-  return null;
-}
-
 function getRuntimeApiPath(pathname: string) {
   return pathname.startsWith('/api/ai/') ||
     pathname.startsWith('/api/tts/') ||
@@ -835,70 +698,6 @@ function getRuntimeApiPath(pathname: string) {
     pathname === '/api/health'
     ? pathname.slice('/api'.length)
     : pathname;
-}
-
-async function handleByokApiRoute(
-  request: IncomingMessage,
-  response: ServerResponse,
-  route: MatchedByokApiRoute,
-) {
-  try {
-    const method = request.method ?? 'GET';
-    const body =
-      method === 'GET' || method === 'HEAD' ? undefined : await readRequestJson<unknown>(request);
-    const module = (await import(route.modulePath)) as { default?: ByokApiHandler };
-    if (!module.default) {
-      writeJson(response, 404, {
-        ok: false,
-        reason: 'byok-route-not-found',
-        message: 'BYOK API route is not available in this runtime.',
-        status: 404,
-      });
-      return;
-    }
-
-    let ended = false;
-    const apiResponse: ByokApiHandlerResponse = {
-      json(bodyValue: unknown) {
-        if (ended) {
-          return;
-        }
-        ended = true;
-        if (!response.headersSent) {
-          response.setHeader('Content-Type', 'application/json');
-        }
-        response.end(JSON.stringify(bodyValue));
-      },
-      setHeader(name: string, value: string | number | readonly string[]) {
-        response.setHeader(name, value);
-      },
-      status(code: number) {
-        response.statusCode = code;
-        return apiResponse;
-      },
-    };
-
-    await module.default(
-      {
-        body,
-        headers: request.headers,
-        method,
-        query: route.query,
-      },
-      apiResponse,
-    );
-
-    if (!ended) {
-      response.end();
-    }
-  } catch (error) {
-    writeJson(response, 500, {
-      ok: false,
-      reason: 'byok-runtime-route-failed',
-      message: error instanceof Error ? error.message : 'BYOK API route failed.',
-      status: 500,
-    });
-  }
 }
 
 const config = loadConfig();
@@ -917,21 +716,8 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  const byokApiRoute = matchByokApiRoute(url);
-  if (byokApiRoute && 'malformed' in byokApiRoute) {
-    writeJson(response, 400, { ok: false, error: 'Malformed BYOK API path.' });
-    return;
-  }
-  if (byokApiRoute) {
-    await handleByokApiRoute(request, response, byokApiRoute);
-    return;
-  }
-
   const runtimePath = getRuntimeApiPath(url.pathname);
-  const allowServerProviderProxy = canUseServerProviderProxy(
-    config.providerProxyEnabled,
-    await hasServerProviderProxyAuth(request),
-  );
+  const allowServerProviderProxy = config.providerProxyEnabled;
 
   if (request.method === 'GET' && runtimePath === '/health') {
     const requestedStateKey = url.searchParams.get('stateKey') ?? undefined;
@@ -1007,7 +793,6 @@ const httpServer = createServer(async (request, response) => {
           deliveryMode: config.inworldDeliveryMode,
         },
       },
-      byok: summarizeByokRuntimeHealth(),
     });
     return;
   }

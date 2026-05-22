@@ -2,7 +2,6 @@ import {
   DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
-  DEFAULT_VERCEL_GATEWAY_MODEL,
 } from './defaults';
 import type { AiSettings, LlmProvider } from './types';
 
@@ -20,15 +19,6 @@ export function getAiProviderSwitchDefaults(llmProvider: LlmProvider): AiProvide
       openAiStateMode: 'stateless',
     };
   }
-  if (llmProvider === 'vercel-gateway-responses') {
-    return {
-      aiTransportMode: 'http-stream',
-      memoryAgentModel: DEFAULT_VERCEL_GATEWAY_MODEL,
-      model: DEFAULT_VERCEL_GATEWAY_MODEL,
-      openAiStateMode: 'stateless',
-    };
-  }
-
   return {
     aiTransportMode: 'websocket',
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
@@ -56,7 +46,7 @@ function pickProviderModel(llmProvider: LlmProvider, value: string, fallback: st
     return fallback;
   }
 
-  if (llmProvider === 'openrouter-responses' || llmProvider === 'vercel-gateway-responses') {
+  if (llmProvider === 'openrouter-responses') {
     return isRoutedModelId(model) ? model : fallback;
   }
 
@@ -72,10 +62,7 @@ export function normalizeLlmProviderCompatibility(settings: AiSettings): AiSetti
     defaults.memoryAgentModel,
   );
 
-  if (
-    settings.llmProvider === 'openrouter-responses' ||
-    settings.llmProvider === 'vercel-gateway-responses'
-  ) {
+  if (settings.llmProvider === 'openrouter-responses') {
     return {
       ...settings,
       aiTransportMode: defaults.aiTransportMode,
