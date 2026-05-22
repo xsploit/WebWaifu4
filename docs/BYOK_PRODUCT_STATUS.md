@@ -499,13 +499,22 @@ src/lib/chat/prompt.test.ts` -> 4 files, 42 tests passed.
   frontend bundle `assets/index-C4RBeZTg.js`. Public frame-capture smoke reached
   the endpoint and failed with the expected "channel is not currently live"
   Twitch resolver error for `subsect`.
+- 2026-05-22: set Vercel production `VITE_PUBLIC_APP_URL` to
+  `https://yourwifey-byok.vercel.app` so OAuth callback URLs are baked to the
+  Vercel product origin, not an old local/VPS host.
+- 2026-05-22: committed `f0f6e18` (`docs(product): make vercel the only hosted target`),
+  pushed `codex/byok-product-spine` and `YourWifey-BYOK` `main`, and deployed
+  production Vercel `dpl_6YeqZ4gJMrtDrMBzaamP73xePA4u`.
+- 2026-05-22: verified `https://yourwifey-byok.vercel.app` is READY, aliased,
+  and serving `assets/index-CbUxo2xE.js`; `/dashboard`, `/editor`, and
+  `/auth/callback` return 200 from Vercel with no old `sslip.io` or
+  `148-113-191-103` host in HTML/JS.
 
 ## Current Blocker Or Next Patch
 
-Next patch: browser-smoke Twitch stream transcription and stream frame context
-against a currently live Twitch channel, then decide whether transcript/frame
-context should remain prompt-only or optionally feed a separate stream-context
-memory source.
+Next patch: browser-smoke OAuth login against
+`https://yourwifey-byok.vercel.app/login` and confirm Supabase returns to
+`https://yourwifey-byok.vercel.app/auth/callback`.
 
 ## Stop Conditions
 
@@ -513,3 +522,4 @@ memory source.
 - Do not persist provider API keys to cloud DB without an explicit hosted vault
   security design and tests.
 - Do not break local-only overlay mode.
+- Do not deploy or debug the old VPS/`sslip.io` host for this BYOK product path.
