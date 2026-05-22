@@ -1,5 +1,9 @@
 # Twitch IRC Stream Chat
 
+> Archived stream-bot notes. The hosted BYOK product path is Vercel-only at
+> `https://yourwifey-byok.vercel.app`. Do not use local/VPS routelet or Linode
+> notes here as product deployment guidance.
+
 This pass adds Twitch IRC chat for the stream overlay described in
 `docs/ORIGINAL_YOURWIFEY_STREAM_HANDOFF.md`.
 

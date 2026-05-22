@@ -1,5 +1,9 @@
 # Original YourWifey Stream Handoff
 
+> Historical source handoff only. It is not deployment guidance for the BYOK
+> product. The hosted BYOK product path is Vercel-only at
+> `https://yourwifey-byok.vercel.app`.
+
 ## Current Scope
 
 This handoff is for the original YourWifey app, not the Bonsai fork.

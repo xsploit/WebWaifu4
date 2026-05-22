@@ -26,8 +26,9 @@ Recommended hosted stack:
   row-level security as the cloud authorization layer.
 - Supabase Storage for uploaded VRMs/backgrounds/animation packs at first;
   external object storage can be added later if asset traffic grows.
-- Optional realtime Node worker later for backend Twitch, long WebSocket TTS, and
-  always-on stream jobs. Keep the existing local/VPS routelet for power users.
+- Optional realtime worker later for backend Twitch, long WebSocket TTS, and
+  always-on stream jobs. Old local/VPS routelet notes are archived experiments,
+  not part of the hosted BYOK product path.
 
 Clerk remains a possible future swap if polished auth UI becomes more important
 than owning the auth/database coupling. Firebase is not the default because the

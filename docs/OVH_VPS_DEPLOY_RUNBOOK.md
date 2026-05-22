@@ -1,5 +1,17 @@
 # OVH VPS Deploy Runbook
 
+Archived for this BYOK fork.
+
+Do not use this runbook for the hosted product. The canonical BYOK product
+deployment is Vercel:
+
+```text
+https://yourwifey-byok.vercel.app
+```
+
+This document is retained only as historical reference for the old stream
+runtime experiment.
+
 Current as of 2026-05-16.
 
 This file exists because the OVH VPS SSH key has been rediscovered more than

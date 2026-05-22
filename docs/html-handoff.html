@@ -242,7 +242,8 @@
         <h1>YourWifey Stream Runtime Handoff</h1>
         <p class="sub">
           Browser-first Twitch character stream, OpenAI proxy state, client TTS, VRM animation, and
-          VPS routelet notes in one cold-start page.
+          Vercel BYOK product notes in one cold-start page. Old VPS routelet notes are archived
+          experiments, not the hosted product path.
         </p>
 
         <div class="row">
@@ -268,7 +269,7 @@
           <div class="card">
             <div class="status"><span class="dot warn"></span> Next sharp edge</div>
             <div>
-              Turn pacing, routelet smoke tests, and animation weighting need real stream checks.
+              Turn pacing, OBS overlay checks, and animation weighting need real stream checks.
             </div>
             <div class="small">
               Keep public chat clean: no logs, paths, keys, IPs, or proxy errors in overlay chat.
@@ -291,10 +292,10 @@
 
         <div class="grid" id="items">
           <div class="card item" data-kind="stream">
-            <div class="status"><span class="dot ok"></span> VPS routelet</div>
+            <div class="status"><span class="dot warn"></span> Archived routelet</div>
             <div class="small">
-              Controlled Chromium renders the overlay. Xvfb captures video. Pulse/PipeWire captures
-              browser audio. FFmpeg maps <code>0:v:0</code> and <code>1:a:0</code> into Twitch RTMP.
+              Historical local/VPS experiment only. Hosted BYOK product work uses Vercel at
+              <code>https://yourwifey-byok.vercel.app</code>.
             </div>
           </div>
           <div class="card item" data-kind="chat">
@@ -356,7 +357,7 @@ npm run dev</pre
             >
           </div>
           <div class="card lane">
-            <h3>Routelet audio/video file</h3>
+            <h3>Archived routelet audio/video file</h3>
             <pre>
 STREAM_OUTPUT_URL=/tmp/yourwifey-smoke.flv \
 STREAM_TEST_SECONDS=45 \
@@ -570,7 +571,7 @@ DiP / MDM motion
         <div class="small">
           <a href="ORIGINAL_YOURWIFEY_STREAM_HANDOFF.md">Original handoff</a> ·
           <a href="TWITCH_IRC_STREAM_BOT.md">Twitch IRC stream bot</a> ·
-          <a href="STREAM_ROUTELET.md">Stream routelet</a> ·
+          <a href="STREAM_ROUTELET.md">Archived stream routelet</a> ·
           <a href="DIP_MOTION_PIPELINE.md">DiP motion pipeline</a> ·
           <a href="VR_MOTION_BRIDGE.md">VR motion bridge</a>
         </div>

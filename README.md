@@ -10,6 +10,15 @@ chat-to-avatar loop, BYOK key flow, memory stack, and Supabase product shell are
 implemented, while payments, hosted credit management, and public launch
 hardening are intentionally out of scope for this fork.
 
+Canonical hosted product:
+
+```text
+https://yourwifey-byok.vercel.app
+```
+
+This BYOK fork is Vercel-only for hosted product work. Old VPS or `sslip.io`
+URLs are stale experiments and are not product entry points.
+
 ## Highlights
 
 - **Twitch-first chat intake** with local chat treated as another participant
@@ -26,8 +35,7 @@ hardening are intentionally out of scope for this fork.
   memory blocks, and semantic recall when embeddings are available.
 - **Supabase product scaffold** for magic-link auth, profiles, workspaces,
   scenes, settings sync, overlay tokens, and storage contracts.
-- **OBS and VPS-friendly deployment path** for testing browser overlays, audio
-  capture, and RTMP experiments.
+- **OBS overlay routes** for browser-source preview and tokenized scene loading.
 
 ## How It Works
 
@@ -65,7 +73,6 @@ TTS playback, and animation selection.
 | Local-only overlay | Run the avatar and settings locally without login     | Working              |
 | Signed-in BYOK     | Save profile/workspace/scene data through Supabase    | Implemented scaffold |
 | OBS overlay        | Load an overlay-focused route for capture             | Working preview path |
-| VPS experiment     | Serve the overlay and backend from a test VPS         | Working test path    |
 | Commercial SaaS    | Managed billing, credits, support, and multi-user ops | Not implemented      |
 
 ## Architecture
@@ -81,15 +88,12 @@ Browser app
   IndexedDB / localStorage memory and settings
         |
         v
-Node AI/TTS proxy
-  /health
-  /ai/chat
-  /ai/models
-  /ai/embeddings
-  /ai/poml/render
-  /tts/voices
-  /tts/stream
-  /ws
+Vercel serverless APIs
+  /api/ai/chat
+  /api/ai/models
+  /api/ai/embeddings
+  /api/ai/poml/render
+  /api/byok/*
         |
         v
 External providers
@@ -101,11 +105,9 @@ External providers
   Supabase Auth/Postgres/Storage
 ```
 
-The VPS runtime uses `serve-dist.mjs` to serve the built overlay and proxy
-`/api/ai/*`, `/api/tts/*`, and `/api/mock/*` to the Node service on port
-`8787`. The product-shaped deployment target is Vercel plus Supabase, with a
-separate long-running worker still recommended for WebSocket-heavy or TTS-heavy
-live workloads.
+The product deployment target is Vercel plus Supabase. Local scripts still exist
+for development, but hosted product URLs, auth callbacks, cloud sync, and overlay
+links should use the Vercel origin only.
 
 ## Quick Start
 
@@ -129,7 +131,7 @@ npm run build
 
 ## Configuration
 
-Start from `.env.example`. Common local and VPS settings:
+Start from `.env.example`. Common local development settings:
 
 ```text
 AI_PROVIDER=openai-responses-ws
@@ -305,17 +307,17 @@ settings. Provider API keys remain local-only in the BYOK model.
 
 ## Repository Guide
 
-| Area                | Paths                                                            |
-| ------------------- | ---------------------------------------------------------------- |
-| Main app            | `src/App.tsx`, `src/components/menu/**`                          |
-| Chat and prompts    | `src/lib/chat/**`                                                |
-| TTS                 | `src/lib/tts/**`, `server/src/tts/**`                            |
-| VRM and animation   | `src/lib/vrm/**`                                                 |
-| Product/BYOK        | `src/lib/product/**`, `api/byok/**`                              |
-| AI backend          | `server/src/ai/**`, `api/ai/**`                                  |
-| Twitch and commands | `server/src/twitch/**`, `server/src/commands/**`                 |
-| Deployment          | `serve-dist.mjs`, `vercel.json`, `scripts/stream-routelet.sh`    |
-| Runbooks            | `docs/OVH_VPS_DEPLOY_RUNBOOK.md`, `docs/VERCEL_SUPABASE_BYOK.md` |
+| Area                 | Paths                                                       |
+| -------------------- | ----------------------------------------------------------- |
+| Main app             | `src/App.tsx`, `src/components/menu/**`                     |
+| Chat and prompts     | `src/lib/chat/**`                                           |
+| TTS                  | `src/lib/tts/**`, `server/src/tts/**`                       |
+| VRM and animation    | `src/lib/vrm/**`                                            |
+| Product/BYOK         | `src/lib/product/**`, `api/byok/**`                         |
+| AI backend           | `server/src/ai/**`, `api/ai/**`                             |
+| Twitch and commands  | `server/src/twitch/**`, `server/src/commands/**`            |
+| Deployment           | `vercel.json`, `docs/VERCEL_SUPABASE_BYOK.md`               |
+| Archived experiments | `docs/OVH_VPS_DEPLOY_RUNBOOK.md`, `docs/STREAM_ROUTELET.md` |
 
 Planning and status docs:
 

@@ -1,5 +1,17 @@
 # Stream Routelet
 
+Archived for this BYOK fork.
+
+Do not use this routelet for the hosted product. The canonical BYOK product
+deployment is Vercel:
+
+```text
+https://yourwifey-byok.vercel.app
+```
+
+This document is retained only as historical reference for the old RTMP/VPS
+experiment.
+
 The stream routelet is the VPS-side loop that turns the browser overlay into an
 RTMP stream. It is meant for Linode or another persistent Linux box, not Vercel.
 
@@ -141,8 +153,8 @@ With the overlay open, this should report a live audio track after the app has
 mounted:
 
 ```js
-await window.__yourwifeyAudio.resume()
-window.__yourwifeyAudio.getStream().getAudioTracks()
+await window.__yourwifeyAudio.resume();
+window.__yourwifeyAudio.getStream().getAudioTracks();
 ```
 
 In Twitch chat, `subsect` can use:

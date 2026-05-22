@@ -1,5 +1,9 @@
 # YourWifey BYOK Product Status
 
+Current hosted product target: Vercel only,
+`https://yourwifey-byok.vercel.app`. Older VPS entries in this status log are
+historical evidence, not active deployment guidance.
+
 ## Current Goal
 
 Make a separated bring-your-own-key product fork that can grow into a login,
@@ -447,14 +451,14 @@ docs/BYOK_PRODUCT_STATUS.md` -> passed.
   the UI now says Supabase Auth reports them disabled and names the missing
   provider credential setup.
 - 2026-05-18: `npx vitest run
-  src/lib/product/supabase-auth-shell.test.ts
-  src/lib/product/supabase-env.test.ts src/lib/product/app-route.test.ts` -> 3
+src/lib/product/supabase-auth-shell.test.ts
+src/lib/product/supabase-env.test.ts src/lib/product/app-route.test.ts` -> 3
   files, 31 tests passed.
 - 2026-05-18: `npx tsc --noEmit`, `git diff --check`, and `npm run build` ->
   passed. Existing Vite warnings remained: onnxruntime-web eval and large
   bundle chunks.
 - 2026-05-18: committed `8d62f76` (`fix(auth): probe Supabase OAuth providers
-  live`), pushed `codex/byok-product-spine`, deployed rebuilt `dist` to
+live`), pushed `codex/byok-product-spine`, deployed rebuilt `dist` to
   `/home/ubuntu/yourwifey-stream`, restarted `serve-dist.mjs`, and verified the
   public login page serves `assets/index-Bz31DrR8.js`. Remote
   `http://127.0.0.1:8787/health` returned `ok: true`.

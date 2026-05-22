@@ -1,6 +1,15 @@
 # Vercel + Supabase BYOK Deployment
 
-Current as of 2026-05-15.
+Current as of 2026-05-22.
+
+Canonical hosted product origin:
+
+```text
+https://yourwifey-byok.vercel.app
+```
+
+Do not use the old VPS or `sslip.io` host for this BYOK product. That host was
+an experiment and can serve stale code.
 
 This fork is designed to run in two modes:
 
@@ -17,11 +26,12 @@ This fork is designed to run in two modes:
    in Supabase Auth. Configure each provider with its OAuth client ID and
    secret first.
 4. Set Supabase Auth URL Configuration for the hosted app:
-   - Site URL: `https://your-domain.example`
-   - Redirect URL: `https://your-domain.example/auth/callback`
+   - Site URL: `https://yourwifey-byok.vercel.app`
+   - Redirect URL: `https://yourwifey-byok.vercel.app/auth/callback`
    - local dev: `http://localhost:5173/auth/callback`
-     Remove stale VPS or tunnel URLs from this config before production, or OAuth
-     can bounce back to the wrong frontend after Google/GitHub login.
+     Remove stale VPS, `sslip.io`, localhost `3000`, or tunnel URLs from this
+     config before production, or OAuth can bounce back to the wrong frontend
+     after Google/GitHub login.
 5. Create a storage bucket named `yourwifey-assets` if asset upload work is
    enabled later. The current BYOK MVP does not require uploads to use auth,
    sync, backups, or OBS overlay tokens.
@@ -99,8 +109,8 @@ api/byok/*
 for `/home`, `/login`, `/auth/callback`, `/account`, `/dashboard`, `/editor`,
 and `/overlay/:sceneId`.
 
-The local/VPS bot server still exists for streaming and power-user workflows,
-but the BYOK account/cloud-sync path is Vercel-shaped.
+The BYOK account/cloud-sync path is Vercel-only. Local dev servers are for
+development, not hosted product URLs.
 
 ## 4. Smoke Test
 
