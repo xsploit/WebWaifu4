@@ -6,6 +6,12 @@ import {
   type OpenAiFunctionCall,
   type TavilyToolOptions,
 } from '../../server/src/ai/TavilyTools.js';
+import {
+  getProviderEnvApiKey,
+  getRuntimeProviderBaseUrl,
+  normalizeRuntimeLlmProvider,
+  providerUsesAppOwnedState,
+} from '../../server/src/runtimeProviderRouting.js';
 import { resolveServerProviderProxyModel } from '../../server/src/runtimeSafety.js';
 import { getServerProviderProxyAuthContext } from './provider-proxy-auth.js';
 
@@ -861,6 +867,21 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
+  const body = (request.body ?? {}) as {
+    disableState?: boolean;
+    llmProvider?: unknown;
+    messages?: unknown;
+    model?: string;
+    maxTokens?: number;
+    responseFormat?: unknown;
+    stateKey?: string;
+    stateScope?: 'chat' | 'memory';
+    stream?: boolean;
+    temperature?: number;
+  };
+  const providerName = normalizeRuntimeLlmProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider,
+  );
   const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
   const proxyAuthContext = isServerAiProxyEnabled()
     ? await getServerProviderProxyAuthContext(request)
@@ -875,24 +896,11 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   }
 
   const apiKey =
-    browserLlmApiKey ||
-    (proxyAuthContext.ok ? process.env['OPENAI_API_KEY'] || process.env['AI_API_KEY'] : '');
+    browserLlmApiKey || (proxyAuthContext.ok ? getProviderEnvApiKey(providerName) : '');
   if (!apiKey) {
-    response.status(200).json({ ok: false, error: 'OPENAI_API_KEY is not configured.' });
+    response.status(200).json({ ok: false, error: 'AI provider key is not configured.' });
     return;
   }
-
-  const body = (request.body ?? {}) as {
-    disableState?: boolean;
-    messages?: unknown;
-    model?: string;
-    maxTokens?: number;
-    responseFormat?: unknown;
-    stateKey?: string;
-    stateScope?: 'chat' | 'memory';
-    stream?: boolean;
-    temperature?: number;
-  };
   const messages = normalizeMessages(body.messages);
   if (messages.length === 0) {
     response.status(200).json({ ok: false, error: 'messages[] is required.' });
@@ -912,14 +920,18 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
   const model = modelDecision.model;
-  const configuredStateMode = process.env['OPENAI_STATE_MODE'] || 'conversation';
+  const configuredStateMode = providerUsesAppOwnedState(providerName)
+    ? 'stateless'
+    : process.env['OPENAI_STATE_MODE'] || 'conversation';
   const stateMode =
     configuredStateMode === 'conversation' ||
     configuredStateMode === 'previous-response' ||
     configuredStateMode === 'stateless'
       ? configuredStateMode
       : 'conversation';
-  const store = process.env['OPENAI_STORE'] === 'true';
+  const store = providerUsesAppOwnedState(providerName)
+    ? false
+    : process.env['OPENAI_STORE'] === 'true';
   const stateKey = normalizeStateKey(body.stateKey);
   const stateScope = normalizeStateScope(body.stateScope);
   const stateDisabled = body.disableState === true || stateScope === 'memory';
@@ -947,9 +959,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     state.stateSignature = signature;
   }
-  const apiBaseUrl = (process.env['OPENAI_API_BASE_URL'] || 'https://api.openai.com/v1').replace(
-    /\/+$/,
-    '',
+  const apiBaseUrl = getRuntimeProviderBaseUrl(
+    providerName,
+    process.env['OPENAI_API_BASE_URL'] || 'https://api.openai.com/v1',
   );
   const reasoningEffort =
     isReasoningStyleModel(model) && !isUnsupportedParam(apiBaseUrl, model, 'reasoning')
@@ -1133,7 +1145,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
           model,
           maxOutputTokens,
           previousResponseId: stateDisabled ? null : state.previousResponseId,
-          provider: 'vercel-openai-responses',
+          provider: providerName,
           reasoningEffort,
           stateKey,
           stateMode: stateDisabled ? 'stateless' : stateMode,
@@ -1188,7 +1200,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       model,
       maxOutputTokens,
       previousResponseId: stateDisabled ? null : state.previousResponseId,
-      provider: 'vercel-openai-responses',
+      provider: providerName,
       reasoningEffort,
       stateKey,
       stateMode: stateDisabled ? 'stateless' : stateMode,

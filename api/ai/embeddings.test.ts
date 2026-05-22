@@ -121,4 +121,43 @@ describe('serverless AI embeddings route', () => {
     });
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it('uses browser-vault Vercel AI Gateway keys for embeddings', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('https://ai-gateway.vercel.sh/v1/embeddings');
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        input: 'remember this',
+        model: 'openai/text-embedding-3-small',
+      });
+      return new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3] }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          'x-yourwifey-llm-provider': 'vercel-gateway-responses',
+          'x-yourwifey-llm-provider-key': 'vck-test-gateway',
+        },
+        body: {
+          input: 'remember this',
+          llmProvider: 'vercel-gateway-responses',
+          model: 'openai/text-embedding-3-small',
+        },
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.jsonBody).toMatchObject({
+      embedding: [0.1, 0.2, 0.3],
+      model: 'openai/text-embedding-3-small',
+      ok: true,
+    });
+  });
 });

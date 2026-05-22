@@ -284,7 +284,10 @@ function normalizeAiSettings(value: unknown): AiSettings {
 
   const source = value as Partial<AiSettings>;
   const llmProvider =
-    source.llmProvider === 'openrouter-responses' ? source.llmProvider : defaults.llmProvider;
+    source.llmProvider === 'openrouter-responses' ||
+    source.llmProvider === 'vercel-gateway-responses'
+      ? source.llmProvider
+      : defaults.llmProvider;
   const requestedModel = String(source.model ?? defaults.model);
   const normalizedModel = requestedModel === 'gpt-5-mini' ? defaults.model : requestedModel;
   const requestedMemoryAgentModel = String(

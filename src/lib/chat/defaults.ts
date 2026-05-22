@@ -31,6 +31,8 @@ export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
 export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-5.4-mini';
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
 export const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
+export const DEFAULT_VERCEL_GATEWAY_MODEL = 'openai/gpt-5-nano';
+export const DEFAULT_VERCEL_GATEWAY_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 
 export const RIKO_PERSONA: PersonaProfile = {
   id: 'default-waifu',

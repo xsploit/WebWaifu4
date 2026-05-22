@@ -30,6 +30,10 @@ describe('BYOK product contracts', () => {
     expect(classifyByokSetting('openrouter.apiKey', 'hosted-encrypted-vault')).toBe(
       'hosted-secret',
     );
+    expect(classifyByokSetting('vercelGateway.apiKey', 'local-indexeddb')).toBe('local-secret');
+    expect(classifyByokSetting('vercelGateway.apiKey', 'hosted-encrypted-vault')).toBe(
+      'hosted-secret',
+    );
     expect(classifyByokSetting('visualSettings', 'local-indexeddb')).toBe('public-overlay');
     expect(classifyByokSetting('aiSettings.model', 'local-indexeddb')).toBe('synced-private');
     expect(classifyByokSetting('auth.supabaseServiceRoleKey', 'local-indexeddb')).toBe(

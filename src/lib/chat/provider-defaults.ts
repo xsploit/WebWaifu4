@@ -2,6 +2,7 @@ import {
   DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
+  DEFAULT_VERCEL_GATEWAY_MODEL,
 } from './defaults';
 import type { AiSettings, LlmProvider } from './types';
 
@@ -10,14 +11,20 @@ export type AiProviderSwitchDefaults = Pick<
   'aiTransportMode' | 'memoryAgentModel' | 'model' | 'openAiStateMode'
 >;
 
-export function getAiProviderSwitchDefaults(
-  llmProvider: LlmProvider,
-): AiProviderSwitchDefaults {
+export function getAiProviderSwitchDefaults(llmProvider: LlmProvider): AiProviderSwitchDefaults {
   if (llmProvider === 'openrouter-responses') {
     return {
       aiTransportMode: 'http-stream',
       memoryAgentModel: DEFAULT_OPENROUTER_MODEL,
       model: DEFAULT_OPENROUTER_MODEL,
+      openAiStateMode: 'stateless',
+    };
+  }
+  if (llmProvider === 'vercel-gateway-responses') {
+    return {
+      aiTransportMode: 'http-stream',
+      memoryAgentModel: DEFAULT_VERCEL_GATEWAY_MODEL,
+      model: DEFAULT_VERCEL_GATEWAY_MODEL,
       openAiStateMode: 'stateless',
     };
   }
@@ -39,7 +46,7 @@ function normalizeModelId(value: string | undefined) {
   return (value ?? '').trim();
 }
 
-function isOpenRouterModelId(value: string) {
+function isRoutedModelId(value: string) {
   return value.includes('/');
 }
 
@@ -49,11 +56,11 @@ function pickProviderModel(llmProvider: LlmProvider, value: string, fallback: st
     return fallback;
   }
 
-  if (llmProvider === 'openrouter-responses') {
-    return isOpenRouterModelId(model) ? model : fallback;
+  if (llmProvider === 'openrouter-responses' || llmProvider === 'vercel-gateway-responses') {
+    return isRoutedModelId(model) ? model : fallback;
   }
 
-  return isOpenRouterModelId(model) ? fallback : model;
+  return isRoutedModelId(model) ? fallback : model;
 }
 
 export function normalizeLlmProviderCompatibility(settings: AiSettings): AiSettings {
@@ -65,7 +72,10 @@ export function normalizeLlmProviderCompatibility(settings: AiSettings): AiSetti
     defaults.memoryAgentModel,
   );
 
-  if (settings.llmProvider === 'openrouter-responses') {
+  if (
+    settings.llmProvider === 'openrouter-responses' ||
+    settings.llmProvider === 'vercel-gateway-responses'
+  ) {
     return {
       ...settings,
       aiTransportMode: defaults.aiTransportMode,

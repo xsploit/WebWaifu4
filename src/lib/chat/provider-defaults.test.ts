@@ -3,6 +3,7 @@ import {
   DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
+  DEFAULT_VERCEL_GATEWAY_MODEL,
   createDefaultAiSettings,
 } from './defaults';
 import {
@@ -89,8 +90,26 @@ describe('LLM provider defaults', () => {
     });
   });
 
+  it('switches to Vercel AI Gateway stateless gateway defaults', () => {
+    const next = applyLlmProviderSwitchDefaults(
+      createDefaultAiSettings(),
+      'vercel-gateway-responses',
+    );
+
+    expect(next).toMatchObject({
+      aiTransportMode: 'http-stream',
+      llmProvider: 'vercel-gateway-responses',
+      memoryAgentModel: DEFAULT_VERCEL_GATEWAY_MODEL,
+      model: DEFAULT_VERCEL_GATEWAY_MODEL,
+      openAiStateMode: 'stateless',
+    });
+  });
+
   it('exposes fallback model ids for provider model pickers', () => {
     expect(getProviderFallbackModels('openrouter-responses')).toEqual([DEFAULT_OPENROUTER_MODEL]);
+    expect(getProviderFallbackModels('vercel-gateway-responses')).toEqual([
+      DEFAULT_VERCEL_GATEWAY_MODEL,
+    ]);
     expect(getProviderFallbackModels('openai-responses')).toEqual([
       DEFAULT_OPENAI_MODEL,
       DEFAULT_MEMORY_AGENT_MODEL,

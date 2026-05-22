@@ -1,4 +1,10 @@
 import { resolveServerProviderProxyModel } from '../../server/src/runtimeSafety.js';
+import {
+  getProviderEmbeddingModel,
+  getProviderEnvApiKey,
+  getRuntimeProviderBaseUrl,
+  normalizeRuntimeLlmProvider,
+} from '../../server/src/runtimeProviderRouting.js';
 import { hasServerProviderProxyAuth } from './provider-proxy-auth.js';
 
 type ApiRequest = {
@@ -38,7 +44,10 @@ function normalizeInput(value: unknown) {
 export default async function handler(request: ApiRequest, response: ApiResponse) {
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'content-type');
+  response.setHeader(
+    'Access-Control-Allow-Headers',
+    'content-type,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key',
+  );
 
   if (request.method === 'OPTIONS') {
     response.status(204).json({});
@@ -50,41 +59,51 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  if (!isServerAiProxyEnabled()) {
+  const body = (request.body ?? {}) as { input?: unknown; model?: unknown; llmProvider?: unknown };
+  const providerName = normalizeRuntimeLlmProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider,
+  );
+  const browserLlmApiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const serverProxyAllowed =
+    isServerAiProxyEnabled() && (await hasServerProviderProxyAuth(request));
+
+  if (!browserLlmApiKey && !isServerAiProxyEnabled()) {
     response.status(200).json({ ok: false, error: 'Server AI proxy is disabled for BYOK mode.' });
     return;
   }
-  if (!(await hasServerProviderProxyAuth(request))) {
+  if (!browserLlmApiKey && !serverProxyAllowed) {
     response
       .status(401)
       .json({ ok: false, error: 'Authentication required for server embeddings proxy.' });
     return;
   }
 
-  const apiKey = process.env['OPENAI_API_KEY'] || process.env['AI_API_KEY'];
+  const apiKey = browserLlmApiKey || (serverProxyAllowed ? getProviderEnvApiKey(providerName) : '');
   if (!apiKey) {
-    response.status(200).json({ ok: false, error: 'OPENAI_API_KEY is not configured.' });
+    response.status(200).json({ ok: false, error: 'AI provider key is not configured.' });
     return;
   }
 
-  const body = (request.body ?? {}) as { input?: unknown; model?: unknown };
   const input = normalizeInput(body.input);
   if (!input) {
     response.status(200).json({ ok: false, error: 'input is required.' });
     return;
   }
 
-  const apiBaseUrl = (process.env['OPENAI_API_BASE_URL'] || 'https://api.openai.com/v1').replace(
-    /\/+$/,
-    '',
+  const apiBaseUrl = getRuntimeProviderBaseUrl(
+    providerName,
+    process.env['OPENAI_API_BASE_URL'] || 'https://api.openai.com/v1',
   );
-  const configuredModel = process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small';
+  const configuredModel = getProviderEmbeddingModel(
+    providerName,
+    process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small',
+  );
   const modelDecision = resolveServerProviderProxyModel({
     allowlistEnvNames: [
       'BYOK_SERVER_PROVIDER_PROXY_EMBEDDING_MODEL_ALLOWLIST',
       'SERVER_PROVIDER_PROXY_EMBEDDING_MODEL_ALLOWLIST',
     ],
-    browserProviderKeyPresent: false,
+    browserProviderKeyPresent: Boolean(browserLlmApiKey),
     configuredModel,
     defaultModel: 'text-embedding-3-small',
     requestedModel: body.model,
@@ -125,6 +144,18 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     model,
     ok: true,
   });
+}
+
+function getHeaderValue(request: ApiRequest, name: string) {
+  const value = request.headers?.[name] ?? request.headers?.[name.toLowerCase()];
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
+function getHeaderSecret(request: ApiRequest, name: string) {
+  return getHeaderValue(request, name)?.trim() ?? '';
 }
 
 function isServerAiProxyEnabled() {

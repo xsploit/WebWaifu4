@@ -108,11 +108,12 @@ export function AiTab({
         >
           <option value="openai-responses">OpenAI Responses</option>
           <option value="openrouter-responses">OpenRouter Responses (App Memory)</option>
+          <option value="vercel-gateway-responses">Vercel AI Gateway Responses</option>
         </select>
         <div className="field-hint">
-          OpenRouter uses the Responses-compatible endpoint with YourWifey-owned history, diary,
-          semantic memory, and prompt compaction. OpenAI can still use Conversations or previous
-          response IDs when available.
+          OpenRouter and Vercel AI Gateway use Responses-compatible endpoints with YourWifey-owned
+          history, diary, semantic memory, and prompt compaction. OpenAI can still use Conversations
+          or previous response IDs when available.
         </div>
       </div>
 
@@ -120,7 +121,9 @@ export function AiTab({
         <div className="control-label">
           {aiSettings.llmProvider === 'openrouter-responses'
             ? 'OpenRouter Model'
-            : 'OpenAI GPT Model'}
+            : aiSettings.llmProvider === 'vercel-gateway-responses'
+              ? 'Vercel Gateway Model'
+              : 'OpenAI GPT Model'}
         </div>
         <select
           className="select-tech"
@@ -183,10 +186,11 @@ export function AiTab({
           <option value="previous-response">Previous Response ID</option>
           <option value="stateless">Stateless</option>
         </select>
-        {aiSettings.llmProvider === 'openrouter-responses' ? (
+        {aiSettings.llmProvider === 'openrouter-responses' ||
+        aiSettings.llmProvider === 'vercel-gateway-responses' ? (
           <div className="status-copy">
-            OpenRouter state: <strong>app-owned</strong>. The request is sent stateless with the
-            rendered POML, current transcript, diary, and memory context.
+            Routed-provider state: <strong>app-owned</strong>. The request is sent stateless with
+            the rendered POML, current transcript, diary, and memory context.
           </div>
         ) : null}
         <div className="status-copy">

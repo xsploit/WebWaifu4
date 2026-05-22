@@ -9,6 +9,7 @@ import { ProductPages } from './components/product/ProductPages';
 import {
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
+  DEFAULT_VERCEL_GATEWAY_EMBEDDING_MODEL,
   DEFAULT_PERSONA,
   DEFAULT_OPENAI_MODEL,
   createDefaultAiSettings,
@@ -497,11 +498,7 @@ function pickAvailableModel(
 function sanitizeAiModels(current: AiSettings, availableModels: readonly string[]) {
   const providerModels = getProviderModelPool(current.llmProvider, availableModels);
   const providerDefaults = getAiProviderSwitchDefaults(current.llmProvider);
-  const nextModel = pickAvailableModel(
-    current.model,
-    providerModels,
-    providerDefaults.model,
-  );
+  const nextModel = pickAvailableModel(current.model, providerModels, providerDefaults.model);
   const nextMemoryAgentModel = pickAvailableModel(
     current.memoryAgentModel,
     providerModels,
@@ -689,17 +686,25 @@ async function getBrowserProviderApiKey({
 }
 
 function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
-  return llmProvider === 'openrouter-responses'
-    ? {
-        keyName: 'openrouter.apiKey',
-        label: 'OpenRouter',
-        provider: 'openrouter' as const,
-      }
-    : {
-        keyName: 'openai.apiKey',
-        label: 'OpenAI',
-        provider: 'openai' as const,
-      };
+  if (llmProvider === 'openrouter-responses') {
+    return {
+      keyName: 'openrouter.apiKey',
+      label: 'OpenRouter',
+      provider: 'openrouter' as const,
+    };
+  }
+  if (llmProvider === 'vercel-gateway-responses') {
+    return {
+      keyName: 'vercelGateway.apiKey',
+      label: 'Vercel AI Gateway',
+      provider: 'vercel_gateway' as const,
+    };
+  }
+  return {
+    keyName: 'openai.apiKey',
+    label: 'OpenAI',
+    provider: 'openai' as const,
+  };
 }
 
 async function getBrowserRemoteTtsApiKey(
@@ -737,8 +742,8 @@ async function buildBackendProviderHeaders({
     provider: providerConfig.provider,
     providerKeyVaultWorkspaceId,
   });
+  headers['x-yourwifey-llm-provider'] = llmProvider;
   if (apiKey) {
-    headers['x-yourwifey-llm-provider'] = llmProvider;
     headers['x-yourwifey-llm-provider-key'] = apiKey;
   }
 
@@ -982,7 +987,11 @@ async function requestTextEmbedding(
         input: text.slice(0, 4000),
         llmProvider,
         model:
-          llmProvider === 'openrouter-responses' ? DEFAULT_OPENROUTER_EMBEDDING_MODEL : undefined,
+          llmProvider === 'openrouter-responses'
+            ? DEFAULT_OPENROUTER_EMBEDDING_MODEL
+            : llmProvider === 'vercel-gateway-responses'
+              ? DEFAULT_VERCEL_GATEWAY_EMBEDDING_MODEL
+              : undefined,
       }),
     });
     if (!response.ok) {

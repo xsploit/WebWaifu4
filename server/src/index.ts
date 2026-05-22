@@ -38,6 +38,14 @@ import {
   resolveRuntimeHealthStateKey,
   safeDecodePathParts,
 } from './runtimeSafety.js';
+import {
+  getProviderEmbeddingModel,
+  getProviderEnvApiKey,
+  getRuntimeProviderBaseUrl,
+  normalizeRuntimeLlmProvider,
+  providerModelsCanBeListedWithoutKey,
+  providerUsesAppOwnedState,
+} from './runtimeProviderRouting.js';
 
 type OpenAiEmbeddingPayload = {
   data?: Array<{
@@ -356,10 +364,6 @@ function getRuntimeTavilyApiKeyWithAuth(
   );
 }
 
-function normalizeRuntimeLlmProvider(value: unknown) {
-  return value === 'openrouter-responses' ? 'openrouter-responses' : 'openai-responses';
-}
-
 function getRuntimeChatProvider(
   baseConfig: StreamBotConfig,
   request: IncomingMessage,
@@ -371,34 +375,31 @@ function getRuntimeChatProvider(
     baseConfig.providerProxyEnabled,
     allowServerProxy,
   );
-  const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
-  const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerKeys);
-  const effectiveApiKey = apiKey || (allowServerKeys ? baseConfig.aiApiKey : '');
-  if (!effectiveApiKey) {
-    return null;
-  }
-
   const providerName = normalizeRuntimeLlmProvider(
     getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
   );
-  if (!apiKey && providerName === 'openrouter-responses') {
+  const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerKeys);
+  const serverApiKey =
+    providerName === 'openai-responses' ? baseConfig.aiApiKey : getProviderEnvApiKey(providerName);
+  const effectiveApiKey = apiKey || (allowServerKeys ? serverApiKey : '');
+  if (
+    !effectiveApiKey ||
+    (!apiKey && providerUsesAppOwnedState(providerName) && !allowServerKeys)
+  ) {
     return null;
   }
+  const appOwnedState = providerUsesAppOwnedState(providerName);
   const runtimeConfig: StreamBotConfig = {
     ...baseConfig,
-    aiApiBaseUrl:
-      providerName === 'openrouter-responses'
-        ? 'https://openrouter.ai/api/v1'
-        : baseConfig.aiApiBaseUrl,
+    aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
     aiApiKey: effectiveApiKey,
     aiModel: model?.trim() || baseConfig.aiModel,
     aiProvider: 'openai-responses',
     tavilyApiKey,
-    openAiStateMode:
-      providerName === 'openrouter-responses' ? 'stateless' : baseConfig.openAiStateMode,
-    openAiStore: providerName === 'openrouter-responses' ? false : baseConfig.openAiStore,
-    openAiWebSocketUrl:
-      providerName === 'openrouter-responses' ? '' : baseConfig.openAiWebSocketUrl,
+    openAiStateMode: appOwnedState ? 'stateless' : baseConfig.openAiStateMode,
+    openAiStore: appOwnedState ? false : baseConfig.openAiStore,
+    openAiWebSocketUrl: appOwnedState ? '' : baseConfig.openAiWebSocketUrl,
     providerProxyEnabled: true,
   };
   const runtimeProvider = createProvider(runtimeConfig);
@@ -413,20 +414,18 @@ function getRuntimeEmbeddingConfig(
   allowServerProxy = false,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
-  if (!apiKey) {
-    return allowServerProxy && baseConfig.providerProxyEnabled ? baseConfig : null;
-  }
-
   const providerName = normalizeRuntimeLlmProvider(
     getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
   );
+  const serverApiKey =
+    providerName === 'openai-responses' ? baseConfig.aiApiKey : getProviderEnvApiKey(providerName);
+  if (!apiKey && (!allowServerProxy || !baseConfig.providerProxyEnabled || !serverApiKey)) {
+    return null;
+  }
   return {
     ...baseConfig,
-    aiApiBaseUrl:
-      providerName === 'openrouter-responses'
-        ? 'https://openrouter.ai/api/v1'
-        : baseConfig.aiApiBaseUrl,
-    aiApiKey: apiKey,
+    aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
+    aiApiKey: apiKey || (allowServerProxy && baseConfig.providerProxyEnabled ? serverApiKey : ''),
     providerProxyEnabled: true,
   };
 }
@@ -441,10 +440,10 @@ function getRuntimeProviderConfig(
   const providerName = normalizeRuntimeLlmProvider(
     getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
   );
-  if (!apiKey && providerName === 'openrouter-responses') {
+  if (!apiKey && providerModelsCanBeListedWithoutKey(providerName)) {
     return {
       ...baseConfig,
-      aiApiBaseUrl: 'https://openrouter.ai/api/v1',
+      aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
       aiApiKey: '',
       providerProxyEnabled: true,
     };
@@ -455,11 +454,14 @@ function getRuntimeProviderConfig(
 
   return {
     ...baseConfig,
-    aiApiBaseUrl:
-      providerName === 'openrouter-responses'
-        ? 'https://openrouter.ai/api/v1'
-        : baseConfig.aiApiBaseUrl,
-    aiApiKey: apiKey || (allowServerProxy ? baseConfig.aiApiKey : ''),
+    aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
+    aiApiKey:
+      apiKey ||
+      (allowServerProxy && baseConfig.providerProxyEnabled
+        ? providerName === 'openai-responses'
+          ? baseConfig.aiApiKey
+          : getProviderEnvApiKey(providerName)
+        : ''),
     providerProxyEnabled: true,
   };
 }
@@ -934,10 +936,16 @@ const httpServer = createServer(async (request, response) => {
   if (request.method === 'GET' && runtimePath === '/health') {
     const requestedStateKey = url.searchParams.get('stateKey') ?? undefined;
     const requestedModel = url.searchParams.get('model') ?? undefined;
-    const requestedTransportMode = normalizeAiTransportMode(url.searchParams.get('transportMode'));
-    const requestedOpenAiStateMode = normalizeOpenAiStateMode(
-      url.searchParams.get('openAiStateMode'),
+    const providerName = normalizeRuntimeLlmProvider(
+      getHeaderValue(request, 'x-yourwifey-llm-provider') || config.aiProvider,
     );
+    const appOwnedState = providerUsesAppOwnedState(providerName);
+    const requestedTransportMode = appOwnedState
+      ? 'http-stream'
+      : normalizeAiTransportMode(url.searchParams.get('transportMode'));
+    const requestedOpenAiStateMode = appOwnedState
+      ? 'stateless'
+      : normalizeOpenAiStateMode(url.searchParams.get('openAiStateMode'));
 
     const healthStateKey = resolveRuntimeHealthStateKey({
       browserProviderKeyPresent: Boolean(getHeaderSecret(request, 'x-yourwifey-llm-provider-key')),
@@ -947,7 +955,7 @@ const httpServer = createServer(async (request, response) => {
     const runtimeHealthProvider = getRuntimeChatProvider(
       config,
       request,
-      getHeaderValue(request, 'x-yourwifey-llm-provider') || config.aiProvider,
+      providerName,
       requestedModel ?? undefined,
       allowServerProviderProxy,
     );
@@ -1145,7 +1153,10 @@ const httpServer = createServer(async (request, response) => {
       const model =
         typeof body.model === 'string' && body.model.trim()
           ? body.model.trim()
-          : process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small';
+          : getProviderEmbeddingModel(
+              normalizeRuntimeLlmProvider(body.llmProvider),
+              process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small',
+            );
       const embedding = await createOpenAiEmbedding(embeddingConfig, input, model);
       writeJson(response, 200, {
         embedding,
@@ -1169,9 +1180,7 @@ const httpServer = createServer(async (request, response) => {
         sampleSeconds?: unknown;
       }>(request);
       const model =
-        typeof body.model === 'string' && body.model.trim()
-          ? body.model.trim()
-          : 'whisper-1';
+        typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'whisper-1';
       const sampleSeconds =
         typeof body.sampleSeconds === 'number' && Number.isFinite(body.sampleSeconds)
           ? body.sampleSeconds
@@ -1252,8 +1261,8 @@ const httpServer = createServer(async (request, response) => {
         providerName,
         allowServerProviderProxy,
       );
-      const canUsePublicOpenRouterModels = providerName === 'openrouter-responses';
-      if (!modelConfig?.aiApiKey && !canUsePublicOpenRouterModels) {
+      const canUsePublicModels = providerModelsCanBeListedWithoutKey(providerName);
+      if (!modelConfig?.aiApiKey && !canUsePublicModels) {
         writeJson(response, 200, { ok: false, error: 'AI provider key is not configured.' });
         return;
       }
@@ -1262,7 +1271,7 @@ const httpServer = createServer(async (request, response) => {
         modelConfig ??
           ({
             ...config,
-            aiApiBaseUrl: 'https://openrouter.ai/api/v1',
+            aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, config.aiApiBaseUrl),
             aiApiKey: '',
             providerProxyEnabled: true,
           } as StreamBotConfig),
@@ -1311,6 +1320,8 @@ const httpServer = createServer(async (request, response) => {
         body.stateKey,
         `twitch:${config.twitchChannel}:persona:riko`,
       );
+      const providerName = normalizeRuntimeLlmProvider(body.llmProvider);
+      const appOwnedState = providerUsesAppOwnedState(providerName);
       const requestedModel = typeof body.model === 'string' ? body.model : '';
       const modelDecision = resolveServerProviderProxyModel({
         browserProviderKeyPresent: Boolean(
@@ -1352,8 +1363,10 @@ const httpServer = createServer(async (request, response) => {
         stateKey: targetStateKey,
         stateScope: normalizeStateScope(body.stateScope),
         temperature: body.temperature,
-        transportMode: normalizeAiTransportMode(body.transportMode),
-        openAiStateMode: normalizeOpenAiStateMode(body.openAiStateMode),
+        transportMode: appOwnedState ? 'http-stream' : normalizeAiTransportMode(body.transportMode),
+        openAiStateMode: appOwnedState
+          ? 'stateless'
+          : normalizeOpenAiStateMode(body.openAiStateMode),
       };
 
       if (body.stream === true) {

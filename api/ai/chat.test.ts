@@ -521,6 +521,51 @@ describe('serverless AI chat route', () => {
     });
   });
 
+  it('routes Vercel AI Gateway requests to the gateway Responses endpoint with app-owned state', async () => {
+    const openAiCalls: FetchCall[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      openAiCalls.push({ url, body });
+      return new Response(
+        JSON.stringify({
+          id: 'resp_gateway',
+          output: [{ type: 'message', content: [{ type: 'output_text', text: 'gateway ok' }] }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = createApiResponse();
+    await handler(
+      {
+        method: 'POST',
+        headers: {
+          'x-yourwifey-llm-provider': 'vercel-gateway-responses',
+          'x-yourwifey-llm-provider-key': 'vck-test-gateway',
+        },
+        body: {
+          messages: [{ role: 'user', content: 'hello' }],
+          model: 'openai/gpt-5-nano',
+        },
+      },
+      response,
+    );
+
+    expect(response.jsonBody).toMatchObject({
+      ok: true,
+      text: 'gateway ok',
+      meta: {
+        provider: 'vercel-gateway-responses',
+        stateMode: 'stateless',
+      },
+    });
+    expect(openAiCalls[0]?.url).toBe('https://ai-gateway.vercel.sh/v1/responses');
+    expect(openAiCalls[0]?.body).not.toHaveProperty('conversation');
+    expect(openAiCalls[0]?.body).not.toHaveProperty('previous_response_id');
+  });
+
   it('rejects anonymous server-key proxy use when proxy mode is enabled', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-openai');
     vi.stubEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', 'true');

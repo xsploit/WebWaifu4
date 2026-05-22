@@ -36,6 +36,7 @@ type LocalProviderKeyConfig = {
 const LOCAL_PROVIDER_KEYS: LocalProviderKeyConfig[] = [
   { provider: 'openai', keyName: 'openai.apiKey', label: 'OpenAI' },
   { provider: 'openrouter', keyName: 'openrouter.apiKey', label: 'OpenRouter' },
+  { provider: 'vercel_gateway', keyName: 'vercelGateway.apiKey', label: 'Vercel AI Gateway' },
   { provider: 'fish_speech', keyName: 'fishSpeech.apiKey', label: 'Fish Speech' },
   { provider: 'inworld', keyName: 'inworld.apiKey', label: 'Inworld' },
   { provider: 'tavily', keyName: 'tavily.apiKey', label: 'Tavily' },
@@ -287,8 +288,8 @@ export function AccountTab({
         </div>
         {enabledOAuthProviders.length === 0 ? (
           <div className="field-hint">
-            Supabase Auth reports Google/GitHub disabled. Enable a provider with its OAuth client
-            ID and secret, then add the Supabase callback URL in that provider console.
+            Supabase Auth reports Google/GitHub disabled. Enable a provider with its OAuth client ID
+            and secret, then add the Supabase callback URL in that provider console.
           </div>
         ) : null}
         <div className="status-copy">{loginStatus}</div>
