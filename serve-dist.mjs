@@ -5,7 +5,7 @@ import { extname, join, normalize } from 'node:path';
 const root = join(process.cwd(), 'dist');
 const port = Number.parseInt(process.env.OVERLAY_PORT || '4173', 10);
 const host = process.env.OVERLAY_HOST || process.env.HOST || '127.0.0.1';
-const apiPort = Number.parseInt(process.env.BOT_PORT || '8787', 10);
+const apiPort = Number.parseInt(process.env.BOT_PORT || '8797', 10);
 const types = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],

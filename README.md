@@ -43,7 +43,7 @@ http://localhost:5173
 The dev command starts both:
 
 - Vite overlay/editor on `5173`
-- Local AI/TTS backend on `8787`
+- Local AI/TTS backend on `8797`
 
 ## Provider Keys
 

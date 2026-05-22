@@ -116,7 +116,7 @@ export function getOverlaySocketUrl() {
   url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
   if (url.port === '5173' || url.port === '4173') {
-    url.port = '8787';
+    url.port = import.meta.env['VITE_BOT_PORT'] || '8797';
   }
 
   return url.toString();

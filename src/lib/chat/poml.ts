@@ -168,7 +168,7 @@ function getPomlRenderUrl() {
   }
 
   if (typeof window === 'undefined') {
-    return 'http://127.0.0.1:8787/ai/poml/render';
+    return 'http://127.0.0.1:8797/ai/poml/render';
   }
 
   const url = new URL('/api/ai/poml/render', window.location.href);
