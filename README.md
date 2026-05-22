@@ -122,7 +122,6 @@ npm run dev
 npm run build
 npm run start:stream
 npm test
-npm run format:check
 ```
 
 ## Project Layout
