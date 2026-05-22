@@ -4,8 +4,8 @@ import type {
   OpenAiResponsesStateMode,
 } from './ai/OpenAiResponsesProvider.js';
 
+loadDotenv({ path: '.env.local' });
 loadDotenv({ path: '.env' });
-loadDotenv({ path: '.env.local', override: true });
 
 export type StreamBotConfig = {
   twitchChannel: string;

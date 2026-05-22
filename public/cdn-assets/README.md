@@ -1,27 +1,12 @@
-# CDN Assets
+# Static Local Assets
 
-This folder contains large static assets that will be deployed to the CDN.
+Files in this folder are served directly by Vite in development and by `serve-dist.mjs` after a local build.
 
-## How it works
+Use this folder for large runtime assets that must be available through stable browser URLs, such as backgrounds, Piper voice files, and other overlay media.
 
-1. **Add your assets here** (images, audio, videos, etc.)
-2. **Deploy the stream overlay** with the normal project build/deploy path.
-3. **cdn-assets will be uploaded to the CDN** versioning is also handled for you
+Examples:
 
-## Usage in Code
+- `/cdn-assets/backgrounds/hikari-bedroom.png`
+- `/cdn-assets/piper/en_US-riko_2399-medium.onnx`
 
-```typescript
-const response = await fetch('/cdn-assets/hero-image.png');
-const imageBlob = await response.blob();
-
-// Use in React:
-<img src={imageBlob} alt="Hero" />
-```
-
-**Note:** This project serves these assets as normal static files from the overlay host.
-
-## Important Notes
-
-- **DO** commit assets to this folder
-- Use `public/` folder for small essential assets (<100KB)
-- Use `public/cdn-assets` folder for large assets (>100KB)
+This local-only fork does not upload these files to a remote CDN.

@@ -168,7 +168,8 @@ function getPomlRenderUrl() {
   }
 
   if (typeof window === 'undefined') {
-    return 'http://127.0.0.1:8797/ai/poml/render';
+    const port = (import.meta.env['VITE_BOT_PORT'] || '8797').trim() || '8797';
+    return `http://127.0.0.1:${port}/ai/poml/render`;
   }
 
   const url = new URL('/api/ai/poml/render', window.location.href);

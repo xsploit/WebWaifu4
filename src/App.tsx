@@ -5208,11 +5208,17 @@ function App() {
         mode: 'local-indexeddb',
         workspaceId: providerKeyVaultWorkspaceId,
       });
+
+      const decodedSavedVrmModels = backup.savedVrmModels.map((model) => ({
+        ...model,
+        blob: base64ToBlob(model.dataBase64, model.type),
+      }));
+
       await providerVault.importSecrets(backup.providerSecrets);
 
-      for (const model of backup.savedVrmModels) {
+      for (const model of decodedSavedVrmModels) {
         await saveVrmModelBlob({
-          blob: base64ToBlob(model.dataBase64, model.type),
+          blob: model.blob,
           createdAt: model.createdAt,
           id: model.id,
           name: model.name,

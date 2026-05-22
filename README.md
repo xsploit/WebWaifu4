@@ -62,7 +62,7 @@ The browser sends the selected key to the local backend only for the current req
 Optional ENV fallback is still available for private local machines:
 
 ```env
-BYOK_SERVER_PROVIDER_PROXY_ENABLED=true
+SERVER_PROVIDER_PROXY_ENABLED=true
 OPENAI_API_KEY=
 OPENROUTER_API_KEY=
 FISH_AUDIO_API_KEY=
@@ -70,7 +70,7 @@ INWORLD_API_KEY=
 TAVILY_API_KEY=
 ```
 
-If `BYOK_SERVER_PROVIDER_PROXY_ENABLED=false`, the backend will not use ENV provider keys as fallback.
+If `SERVER_PROVIDER_PROXY_ENABLED=false`, the backend will not use ENV provider keys as fallback.
 
 ## OBS
 
@@ -87,7 +87,7 @@ npm run build
 npm run start:stream
 ```
 
-Then point OBS at:
+`npm run start:stream` serves the built overlay through `serve-dist.mjs`, which keeps the same local `/api/*` proxy behavior as Vite. Then point OBS at:
 
 ```text
 http://localhost:4173
@@ -131,7 +131,7 @@ npm run format:check
 src/                 React overlay/editor
 server/src/          Local AI, Twitch, TTS, websocket backend
 public/assets/       VRM, background, and animation assets
-custom-voices/       Local Piper voice assets
+public/cdn-assets/   Large static local assets served by the overlay host
 docs/                Focused local runtime notes
 ```
 

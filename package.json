@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "start:bot": "cross-env BOT_PORT=8797 TWITCH_MOCK=true node server/dist/index.js",
     "start:bot:irc": "cross-env BOT_PORT=8797 TWITCH_MOCK=false node server/dist/index.js",
-    "start:stream": "concurrently -k -n overlay,ai -c cyan,magenta \"npm run preview -- --host 0.0.0.0\" \"npm run start:bot\"",
+    "start:stream": "concurrently -k -n overlay,ai -c cyan,magenta \"cross-env OVERLAY_PORT=4173 BOT_PORT=8797 node serve-dist.mjs\" \"npm run start:bot\"",
     "sync:silly-tavern": "node scripts/sync-silly-tavern.mjs",
     "test": "vitest",
     "deploy": "npm run build",
