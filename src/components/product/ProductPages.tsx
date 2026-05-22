@@ -30,7 +30,6 @@ import {
   fetchSupabaseEnabledOAuthProviders,
   getEnabledSupabaseOAuthProviders,
   getSupabaseOAuthProviderLabel,
-  requestSupabaseMagicLink,
 } from '../../lib/product/supabase-auth-shell';
 import { signInWithSupabaseOAuth } from '../../lib/product/supabase-sdk-auth';
 import type { SupabaseOAuthProvider, SupabasePublicConfig } from '../../lib/product/supabase-env';
@@ -917,8 +916,7 @@ function LoginPage(
     accountSummary: ReturnType<typeof describeByokAccountShell>;
   },
 ) {
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState(props.accountSummary.detail);
+  const [status, setStatus] = useState('Choose a provider to continue.');
   const [busy, setBusy] = useState(false);
   const [liveOAuthProviders, setLiveOAuthProviders] = useState<SupabaseOAuthProvider[] | null>(
     null,
@@ -928,6 +926,8 @@ function LoginPage(
     [props.supabaseConfig],
   );
   const enabledOAuthProviders = liveOAuthProviders ?? configuredOAuthProviders;
+  const displayedOAuthProviders =
+    enabledOAuthProviders.length > 0 ? enabledOAuthProviders : configuredOAuthProviders;
   const oauthAvailable =
     props.accountMode.loginAvailable &&
     props.supabaseConfig.status === 'configured' &&
@@ -975,18 +975,6 @@ function LoginPage(
     }
   }, [props.accountMode.kind, props.onNavigate]);
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    const result = await requestSupabaseMagicLink({
-      config: props.supabaseConfig,
-      email,
-      redirectTo: getAuthCallbackUrlWithNext(),
-    });
-    setBusy(false);
-    setStatus(result.message);
-  };
-
   const handleOAuth = async (provider: SupabaseOAuthProvider) => {
     setBusy(true);
     const request = await signInWithSupabaseOAuth({
@@ -1004,59 +992,42 @@ function LoginPage(
 
   return (
     <ProductShell {...props}>
-      <section className="product-hero product-hero-compact">
-        <div className="product-hero-copy">
+      <section className="product-login-panel">
+        <div className="product-login-copy">
           <p className="product-eyebrow">Account login</p>
           <h1 className="product-display">
             Sign in to <span className="product-display-accent">YourWifey</span>
           </h1>
           <p className="product-lede">
-            Use a normal OAuth provider for cloud sync, dashboard access, and signed OBS overlay
-            URLs. Provider API keys still stay in this browser vault.
+            Continue with Google or GitHub to unlock cloud sync, dashboard access, the editor, and
+            signed OBS overlay URLs. Provider API keys still stay in this browser vault.
           </p>
         </div>
-      </section>
-      <section className="product-card product-card-narrow">
-        <SectionTitle title="Continue with" />
-        <div className="product-oauth-grid">
-          {enabledOAuthProviders.map((provider) => (
-            <button
-              className="product-primary"
-              disabled={!oauthAvailable || busy}
-              key={provider}
-              onClick={() => handleOAuth(provider)}
-              type="button"
-            >
-              {getSupabaseOAuthProviderLabel(provider)}
-            </button>
-          ))}
-        </div>
-        <StatusText>
-          {oauthAvailable
-            ? 'Use an enabled Supabase OAuth provider.'
-            : getOAuthUnavailableMessage(props)}
-        </StatusText>
-      </section>
-      <form className="product-card product-card-narrow" onSubmit={handleSubmit}>
-        <SectionTitle title="Email fallback" />
-        <label className="product-field">
-          <span>Email</span>
-          <input
-            autoComplete="email"
-            inputMode="email"
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
-            type="email"
-            value={email}
-          />
-        </label>
-        <div className="product-actions">
-          <button className="product-primary" disabled={busy} type="submit">
-            {busy ? 'Sending…' : 'Send email link'}
+        <div className="product-login-actions">
+          <SectionTitle title="Continue with" />
+          <div className="product-oauth-grid">
+            {displayedOAuthProviders.map((provider) => (
+              <button
+                className="product-primary"
+                disabled={!oauthAvailable || busy}
+                key={provider}
+                onClick={() => handleOAuth(provider)}
+                type="button"
+              >
+                {busy ? 'Opening...' : getSupabaseOAuthProviderLabel(provider)}
+              </button>
+            ))}
+          </div>
+          <StatusText>{oauthAvailable ? status : getOAuthUnavailableMessage(props)}</StatusText>
+          <button
+            className="product-secondary"
+            onClick={() => props.onNavigate('/home')}
+            type="button"
+          >
+            Back to home
           </button>
         </div>
-        <StatusText>{status}</StatusText>
-      </form>
+      </section>
     </ProductShell>
   );
 }
