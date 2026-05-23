@@ -1,35 +1,79 @@
-# Web Waifu 4
+<div align="center">
 
-Local-first VTuber stream assistant for OBS, Twitch chat, local chat, VRM avatars, realtime TTS, tools, and persistent character memory.
+# 💋 Web Waifu 4 · Local Edition
 
-This repository is the standalone local build. It is intentionally not the SaaS/Auth/Vercel fork:
+### *Your own VTuber co-host. On your machine. Nobody else's.*
 
-- No Supabase login.
-- No Vercel deployment path.
-- No hosted cloud sync.
-- No billing, accounts, or public overlay links.
-- Settings, chat state, memory, embeddings, saved VRMs, voice presets, and provider keys stay in browser/local machine storage.
+A local-first stream assistant for OBS and Twitch — VRM avatars, realtime TTS,
+persistent character memory, and a brain that lives entirely on your hardware.
 
-## Features
+<br/>
 
-- React + Three.js overlay/editor for local browser use or OBS Browser Source.
-- Unified local chat and Twitch chat intake through the same queue and response path.
-- OpenAI Responses and OpenRouter-compatible Responses provider modes.
-- Piper, Fish Speech, and Inworld TTS through the local backend.
-- Fish Speech live bridge support for streaming text into one realtime TTS stream.
-- Grillo-style relationship memory, reflective diary state, semantic memory, and worker-assisted memory passes.
-- VRM avatar loading, saved custom VRMs, facial expressions, gaze, animation playlists, emotion mapping, and weighted ambient loops.
-- Twitch IRC, command handling, optional stream audio transcription, and optional stream frame vision context.
-- Local backup import/export for moving a configured setup to another streaming PC.
+![local-first](https://img.shields.io/badge/local--first-no_cloud-ff3b6b?style=for-the-badge)
+![node](https://img.shields.io/badge/node-20%2B-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
+![react](https://img.shields.io/badge/react-19-61dafb?style=for-the-badge&logo=react&logoColor=black)
+![three.js](https://img.shields.io/badge/three.js-r170-000?style=for-the-badge&logo=three.js&logoColor=white)
+![vite](https://img.shields.io/badge/vite-7-646cff?style=for-the-badge&logo=vite&logoColor=white)
+![twitch](https://img.shields.io/badge/twitch-IRC-9146ff?style=for-the-badge&logo=twitch&logoColor=white)
 
-## Requirements
+</div>
 
-- Node.js 20+
-- npm
-- Chromium-based browser for the editor and OBS preview
-- Optional: `ffmpeg` plus `yt-dlp` or `streamlink` for Twitch stream transcription and frame sampling
+---
 
-## Quick Start
+## 🌶️ What this is
+
+This is the **standalone local fork** of Web Waifu 4. It is intentionally **not** the SaaS build:
+
+| ❌ Not this | ✅ This |
+|---|---|
+| Supabase login | Local browser storage |
+| Vercel deployment | Runs on your box |
+| Hosted cloud sync | Backups you control |
+| Billing / accounts | Free forever, no telemetry |
+| Public overlay links | Localhost only |
+
+Your settings, chat state, memory, embeddings, saved VRMs, voice presets, and provider keys never leave your machine.
+
+---
+
+## ✨ Features
+
+**🧠 Brain**
+- Unified local + Twitch chat through one queue and response path
+- OpenAI Responses & OpenRouter-compatible providers
+- Grillo-style relationship memory, reflective diary, semantic recall
+- Worker-assisted memory passes that don't block the UI
+
+**🎙️ Voice**
+- Piper, Fish Speech, and Inworld TTS
+- Fish Speech **live bridge** — stream text straight into one realtime audio stream
+- Per-persona voice bindings
+
+**🎭 Avatar**
+- React + Three.js overlay (use it standalone or as an OBS Browser Source)
+- VRM loading with saved custom VRMs, facial expressions, gaze, animation playlists
+- Emotion mapping and weighted ambient idle loops
+
+**📺 Stream**
+- Twitch IRC, command handling, mod-aware queue
+- Optional stream audio transcription (Whisper)
+- Optional stream-frame vision context
+- Local backup import/export to migrate setups between PCs
+
+---
+
+## 🛠️ Requirements
+
+| | |
+|---|---|
+| **Node.js** | 20+ |
+| **npm** | bundled with Node |
+| **Browser** | Chromium-based (Chrome, Edge, Brave, etc.) |
+| **Optional** | `ffmpeg` + `yt-dlp` or `streamlink` for stream transcription |
+
+---
+
+## 🚀 Quick Start
 
 ```powershell
 npm install
@@ -37,22 +81,26 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Open the editor:
+Then open the editor:
 
-```text
+```
 http://localhost:5173
 ```
 
-`npm run dev` starts:
+`npm run dev` boots two processes:
 
-- Vite overlay/editor on `http://localhost:5173`
-- Local AI/TTS backend on `http://localhost:8797`
+| Service | URL |
+|---|---|
+| 🎨 Vite overlay / editor | `http://localhost:5173` |
+| 🤖 Local AI + TTS backend | `http://localhost:8797` |
 
-## Provider Keys
+---
 
-Open `Settings -> Account -> Browser Provider Keys`.
+## 🔑 Provider Keys
 
-Supported browser-vault keys:
+Open **Settings → Account → Browser Provider Keys**.
+
+Supported in the browser vault:
 
 - OpenAI
 - OpenRouter
@@ -60,9 +108,10 @@ Supported browser-vault keys:
 - Inworld
 - Tavily
 
-Keys are stored in the browser provider vault and sent to the local backend only for the current request. The backend still performs provider calls so WebSockets, TTS streaming, CORS, provider SDKs, and provider-specific request formats stay server-side.
+Keys live in the browser vault and are only sent to your local backend for the current request. The backend still performs the provider calls — WebSockets, TTS streaming, CORS, SDKs, and provider-specific request shapes stay server-side.
 
-Optional local-machine ENV fallback is available for private setups:
+<details>
+<summary><b>Prefer ENV-based keys?</b></summary>
 
 ```env
 SERVER_PROVIDER_PROXY_ENABLED=true
@@ -73,83 +122,107 @@ INWORLD_API_KEY=
 TAVILY_API_KEY=
 ```
 
-If `SERVER_PROVIDER_PROXY_ENABLED=false`, the backend will not use ENV provider keys as fallback.
+If `SERVER_PROVIDER_PROXY_ENABLED=false`, the backend won't fall back to ENV keys.
+</details>
 
-## OBS Usage
+---
 
-For development, add an OBS Browser Source pointed at:
+## 📺 OBS Setup
 
-```text
+**During development**, point an OBS Browser Source at:
+
+```
 http://localhost:5173
 ```
 
-For a built local runtime:
+**For a built local runtime:**
 
 ```powershell
 npm run build
 npm run start:stream
 ```
 
-`npm run start:stream` serves the built overlay with the same local `/api/*` proxy behavior as Vite. Then point OBS at:
+Then point OBS at:
 
-```text
+```
 http://localhost:4173
 ```
 
-## Local Data
+`npm run start:stream` serves the built overlay with the same local `/api/*` proxy behavior as Vite.
 
-Stored locally:
+---
 
-- App settings
-- Personas and voice bindings
+## 💾 Local Data
+
+Stored on your machine, never uploaded:
+
+- App settings · personas · voice bindings
 - Twitch intake settings
-- Chat and queue state
-- Relationship memory and reflective diary state
-- Semantic memory records and embeddings
+- Chat & queue state
+- Relationship memory + reflective diary
+- Semantic memory + embeddings
 - Saved VRM uploads
-- Provider key vault entries
+- Provider key vault
 
-Use `Settings -> Account -> Export Local Backup` to move a configured setup to another machine. The backup includes provider keys, saved VRMs, memory, and app settings, so treat it like a private local secrets file.
+Use **Settings → Account → Export Local Backup** to move a configured setup to another machine. The backup includes provider keys, saved VRMs, memory, and settings — **treat it like a private secrets file**.
 
-## Twitch Stream Context
+---
 
-Twitch chat and ambient stream context are separate:
+## 🎤 Twitch Stream Context
 
-- Chat messages enter the response queue.
-- Stream transcription and vision snippets are injected as context only.
-- Whisper transcription requires a provider key plus `ffmpeg` and either `yt-dlp` or `streamlink`.
+Chat and ambient context are kept separate:
 
-## Useful Commands
+- **Chat messages** → enter the response queue
+- **Stream transcription + vision snippets** → injected as context only
+- Whisper transcription needs a provider key plus `ffmpeg` and either `yt-dlp` or `streamlink`
 
-```powershell
-npm run dev
-npm run build
-npm run start:stream
-npm test
-```
+---
 
-For backend-only work:
+## 📜 Useful Commands
 
 ```powershell
-npm run dev:ai
-npm run dev:bot
-npm run dev:bot:irc
-npm run build:bot
+npm run dev          # overlay + AI backend
+npm run build        # build for OBS
+npm run start:stream # serve built overlay + bot
+npm test             # vitest
 ```
 
-## Project Layout
+<details>
+<summary><b>Backend-only workflows</b></summary>
+
+```powershell
+npm run dev:ai         # AI server only
+npm run dev:bot        # bot with mocked Twitch
+npm run dev:bot:irc    # bot with real Twitch IRC
+npm run build:bot      # compile server TS
+```
+</details>
+
+---
+
+## 📂 Project Layout
 
 ```text
-src/                 React overlay/editor
+src/                 React overlay / editor
 server/src/          Local AI, Twitch, TTS, websocket backend
-public/assets/       VRM, background, and animation assets
-public/cdn-assets/   Large static local assets served by the overlay host
+public/assets/       VRM, background, animation assets
+public/cdn-assets/   Large static local assets
 docs/                Focused local runtime notes
-vendor/              Vendored runtime packages used by the local build
+vendor/              Vendored runtime packages
 ```
 
-## Development Notes
+---
 
-- Keep hosted auth, cloud sync, billing, and public OBS sharing in a separate fork.
-- Keep realtime provider calls on the local backend path; the browser supplies keys, not provider protocol glue.
-- Run `npm test -- --run` and `npm run build` before publishing a release build.
+## 🧪 Development Notes
+
+- Hosted auth, cloud sync, billing, and public OBS sharing live in a **separate fork** — don't drag them in here.
+- Realtime provider calls stay on the local backend path. The browser supplies keys, not provider protocol glue.
+- Run `npm test -- --run` and `npm run build` before tagging a release build.
+
+<div align="center">
+
+---
+
+**Built for streamers who'd rather own their stack than rent it.**
+
+</div>
