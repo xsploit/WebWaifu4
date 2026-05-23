@@ -99,6 +99,13 @@ type GazeRuntimeState = {
   euler: THREE.Euler;
 };
 
+type GazeBoneRefs = {
+  head: THREE.Object3D | null | undefined;
+  leftEye: THREE.Object3D | null | undefined;
+  neck: THREE.Object3D | null | undefined;
+  rightEye: THREE.Object3D | null | undefined;
+};
+
 type ArmGuardBoneRefs = {
   chest: THREE.Object3D | null | undefined;
   hips: THREE.Object3D | null | undefined;
@@ -108,6 +115,12 @@ type ArmGuardBoneRefs = {
   rightHand: THREE.Object3D | null | undefined;
   rightLowerArm: THREE.Object3D | null | undefined;
   rightUpperArm: THREE.Object3D | null | undefined;
+};
+
+type CameraRigVectors = {
+  fov: number;
+  position: THREE.Vector3;
+  target: THREE.Vector3;
 };
 
 const SCALE_LIMITS = {
@@ -235,6 +248,7 @@ const armGuardParentInverse = new THREE.Quaternion();
 const armGuardLocalDelta = new THREE.Quaternion();
 const vrmBaseRotations = new WeakMap<THREE.Object3D, THREE.Quaternion>();
 const armGuardBoneCache = new WeakMap<VRM, ArmGuardBoneRefs>();
+const gazeBoneCache = new WeakMap<VRM, GazeBoneRefs>();
 
 function clampCameraVerticalOffset(value: number) {
   return THREE.MathUtils.clamp(
@@ -252,44 +266,42 @@ function clampModelVerticalOffset(value: number) {
   );
 }
 
-function getCameraRigVectors(visualSettings: VisualSettings) {
+function createCameraRigVectors(): CameraRigVectors {
+  return {
+    fov: 35,
+    position: new THREE.Vector3(),
+    target: new THREE.Vector3(),
+  };
+}
+
+function getCameraRigVectors(
+  visualSettings: VisualSettings,
+  output: CameraRigVectors = createCameraRigVectors(),
+) {
   const preset = CAMERA_PRESETS[visualSettings.cameraViewMode];
-  const cameraPosition = preset.position
-    .clone()
-    .add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0));
-  const cameraTarget = preset.target
-    .clone()
-    .add(new THREE.Vector3(0, visualSettings.cameraVerticalOffset, 0));
+  output.position.copy(preset.position);
+  output.target.copy(preset.target);
+  output.position.y += visualSettings.cameraVerticalOffset;
+  output.target.y += visualSettings.cameraVerticalOffset;
 
   if (visualSettings.cameraRigMode === 'custom') {
-    cameraPosition.add(
-      new THREE.Vector3(
-        visualSettings.cameraOffsetX,
-        visualSettings.cameraOffsetY,
-        visualSettings.cameraOffsetZ,
-      ),
-    );
-    cameraTarget.add(
-      new THREE.Vector3(
-        visualSettings.cameraTargetOffsetX,
-        visualSettings.cameraTargetOffsetY,
-        visualSettings.cameraTargetOffsetZ,
-      ),
-    );
+    output.position.x += visualSettings.cameraOffsetX;
+    output.position.y += visualSettings.cameraOffsetY;
+    output.position.z += visualSettings.cameraOffsetZ;
+    output.target.x += visualSettings.cameraTargetOffsetX;
+    output.target.y += visualSettings.cameraTargetOffsetY;
+    output.target.z += visualSettings.cameraTargetOffsetZ;
   }
 
-  return {
-    position: cameraPosition,
-    target: cameraTarget,
-    fov:
-      visualSettings.cameraRigMode === 'custom'
-        ? THREE.MathUtils.clamp(
-            visualSettings.cameraFov,
-            CAMERA_OFFSET_LIMITS.fov.min,
-            CAMERA_OFFSET_LIMITS.fov.max,
-          )
-        : 35,
-  };
+  output.fov =
+    visualSettings.cameraRigMode === 'custom'
+      ? THREE.MathUtils.clamp(
+          visualSettings.cameraFov,
+          CAMERA_OFFSET_LIMITS.fov.min,
+          CAMERA_OFFSET_LIMITS.fov.max,
+        )
+      : 35;
+  return output;
 }
 
 function getBaseVrmRotation(scene: THREE.Object3D) {
@@ -299,6 +311,20 @@ function getBaseVrmRotation(scene: THREE.Object3D) {
     vrmBaseRotations.set(scene, baseRotation);
   }
   return baseRotation;
+}
+
+function getGazeBoneRefs(vrm: VRM): GazeBoneRefs {
+  let refs = gazeBoneCache.get(vrm);
+  if (!refs) {
+    refs = {
+      head: vrm.humanoid.getNormalizedBoneNode('head'),
+      leftEye: vrm.humanoid.getNormalizedBoneNode('leftEye'),
+      neck: vrm.humanoid.getNormalizedBoneNode('neck'),
+      rightEye: vrm.humanoid.getNormalizedBoneNode('rightEye'),
+    };
+    gazeBoneCache.set(vrm, refs);
+  }
+  return refs;
 }
 
 function hasActivePass(refs: PostProcessingRefs | null) {
@@ -742,8 +768,9 @@ function updateAutoGaze(
   state.targetObject.position.copy(state.noisyTarget);
   state.targetObject.updateMatrixWorld(true);
 
-  const leftEye = vrm.humanoid.getNormalizedBoneNode('leftEye');
-  const rightEye = vrm.humanoid.getNormalizedBoneNode('rightEye');
+  const gazeBones = getGazeBoneRefs(vrm);
+  const leftEye = gazeBones.leftEye;
+  const rightEye = gazeBones.rightEye;
   const hasEyeBones = Boolean(leftEye || rightEye);
   if (vrm.lookAt) {
     if (hasEyeBones) {
@@ -758,8 +785,8 @@ function updateAutoGaze(
   }
 
   const follow = headDrift * THREE.MathUtils.lerp(GAZE_HEAD_FOLLOW_FLOOR, 1, headFollow);
-  const head = vrm.humanoid.getNormalizedBoneNode('head');
-  const neck = vrm.humanoid.getNormalizedBoneNode('neck');
+  const head = gazeBones.head;
+  const neck = gazeBones.neck;
   const xAmount = THREE.MathUtils.clamp(headX / GAZE_HEAD_MAX_HORIZONTAL, -1, 1);
   const yAmount = THREE.MathUtils.clamp((headY - baseY) / GAZE_HEAD_MAX_VERTICAL, -1, 1);
   const yaw = xAmount * 0.28 * follow;
@@ -1064,16 +1091,25 @@ function SceneRuntime({
   const scene = useThree((state) => state.scene);
   const size = useThree((state) => state.size);
   const postProcessingRef = useRef<PostProcessingRefs | null>(null);
-  const initialCameraRig = getCameraRigVectors(visualSettings);
-  const cameraTargetPositionRef = useRef(initialCameraRig.position.clone());
-  const cameraLookAtRef = useRef(initialCameraRig.target.clone());
-  const cameraLookAtTargetRef = useRef(initialCameraRig.target.clone());
+  const cameraRigScratchRef = useRef(createCameraRigVectors());
+  const cameraRefsInitializedRef = useRef(false);
+  const cameraTargetPositionRef = useRef(new THREE.Vector3());
+  const cameraLookAtRef = useRef(new THREE.Vector3());
+  const cameraLookAtTargetRef = useRef(new THREE.Vector3());
   const blinkRuntimeRef = useRef(createBlinkRuntimeState());
   const gazeRuntimeRef = useRef(createGazeRuntimeState());
 
+  if (!cameraRefsInitializedRef.current) {
+    const initialCameraRig = getCameraRigVectors(visualSettings, cameraRigScratchRef.current);
+    cameraTargetPositionRef.current.copy(initialCameraRig.position);
+    cameraLookAtRef.current.copy(initialCameraRig.target);
+    cameraLookAtTargetRef.current.copy(initialCameraRig.target);
+    cameraRefsInitializedRef.current = true;
+  }
+
   useEffect(() => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
-    const cameraRig = getCameraRigVectors(visualSettings);
+    const cameraRig = getCameraRigVectors(visualSettings, cameraRigScratchRef.current);
 
     gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     gl.setClearColor(0x02040a, 0);
@@ -1105,7 +1141,7 @@ function SceneRuntime({
 
   useEffect(() => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
-    const cameraRig = getCameraRigVectors(visualSettings);
+    const cameraRig = getCameraRigVectors(visualSettings, cameraRigScratchRef.current);
     cameraTargetPositionRef.current.copy(cameraRig.position);
     cameraLookAtTargetRef.current.copy(cameraRig.target);
     if (Math.abs(perspectiveCamera.fov - cameraRig.fov) > 0.001) {
@@ -1211,6 +1247,9 @@ function Avatar({
   modelVerticalOffset,
   vrm,
 }: AvatarProps) {
+  const placementEulerRef = useRef(new THREE.Euler(0, 0, 0, 'YXZ'));
+  const placementQuaternionRef = useRef(new THREE.Quaternion());
+
   useEffect(() => {
     if (!vrm) {
       return;
@@ -1230,7 +1269,7 @@ function Avatar({
         MODEL_DEPTH_POSITION_LIMITS.max,
       ),
     );
-    const placementRotation = new THREE.Euler(
+    const placementRotation = placementEulerRef.current.set(
       THREE.MathUtils.degToRad(
         THREE.MathUtils.clamp(
           modelRotationX,
@@ -1252,7 +1291,7 @@ function Avatar({
     );
     vrm.scene.quaternion
       .copy(getBaseVrmRotation(vrm.scene))
-      .multiply(new THREE.Quaternion().setFromEuler(placementRotation));
+      .multiply(placementQuaternionRef.current.setFromEuler(placementRotation));
   }, [
     modelPositionX,
     modelPositionZ,
