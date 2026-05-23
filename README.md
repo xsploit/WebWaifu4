@@ -24,7 +24,9 @@ persistent character memory, and a brain that lives entirely on your hardware.
 
 Web Waifu 4 is a **VTuber stream brain you run on your own PC**.
 
-It loads a VRM avatar in an OBS-ready overlay, listens to your Twitch chat and local mic prompts, routes them through your choice of LLM provider, speaks the reply with real TTS in real time, and remembers who said what across sessions.
+It loads a VRM avatar in an OBS-ready overlay, listens to Twitch chat and local text chat, routes queued turns through your chosen LLM provider, speaks replies with real TTS in real time, and remembers who said what across sessions.
+
+Optional stream audio transcription can add ambient context from a configured Twitch stream or local capture source. That context helps the character understand what is happening on stream, but it is not currently a push-to-talk/local microphone conversation mode.
 
 Everything that isn't a paid provider call (OpenAI, OpenRouter, Fish, Inworld, Tavily) happens on your machine. No accounts. No cloud sync. No telemetry. Your keys, your memory, your VRMs, your backups.
 
@@ -50,7 +52,7 @@ Everything that isn't a paid provider call (OpenAI, OpenRouter, Fish, Inworld, T
 
 **📺 Stream**
 - Twitch IRC with command handling and a mod-aware queue
-- Optional Whisper transcription of your own stream audio (context only)
+- Optional Whisper transcription of a configured stream or capture source (ambient context only)
 - Optional stream-frame vision context for "she can see what's on screen"
 - Backup import/export to migrate a configured setup between PCs
 
@@ -167,8 +169,10 @@ Use **Settings → Account → Export Local Backup** to move a configured setup 
 Chat and ambient context are kept separate:
 
 - **Chat messages** → enter the response queue
-- **Stream transcription + vision snippets** → injected as context only
+- **Local text chat** → enters the same response queue as a local participant
+- **Stream transcription + vision snippets** → injected as context only; they do not behave like chat messages
 - Whisper transcription needs a provider key plus `ffmpeg` and either `yt-dlp` or `streamlink`
+- Built-in local microphone prompting is not part of this local release yet
 
 ---
 
