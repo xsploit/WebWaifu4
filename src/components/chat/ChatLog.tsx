@@ -146,13 +146,54 @@ export const ChatLog = memo(function ChatLog({
       return;
     }
 
-    const timer = window.setInterval(() => {
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const getNextRefreshMs = (currentTime: number) => {
+      let nextRefreshMs = MESSAGE_TICK_MS;
+      for (const { message } of broadcastHistory) {
+        const fadeStartAt = message.createdAt + MESSAGE_VISIBLE_MS - MESSAGE_FADE_MS;
+        const expiresAt = message.createdAt + MESSAGE_VISIBLE_MS;
+        const nextBoundaryAt = currentTime < fadeStartAt ? fadeStartAt : expiresAt;
+        const delayMs =
+          nextBoundaryAt > currentTime ? nextBoundaryAt - currentTime : MESSAGE_TICK_MS;
+        nextRefreshMs = Math.min(nextRefreshMs, delayMs);
+      }
+      return clamp(Math.ceil(nextRefreshMs), 250, MESSAGE_TICK_MS);
+    };
+
+    const schedule = (delayMs: number) => {
+      timer = window.setTimeout(() => {
+        if (cancelled) {
+          return;
+        }
+        if (document.visibilityState === 'hidden') {
+          schedule(MESSAGE_TICK_MS);
+          return;
+        }
+        const currentTime = Date.now();
+        setNow(currentTime);
+        schedule(getNextRefreshMs(currentTime));
+      }, delayMs);
+    };
+
+    schedule(getNextRefreshMs(Date.now()));
+
+    const handleVisibilityChange = () => {
       if (document.visibilityState !== 'hidden') {
         setNow(Date.now());
       }
-    }, MESSAGE_TICK_MS);
-    return () => window.clearInterval(timer);
-  }, [broadcastHistory.length]);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [broadcastHistory]);
 
   useEffect(() => {
     const scrollToBottom = () => {
