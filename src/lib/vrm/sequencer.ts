@@ -592,10 +592,16 @@ function toDisplayName(fileName: string) {
     .replace(/^/, 'Silly ');
 }
 
+type WeightedAnimationEntry = {
+  index: number;
+  weight: number;
+};
+
 export class AnimationSequencer {
   private activeEnabled: AnimationEntry[] = [];
   private activeOptions: { shuffle: boolean; loop: boolean; duration: number } | null = null;
   private activePlaylist: AnimationEntry[] = [];
+  private activeShuffleWeights: WeightedAnimationEntry[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private currentIndex = -1;
   private shuffleOrder: number[] = [];
@@ -615,8 +621,11 @@ export class AnimationSequencer {
     }
 
     if (options.shuffle) {
-      this.shuffleOrder = this.weightedShuffle(enabled);
+      this.activeShuffleWeights = this.createShuffleWeights(enabled);
+      this.shuffleOrder = this.weightedShuffle(this.activeShuffleWeights);
       this.shufflePosition = 0;
+    } else {
+      this.activeShuffleWeights = [];
     }
 
     this.activeEnabled = enabled;
@@ -659,6 +668,7 @@ export class AnimationSequencer {
     this.activeEnabled = [];
     this.activeOptions = null;
     this.activePlaylist = [];
+    this.activeShuffleWeights = [];
     if (notify) {
       this.onStop?.();
     }
@@ -679,7 +689,7 @@ export class AnimationSequencer {
           return;
         }
 
-        this.shuffleOrder = this.weightedShuffle(enabled);
+        this.shuffleOrder = this.weightedShuffle(this.activeShuffleWeights);
         this.shufflePosition = 0;
       }
 
@@ -732,11 +742,15 @@ export class AnimationSequencer {
     }, options.duration * 1000);
   }
 
-  private weightedShuffle(entries: AnimationEntry[]) {
-    const weighted = entries.map((entry, index) => ({
+  private createShuffleWeights(entries: AnimationEntry[]) {
+    return entries.map((entry, index) => ({
       index,
       weight: clampAnimationWeight(getAnimationSelectionWeight(entry)),
     }));
+  }
+
+  private weightedShuffle(entries: WeightedAnimationEntry[]) {
+    const weighted = entries.slice();
     const shuffle: number[] = [];
     while (weighted.length > 0) {
       const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);

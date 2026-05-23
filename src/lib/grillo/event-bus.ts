@@ -23,8 +23,11 @@ export interface EventBusOptions {
   validateEnvelope?: EnvelopeValidator;
 }
 
+const MAX_EVENT_BUS_LISTENERS = 50;
+
 export function createEventBus(options: EventBusOptions = {}): EventBus {
   const emitter = new EventEmitter();
+  emitter.setMaxListeners(MAX_EVENT_BUS_LISTENERS);
 
   return {
     emit(envelope: Envelope): void {
@@ -43,6 +46,14 @@ export function createEventBus(options: EventBusOptions = {}): EventBus {
       messageType: MessageType,
       handler: EnvelopeHandler<T>,
     ): void {
+      const listenerCount = emitter.listenerCount(messageType);
+      if (listenerCount >= MAX_EVENT_BUS_LISTENERS) {
+        console.warn(
+          "[event-bus] listener count is high",
+          messageType,
+          listenerCount + 1,
+        );
+      }
       emitter.on(messageType, handler as (...args: unknown[]) => void);
     },
 
