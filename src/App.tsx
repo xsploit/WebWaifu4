@@ -5045,11 +5045,19 @@ function App() {
     let reconnectTimer: number | null = null;
     let closed = false;
 
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
     const scheduleReconnect = () => {
-      if (closed || reconnectTimer !== null) {
+      if (closed) {
         return;
       }
 
+      clearReconnectTimer();
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = null;
         connect();
@@ -5057,13 +5065,18 @@ function App() {
     };
 
     const connect = () => {
+      if (closed) {
+        return;
+      }
+      socket?.close();
       const protocols = getOverlaySocketProtocols();
-      socket = protocols
+      const nextSocket = protocols
         ? new WebSocket(getOverlaySocketUrl(), protocols)
         : new WebSocket(getOverlaySocketUrl());
+      socket = nextSocket;
 
-      socket.addEventListener('open', () => {
-        socket?.send(
+      nextSocket.addEventListener('open', () => {
+        nextSocket.send(
           JSON.stringify({
             type: 'overlay:ready',
             payload: { page: window.location.pathname || '/' },
@@ -5071,7 +5084,7 @@ function App() {
         );
       });
 
-      socket.addEventListener('message', (event) => {
+      nextSocket.addEventListener('message', (event) => {
         if (typeof event.data !== 'string') {
           return;
         }
@@ -5153,15 +5166,18 @@ function App() {
         }
       });
 
-      socket.addEventListener('close', () => {
+      nextSocket.addEventListener('close', () => {
+        if (socket === nextSocket) {
+          socket = null;
+        }
         setChatGenerating(false);
         overlayAiStreamsRef.current.clear();
         scheduleReconnect();
       });
-      socket.addEventListener('error', () => {
+      nextSocket.addEventListener('error', () => {
         setChatGenerating(false);
         overlayAiStreamsRef.current.clear();
-        socket?.close();
+        nextSocket.close();
       });
     };
 
@@ -5169,9 +5185,7 @@ function App() {
 
     return () => {
       closed = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-      }
+      clearReconnectTimer();
       socket?.close();
     };
   }, [
