@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderYourWifeyPomlMessages, stringifyPomlContent } from './PomlRenderer';
 
 describe('PomlRenderer', () => {
-  it('renders the YourWifey template with the fixed pomljs parser', async () => {
+  it('renders the Web Waifu 4 template with the fixed pomljs parser', async () => {
     const messages = await renderYourWifeyPomlMessages({
       animation_catalog_context: 'Available animation if mood_points < 8 && mood_points > 2',
       diary_context: '',
@@ -17,7 +17,7 @@ describe('PomlRenderer', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({ role: 'system' });
     expect(messages[0]?.content).toContain('You are Hikari');
-    expect(messages[0]?.content).toContain('- persona: YourWifey');
+    expect(messages[0]?.content).toContain('- persona: Web Waifu 4');
     expect(messages[0]?.content).toContain('mood_points < 8 && mood_points > 2');
     expect(messages[0]?.content).toContain('<yw-meta>');
     expect(messages[0]?.content).not.toContain('[{');

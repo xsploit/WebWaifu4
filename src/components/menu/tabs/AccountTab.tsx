@@ -123,7 +123,7 @@ export function AccountTab({
           </div>
         </div>
         <div className="field-hint">
-          This fork is a local streaming app. Settings, memories, saved VRMs, voices, and provider
+          Web Waifu 4 is a local streaming app. Settings, memories, saved VRMs, voices, and provider
           keys stay on this machine unless you export a backup JSON.
         </div>
       </div>

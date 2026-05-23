@@ -3,8 +3,8 @@ import { normalizePersistedChatStateSnapshot } from '../chat/storage';
 import type { SavedVrmModelSummary } from '../menu/types';
 import type { ProviderSecretRecord } from './provider-key-vault';
 
-export const LOCAL_TRANSFER_BACKUP_APP = 'yourwifey-local';
-const LEGACY_LOCAL_TRANSFER_BACKUP_APPS = new Set(['yourwifey-byok']);
+export const LOCAL_TRANSFER_BACKUP_APP = 'web-waifu-4-local';
+const LEGACY_LOCAL_TRANSFER_BACKUP_APPS = new Set(['yourwifey-local', 'yourwifey-byok']);
 export const LOCAL_TRANSFER_BACKUP_KIND = 'local-transfer-backup';
 export const LOCAL_TRANSFER_BACKUP_VERSION = 1;
 
@@ -71,7 +71,7 @@ export function parseLocalTransferBackup(value: string): YourWifeyLocalTransferB
     backup.kind !== LOCAL_TRANSFER_BACKUP_KIND ||
     backup.formatVersion !== LOCAL_TRANSFER_BACKUP_VERSION
   ) {
-    throw new Error('Choose a YourWifey local transfer backup JSON file.');
+    throw new Error('Choose a Web Waifu 4 local transfer backup JSON file.');
   }
   if (!backup.state || typeof backup.state !== 'object') {
     throw new Error('Backup is missing app settings.');

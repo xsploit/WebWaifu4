@@ -157,7 +157,7 @@ function buildDynamicPromptState({
     low_trust: relationshipMemory.trust < 7,
     medium_trust: relationshipMemory.trust >= 7 && relationshipMemory.trust < 12,
     new_relationship: relationshipStage === 'new',
-    persona_name: persona?.name.trim() || 'YourWifey',
+    persona_name: persona?.name.trim() || 'Web Waifu 4',
     relationship_mood: relationshipMood,
     relationship_stage: relationshipStage,
     respect_score: relationshipMemory.respect,

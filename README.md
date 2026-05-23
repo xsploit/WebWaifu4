@@ -1,4 +1,4 @@
-# YourWifey Local
+# Web Waifu 4
 
 Local-first VTuber stream assistant for OBS, Twitch chat, local chat, VRM avatars, realtime TTS, tools, and persistent character memory.
 

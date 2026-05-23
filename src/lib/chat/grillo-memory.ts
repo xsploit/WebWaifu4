@@ -464,7 +464,7 @@ function toCoreMemoryBlock(block: GrilloMemoryBlock): GrilloCoreMemoryBlock {
     created_at: new Date(block.createdAt).toISOString(),
     items: block.items,
     operation: 'upsert',
-    reason: 'existing YourWifey memory block',
+    reason: 'existing Web Waifu 4 memory block',
     schema_version: '1.0.0',
     source_candidate_ids: block.sourceCandidateIds,
     user_id: block.participantKey,

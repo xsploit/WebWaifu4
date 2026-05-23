@@ -91,7 +91,7 @@ describe('local transfer backup', () => {
 
   it('rejects unrelated JSON files', () => {
     expect(() => parseLocalTransferBackup('{"app":"other"}')).toThrow(
-      'Choose a YourWifey local transfer backup JSON file.',
+      'Choose a Web Waifu 4 local transfer backup JSON file.',
     );
   });
 

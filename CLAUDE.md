@@ -1,4 +1,4 @@
-# YourWifey Stream
+# Web Waifu 4
 
 Standalone Twitch-first web waifu stream overlay.
 

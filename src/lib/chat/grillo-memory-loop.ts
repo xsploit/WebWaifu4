@@ -339,7 +339,7 @@ function buildInitialWorkerMessages({
     {
       role: 'system',
       content: [
-        `You are the background sleep-time memory agent for ${persona?.name ?? 'YourWifey'}.`,
+        `You are the background sleep-time memory agent for ${persona?.name ?? 'Web Waifu 4'}.`,
         'You are not writing a user-facing chat reply.',
         'Run a tool loop over Grillo memory. Return only JSON each round.',
         'Use tools to inspect and write memory. Do not claim a write happened unless you call a write tool.',

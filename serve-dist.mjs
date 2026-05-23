@@ -104,7 +104,7 @@ createServer((request, response) => {
   } catch {}
   return sendFile(response, join(root, 'index.html'));
 }).listen(port, host, () => {
-  console.log(`YourWifey overlay listening on http://${host}:${port}`);
+  console.log(`Web Waifu 4 overlay listening on http://${host}:${port}`);
 });
 
 function isAllowedApiProxyPath(pathname) {

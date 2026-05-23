@@ -315,7 +315,7 @@ const DIRECT_TWITCH_CHAT_ENABLED = import.meta.env['VITE_DIRECT_TWITCH_CHAT'] !=
 const STREAM_BOT_WS_ENABLED =
   import.meta.env['VITE_STREAM_BOT_WS_ENABLED'] === 'true' ||
   import.meta.env['VITE_OVERLAY_WS_ENABLED'] === 'true';
-const DIRECT_COMMAND_PREFIXES = ['!yw', '!yourwifey', '!waifu'];
+const DIRECT_COMMAND_PREFIXES = ['!ww4', '!webwaifu', '!yw', '!yourwifey', '!waifu'];
 const AI_PROXY_URL = (import.meta.env['VITE_AI_PROXY_URL'] || '').trim();
 const AUTO_RESUME_BROWSER_AUDIO = import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true';
 const PIPER_TIMING_TICKS_PER_SECOND = 10000000;
@@ -4061,7 +4061,7 @@ function App() {
 
     startupStatusSentRef.current = true;
     appendSystemMessage(
-      `[Startup] Client Twitch IRC ${DIRECT_TWITCH_CHAT_ENABLED ? `listening to #${twitchChannel || DIRECT_TWITCH_CHANNEL}` : 'disabled'}; server Twitch is off by default. AI: ${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}. Browser audio stream exposed at window.__yourwifeyAudio.getStream(). Commands: !yw help, status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro|hikari>, llm <model>, vrm <id>, camera close|full, anim <name|index>, tts on|off, autospeak on|off, say <text>, chat on|off.`,
+      `[Startup] Client Twitch IRC ${DIRECT_TWITCH_CHAT_ENABLED ? `listening to #${twitchChannel || DIRECT_TWITCH_CHANNEL}` : 'disabled'}; server Twitch is off by default. AI: ${getClientAiRouteLabel()}, model=${aiSettingsRef.current.model}. Browser audio stream exposed at window.__yourwifeyAudio.getStream(). Commands: !ww4 help, status, audio, state, state reset, refresh, channel <name>, persona <riko|neuro|hikari>, llm <model>, vrm <id>, camera close|full, anim <name|index>, tts on|off, autospeak on|off, say <text>, chat on|off.`,
     );
   }, [appendSystemMessage, hydrated, twitchChannel]);
 
@@ -5251,7 +5251,7 @@ function App() {
       savedVrmModels: savedModelBackups,
       state: persistedStateSnapshot,
     });
-    const fileName = `yourwifey-local-backup-${backup.exportedAt
+    const fileName = `web-waifu-4-local-backup-${backup.exportedAt
       .replace(/[:.]/g, '-')
       .slice(0, 19)}.json`;
     const backupBlob = new Blob([serializeLocalTransferBackup(backup)], {

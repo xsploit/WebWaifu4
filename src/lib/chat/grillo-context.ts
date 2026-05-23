@@ -94,7 +94,7 @@ export function buildGrilloContextSections({
 
   return {
     background_information: [
-      `active_persona: ${persona?.name?.trim() || 'YourWifey'}`,
+      `active_persona: ${persona?.name?.trim() || 'Web Waifu 4'}`,
       `local_controller: ${persona?.userNickname?.trim() || 'not configured'}`,
       `interface_path: ${interfacePath}`,
       `conversation_scope: ${conversationScope}`,

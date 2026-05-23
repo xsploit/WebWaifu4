@@ -1,7 +1,7 @@
 {
-  "name": "yourwifey-local",
+  "name": "web-waifu-4-local",
   "version": "1.0.0",
-  "description": "Standalone Twitch-first web waifu stream overlay.",
+  "description": "Local-first Twitch and OBS VTuber stream assistant.",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n overlay,ai -c cyan,magenta \"cross-env BOT_PORT=8797 VITE_BOT_PORT=8797 VITE_DIRECT_TWITCH_CHAT=true VITE_STREAM_BOT_WS_ENABLED=false VITE_AI_PROXY_ENABLED=true vite --host 0.0.0.0\" \"cross-env BOT_PORT=8797 TWITCH_MOCK=true npm run dev:ai\"",

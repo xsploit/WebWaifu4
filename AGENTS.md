@@ -1,4 +1,4 @@
-# YourWifey Stream Agent Notes
+# Web Waifu 4 Agent Notes
 
 This repo is a standalone Twitch-first stream overlay with a local/server AI backend.
 

@@ -111,7 +111,7 @@ export function AiTab({
         </select>
         <div className="field-hint">
           OpenAI uses Responses and Conversations when available. OpenRouter uses a
-          Responses-compatible endpoint with YourWifey-owned history, diary, semantic memory, and
+          Responses-compatible endpoint with Web Waifu 4-owned history, diary, semantic memory, and
           prompt compaction.
         </div>
       </div>
@@ -146,7 +146,7 @@ export function AiTab({
         </select>
         <div className="field-hint">
           Models are loaded directly from the selected provider API through the backend. The list is
-          not curated or filtered by YourWifey.
+          not curated or filtered by Web Waifu 4.
         </div>
         <button className="btn-tech secondary" onClick={onRefreshModels} type="button">
           {modelsLoading ? 'Refreshing...' : 'Refresh Models'}

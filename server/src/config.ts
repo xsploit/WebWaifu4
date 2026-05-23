@@ -85,7 +85,7 @@ function aliasesFromEnv(botUsername: string) {
   const configured = process.env.BOT_ALIASES?.split(',') ?? [];
   return Array.from(
     new Set(
-      ['ai', 'yourwifey', botUsername, ...configured]
+      ['ai', 'webwaifu4', 'webwaifu', 'ww4', 'yourwifey', botUsername, ...configured]
         .map((alias) => alias.trim().toLowerCase().replace(/^@/, ''))
         .filter(Boolean),
     ),
@@ -239,7 +239,13 @@ export function loadConfig(): StreamBotConfig {
     twitchBotUserId: process.env.TWITCH_BOT_USER_ID?.trim() ?? '',
     twitchMock: booleanFromEnv('TWITCH_MOCK', true),
     sendTwitchReplies: booleanFromEnv('SEND_TWITCH_REPLIES', false),
-    commandPrefixes: csvFromEnv('COMMAND_PREFIXES', ['!yw', '!yourwifey', '!waifu']),
+    commandPrefixes: csvFromEnv('COMMAND_PREFIXES', [
+      '!ww4',
+      '!webwaifu',
+      '!yw',
+      '!yourwifey',
+      '!waifu',
+    ]),
     commandAdmins: Array.from(
       new Set(
         csvFromEnv('COMMAND_ADMINS', ['subsect'])

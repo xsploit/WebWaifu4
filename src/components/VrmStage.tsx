@@ -373,7 +373,7 @@ function getNextGazeDelay() {
 
 function createGazeRuntimeState(): GazeRuntimeState {
   const targetObject = new THREE.Object3D();
-  targetObject.name = 'YourWifeyProceduralGazeTarget';
+  targetObject.name = 'WebWaifu4ProceduralGazeTarget';
   targetObject.position.set(0, GAZE_CENTER_Y, GAZE_CENTER_Z);
 
   return {

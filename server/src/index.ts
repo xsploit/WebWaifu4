@@ -1467,7 +1467,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 httpServer.listen(config.botPort, () => {
-  console.log(`YourWifey stream bot listening on http://127.0.0.1:${config.botPort}`);
+  console.log(`Web Waifu 4 stream bot listening on http://127.0.0.1:${config.botPort}`);
   console.log(`Overlay WebSocket path: ws://127.0.0.1:${config.botPort}/ws`);
   console.log(`Twitch chat mode: ${serverTwitchMode} (#${chatSource.channel})`);
   chatSource.start();

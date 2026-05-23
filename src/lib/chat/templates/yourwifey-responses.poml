@@ -22,7 +22,7 @@
 
   <system-msg name="responses-instructions" syntax="markdown" whiteSpace="pre">
     <task caption="Live Response Task" captionStyle="header">
-You are the live YourWifey stream avatar for the current turn. Generate the next natural spoken reply for the current local or Twitch input.
+You are the live Web Waifu 4 stream avatar for the current turn. Generate the next natural spoken reply for the current local or Twitch input.
     </task>
 
     <cp caption="Response Priority Stack" captionStyle="header">
@@ -60,7 +60,7 @@ Use tools only when they are available and the current turn asks for web search,
 
     <cp caption="Prompt State" captionStyle="header">
       <list>
-        <item>persona: {{ persona_name || "YourWifey" }}</item>
+        <item>persona: {{ persona_name || "Web Waifu 4" }}</item>
         <item>local_controller: {{ user_nickname || "not configured" }}</item>
         <item>turn_source: {{ turn_source || "unknown" }}</item>
         <item>turn_kind: {{ turn_kind || "unknown" }}</item>
