@@ -18,6 +18,7 @@ const LIP_SYNC_PROFILE_URL =
 const AUTO_RESUME_AUDIO = import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true';
 const REMOTE_PCM_FADE_SECONDS = 0.006;
 const REMOTE_PCM_CROSSFADE_SECONDS = 0.004;
+const REMOTE_PCM_REAP_GRACE_MS = 5000;
 
 interface ChunkData {
   audioBlob: Blob;
@@ -51,8 +52,11 @@ export class TtsManager {
   currentAudio: HTMLAudioElement | null = null;
   private currentAudioSettler: { reject: (error: Error) => void; resolve: () => void } | null =
     null;
+  private currentAudioAbortController: AbortController | null = null;
   private currentStreamSources = new Set<AudioBufferSourceNode>();
   private currentStreamGains = new Set<GainNode>();
+  private currentStreamFinishes = new Map<AudioBufferSourceNode, () => void>();
+  private currentStreamReapers = new Map<AudioBufferSourceNode, number>();
   private streamPlaybackEndTime = 0;
   private streamScheduledChunkCount = 0;
   private streamStartedTimer: number | null = null;
@@ -112,6 +116,17 @@ export class TtsManager {
     }
   }
 
+  private clearStreamStartedTimer() {
+    if (this.streamStartedTimer !== null) {
+      window.clearTimeout(this.streamStartedTimer);
+      this.streamStartedTimer = null;
+    }
+  }
+
+  private finishStreamSource(source: AudioBufferSourceNode) {
+    this.currentStreamFinishes.get(source)?.();
+  }
+
   private teardownCurrentAudio(audioUrl?: string | null, settlePlayback = true) {
     if (settlePlayback) {
       this.settleCurrentAudioPlayback();
@@ -120,9 +135,8 @@ export class TtsManager {
       audioUrl ?? (this.currentAudio?.src?.startsWith('blob:') ? this.currentAudio.src : null);
 
     if (this.currentAudio) {
-      this.currentAudio.onplay = null;
-      this.currentAudio.onended = null;
-      this.currentAudio.onerror = null;
+      this.currentAudioAbortController?.abort();
+      this.currentAudioAbortController = null;
       try {
         this.currentAudio.pause();
       } catch {
@@ -133,31 +147,22 @@ export class TtsManager {
       this.currentAudio = null;
     }
 
-    for (const source of this.currentStreamSources) {
+    for (const source of [...this.currentStreamSources]) {
       try {
         source.stop();
       } catch {
         // ignore
       }
-      try {
-        source.disconnect();
-      } catch {
-        // ignore
-      }
+      this.finishStreamSource(source);
     }
     this.currentStreamSources.clear();
-    for (const gain of this.currentStreamGains) {
-      try {
-        gain.disconnect();
-      } catch {
-        // ignore
-      }
-    }
     this.currentStreamGains.clear();
-    if (this.streamStartedTimer !== null) {
-      window.clearTimeout(this.streamStartedTimer);
-      this.streamStartedTimer = null;
+    this.currentStreamFinishes.clear();
+    for (const timer of this.currentStreamReapers.values()) {
+      window.clearTimeout(timer);
     }
+    this.currentStreamReapers.clear();
+    this.clearStreamStartedTimer();
     this.streamPlaybackEndTime = 0;
     this.streamScheduledChunkCount = 0;
     this.disconnectAudioSource();
@@ -560,9 +565,21 @@ export class TtsManager {
     this.streamScheduledChunkCount += 1;
 
     const ended = new Promise<void>((resolve) => {
-      source.onended = () => {
+      let finished = false;
+      const finish = () => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        source.onended = null;
         this.currentStreamSources.delete(source);
         this.currentStreamGains.delete(frameGain);
+        this.currentStreamFinishes.delete(source);
+        const reaper = this.currentStreamReapers.get(source);
+        if (reaper !== undefined) {
+          window.clearTimeout(reaper);
+          this.currentStreamReapers.delete(source);
+        }
         try {
           source.disconnect();
         } catch {
@@ -575,10 +592,18 @@ export class TtsManager {
         }
         resolve();
       };
+      this.currentStreamFinishes.set(source, finish);
+      source.onended = finish;
+      const reapDelayMs = Math.max(
+        REMOTE_PCM_REAP_GRACE_MS,
+        Math.ceil((endAt - this.audioContext!.currentTime) * 1000 + REMOTE_PCM_REAP_GRACE_MS),
+      );
+      this.currentStreamReapers.set(source, window.setTimeout(finish, reapDelayMs));
     });
 
     if (!this.isPlaying) {
       const delayMs = Math.max(0, (startAt - this.audioContext.currentTime) * 1000);
+      this.clearStreamStartedTimer();
       this.streamStartedTimer = window.setTimeout(() => {
         this.streamStartedTimer = null;
         if (generation !== this.queueGeneration || signal.aborted) {
@@ -718,13 +743,17 @@ export class TtsManager {
       }
 
       const audioUrl = URL.createObjectURL(audioBlob);
-      this.currentAudio = new Audio(audioUrl);
+      const audio = new Audio(audioUrl);
+      const audioEvents = new AbortController();
+      const isCurrentAudio = () => this.currentAudio === audio && !audioEvents.signal.aborted;
+      this.currentAudio = audio;
+      this.currentAudioAbortController = audioEvents;
       this.currentAudioSettler = { reject, resolve };
-      this.currentAudio.autoplay = true;
-      this.currentAudio.preload = 'auto';
-      this.currentAudio.playbackRate = this.playbackRate;
-      this.currentAudio.volume = 1;
-      const audioWithPitch = this.currentAudio as HTMLAudioElement & {
+      audio.autoplay = true;
+      audio.preload = 'auto';
+      audio.playbackRate = this.playbackRate;
+      audio.volume = 1;
+      const audioWithPitch = audio as HTMLAudioElement & {
         mozPreservesPitch?: boolean;
         preservesPitch?: boolean;
         webkitPreservesPitch?: boolean;
@@ -744,7 +773,7 @@ export class TtsManager {
 
       try {
         this.disconnectAudioSource();
-        this.audioSource = this.audioContext.createMediaElementSource(this.currentAudio);
+        this.audioSource = this.audioContext.createMediaElementSource(audio);
         this.audioSource.connect(this.audioAnalyser!);
         if (this.lipsyncNode) {
           this.audioSource.connect(this.lipsyncNode);
@@ -758,8 +787,11 @@ export class TtsManager {
         void this.audioContext.resume().catch(() => {});
       }
 
-      this.currentAudio.onplay = () => {
-        this.wordBoundaryStartTime = this.currentAudio?.currentTime || 0;
+      audio.addEventListener('play', () => {
+        if (!isCurrentAudio()) {
+          return;
+        }
+        this.wordBoundaryStartTime = audio.currentTime || 0;
         if (this.audioContext?.state === 'suspended' && canAttemptAudioResume()) {
           void this.audioContext.resume().catch(() => {});
         }
@@ -768,21 +800,30 @@ export class TtsManager {
           this.onSpeechStarted?.();
         }
         this.onLipSyncData?.({ wordBoundaries, phonemes, text });
-      };
+      }, { signal: audioEvents.signal });
 
-      this.currentAudio.onended = () => {
+      audio.addEventListener('ended', () => {
+        if (!isCurrentAudio()) {
+          return;
+        }
         this.settleCurrentAudioPlayback();
         this.teardownCurrentAudio(audioUrl, false);
         this.onSpeechFinished?.();
-      };
+      }, { signal: audioEvents.signal });
 
-      this.currentAudio.onerror = () => {
+      audio.addEventListener('error', () => {
+        if (!isCurrentAudio()) {
+          return;
+        }
         const error = new Error('Audio playback failed.');
         this.settleCurrentAudioPlayback(error);
         this.teardownCurrentAudio(audioUrl, false);
-      };
+      }, { signal: audioEvents.signal });
 
-      this.currentAudio.play().catch((error) => {
+      audio.play().catch((error) => {
+        if (!isCurrentAudio()) {
+          return;
+        }
         const nextError = error instanceof Error ? error : new Error(String(error));
         this.settleCurrentAudioPlayback(nextError);
         this.teardownCurrentAudio(audioUrl, false);
