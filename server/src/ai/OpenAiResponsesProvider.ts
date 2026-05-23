@@ -148,12 +148,15 @@ function getWebSocketStatus(ws: WebSocket | null) {
 }
 
 type StreamingFunctionCallState = {
+  callSeenAtById: Map<string, number>;
   callsById: Map<string, OpenAiFunctionCall>;
   callsByOutputIndex: Map<number, OpenAiFunctionCall>;
+  outputIndexSeenAt: Map<number, number>;
   outputIndexToCallId: Map<number, string>;
 };
 
 const MAX_TOOL_ROUNDS = 5;
+const STREAMING_FUNCTION_CALL_TTL_MS = 60_000;
 
 function splitMessages(messages: readonly ChatProviderMessage[]) {
   const instructions = messages
@@ -394,10 +397,29 @@ function getFunctionCalls(payload: OpenAiResponsePayload) {
 
 function createStreamingFunctionCallState(): StreamingFunctionCallState {
   return {
+    callSeenAtById: new Map<string, number>(),
     callsById: new Map<string, OpenAiFunctionCall>(),
     callsByOutputIndex: new Map<number, OpenAiFunctionCall>(),
+    outputIndexSeenAt: new Map<number, number>(),
     outputIndexToCallId: new Map<number, string>(),
   };
+}
+
+function pruneStreamingFunctionCallState(state: StreamingFunctionCallState, now = Date.now()) {
+  const cutoff = now - STREAMING_FUNCTION_CALL_TTL_MS;
+  for (const [callId, seenAt] of state.callSeenAtById.entries()) {
+    if (seenAt < cutoff) {
+      state.callSeenAtById.delete(callId);
+      state.callsById.delete(callId);
+    }
+  }
+  for (const [outputIndex, seenAt] of state.outputIndexSeenAt.entries()) {
+    if (seenAt < cutoff) {
+      state.outputIndexSeenAt.delete(outputIndex);
+      state.callsByOutputIndex.delete(outputIndex);
+      state.outputIndexToCallId.delete(outputIndex);
+    }
+  }
 }
 
 function rememberStreamingFunctionCall(
@@ -405,6 +427,7 @@ function rememberStreamingFunctionCall(
   event: OpenAiWebSocketEvent,
   item: OpenAiFunctionCall,
 ) {
+  pruneStreamingFunctionCallState(state);
   const callId = item.call_id;
   const outputIndex = event.output_index;
   const pendingByIndex =
@@ -413,15 +436,18 @@ function rememberStreamingFunctionCall(
   if (!callId) {
     if (typeof outputIndex === 'number') {
       state.callsByOutputIndex.set(outputIndex, { ...pendingByIndex, ...item });
+      state.outputIndexSeenAt.set(outputIndex, Date.now());
     }
     return;
   }
 
   const current = state.callsById.get(callId) ?? {};
   state.callsById.set(callId, { ...pendingByIndex, ...current, ...item });
+  state.callSeenAtById.set(callId, Date.now());
   if (typeof outputIndex === 'number') {
     state.outputIndexToCallId.set(outputIndex, callId);
     state.callsByOutputIndex.delete(outputIndex);
+    state.outputIndexSeenAt.delete(outputIndex);
   }
 }
 
@@ -429,6 +455,7 @@ function getStreamingFunctionCallForEvent(
   state: StreamingFunctionCallState,
   event: OpenAiWebSocketEvent,
 ) {
+  pruneStreamingFunctionCallState(state);
   if (typeof event.output_index !== 'number') {
     return null;
   }
@@ -442,6 +469,7 @@ function mergeStreamingFunctionCalls(
   output: NonNullable<OpenAiResponsePayload['output']>,
   state: StreamingFunctionCallState,
 ) {
+  pruneStreamingFunctionCallState(state);
   const knownCallIds = new Set(output.map((item) => item.call_id).filter(Boolean));
   for (const call of state.callsById.values()) {
     if (!knownCallIds.has(call.call_id)) {

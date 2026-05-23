@@ -60,6 +60,10 @@ type ProviderModelsPayload = {
 const CORS_REQUEST_HEADERS =
   'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
 const LIVE_TTS_BRIDGE_FINAL_WAIT_MS = 15000;
+const AUTH_SCHEME_PATTERNS = {
+  basic: /^basic\s+/i,
+  bearer: /^bearer\s+/i,
+} satisfies Record<'basic' | 'bearer', RegExp>;
 
 function createCorsHeaders(request?: IncomingMessage) {
   const requestedHeaders = request?.headers['access-control-request-headers'];
@@ -394,7 +398,7 @@ function getHeaderSecret(request: IncomingMessage, name: string) {
 }
 
 function stripAuthScheme(value: string, scheme: 'bearer' | 'basic') {
-  return value.replace(new RegExp(`^${scheme}\\s+`, 'i'), '').trim();
+  return value.replace(AUTH_SCHEME_PATTERNS[scheme], '').trim();
 }
 
 function normalizeRuntimeTtsApiKey(providerName: RemoteTtsProvider, value: string) {
