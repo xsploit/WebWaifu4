@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 
 type ChatBarProps = {
   activePersonaName: string;
@@ -10,7 +10,7 @@ type ChatBarProps = {
   onSend: () => void;
 };
 
-export function ChatBar({
+export const ChatBar = memo(function ChatBar({
   activePersonaName,
   inputValue,
   isGenerating,
@@ -103,4 +103,4 @@ export function ChatBar({
       </div>
     </div>
   );
-}
+});

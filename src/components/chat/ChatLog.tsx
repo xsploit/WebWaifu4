@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ChatMessage } from '../../lib/chat/types';
 
@@ -106,7 +106,7 @@ export function getOverlayEmptyState({
   return `No live messages yet. Twitch ${channelLabel} and local test messages will appear here.`;
 }
 
-export function ChatLog({
+export const ChatLog = memo(function ChatLog({
   activePersonaName = 'Riko',
   botMentionTag = '@Riko',
   channelName = 'subsect',
@@ -242,4 +242,4 @@ export function ChatLog({
       </div>
     </div>
   );
-}
+});

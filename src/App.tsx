@@ -4032,6 +4032,22 @@ function App() {
     [activePersona, chatInput, recordRawChatMemoryTurns],
   );
 
+  const handleSendChatBarMessage = useCallback(() => {
+    void handleSendMessage();
+  }, [handleSendMessage]);
+
+  const handleToggleChatLog = useCallback(() => {
+    setChatLogOpen((current) => !current);
+  }, []);
+
+  const handleToggleMenu = useCallback(() => {
+    setMenuOpen((current) => !current);
+  }, []);
+
+  const handleCloseMenu = useCallback(() => {
+    setMenuOpen(false);
+  }, []);
+
   const appendSystemMessage = useCallback((content: string) => {
     setChatHistory((current) =>
       trimChatHistory([...current, createChatMessage('system', content)]),
@@ -5371,16 +5387,11 @@ function App() {
             isGenerating={chatGenerating || assistantReplyLocked}
             modeLabel={twitchModeLabel}
             onClear={handleClearChat}
-            onToggle={() => setChatLogOpen((current) => !current)}
+            onToggle={handleToggleChatLog}
             open={chatLogOpen}
           />
 
-          <MenuFab
-            onToggle={() => {
-              setMenuOpen((current) => !current);
-            }}
-            open={menuOpen}
-          />
+          <MenuFab onToggle={handleToggleMenu} open={menuOpen} />
 
           {menuOpen ? (
             <SettingsPanel
@@ -5411,7 +5422,7 @@ function App() {
               onActivatePersona={(personaId) => {
                 setActivePersonaId(personaId);
               }}
-              onClose={() => setMenuOpen(false)}
+              onClose={handleCloseMenu}
               onDeletePersona={handleDeletePersona}
               onImportAnimationFile={(file) => {
                 const url = URL.createObjectURL(file);
@@ -5604,9 +5615,7 @@ function App() {
               messageCount={chatHistory.length}
               model={aiSettings.model}
               onInputChange={setChatInput}
-              onSend={() => {
-                void handleSendMessage();
-              }}
+              onSend={handleSendChatBarMessage}
             />
           ) : null}
         </div>
