@@ -48,21 +48,17 @@ function parseJsonLine(raw: string): Envelope | null {
   }
 }
 
-function sleepSync(ms: number): void {
+function sleep(ms: number): Promise<void> {
   const timeout = Math.max(0, Math.floor(ms));
-  if (timeout <= 0) return;
-  if (typeof SharedArrayBuffer !== "undefined" && typeof Atomics !== "undefined") {
-    const arr = new Int32Array(new SharedArrayBuffer(4));
-    Atomics.wait(arr, 0, 0, timeout);
-    return;
+  if (timeout <= 0) {
+    return Promise.resolve();
   }
-  const until = Date.now() + timeout;
-  while (Date.now() < until) {
-    // busy wait fallback for runtimes without Atomics.wait
-  }
+  return new Promise((resolve) => {
+    setTimeout(resolve, timeout);
+  });
 }
 
-function withFileLock<T>(filePath: string, fn: () => T): T {
+async function withFileLock<T>(filePath: string, fn: () => T): Promise<T> {
   const lockPath = `${filePath}.lock`;
   const timeoutMs = 5000;
   const retryMs = 25;
@@ -92,7 +88,7 @@ function withFileLock<T>(filePath: string, fn: () => T): T {
       if (Date.now() - startedAt >= timeoutMs) {
         throw new Error(`Timed out acquiring envelope file lock for ${filePath}`);
       }
-      sleepSync(retryMs);
+      await sleep(retryMs);
     }
   }
 
@@ -125,13 +121,13 @@ class JsonlEnvelopeTransport implements EnvelopeTransport {
 
   async publish(envelope: Envelope): Promise<void> {
     if (this.config.validator && !this.config.validator(envelope)) return;
-    withFileLock(this.config.filePath, () => {
+    await withFileLock(this.config.filePath, () => {
       appendFileSync(this.config.filePath, `${JSON.stringify(envelope)}\n`, "utf8");
     });
   }
 
   async consume(fromOffset: string, filter?: MessageType[]): Promise<ConsumeResult> {
-    return withFileLock(this.config.filePath, () => {
+    return await withFileLock(this.config.filePath, () => {
       if (!existsSync(this.config.filePath)) {
         if (this.baseOffset !== 0) {
           this.baseOffset = 0;
