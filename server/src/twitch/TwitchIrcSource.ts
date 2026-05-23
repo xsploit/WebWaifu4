@@ -57,6 +57,7 @@ export class TwitchIrcSource implements TwitchChatSource {
   private readonly reconnectBaseMs: number;
   private readonly reconnectMaxMs: number;
   private socket: WebSocket | null = null;
+  private cleanupSocketHandlers: (() => void) | null = null;
   private stopped = true;
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -104,7 +105,10 @@ export class TwitchIrcSource implements TwitchChatSource {
       this.sendTimer = null;
     }
     this.sendQueue.length = 0;
-    this.socket?.close();
+    const socket = this.socket;
+    this.cleanupSocketHandlers?.();
+    this.cleanupSocketHandlers = null;
+    socket?.close();
     this.socket = null;
   }
 
@@ -151,8 +155,19 @@ export class TwitchIrcSource implements TwitchChatSource {
       return;
     }
 
-    this.socket = new WebSocket(this.url);
-    this.socket.on('open', () => {
+    this.cleanupSocketHandlers?.();
+    const socket = new WebSocket(this.url);
+    this.socket = socket;
+    const cleanup = () => {
+      socket.off('open', handleOpen);
+      socket.off('message', handleMessage);
+      socket.off('close', handleClose);
+      socket.off('error', handleError);
+      if (this.cleanupSocketHandlers === cleanup) {
+        this.cleanupSocketHandlers = null;
+      }
+    };
+    const handleOpen = () => {
       this.reconnectAttempts = 0;
       this.handlers.onStatus({
         level: 'info',
@@ -165,28 +180,37 @@ export class TwitchIrcSource implements TwitchChatSource {
       this.sendRaw(`NICK ${this.botUsername}`);
       this.sendRaw(`JOIN #${this.currentChannel}`);
       this.scheduleSendFlush();
-    });
+    };
 
-    this.socket.on('message', (payload) => {
+    const handleMessage = (payload: WebSocket.RawData) => {
       const data = typeof payload === 'string' ? payload : payload.toString('utf8');
       this.handleData(data);
-    });
+    };
 
-    this.socket.on('close', () => {
+    const handleClose = () => {
+      cleanup();
       this.handlers.onStatus({
         level: this.stopped ? 'info' : 'warning',
         message: this.stopped ? 'Twitch IRC stopped.' : 'Twitch IRC disconnected; reconnecting.',
       });
-      this.socket = null;
+      if (this.socket === socket) {
+        this.socket = null;
+      }
       this.scheduleReconnect();
-    });
+    };
 
-    this.socket.on('error', (error) => {
+    const handleError = (error: Error) => {
       this.handlers.onStatus({
         level: 'error',
         message: `Twitch IRC socket error: ${error.message}`,
       });
-    });
+    };
+
+    this.cleanupSocketHandlers = cleanup;
+    socket.on('open', handleOpen);
+    socket.on('message', handleMessage);
+    socket.on('close', handleClose);
+    socket.on('error', handleError);
   }
 
   private scheduleReconnect() {
