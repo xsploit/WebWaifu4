@@ -31,11 +31,13 @@ import {
 } from './lib/chat/memory-agent';
 import { updateRelationshipMemory } from './lib/chat/memory';
 import {
-  buildGrilloMemoryPromptAdditions,
+  buildGrilloMemoryPromptAdditionsAsync,
   clearGrilloMemoryState,
+  clearGrilloMemoryStateAsync,
+  createDefaultGrilloMemoryState,
   getGrilloParticipantKey,
-  loadGrilloMemoryState,
-  recordGrilloMemoryTurn,
+  hydrateGrilloMemoryState,
+  recordGrilloMemoryTurnAsync,
   type GrilloMemoryState,
 } from './lib/chat/grillo-memory';
 import {
@@ -1595,7 +1597,7 @@ function App() {
   const [memoryAgentBusy, setMemoryAgentBusy] = useState(false);
   const [memoryAgentStatus, setMemoryAgentStatus] = useState('Memory worker idle.');
   const [grilloMemoryState, setGrilloMemoryState] = useState<GrilloMemoryState>(() =>
-    loadGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
+    createDefaultGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
   );
   const [ttsVoices, setTtsVoices] = useState<PiperVoiceProfile[]>(() => [
     ...CUSTOM_RIKO_PIPER_VOICES,
@@ -1662,6 +1664,7 @@ function App() {
   const memoryAgentTimeoutRef = useRef<number | null>(null);
   const memoryAgentRunRef = useRef(0);
   const memoryAgentFailedModelsRef = useRef<Set<string>>(new Set());
+  const grilloMemoryHydrationRunRef = useRef(0);
   const grilloRecentTurnsByStateKeyRef = useRef<Record<string, ChatTurn[]>>({});
   const ttsManager = useMemo(() => getTtsManager(), []);
 
@@ -1713,7 +1716,15 @@ function App() {
   const activeRelationshipStateKeyRef = useRef(activeRelationshipStateKey);
 
   const refreshGrilloMemoryState = useCallback((stateKey: string) => {
-    setGrilloMemoryState(loadGrilloMemoryState(stateKey));
+    const run = (grilloMemoryHydrationRunRef.current += 1);
+    void hydrateGrilloMemoryState(stateKey).then((state) => {
+      if (
+        run === grilloMemoryHydrationRunRef.current &&
+        shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)
+      ) {
+        setGrilloMemoryState(state);
+      }
+    });
   }, []);
 
   const getScopedRelationshipMemory = useCallback((stateKey: string) => {
@@ -1761,15 +1772,16 @@ function App() {
     ].slice(-24);
     memoryAgentPendingChatTurnCountsRef.current[stateKey] =
       (memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0) + turns.length;
-    const nextGrilloMemoryState = recordGrilloMemoryTurn({
+    void recordGrilloMemoryTurnAsync({
       assistantText: '',
       persona: activePersonaRef.current ?? DEFAULT_PERSONA,
       scopeKey: stateKey,
       turns,
+    }).then((nextGrilloMemoryState) => {
+      if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
+        setGrilloMemoryState(nextGrilloMemoryState);
+      }
     });
-    if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
-      setGrilloMemoryState(nextGrilloMemoryState);
-    }
     scheduleMemoryAgentAfterChatTurnsRef.current(stateKey);
   }, []);
 
@@ -3602,6 +3614,7 @@ function App() {
   const handleClearMemory = useCallback(() => {
     commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
+    void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
     memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
     setMemoryAgentStatus('Memory cleared for current scope.');
   }, [activeRelationshipStateKey, commitScopedRelationshipMemory]);
@@ -3613,6 +3626,7 @@ function App() {
     setChatHistory([]);
     commitScopedRelationshipMemory(activeRelationshipStateKey, createDefaultRelationshipMemory());
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
+    void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
     memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
     setMemoryAgentStatus('Context and memory cleared for current scope.');
   }, [activeRelationshipStateKey, cancelAssistantPresentation, commitScopedRelationshipMemory]);
@@ -4571,7 +4585,7 @@ function App() {
           providerKeyVaultWorkspaceId,
           settings.llmProvider,
         );
-        const grilloMemory = buildGrilloMemoryPromptAdditions({
+        const grilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
           participantKeys: job.messages.map(getGrilloParticipantKey),
           query: userContent,
           scopeKey: stateKey,
@@ -4708,7 +4722,7 @@ function App() {
           providerKeyVaultWorkspaceId,
           settings.llmProvider,
         );
-        const nextGrilloMemoryState = recordGrilloMemoryTurn({
+        const nextGrilloMemoryState = await recordGrilloMemoryTurnAsync({
           assistantText: assistantContent,
           persona,
           scopeKey: stateKey,

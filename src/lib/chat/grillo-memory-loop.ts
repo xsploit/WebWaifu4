@@ -2,6 +2,7 @@ import type { ChatTurn } from './chat-turn';
 import {
   applyGrilloEmotionSignals,
   buildGrilloMemoryPromptAdditions,
+  hydrateGrilloMemoryState,
   getGrilloParticipantKey,
   loadGrilloMemoryState,
   promoteGrilloCandidates,
@@ -206,6 +207,7 @@ export async function runGrilloMemoryWorkerLoop({
   scopeKey,
   turns,
 }: RunGrilloMemoryWorkerLoopOptions): Promise<GrilloWorkerLoopResult> {
+  await hydrateGrilloMemoryState(scopeKey);
   const sideEffects: GrilloWorkerLoopResult['sideEffects'] = {
     archivalWrites: 0,
     candidateIds: [],

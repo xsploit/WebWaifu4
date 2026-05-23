@@ -118,9 +118,14 @@ type PromotionPolicy = {
 };
 
 const STORAGE_KEY_PREFIX = 'yourwifey:grillo-memory:v1:';
+const GRILLO_DB_NAME = 'yourwifey-grillo-memory';
+const GRILLO_DB_VERSION = 1;
+const GRILLO_STORE = 'grilloStates';
 const MAX_CANDIDATES = 120;
 const MAX_BLOCKS = 80;
 const MAX_DIARY = 40;
+const grilloMemoryCache = new Map<string, GrilloMemoryState>();
+const grilloMemoryWriteQueues = new Map<string, Promise<void>>();
 const DEFAULT_PROMOTION_POLICY: PromotionPolicy = {
   confidenceThreshold: 0.75,
   maxBlockItems: 20,
@@ -156,56 +161,79 @@ export function createDefaultGrilloMemoryState(scopeKey: string): GrilloMemorySt
 }
 
 export function loadGrilloMemoryState(scopeKey: string): GrilloMemoryState {
-  const storage = getLocalStorage();
-  if (!storage) {
-    return createDefaultGrilloMemoryState(scopeKey);
+  const key = normalizeScopeStorageKey(scopeKey);
+  const cached = grilloMemoryCache.get(key);
+  if (cached) {
+    return cached;
   }
 
-  try {
-    return normalizeGrilloMemoryState(
-      scopeKey,
-      JSON.parse(storage.getItem(storageKey(scopeKey)) ?? 'null'),
-    );
-  } catch {
-    return createDefaultGrilloMemoryState(scopeKey);
+  if (getIndexedDb()) {
+    const state = createDefaultGrilloMemoryState(scopeKey);
+    grilloMemoryCache.set(key, state);
+    return state;
   }
+
+  const state = loadLegacyGrilloMemoryState(scopeKey);
+  grilloMemoryCache.set(key, state);
+  return state;
+}
+
+export async function hydrateGrilloMemoryState(scopeKey: string): Promise<GrilloMemoryState> {
+  const key = normalizeScopeStorageKey(scopeKey);
+  const db = await openGrilloMemoryDb();
+  if (!db) {
+    const state = loadLegacyGrilloMemoryState(scopeKey);
+    grilloMemoryCache.set(key, state);
+    return state;
+  }
+
+  const indexedDbState = await loadGrilloMemoryStateFromIndexedDb(db, scopeKey).catch(() => null);
+  if (indexedDbState) {
+    grilloMemoryCache.set(key, indexedDbState);
+    return indexedDbState;
+  }
+
+  const legacyState = loadLegacyGrilloMemoryState(scopeKey);
+  grilloMemoryCache.set(key, legacyState);
+  if (
+    legacyState.blocks.length > 0 ||
+    legacyState.candidates.length > 0 ||
+    legacyState.diaryEntries.length > 0 ||
+    legacyState.promotedCandidateIds.length > 0 ||
+    hasEmotionStateSignals(legacyState.emotionState)
+  ) {
+    await saveGrilloMemoryStateToIndexedDb(db, legacyState).catch(() => {});
+  }
+  return legacyState;
 }
 
 export function saveGrilloMemoryState(state: GrilloMemoryState) {
-  const storage = getLocalStorage();
-  if (!storage) {
-    return;
-  }
+  const key = normalizeScopeStorageKey(state.scopeKey);
+  const nextState = mergeCachedGrilloMemoryState(state);
+  grilloMemoryCache.set(key, nextState);
+  void enqueueGrilloMemoryWrite(state.scopeKey, () => persistGrilloMemoryState(nextState));
+}
 
-  let current = createDefaultGrilloMemoryState(state.scopeKey);
-  try {
-    current = normalizeGrilloMemoryState(
-      state.scopeKey,
-      JSON.parse(storage.getItem(storageKey(state.scopeKey)) ?? 'null'),
-    );
-  } catch {
-    current = createDefaultGrilloMemoryState(state.scopeKey);
-  }
-  const nextState =
-    current.blocks.length > 0 ||
-    current.candidates.length > 0 ||
-    current.diaryEntries.length > 0 ||
-    hasEmotionStateSignals(current.emotionState) ||
-    current.promotedCandidateIds.length > 0
-      ? mergeGrilloMemoryStates(current, state)
-      : compactState(state);
-
-  storage.setItem(storageKey(state.scopeKey), JSON.stringify(nextState));
+export async function saveGrilloMemoryStateAsync(state: GrilloMemoryState) {
+  const key = normalizeScopeStorageKey(state.scopeKey);
+  const nextState = mergeCachedGrilloMemoryState(state);
+  grilloMemoryCache.set(key, nextState);
+  await enqueueGrilloMemoryWrite(state.scopeKey, () => persistGrilloMemoryState(nextState));
+  return nextState;
 }
 
 export function clearGrilloMemoryState(scopeKey: string) {
-  const storage = getLocalStorage();
-  if (!storage) {
-    return createDefaultGrilloMemoryState(scopeKey);
-  }
+  const state = createDefaultGrilloMemoryState(scopeKey);
+  grilloMemoryCache.set(normalizeScopeStorageKey(scopeKey), state);
+  void enqueueGrilloMemoryWrite(scopeKey, () => deletePersistedGrilloMemoryState(scopeKey));
+  return state;
+}
 
-  storage.removeItem(storageKey(scopeKey));
-  return createDefaultGrilloMemoryState(scopeKey);
+export async function clearGrilloMemoryStateAsync(scopeKey: string) {
+  const state = createDefaultGrilloMemoryState(scopeKey);
+  grilloMemoryCache.set(normalizeScopeStorageKey(scopeKey), state);
+  await enqueueGrilloMemoryWrite(scopeKey, () => deletePersistedGrilloMemoryState(scopeKey));
+  return state;
 }
 
 export function recordGrilloMemoryTurn({
@@ -214,6 +242,33 @@ export function recordGrilloMemoryTurn({
   turns,
 }: RecordGrilloMemoryTurnOptions): GrilloMemoryState {
   const state = loadGrilloMemoryState(scopeKey);
+  const promoted = recordGrilloMemoryTurnInState(state, { now, scopeKey, turns });
+  saveGrilloMemoryState(promoted);
+  return promoted;
+}
+
+export async function recordGrilloMemoryTurnAsync({
+  now = Date.now(),
+  scopeKey,
+  turns,
+}: RecordGrilloMemoryTurnOptions): Promise<GrilloMemoryState> {
+  const state = await hydrateGrilloMemoryState(scopeKey);
+  const promoted = recordGrilloMemoryTurnInState(state, { now, scopeKey, turns });
+  return saveGrilloMemoryStateAsync(promoted);
+}
+
+function recordGrilloMemoryTurnInState(
+  state: GrilloMemoryState,
+  {
+    now,
+    scopeKey,
+    turns,
+  }: {
+    now: number;
+    scopeKey: string;
+    turns: ChatTurn[];
+  },
+) {
   const candidates = turns.flatMap((turn) => extractCandidatesFromTurn(turn, scopeKey, now));
   const nextState = compactState({
     ...state,
@@ -221,7 +276,6 @@ export function recordGrilloMemoryTurn({
     updatedAt: now,
   });
   const promoted = promoteGrilloCandidates(nextState);
-  saveGrilloMemoryState(promoted);
   return promoted;
 }
 
@@ -343,6 +397,13 @@ export function buildGrilloMemoryPromptAdditions({
     recalledMemories,
     relationshipMemory,
   };
+}
+
+export async function buildGrilloMemoryPromptAdditionsAsync(
+  options: BuildGrilloMemoryPromptOptions,
+): Promise<GrilloMemoryPromptAdditions> {
+  await hydrateGrilloMemoryState(options.scopeKey);
+  return buildGrilloMemoryPromptAdditions(options);
 }
 
 export function promoteGrilloCandidates(
@@ -923,6 +984,147 @@ function normalizeTimestamp(value: unknown) {
 
 function storageKey(scopeKey: string) {
   return `${STORAGE_KEY_PREFIX}${scopeKey.replace(/[^a-z0-9:_-]+/gi, '-').slice(0, 180)}`;
+}
+
+function normalizeScopeStorageKey(scopeKey: string) {
+  return scopeKey.replace(/[^a-z0-9:_-]+/gi, '-').slice(0, 180) || 'default';
+}
+
+function mergeCachedGrilloMemoryState(state: GrilloMemoryState) {
+  const current =
+    grilloMemoryCache.get(normalizeScopeStorageKey(state.scopeKey)) ??
+    createDefaultGrilloMemoryState(state.scopeKey);
+  return current.blocks.length > 0 ||
+    current.candidates.length > 0 ||
+    current.diaryEntries.length > 0 ||
+    hasEmotionStateSignals(current.emotionState) ||
+    current.promotedCandidateIds.length > 0
+    ? mergeGrilloMemoryStates(current, state)
+    : compactState(state);
+}
+
+function enqueueGrilloMemoryWrite(scopeKey: string, task: () => Promise<void>) {
+  const key = normalizeScopeStorageKey(scopeKey);
+  const previous = grilloMemoryWriteQueues.get(key) ?? Promise.resolve();
+  const queued = previous.catch(() => undefined).then(task);
+  grilloMemoryWriteQueues.set(key, queued);
+  void queued.finally(() => {
+    if (grilloMemoryWriteQueues.get(key) === queued) {
+      grilloMemoryWriteQueues.delete(key);
+    }
+  });
+  return queued;
+}
+
+async function persistGrilloMemoryState(state: GrilloMemoryState) {
+  const db = await openGrilloMemoryDb();
+  if (db) {
+    await saveGrilloMemoryStateToIndexedDb(db, state);
+    return;
+  }
+  saveLegacyGrilloMemoryState(state);
+}
+
+async function deletePersistedGrilloMemoryState(scopeKey: string) {
+  const db = await openGrilloMemoryDb();
+  if (db) {
+    await deleteGrilloMemoryStateFromIndexedDb(db, scopeKey);
+  }
+  deleteLegacyGrilloMemoryState(scopeKey);
+}
+
+function loadLegacyGrilloMemoryState(scopeKey: string) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return createDefaultGrilloMemoryState(scopeKey);
+  }
+
+  try {
+    return normalizeGrilloMemoryState(
+      scopeKey,
+      JSON.parse(storage.getItem(storageKey(scopeKey)) ?? 'null'),
+    );
+  } catch {
+    return createDefaultGrilloMemoryState(scopeKey);
+  }
+}
+
+function saveLegacyGrilloMemoryState(state: GrilloMemoryState) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+  storage.setItem(storageKey(state.scopeKey), JSON.stringify(compactState(state)));
+}
+
+function deleteLegacyGrilloMemoryState(scopeKey: string) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+  storage.removeItem(storageKey(scopeKey));
+}
+
+function openGrilloMemoryDb(): Promise<IDBDatabase | null> {
+  const indexedDb = getIndexedDb();
+  if (!indexedDb) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const request = indexedDb.open(GRILLO_DB_NAME, GRILLO_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(GRILLO_STORE)) {
+        db.createObjectStore(GRILLO_STORE, { keyPath: 'scopeKey' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+}
+
+function loadGrilloMemoryStateFromIndexedDb(db: IDBDatabase, scopeKey: string) {
+  return new Promise<GrilloMemoryState | null>((resolve, reject) => {
+    const tx = db.transaction(GRILLO_STORE, 'readonly');
+    const request = tx.objectStore(GRILLO_STORE).get(scopeKey);
+    request.onsuccess = () => {
+      resolve(request.result ? normalizeGrilloMemoryState(scopeKey, request.result) : null);
+    };
+    request.onerror = () => reject(request.error ?? new Error('Grillo memory IndexedDB load failed.'));
+    tx.onabort = () => reject(tx.error ?? new Error('Grillo memory IndexedDB load aborted.'));
+  });
+}
+
+function saveGrilloMemoryStateToIndexedDb(db: IDBDatabase, state: GrilloMemoryState) {
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(GRILLO_STORE, 'readwrite');
+    tx.objectStore(GRILLO_STORE).put(compactState(state));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('Grillo memory IndexedDB save failed.'));
+    tx.onabort = () => reject(tx.error ?? new Error('Grillo memory IndexedDB save aborted.'));
+  });
+}
+
+function deleteGrilloMemoryStateFromIndexedDb(db: IDBDatabase, scopeKey: string) {
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(GRILLO_STORE, 'readwrite');
+    tx.objectStore(GRILLO_STORE).delete(scopeKey);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('Grillo memory IndexedDB delete failed.'));
+    tx.onabort = () => reject(tx.error ?? new Error('Grillo memory IndexedDB delete aborted.'));
+  });
+}
+
+function getIndexedDb() {
+  if (typeof indexedDB !== 'undefined') {
+    return indexedDB;
+  }
+  if (typeof window !== 'undefined') {
+    return window.indexedDB ?? null;
+  }
+  return null;
 }
 
 function getLocalStorage() {
