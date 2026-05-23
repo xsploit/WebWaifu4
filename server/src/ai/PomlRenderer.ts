@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { read, write } from 'pomljs';
 import type { Message, RichContent } from 'pomljs';
@@ -22,6 +22,7 @@ export type PomlRenderResponse =
     };
 
 let cachedTemplate: string | null = null;
+let cachedTemplatePromise: Promise<string> | null = null;
 
 export function normalizePomlRenderVariables(value: unknown): PomlRenderVariables {
   if (!value || typeof value !== 'object') {
@@ -37,9 +38,9 @@ export function normalizePomlRenderVariables(value: unknown): PomlRenderVariable
 
 export async function renderYourWifeyPomlMessages(
   variables: PomlRenderVariables,
-  template = loadYourWifeyPomlTemplate(),
+  template?: string,
 ): Promise<PomlPromptMessage[]> {
-  const ir = await read(template, undefined, variables);
+  const ir = await read(template ?? (await loadYourWifeyPomlTemplate()), undefined, variables);
   return write(ir, { speaker: true })
     .map(toPromptMessage)
     .filter((message) => message.content.trim());
@@ -59,12 +60,15 @@ export async function renderYourWifeyPomlResponse(variables: unknown): Promise<P
   }
 }
 
-function loadYourWifeyPomlTemplate() {
-  cachedTemplate ??= readFileSync(
+async function loadYourWifeyPomlTemplate() {
+  cachedTemplatePromise ??= readFile(
     path.resolve(process.cwd(), 'src/lib/chat/templates/yourwifey-responses.poml'),
     'utf8',
-  );
-  return cachedTemplate;
+  ).then((template) => {
+    cachedTemplate = template;
+    return template;
+  });
+  return cachedTemplate ?? cachedTemplatePromise;
 }
 
 function toPromptMessage(message: Message): PomlPromptMessage {
