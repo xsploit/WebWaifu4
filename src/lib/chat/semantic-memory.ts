@@ -24,6 +24,10 @@ const SCOPE_INDEX = 'scopeKey';
 const MAX_RECORDS_PER_SCOPE = 160;
 const LEGACY_MAX_RECORDS_PER_SCOPE = 80;
 const semanticMemoryWriteQueues = new Map<string, Promise<void>>();
+const semanticMemoryRecordCache = new Map<string, SemanticMemoryRecord[]>();
+const semanticMemorySearchCache = new Map<string, { matches: SemanticMemoryMatch[]; signature: string }>();
+const semanticTokenCache = new Map<string, Set<string>>();
+const MAX_TOKEN_CACHE_ENTRIES = 512;
 
 export function buildSemanticMemoryTurnText(
   userText: string,
@@ -49,9 +53,17 @@ export function buildSemanticMemoryContext(matches: SemanticMemoryMatch[]) {
 }
 
 export async function loadSemanticMemory(scopeKey: string): Promise<SemanticMemoryRecord[]> {
+  const cacheKey = normalizeScopeKey(scopeKey);
+  const cached = semanticMemoryRecordCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const db = await openSemanticMemoryDb();
   if (!db) {
-    return loadLegacySemanticMemory(scopeKey);
+    const records = loadLegacySemanticMemory(scopeKey);
+    setSemanticMemoryRecordCache(cacheKey, records);
+    return records;
   }
 
   let records: SemanticMemoryRecord[];
@@ -62,9 +74,12 @@ export async function loadSemanticMemory(scopeKey: string): Promise<SemanticMemo
       'IndexedDB semantic memory load failed; using fallback store.',
       error,
     );
-    return loadLegacySemanticMemory(scopeKey);
+    const records = loadLegacySemanticMemory(scopeKey);
+    setSemanticMemoryRecordCache(cacheKey, records);
+    return records;
   }
   if (records.length > 0) {
+    setSemanticMemoryRecordCache(cacheKey, records);
     return records;
   }
 
@@ -72,24 +87,28 @@ export async function loadSemanticMemory(scopeKey: string): Promise<SemanticMemo
   if (legacyRecords.length > 0) {
     await saveSemanticMemoryToIndexedDb(db, scopeKey, legacyRecords);
   }
+  setSemanticMemoryRecordCache(cacheKey, legacyRecords);
   return legacyRecords;
 }
 
 export async function saveSemanticMemory(scopeKey: string, records: SemanticMemoryRecord[]) {
+  const cacheKey = normalizeScopeKey(scopeKey);
+  const normalizedRecords = normalizeSemanticMemoryRecords(records, MAX_RECORDS_PER_SCOPE);
+  setSemanticMemoryRecordCache(cacheKey, normalizedRecords);
   const db = await openSemanticMemoryDb();
   if (!db) {
-    saveLegacySemanticMemory(scopeKey, records);
+    saveLegacySemanticMemory(scopeKey, normalizedRecords);
     return;
   }
 
   try {
-    await saveSemanticMemoryToIndexedDb(db, scopeKey, records);
+    await saveSemanticMemoryToIndexedDb(db, scopeKey, normalizedRecords);
   } catch (error) {
     warnSemanticMemoryFailure(
       'IndexedDB semantic memory save failed; writing fallback store.',
       error,
     );
-    saveLegacySemanticMemory(scopeKey, records);
+    saveLegacySemanticMemory(scopeKey, normalizedRecords);
   }
 }
 
@@ -134,12 +153,18 @@ export async function findSemanticMemoryMatches(
   queryEmbedding: number[] | null,
   limit = 4,
 ): Promise<SemanticMemoryMatch[]> {
-  return findSemanticMemoryMatchesInRecords(
-    await loadSemanticMemory(scopeKey),
-    query,
-    queryEmbedding,
-    limit,
-  );
+  const records = await loadSemanticMemory(scopeKey);
+  const signature = createSemanticSearchSignature(records, query, queryEmbedding, limit);
+  const cacheKey = `${normalizeScopeKey(scopeKey)}:${hashText(signature).toString(36)}`;
+  const cached = semanticMemorySearchCache.get(cacheKey);
+  if (cached?.signature === signature) {
+    return cached.matches;
+  }
+
+  const matches = findSemanticMemoryMatchesInRecords(records, query, queryEmbedding, limit);
+  semanticMemorySearchCache.set(cacheKey, { matches, signature });
+  pruneMap(semanticMemorySearchCache, 64);
+  return matches;
 }
 
 export function findSemanticMemoryMatchesInRecords(
@@ -150,10 +175,11 @@ export function findSemanticMemoryMatchesInRecords(
 ): SemanticMemoryMatch[] {
   const normalizedQueryEmbedding = normalizeEmbedding(queryEmbedding);
   const queryTerms = tokenize(query);
+  const now = Date.now();
   return records
     .map((record) => ({
       ...record,
-      score: scoreSemanticMemory(record, queryTerms, normalizedQueryEmbedding),
+      score: scoreSemanticMemory(record, queryTerms, normalizedQueryEmbedding, now),
     }))
     .filter((record) => record.score > 0.05)
     .sort((a, b) => b.score - a.score || b.createdAt - a.createdAt)
@@ -165,20 +191,21 @@ export function scoreSemanticMemoryRecord(
   query: string,
   queryEmbedding: number[] | null,
 ) {
-  return scoreSemanticMemory(record, tokenize(query), normalizeEmbedding(queryEmbedding));
+  return scoreSemanticMemory(record, tokenize(query), normalizeEmbedding(queryEmbedding), Date.now());
 }
 
 function scoreSemanticMemory(
   record: SemanticMemoryRecord,
   queryTerms: Set<string>,
   queryEmbedding: number[] | null,
+  now: number,
 ) {
   const vectorScore =
     queryEmbedding && record.embedding ? cosineSimilarity(queryEmbedding, record.embedding) : 0;
-  const lexicalScore = jaccardSimilarity(queryTerms, tokenize(record.text));
+  const lexicalScore = jaccardSimilarity(queryTerms, tokenizeSemanticRecord(record));
   const recencyScore = Math.max(
     0,
-    1 - (Date.now() - record.createdAt) / (1000 * 60 * 60 * 24 * 30),
+    1 - (now - record.createdAt) / (1000 * 60 * 60 * 24 * 30),
   );
   return vectorScore * 0.78 + lexicalScore * 0.18 + recencyScore * 0.04;
 }
@@ -242,6 +269,59 @@ function tokenize(value: string) {
       .map((term) => term.trim())
       .filter((term) => term.length >= 3),
   );
+}
+
+function tokenizeSemanticRecord(record: SemanticMemoryRecord) {
+  const key = `${record.id}:${hashText(record.text).toString(36)}`;
+  const cached = semanticTokenCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const terms = tokenize(record.text);
+  semanticTokenCache.set(key, terms);
+  pruneMap(semanticTokenCache, MAX_TOKEN_CACHE_ENTRIES);
+  return terms;
+}
+
+function setSemanticMemoryRecordCache(scopeKey: string, records: SemanticMemoryRecord[]) {
+  semanticMemoryRecordCache.set(scopeKey, records);
+  for (const key of semanticMemorySearchCache.keys()) {
+    if (key.startsWith(`${scopeKey}:`)) {
+      semanticMemorySearchCache.delete(key);
+    }
+  }
+}
+
+function createSemanticSearchSignature(
+  records: SemanticMemoryRecord[],
+  query: string,
+  queryEmbedding: number[] | null,
+  limit: number,
+) {
+  const embedding = normalizeEmbedding(queryEmbedding);
+  const recordSignature = records
+    .slice(0, 24)
+    .map((record) => `${record.id}:${record.createdAt}:${record.embedding?.length ?? 0}`)
+    .join('|');
+  const embeddingSignature = embedding
+    ? `${embedding.length}:${embedding.slice(0, 8).map((value) => value.toFixed(4)).join(',')}`
+    : 'none';
+  return `${limit}\n${query.trim().toLowerCase()}\n${embeddingSignature}\n${records.length}\n${recordSignature}`;
+}
+
+function normalizeScopeKey(scopeKey: string) {
+  return scopeKey.trim() || 'default';
+}
+
+function pruneMap<K, V>(map: Map<K, V>, maxEntries: number) {
+  while (map.size > maxEntries) {
+    const first = map.keys().next().value;
+    if (first === undefined) {
+      return;
+    }
+    map.delete(first);
+  }
 }
 
 function normalizeSemanticMemoryRecord(value: unknown): SemanticMemoryRecord | null {

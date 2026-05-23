@@ -74,8 +74,7 @@ import {
 import {
   addSemanticMemoryTurn,
   buildSemanticMemoryContext,
-  findSemanticMemoryMatchesInRecords,
-  loadSemanticMemory,
+  findSemanticMemoryMatches,
 } from './lib/chat/semantic-memory';
 import {
   commitScopedRelationshipMemoryState,
@@ -1092,13 +1091,8 @@ async function getSemanticMemoryContext(
   providerKeyVaultWorkspaceId?: string,
   llmProvider: AiSettings['llmProvider'] = 'openai-responses',
 ) {
-  const records = await loadSemanticMemory(scopeKey);
-  if (records.length === 0) {
-    return '';
-  }
-
   const embedding = await requestTextEmbedding(query, providerKeyVaultWorkspaceId, llmProvider);
-  return buildSemanticMemoryContext(findSemanticMemoryMatchesInRecords(records, query, embedding));
+  return buildSemanticMemoryContext(await findSemanticMemoryMatches(scopeKey, query, embedding));
 }
 
 async function rememberSemanticTurn(
@@ -3704,13 +3698,12 @@ function App() {
                   return { ok: true };
                 },
                 search: async (query, limit) => {
-                  const records = await loadSemanticMemory(stateKey);
                   const embedding = await requestTextEmbedding(
                     query,
                     providerKeyVaultWorkspaceId,
                     aiSettings.llmProvider,
                   );
-                  return findSemanticMemoryMatchesInRecords(records, query, embedding, limit).map(
+                  return (await findSemanticMemoryMatches(stateKey, query, embedding, limit)).map(
                     (match) => ({
                       score: match.score,
                       text: `[semantic:${match.scopeKey}] ${match.text.replace(/\s+/g, ' ').trim()}`,
