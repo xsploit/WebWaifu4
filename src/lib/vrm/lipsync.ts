@@ -59,6 +59,12 @@ const PHONEME_GAIN = 0.39;
 const VISEME_DEADZONE = 0.045;
 const CLOSE_GATE_START = 0.035;
 const CLOSE_GATE_END = 0.16;
+const BAND_ANALYSIS_MIN_AMPLITUDE = 0.035;
+const BAND_ANALYSIS_MIN_MFCC_ENERGY = 0.03;
+const BAND_ANALYSIS_FRAME_INTERVAL = 3;
+
+let bandAnalysisFrame = 0;
+let cachedFrequencyBands: ReturnType<TtsManager['getFrequencyBands']> = null;
 
 function clamp01(value: number) {
   return Math.min(Math.max(value, 0), 1);
@@ -75,6 +81,22 @@ function applyVisemeDeadzone(value: number) {
   }
 
   return clamp01((value - VISEME_DEADZONE) / (1 - VISEME_DEADZONE));
+}
+
+function getThrottledFrequencyBands(
+  ttsManager: TtsManager,
+  audioAmplitude: number,
+  mfccEnergy: number,
+) {
+  if (audioAmplitude < BAND_ANALYSIS_MIN_AMPLITUDE && mfccEnergy < BAND_ANALYSIS_MIN_MFCC_ENERGY) {
+    return null;
+  }
+
+  bandAnalysisFrame = (bandAnalysisFrame + 1) % BAND_ANALYSIS_FRAME_INTERVAL;
+  if (!cachedFrequencyBands || bandAnalysisFrame === 0) {
+    cachedFrequencyBands = ttsManager.getFrequencyBands();
+  }
+  return cachedFrequencyBands;
 }
 
 const phonemeCache = new Map<string, string[]>();
@@ -117,6 +139,7 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
     manager.setValue('ee', 0);
     manager.setValue('oh', 0);
     previousAa = previousIh = previousOu = previousEe = previousOh = 0;
+    cachedFrequencyBands = null;
     return;
   }
 
@@ -135,6 +158,7 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
     manager.setValue('ee', 0);
     manager.setValue('oh', 0);
     previousAa = previousIh = previousOu = previousEe = previousOh = 0;
+    cachedFrequencyBands = null;
     return;
   }
 
@@ -204,7 +228,7 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
     targetOu += oCompressed * 0.24;
     targetAa *= 1 - oCompressed * 0.16;
 
-    const bands = ttsManager.getFrequencyBands();
+    const bands = getThrottledFrequencyBands(ttsManager, audioAmplitude, mfccEnergy);
     if (bands) {
       const { low, midLow, midHigh } = bands;
       const blend = 0.06;
@@ -281,7 +305,7 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
   }
 
   if (!usedPhonemeMode) {
-    const bands = ttsManager.getFrequencyBands();
+    const bands = getThrottledFrequencyBands(ttsManager, audioAmplitude, mfccEnergy);
 
     if (bands) {
       const { low, midLow, midHigh, high } = bands;
@@ -389,4 +413,5 @@ export function resetLipSync(vrm: VRM | null) {
   vrm.expressionManager.setValue('ee', 0);
   vrm.expressionManager.setValue('oh', 0);
   previousAa = previousIh = previousOu = previousEe = previousOh = 0;
+  cachedFrequencyBands = null;
 }
