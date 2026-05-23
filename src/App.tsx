@@ -1701,8 +1701,32 @@ function App() {
     () => ttsVoices.find((voice) => voice.key === ttsActiveVoiceKey) ?? null,
     [ttsActiveVoiceKey, ttsVoices],
   );
+  const ttsRuntimeSettings = useMemo(
+    () => aiSettings,
+    [
+      aiSettings.fishSpeechChunkLength,
+      aiSettings.fishSpeechConditionOnPreviousChunks,
+      aiSettings.fishSpeechLatency,
+      aiSettings.fishSpeechModel,
+      aiSettings.fishSpeechVoiceId,
+      aiSettings.inworldBufferCharThreshold,
+      aiSettings.inworldDeliveryMode,
+      aiSettings.inworldModelId,
+      aiSettings.inworldVoiceId,
+      aiSettings.remoteTtsMode,
+      aiSettings.ttsEnabled,
+      aiSettings.ttsExpressionTagsEnabled,
+      aiSettings.ttsPlaybackRate,
+      aiSettings.ttsProvider,
+      aiSettings.ttsSimulatedStreaming,
+      aiSettings.ttsVoice,
+      aiSettings.ttsVolume,
+    ],
+  );
   const activeRemoteTtsVoices =
-    aiSettings.ttsProvider === 'piper' ? [] : remoteTtsVoices[aiSettings.ttsProvider];
+    ttsRuntimeSettings.ttsProvider === 'piper'
+      ? []
+      : remoteTtsVoices[ttsRuntimeSettings.ttsProvider];
   const activeRelationshipStateKey = useMemo(
     () => getLocalConversationStateKey(activePersona ?? DEFAULT_PERSONA),
     [activePersona],
@@ -2139,11 +2163,11 @@ function App() {
   );
 
   useEffect(() => {
-    if (aiSettings.ttsProvider === 'piper') {
+    if (ttsRuntimeSettings.ttsProvider === 'piper') {
       return;
     }
-    void loadRemoteTtsVoices(aiSettings.ttsProvider);
-  }, [aiSettings.ttsProvider, loadRemoteTtsVoices]);
+    void loadRemoteTtsVoices(ttsRuntimeSettings.ttsProvider);
+  }, [ttsRuntimeSettings.ttsProvider, loadRemoteTtsVoices]);
 
   const speakWithSelectedTts = useCallback(
     async (text: string, label: string) => {
@@ -2151,27 +2175,27 @@ function App() {
       if (!content) {
         return;
       }
-      if (aiSettings.ttsProvider === 'piper' && !selectedTtsVoice) {
+      if (ttsRuntimeSettings.ttsProvider === 'piper' && !selectedTtsVoice) {
         return;
       }
 
-      const activeTtsLabel = getActiveTtsLabel(aiSettings, selectedTtsVoice);
+      const activeTtsLabel = getActiveTtsLabel(ttsRuntimeSettings, selectedTtsVoice);
       setTtsBusy(true);
       setTtsVoicesError(null);
       setTtsStatus(`Synthesizing ${activeTtsLabel}...`);
 
       try {
-        ttsManager.enableTts = aiSettings.ttsEnabled;
-        if (aiSettings.ttsProvider === 'piper') {
+        ttsManager.enableTts = ttsRuntimeSettings.ttsEnabled;
+        if (ttsRuntimeSettings.ttsProvider === 'piper') {
           await ttsManager.speakPiperText(content, selectedTtsVoice!.key);
           setTtsActiveVoiceKey(selectedTtsVoice!.key);
           await refreshStoredTtsVoices();
         } else {
           const providerApiKey = await getBrowserRemoteTtsApiKey(
-            aiSettings.ttsProvider,
+            ttsRuntimeSettings.ttsProvider,
             providerKeyVaultWorkspaceId,
           );
-          await ttsManager.speakRemoteText(createRemoteTtsRequest(content, aiSettings), {
+          await ttsManager.speakRemoteText(createRemoteTtsRequest(content, ttsRuntimeSettings), {
             providerApiKey,
           });
           setTtsActiveVoiceKey(null);
@@ -2186,7 +2210,13 @@ function App() {
         setTtsBusy(false);
       }
     },
-    [aiSettings, providerKeyVaultWorkspaceId, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
+    [
+      providerKeyVaultWorkspaceId,
+      refreshStoredTtsVoices,
+      selectedTtsVoice,
+      ttsManager,
+      ttsRuntimeSettings,
+    ],
   );
 
   const updateAssistantMessageContent = useCallback((messageId: string, content: string) => {
@@ -2208,11 +2238,11 @@ function App() {
     (assistantMessage: ChatMessage, shouldSpeak: boolean, label: string) => {
       const thisRun = ++assistantRenderRunRef.current;
       const voice = selectedTtsVoice;
-      const ttsProvider = aiSettings.ttsProvider;
-      const chunkTtsRequests = shouldChunkTtsRequests(aiSettings);
+      const ttsProvider = ttsRuntimeSettings.ttsProvider;
+      const chunkTtsRequests = shouldChunkTtsRequests(ttsRuntimeSettings);
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
       const liveBridgeTts =
-        canSpeak && ttsProvider === 'fish-speech' && aiSettings.remoteTtsMode === 'live-bridge';
+        canSpeak && ttsProvider === 'fish-speech' && ttsRuntimeSettings.remoteTtsMode === 'live-bridge';
       const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
       let displayText = '';
@@ -2232,7 +2262,7 @@ function App() {
       const displaySettledResolvers: Array<() => void> = [];
 
       if (canSpeak) {
-        ttsManager.enableTts = aiSettings.ttsEnabled;
+        ttsManager.enableTts = ttsRuntimeSettings.ttsEnabled;
         ttsManager.resetSpeechQueue();
         if (liveBridgeTts) {
           liveBridgeSubtitleActiveRef.current = true;
@@ -2243,7 +2273,7 @@ function App() {
         setTtsBusy(true);
         setTtsVoicesError(null);
         setTtsActiveVoiceKey(ttsProvider === 'piper' ? voice!.key : null);
-        setTtsStatus(`Streaming ${getActiveTtsLabel(aiSettings, voice)}...`);
+        setTtsStatus(`Streaming ${getActiveTtsLabel(ttsRuntimeSettings, voice)}...`);
       }
 
       const isStale = () => assistantRenderRunRef.current !== thisRun;
@@ -2360,7 +2390,7 @@ function App() {
                   ttsProvider,
                   providerKeyVaultWorkspaceId,
                 );
-                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings), {
+                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, ttsRuntimeSettings), {
                   providerApiKey,
                 });
               })();
@@ -2560,11 +2590,11 @@ function App() {
       return { finish, pushAudioChunk, pushDelta };
     },
     [
-      aiSettings,
       providerKeyVaultWorkspaceId,
       refreshStoredTtsVoices,
       selectedTtsVoice,
       ttsManager,
+      ttsRuntimeSettings,
       updateAssistantMessageContent,
       clearChatDisplayOverride,
     ],
@@ -2574,8 +2604,8 @@ function App() {
     (shouldSpeak: boolean, label: string): StreamingSpeechPlayer => {
       const thisRun = ++assistantRenderRunRef.current;
       const voice = selectedTtsVoice;
-      const ttsProvider = aiSettings.ttsProvider;
-      const chunkTtsRequests = shouldChunkTtsRequests(aiSettings);
+      const ttsProvider = ttsRuntimeSettings.ttsProvider;
+      const chunkTtsRequests = shouldChunkTtsRequests(ttsRuntimeSettings);
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
       const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
@@ -2585,12 +2615,12 @@ function App() {
       const speechPromises: Promise<void>[] = [];
 
       if (canSpeak) {
-        ttsManager.enableTts = aiSettings.ttsEnabled;
+        ttsManager.enableTts = ttsRuntimeSettings.ttsEnabled;
         ttsManager.resetSpeechQueue();
         setTtsBusy(true);
         setTtsVoicesError(null);
         setTtsActiveVoiceKey(ttsProvider === 'piper' ? voice!.key : null);
-        setTtsStatus(`Streaming ${getActiveTtsLabel(aiSettings, voice)}...`);
+        setTtsStatus(`Streaming ${getActiveTtsLabel(ttsRuntimeSettings, voice)}...`);
       }
 
       const isStale = () => assistantRenderRunRef.current !== thisRun;
@@ -2609,7 +2639,7 @@ function App() {
                   ttsProvider,
                   providerKeyVaultWorkspaceId,
                 );
-                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, aiSettings), {
+                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, ttsRuntimeSettings), {
                   providerApiKey,
                 });
               })();
@@ -2700,7 +2730,13 @@ function App() {
 
       return { finish, pushDelta };
     },
-    [aiSettings, providerKeyVaultWorkspaceId, refreshStoredTtsVoices, selectedTtsVoice, ttsManager],
+    [
+      providerKeyVaultWorkspaceId,
+      refreshStoredTtsVoices,
+      selectedTtsVoice,
+      ttsManager,
+      ttsRuntimeSettings,
+    ],
   );
 
   const handleCacheTtsVoice = useCallback(async () => {
@@ -2716,7 +2752,7 @@ function App() {
     setTtsStatus(`Loading ${selectedTtsVoice.name} model...`);
 
     try {
-      ttsManager.enableTts = aiSettings.ttsEnabled;
+      ttsManager.enableTts = ttsRuntimeSettings.ttsEnabled;
       const audioState = await ttsManager.primeAudio();
       await cachePiperVoice(selectedTtsVoice.key);
       setTtsStatus(`Activating ${selectedTtsVoice.name} model...`);
@@ -2732,7 +2768,7 @@ function App() {
     } finally {
       setTtsBusy(false);
     }
-  }, [aiSettings.ttsEnabled, refreshStoredTtsVoices, selectedTtsVoice, ttsManager]);
+  }, [ttsRuntimeSettings.ttsEnabled, refreshStoredTtsVoices, selectedTtsVoice, ttsManager]);
 
   const handleSelectTtsVoice = useCallback(
     (voiceId: string) => {
@@ -2762,22 +2798,22 @@ function App() {
   );
 
   const handleTestTtsVoice = useCallback(() => {
-    if (!aiSettings.ttsEnabled) {
+    if (!ttsRuntimeSettings.ttsEnabled) {
       setTtsStatus('Enable TTS first.');
       return;
     }
 
-    if (aiSettings.ttsProvider === 'piper' && !selectedTtsVoice) {
+    if (ttsRuntimeSettings.ttsProvider === 'piper' && !selectedTtsVoice) {
       setTtsStatus('Pick a Piper voice first.');
       return;
     }
 
-    const label = getActiveTtsLabel(aiSettings, selectedTtsVoice);
+    const label = getActiveTtsLabel(ttsRuntimeSettings, selectedTtsVoice);
     void speakWithSelectedTts(`${label} voice check. This model is active now.`, `${label} test`);
-  }, [aiSettings, selectedTtsVoice, speakWithSelectedTts]);
+  }, [selectedTtsVoice, speakWithSelectedTts, ttsRuntimeSettings]);
 
   const handleSpeakLastReply = useCallback(() => {
-    if (!aiSettings.ttsEnabled) {
+    if (!ttsRuntimeSettings.ttsEnabled) {
       setTtsStatus('Enable TTS first.');
       return;
     }
@@ -2788,7 +2824,7 @@ function App() {
     }
 
     void speakWithSelectedTts(latestAssistantMessage.content, 'latest reply');
-  }, [aiSettings.ttsEnabled, latestAssistantMessage, speakWithSelectedTts]);
+  }, [ttsRuntimeSettings.ttsEnabled, latestAssistantMessage, speakWithSelectedTts]);
 
   const stopSubtitleTracking = useCallback((clearNow = false) => {
     if (subtitleIntervalRef.current !== null) {
@@ -2855,9 +2891,9 @@ function App() {
       }
 
       const isStale = () => assistantRenderRunRef.current !== thisRun;
-      const chunkTtsRequests = shouldChunkTtsRequests(aiSettings);
+      const chunkTtsRequests = shouldChunkTtsRequests(ttsRuntimeSettings);
 
-      if (!aiSettings.ttsSimulatedStreaming || revealChunks.length === 1 || !chunkTtsRequests) {
+      if (!ttsRuntimeSettings.ttsSimulatedStreaming || revealChunks.length === 1 || !chunkTtsRequests) {
         clearChatDisplayOverride(assistantMessage.id);
         if (shouldSpeak) {
           await speakWithSelectedTts(content, label);
@@ -2894,7 +2930,7 @@ function App() {
         clearChatDisplayOverride(assistantMessage.id);
       }
     },
-    [aiSettings, clearChatDisplayOverride, speakWithSelectedTts],
+    [clearChatDisplayOverride, speakWithSelectedTts, ttsRuntimeSettings],
   );
 
   useEffect(() => {
@@ -3189,11 +3225,11 @@ function App() {
   useEffect(() => () => stopTtsPlayback(), [stopTtsPlayback]);
 
   useEffect(() => {
-    ttsManager.enableTts = aiSettings.ttsEnabled;
-    if (!aiSettings.ttsEnabled) {
+    ttsManager.enableTts = ttsRuntimeSettings.ttsEnabled;
+    if (!ttsRuntimeSettings.ttsEnabled) {
       stopTtsPlayback();
     }
-  }, [aiSettings.ttsEnabled, stopTtsPlayback, ttsManager]);
+  }, [ttsRuntimeSettings.ttsEnabled, stopTtsPlayback, ttsManager]);
 
   useEffect(() => {
     ttsManager.setPlaybackRate(aiSettings.ttsPlaybackRate);
@@ -3203,7 +3239,7 @@ function App() {
   useEffect(() => {
     if (
       !hydrated ||
-      !aiSettings.ttsEnabled ||
+      !ttsRuntimeSettings.ttsEnabled ||
       !selectedTtsVoice ||
       selectedTtsCached ||
       ttsBusy ||
@@ -3273,7 +3309,7 @@ function App() {
       }
     };
   }, [
-    aiSettings.ttsEnabled,
+    ttsRuntimeSettings.ttsEnabled,
     hydrated,
     refreshStoredTtsVoices,
     selectedTtsCached,
@@ -3511,29 +3547,35 @@ function App() {
     (personaId: string) => {
       const now = Date.now();
       let binding: PersonaVoiceBinding | null = null;
-      if (aiSettings.ttsProvider === 'piper') {
-        const voice = ttsVoices.find((entry) => entry.key === aiSettings.ttsVoice);
+      if (ttsRuntimeSettings.ttsProvider === 'piper') {
+        const voice = ttsVoices.find((entry) => entry.key === ttsRuntimeSettings.ttsVoice);
         binding = {
-          label: voice?.name ?? aiSettings.ttsVoice,
+          label: voice?.name ?? ttsRuntimeSettings.ttsVoice,
           provider: 'piper',
           updatedAt: now,
-          voiceId: aiSettings.ttsVoice,
+          voiceId: ttsRuntimeSettings.ttsVoice,
         };
-      } else if (aiSettings.ttsProvider === 'fish-speech' && aiSettings.fishSpeechVoiceId.trim()) {
+      } else if (
+        ttsRuntimeSettings.ttsProvider === 'fish-speech' &&
+        ttsRuntimeSettings.fishSpeechVoiceId.trim()
+      ) {
         binding = {
-          label: `Fish Speech ${aiSettings.fishSpeechVoiceId.trim()}`,
-          modelId: aiSettings.fishSpeechModel,
+          label: `Fish Speech ${ttsRuntimeSettings.fishSpeechVoiceId.trim()}`,
+          modelId: ttsRuntimeSettings.fishSpeechModel,
           provider: 'fish-speech',
           updatedAt: now,
-          voiceId: aiSettings.fishSpeechVoiceId.trim(),
+          voiceId: ttsRuntimeSettings.fishSpeechVoiceId.trim(),
         };
-      } else if (aiSettings.ttsProvider === 'inworld' && aiSettings.inworldVoiceId.trim()) {
+      } else if (
+        ttsRuntimeSettings.ttsProvider === 'inworld' &&
+        ttsRuntimeSettings.inworldVoiceId.trim()
+      ) {
         binding = {
-          label: `Inworld ${aiSettings.inworldVoiceId.trim()}`,
-          modelId: aiSettings.inworldModelId,
+          label: `Inworld ${ttsRuntimeSettings.inworldVoiceId.trim()}`,
+          modelId: ttsRuntimeSettings.inworldModelId,
           provider: 'inworld',
           updatedAt: now,
-          voiceId: aiSettings.inworldVoiceId.trim(),
+          voiceId: ttsRuntimeSettings.inworldVoiceId.trim(),
         };
       }
 
@@ -3547,12 +3589,7 @@ function App() {
       }));
     },
     [
-      aiSettings.fishSpeechModel,
-      aiSettings.fishSpeechVoiceId,
-      aiSettings.inworldModelId,
-      aiSettings.inworldVoiceId,
-      aiSettings.ttsProvider,
-      aiSettings.ttsVoice,
+      ttsRuntimeSettings,
       ttsVoices,
     ],
   );
