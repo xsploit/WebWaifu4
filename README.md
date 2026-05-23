@@ -1,8 +1,8 @@
 <div align="center">
 
-# 💋 Web Waifu 4 · Local Edition
+# 💋 Web Waifu 4
 
-### *Your own VTuber co-host. On your machine. Nobody else's.*
+### *Your own VTuber co-host. Running on your machine.*
 
 A local-first stream assistant for OBS and Twitch — VRM avatars, realtime TTS,
 persistent character memory, and a brain that lives entirely on your hardware.
@@ -22,43 +22,37 @@ persistent character memory, and a brain that lives entirely on your hardware.
 
 ## 🌶️ What this is
 
-This is the **standalone local fork** of Web Waifu 4. It is intentionally **not** the SaaS build:
+Web Waifu 4 is a **VTuber stream brain you run on your own PC**.
 
-| ❌ Not this | ✅ This |
-|---|---|
-| Supabase login | Local browser storage |
-| Vercel deployment | Runs on your box |
-| Hosted cloud sync | Backups you control |
-| Billing / accounts | Free forever, no telemetry |
-| Public overlay links | Localhost only |
+It loads a VRM avatar in an OBS-ready overlay, listens to your Twitch chat and local mic prompts, routes them through your choice of LLM provider, speaks the reply with real TTS in real time, and remembers who said what across sessions.
 
-Your settings, chat state, memory, embeddings, saved VRMs, voice presets, and provider keys never leave your machine.
+Everything that isn't a paid provider call (OpenAI, OpenRouter, Fish, Inworld, Tavily) happens on your machine. No accounts. No cloud sync. No telemetry. Your keys, your memory, your VRMs, your backups.
 
 ---
 
-## ✨ Features
+## ✨ What it does
 
 **🧠 Brain**
-- Unified local + Twitch chat through one queue and response path
+- Unified queue for local chat **and** Twitch chat — same routing, same response path
 - OpenAI Responses & OpenRouter-compatible providers
-- Grillo-style relationship memory, reflective diary, semantic recall
-- Worker-assisted memory passes that don't block the UI
+- Grillo-style relationship memory, reflective diary, semantic recall over embeddings
+- Memory passes run in a worker so the UI never freezes mid-stream
 
 **🎙️ Voice**
 - Piper, Fish Speech, and Inworld TTS
-- Fish Speech **live bridge** — stream text straight into one realtime audio stream
+- Fish Speech **live bridge** — text streams straight into one continuous realtime audio stream
 - Per-persona voice bindings
 
 **🎭 Avatar**
-- React + Three.js overlay (use it standalone or as an OBS Browser Source)
-- VRM loading with saved custom VRMs, facial expressions, gaze, animation playlists
-- Emotion mapping and weighted ambient idle loops
+- React + Three.js overlay (drop into OBS as a Browser Source or use the editor standalone)
+- VRM loading with custom uploads, facial expressions, gaze, animation playlists
+- Emotion mapping driven by the brain's mood state, weighted ambient idle loops
 
 **📺 Stream**
-- Twitch IRC, command handling, mod-aware queue
-- Optional stream audio transcription (Whisper)
-- Optional stream-frame vision context
-- Local backup import/export to migrate setups between PCs
+- Twitch IRC with command handling and a mod-aware queue
+- Optional Whisper transcription of your own stream audio (context only)
+- Optional stream-frame vision context for "she can see what's on screen"
+- Backup import/export to migrate a configured setup between PCs
 
 ---
 
@@ -108,7 +102,7 @@ Supported in the browser vault:
 - Inworld
 - Tavily
 
-Keys live in the browser vault and are only sent to your local backend for the current request. The backend still performs the provider calls — WebSockets, TTS streaming, CORS, SDKs, and provider-specific request shapes stay server-side.
+Keys live in the browser vault and are only sent to your local backend for the current request. The backend performs the actual provider calls — WebSockets, TTS streaming, CORS, SDKs, and provider-specific request shapes stay server-side.
 
 <details>
 <summary><b>Prefer ENV-based keys?</b></summary>
@@ -135,7 +129,7 @@ If `SERVER_PROVIDER_PROXY_ENABLED=false`, the backend won't fall back to ENV key
 http://localhost:5173
 ```
 
-**For a built local runtime:**
+**For a built runtime:**
 
 ```powershell
 npm run build
@@ -152,7 +146,7 @@ http://localhost:4173
 
 ---
 
-## 💾 Local Data
+## 💾 Your Data
 
 Stored on your machine, never uploaded:
 
@@ -210,14 +204,6 @@ public/cdn-assets/   Large static local assets
 docs/                Focused local runtime notes
 vendor/              Vendored runtime packages
 ```
-
----
-
-## 🧪 Development Notes
-
-- Hosted auth, cloud sync, billing, and public OBS sharing live in a **separate fork** — don't drag them in here.
-- Realtime provider calls stay on the local backend path. The browser supplies keys, not provider protocol glue.
-- Run `npm test -- --run` and `npm run build` before tagging a release build.
 
 <div align="center">
 
