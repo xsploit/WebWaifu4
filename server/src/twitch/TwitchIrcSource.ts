@@ -16,6 +16,8 @@ export type TwitchIrcSourceOptions = {
 };
 
 const DEFAULT_IRC_WS_URL = 'wss://irc-ws.chat.twitch.tv:443';
+const SEND_COOLDOWN_MS = 1500;
+const MAX_SEND_QUEUE = 20;
 
 function normalizeChannel(channel: string) {
   return channel.trim().toLowerCase().replace(/^#/, '');
@@ -58,6 +60,8 @@ export class TwitchIrcSource implements TwitchChatSource {
   private stopped = true;
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private sendTimer: NodeJS.Timeout | null = null;
+  private readonly sendQueue: string[] = [];
   private lastSendAt = 0;
 
   constructor(
@@ -95,6 +99,11 @@ export class TwitchIrcSource implements TwitchChatSource {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.sendTimer) {
+      clearTimeout(this.sendTimer);
+      this.sendTimer = null;
+    }
+    this.sendQueue.length = 0;
     this.socket?.close();
     this.socket = null;
   }
@@ -112,14 +121,11 @@ export class TwitchIrcSource implements TwitchChatSource {
       return;
     }
 
-    const now = Date.now();
-    const waitMs = Math.max(0, 1500 - (now - this.lastSendAt));
-    this.lastSendAt = now + waitMs;
-    setTimeout(() => {
-      if (this.socket?.readyState === WebSocket.OPEN) {
-        this.sendRaw(`PRIVMSG #${this.currentChannel} :${content.slice(0, 450)}`);
-      }
-    }, waitMs);
+    if (this.sendQueue.length >= MAX_SEND_QUEUE) {
+      this.sendQueue.shift();
+    }
+    this.sendQueue.push(content.slice(0, 450));
+    this.scheduleSendFlush();
   }
 
   switchChannel(channel: string) {
@@ -158,6 +164,7 @@ export class TwitchIrcSource implements TwitchChatSource {
       }
       this.sendRaw(`NICK ${this.botUsername}`);
       this.sendRaw(`JOIN #${this.currentChannel}`);
+      this.scheduleSendFlush();
     });
 
     this.socket.on('message', (payload) => {
@@ -196,6 +203,25 @@ export class TwitchIrcSource implements TwitchChatSource {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private scheduleSendFlush() {
+    if (this.sendTimer || this.stopped || this.socket?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const waitMs = Math.max(0, SEND_COOLDOWN_MS - (Date.now() - this.lastSendAt));
+    this.sendTimer = setTimeout(() => {
+      this.sendTimer = null;
+      const content = this.sendQueue.shift();
+      if (content && this.socket?.readyState === WebSocket.OPEN) {
+        this.sendRaw(`PRIVMSG #${this.currentChannel} :${content}`);
+        this.lastSendAt = Date.now();
+      }
+      if (this.sendQueue.length > 0) {
+        this.scheduleSendFlush();
+      }
+    }, waitMs);
   }
 
   private handleData(data: string) {

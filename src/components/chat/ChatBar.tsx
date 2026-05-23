@@ -23,13 +23,17 @@ export function ChatBar({
   const sendLocked = isGenerating;
 
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
+    const frame = window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
 
-    textarea.style.height = 'auto';
-    textarea.style.height = `${textarea.scrollHeight}px`;
+      textarea.style.height = 'auto';
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [inputValue]);
 
   return (

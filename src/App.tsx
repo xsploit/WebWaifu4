@@ -2499,8 +2499,13 @@ function App() {
           if (liveSubtitlePumpTimer !== null && queuedLiveSubtitleText.length > 0) {
             window.clearTimeout(liveSubtitlePumpTimer);
             liveSubtitlePumpTimer = null;
-            while (queuedLiveSubtitleText.length > 0 && !isStale()) {
+            let flushedChunks = 0;
+            while (queuedLiveSubtitleText.length > 0 && flushedChunks < 12 && !isStale()) {
               pumpLiveSubtitle();
+              flushedChunks += 1;
+            }
+            if (queuedLiveSubtitleText.length > 0 && !isStale()) {
+              liveSubtitlePumpTimer = window.setTimeout(pumpLiveSubtitle, 0);
             }
           }
           if (liveBridgeSink) {
@@ -2958,13 +2963,19 @@ function App() {
       void resumeBrowserAudio().catch(() => {});
     };
 
-    window.addEventListener('pointerdown', unlockOnce, { capture: true, once: true });
-    window.addEventListener('keydown', unlockOnce, { capture: true, once: true });
+    const unlockController = new AbortController();
+    const unlockOptions: AddEventListenerOptions = {
+      capture: true,
+      once: true,
+      signal: unlockController.signal,
+    };
+
+    window.addEventListener('pointerdown', unlockOnce, unlockOptions);
+    window.addEventListener('keydown', unlockOnce, unlockOptions);
 
     return () => {
       cancelled = true;
-      window.removeEventListener('pointerdown', unlockOnce, { capture: true });
-      window.removeEventListener('keydown', unlockOnce, { capture: true });
+      unlockController.abort();
       delete window.__yourwifeyAudio;
       delete window.__YOURWIFEY_AUDIO_STREAM__;
     };

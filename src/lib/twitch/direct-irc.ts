@@ -23,7 +23,8 @@ type ParsedIrcMessage = {
 };
 
 const TWITCH_IRC_WS_URL = 'wss://irc-ws.chat.twitch.tv:443';
-const RECONNECT_MS = 3000;
+const RECONNECT_BASE_MS = 3000;
+const RECONNECT_MAX_MS = 30000;
 
 function normalizeChannel(channel: string) {
   return channel.trim().toLowerCase().replace(/^#/, '');
@@ -107,6 +108,7 @@ export class DirectTwitchIrcClient {
   private currentChannel: string;
   private socket: WebSocket | null = null;
   private reconnectTimer: number | null = null;
+  private reconnectAttempt = 0;
   private stopped = true;
   private readonly nick = createAnonNick();
 
@@ -137,6 +139,7 @@ export class DirectTwitchIrcClient {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.reconnectAttempt = 0;
     this.socket?.close();
     this.socket = null;
   }
@@ -170,6 +173,7 @@ export class DirectTwitchIrcClient {
     this.socket = socket;
 
     socket.addEventListener('open', () => {
+      this.reconnectAttempt = 0;
       this.handlers.onStatus(
         `Direct Twitch IRC connected to #${this.currentChannel} as ${this.nick}.`,
         'info',
@@ -207,10 +211,17 @@ export class DirectTwitchIrcClient {
       return;
     }
 
+    this.reconnectAttempt += 1;
+    const baseDelay = Math.min(
+      RECONNECT_MAX_MS,
+      RECONNECT_BASE_MS * 2 ** Math.min(this.reconnectAttempt - 1, 4),
+    );
+    const jitter = 0.75 + Math.random() * 0.5;
+
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, RECONNECT_MS);
+    }, Math.round(baseDelay * jitter));
   }
 
   private handleData(data: string) {

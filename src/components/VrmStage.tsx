@@ -1,6 +1,6 @@
 import { Html } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Dispatch,
   MouseEvent as ReactMouseEvent,
@@ -1271,7 +1271,7 @@ function Avatar({
   return <primitive object={vrm.scene} />;
 }
 
-export function VrmStage({
+export const VrmStage = memo(function VrmStage({
   active,
   facialExpressionRequest,
   manualPlayRequest,
@@ -1942,4 +1942,4 @@ export function VrmStage({
       </Canvas>
     </div>
   );
-}
+});

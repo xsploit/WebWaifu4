@@ -124,6 +124,10 @@ type OpenAiRequestRuntime = {
 };
 
 type UnsupportedOpenAiParam = 'reasoning' | 'temperature';
+type StreamReadResult<T> = { done: false; value: T } | { done: true; value?: T };
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 120000;
+const MAX_WEBSOCKET_QUEUE_DEPTH = 10;
 
 function getWebSocketStatus(ws: WebSocket | null) {
   if (!ws) {
@@ -526,6 +530,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
   private ws: WebSocket | null = null;
   private wsReady: Promise<WebSocket> | null = null;
   private wsQueue: Promise<void> = Promise.resolve();
+  private wsQueueDepth = 0;
   private readonly fetcher: typeof fetch;
 
   constructor(private readonly options: OpenAiResponsesProviderOptions) {
@@ -1038,11 +1043,18 @@ export class OpenAiResponsesProvider implements ChatProvider {
   }
 
   private async completeWithHttp(payload: Record<string, unknown>) {
-    const response = await this.fetcher(`${this.baseUrl}/responses`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(payload),
-    });
+    const { controller, timeout } = this.createRequestAbortController();
+    let response: Response;
+    try {
+      response = await this.fetcher(`${this.baseUrl}/responses`, {
+        method: 'POST',
+        headers: this.headers,
+        signal: controller.signal,
+        body: JSON.stringify(payload),
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const message = await response.text().catch(() => '');
@@ -1058,11 +1070,18 @@ export class OpenAiResponsesProvider implements ChatProvider {
     payload: Record<string, unknown>,
     onTextDelta?: (delta: string) => void,
   ) {
-    const response = await this.fetcher(`${this.baseUrl}/responses`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({ ...payload, stream: true }),
-    });
+    const { controller, timeout } = this.createRequestAbortController();
+    let response: Response;
+    try {
+      response = await this.fetcher(`${this.baseUrl}/responses`, {
+        method: 'POST',
+        headers: this.headers,
+        signal: controller.signal,
+        body: JSON.stringify({ ...payload, stream: true }),
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const message = await response.text().catch(() => '');
@@ -1156,7 +1175,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
     };
 
     while (true) {
-      const { value, done } = await reader.read();
+      const { value, done } = await this.readStreamChunkWithIdleTimeout(reader);
       if (done) {
         break;
       }
@@ -1315,12 +1334,51 @@ export class OpenAiResponsesProvider implements ChatProvider {
   }
 
   private enqueueWebSocketRequest<T>(task: () => Promise<T>) {
+    if (this.wsQueueDepth >= MAX_WEBSOCKET_QUEUE_DEPTH) {
+      return Promise.reject(new Error('OpenAI Responses WebSocket queue is full.'));
+    }
+
+    this.wsQueueDepth += 1;
     const run = this.wsQueue.then(task, task);
     this.wsQueue = run.then(
-      () => undefined,
-      () => undefined,
+      () => {
+        this.wsQueueDepth = Math.max(0, this.wsQueueDepth - 1);
+      },
+      () => {
+        this.wsQueueDepth = Math.max(0, this.wsQueueDepth - 1);
+      },
     );
     return run;
+  }
+
+  private createRequestAbortController() {
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    );
+    return { controller, timeout };
+  }
+
+  private readStreamChunkWithIdleTimeout(reader: ReadableStreamDefaultReader<Uint8Array>) {
+    const idleTimeoutMs = this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    return new Promise<StreamReadResult<Uint8Array>>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        void reader.cancel().catch(() => {});
+        reject(new Error(`OpenAI Responses stream was idle for ${Math.round(idleTimeoutMs / 1000)}s.`));
+      }, idleTimeoutMs);
+
+      reader.read().then(
+        (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        },
+        (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      );
+    });
   }
 
   private async createRequestWebSocket() {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ChatMessage } from '../../lib/chat/types';
 
@@ -122,12 +122,16 @@ export function ChatLog({
   const endRef = useRef<HTMLDivElement | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const assistantLabel = sanitizeOverlayLabel(activePersonaName);
-  const broadcastHistory = history
-    .map((message) => ({
-      displayContent: sanitizeOverlayText(displayOverrides[message.id] ?? message.content),
-      message,
-    }))
-    .filter(({ displayContent, message }) => isBroadcastMessage(message, displayContent));
+  const broadcastHistory = useMemo(
+    () =>
+      history
+        .map((message) => ({
+          displayContent: sanitizeOverlayText(displayOverrides[message.id] ?? message.content),
+          message,
+        }))
+        .filter(({ displayContent, message }) => isBroadcastMessage(message, displayContent)),
+    [displayOverrides, history],
+  );
   const liveHistory = broadcastHistory.filter(
     ({ message }) => now - message.createdAt <= MESSAGE_VISIBLE_MS,
   );
@@ -138,22 +142,26 @@ export function ChatLog({
     : 'empty';
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), MESSAGE_TICK_MS);
+    if (broadcastHistory.length === 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        setNow(Date.now());
+      }
+    }, MESSAGE_TICK_MS);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [broadcastHistory.length]);
 
   useEffect(() => {
     const scrollToBottom = () => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-      endRef.current?.scrollIntoView({ block: 'end' });
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const element = scrollRef.current;
+      if (element) {
+        element.scrollTop = element.scrollHeight;
       }
     };
 
-    scrollToBottom();
     const animationFrame = window.requestAnimationFrame(scrollToBottom);
     const layoutSettleTimer = window.setTimeout(scrollToBottom, 80);
 
