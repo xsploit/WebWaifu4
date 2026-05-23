@@ -12,6 +12,7 @@ export type OverlayClientEvent =
 const OVERLAY_TOKEN_VERSION = 'ywot1';
 const OVERLAY_SOCKET_PROTOCOL = 'yourwifey.overlay';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const MAX_CLIENT_BUFFERED_BYTES = 1024 * 1024;
 
 export type OverlaySocketOptions = {
   allowedOrigins?: readonly string[];
@@ -176,19 +177,27 @@ export class OverlaySocket {
         payload: { level: 'info', message: 'Overlay socket connected.' },
       });
 
-      socket.on('message', (data) => {
+      const cleanup = () => {
+        socket.off('message', handleMessage);
+        socket.off('close', cleanup);
+        socket.off('error', cleanup);
+        this.clients.delete(socket);
+      };
+      const handleMessage = (data: RawData) => {
         const event = parseClientEvent(data);
         if (event) {
           if (event.type === 'manual:prompt' && !auth.trusted) {
             return;
           }
           this.onClientEvent?.(event);
+          return;
         }
-      });
+        console.warn('[OverlaySocket] Ignored invalid client event payload.');
+      };
 
-      socket.on('close', () => {
-        this.clients.delete(socket);
-      });
+      socket.on('message', handleMessage);
+      socket.once('close', cleanup);
+      socket.once('error', cleanup);
     });
   }
 
@@ -199,9 +208,21 @@ export class OverlaySocket {
   broadcast(event: StreamBotEvent) {
     const payload = JSON.stringify(event);
     for (const client of this.clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
+      if (client.readyState !== WebSocket.OPEN) {
+        this.clients.delete(client);
+        continue;
       }
+      if (client.bufferedAmount > MAX_CLIENT_BUFFERED_BYTES) {
+        client.close(1013, 'Overlay client too slow');
+        this.clients.delete(client);
+        continue;
+      }
+      client.send(payload, (error) => {
+        if (error) {
+          client.close(1011, 'Overlay send failed');
+          this.clients.delete(client);
+        }
+      });
     }
   }
 

@@ -215,9 +215,58 @@ function writeSseHead(response: ServerResponse) {
   response.write(': stream-open\n\n');
 }
 
-function writeSseEvent(response: ServerResponse, body: unknown) {
-  response.write(`data: ${JSON.stringify(body)}\n\n`);
+function writeWithBackpressure(response: ServerResponse, chunk: string) {
+  if (response.writableEnded || response.destroyed) {
+    return Promise.resolve();
+  }
+  const canContinue = response.write(chunk);
   (response as ServerResponse & { flush?: () => void }).flush?.();
+  if (canContinue) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      response.off('drain', onDrain);
+      response.off('close', onClose);
+      response.off('error', onError);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onClose = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    response.once('drain', onDrain);
+    response.once('close', onClose);
+    response.once('error', onError);
+  });
+}
+
+function createQueuedResponseWriter(response: ServerResponse, format: (body: unknown) => string) {
+  let queue = Promise.resolve();
+  const write = (body: unknown) => {
+    queue = queue.then(() => writeWithBackpressure(response, format(body)));
+    queue = queue.catch((error) => {
+      if (!response.writableEnded && !response.destroyed) {
+        response.destroy(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+    return queue;
+  };
+  return {
+    flush: () => queue,
+    write,
+  };
+}
+
+function createSseWriter(response: ServerResponse) {
+  return createQueuedResponseWriter(response, (body) => `data: ${JSON.stringify(body)}\n\n`);
 }
 
 function writeNdjsonHead(response: ServerResponse) {
@@ -232,9 +281,8 @@ function writeNdjsonHead(response: ServerResponse) {
   response.flushHeaders();
 }
 
-function writeNdjsonEvent(response: ServerResponse, body: unknown) {
-  response.write(`${JSON.stringify(body)}\n`);
-  (response as ServerResponse & { flush?: () => void }).flush?.();
+function createNdjsonWriter(response: ServerResponse) {
+  return createQueuedResponseWriter(response, (body) => `${JSON.stringify(body)}\n`);
 }
 
 function normalizeProviderMessages(value: unknown): ChatProviderMessage[] {
@@ -954,6 +1002,7 @@ const httpServer = createServer(async (request, response) => {
       }
 
       writeNdjsonHead(response);
+      const ndjson = createNdjsonWriter(response);
       await streamRemoteTts(
         ttsConfig,
         {
@@ -974,7 +1023,7 @@ const httpServer = createServer(async (request, response) => {
         },
         {
           onAudioChunk: (chunk) => {
-            writeNdjsonEvent(response, {
+            void ndjson.write({
               type: 'audio',
               audio: chunk.audio.toString('base64'),
               mimeType: chunk.mimeType,
@@ -983,11 +1032,13 @@ const httpServer = createServer(async (request, response) => {
           },
         },
       );
-      writeNdjsonEvent(response, { type: 'done', ok: true });
+      await ndjson.flush();
+      await ndjson.write({ type: 'done', ok: true });
       response.end();
     } catch (error) {
       if (response.headersSent) {
-        writeNdjsonEvent(response, {
+        const ndjson = createNdjsonWriter(response);
+        await ndjson.write({
           type: 'error',
           ok: false,
           error: error instanceof Error ? error.message : 'Remote TTS failed.',
@@ -1249,12 +1300,13 @@ const httpServer = createServer(async (request, response) => {
 
       if (body.stream === true) {
         writeSseHead(response);
+        const sse = createSseWriter(response);
         const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
         const bridgeConfig = bridgeRequest
           ? getRuntimeTtsConfig(config, 'fish-speech', request, allowServerProviderProxy)
           : null;
         if (bridgeRequest && !bridgeConfig) {
-          writeSseEvent(response, {
+          await sse.write({
             type: 'tts-error',
             ok: false,
             error: 'Fish Speech live bridge provider key is not configured.',
@@ -1268,7 +1320,7 @@ const httpServer = createServer(async (request, response) => {
                 if (!sseOpen || response.writableEnded) {
                   return;
                 }
-                writeSseEvent(response, {
+                void sse.write({
                   type: 'audio',
                   audio: chunk.audio.toString('base64'),
                   mimeType: chunk.mimeType,
@@ -1276,7 +1328,7 @@ const httpServer = createServer(async (request, response) => {
                 });
               },
             }).catch((error) => {
-              writeSseEvent(response, {
+              void sse.write({
                 type: 'tts-error',
                 ok: false,
                 error: error instanceof Error ? error.message : 'Live TTS bridge failed.',
@@ -1288,7 +1340,7 @@ const httpServer = createServer(async (request, response) => {
           providerResponse =
             (await runtimeProvider.completeStream?.(providerRequest, {
               onTextDelta: (delta) => {
-                writeSseEvent(response, { type: 'delta', delta });
+                void sse.write({ type: 'delta', delta });
                 bridge?.push(delta);
               },
             })) ?? (await runtimeProvider.complete(providerRequest));
@@ -1298,7 +1350,7 @@ const httpServer = createServer(async (request, response) => {
               bridge?.fail(new Error('Live TTS bridge finalization timed out.'));
             });
             if (!bridgeFinished && !response.writableEnded) {
-              writeSseEvent(response, {
+              await sse.write({
                 type: 'tts-error',
                 ok: false,
                 error: 'Live TTS bridge finalization timed out.',
@@ -1314,7 +1366,8 @@ const httpServer = createServer(async (request, response) => {
         }
 
         sseOpen = false;
-        writeSseEvent(response, {
+        await sse.flush();
+        await sse.write({
           type: 'done',
           ok: true,
           text: providerResponse.text,
@@ -1333,7 +1386,8 @@ const httpServer = createServer(async (request, response) => {
       });
     } catch (error) {
       if (response.headersSent) {
-        writeSseEvent(response, {
+        const sse = createSseWriter(response);
+        await sse.write({
           type: 'error',
           ok: false,
           error: error instanceof Error ? error.message : 'AI chat request failed.',
