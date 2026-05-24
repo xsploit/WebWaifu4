@@ -66,7 +66,7 @@ chat intake, memory, tools, and provider keys stored in local browser storage.
         <li>OpenAI Responses and OpenRouter-compatible provider paths.</li>
         <li>Structured replies with dialogue plus emotion metadata.</li>
         <li>Relationship memory, reflective diary, and semantic recall.</li>
-        <li>Background memory passes so long memory work avoids UI freezes.</li>
+        <li>Async/background memory passes for relationship, diary, and semantic recall.</li>
         <li>Optional runtime tools for web search, URL open/crawl, and fresh context.</li>
       </ul>
     </td>
@@ -97,7 +97,7 @@ chat intake, memory, tools, and provider keys stored in local browser storage.
       <ul>
         <li>Twitch IRC intake with command handling and moderator-aware queue behavior.</li>
         <li>Local text chat behaves like another participant with trusted local controls.</li>
-        <li>Optional Whisper transcription from a configured Twitch stream or capture source.</li>
+        <li>Optional OpenAI/Whisper transcription from a configured Twitch stream or capture source.</li>
         <li>Optional stream-frame vision context when the selected model supports images.</li>
         <li>Backup import/export for moving a setup between PCs.</li>
       </ul>
@@ -183,11 +183,11 @@ unless you run the real IRC command below.
   </tr>
   <tr>
     <td>OpenAI</td>
-    <td>Responses, embeddings, optional Whisper transcription</td>
+    <td>Responses, OpenAI embeddings, optional transcription</td>
   </tr>
   <tr>
     <td>OpenRouter</td>
-    <td>OpenRouter-compatible LLM responses</td>
+    <td>OpenRouter-compatible Responses plus routed embeddings</td>
   </tr>
   <tr>
     <td>Fish Speech</td>
@@ -203,10 +203,11 @@ unless you run the real IRC command below.
   </tr>
 </table>
 
-Keys are stored locally in this browser, not in a hosted Web Waifu account or
-cloud secret manager. When a provider call needs one, the key is sent to the
-local backend for that request so the backend can handle WebSockets, TTS
-streaming, CORS, SDK calls, and provider-specific request shaping.
+Keys are stored in this browser's `localStorage`, not in a hosted Web Waifu
+account, OS keychain, or cloud secret manager. When a provider call needs one,
+the key is sent to the local backend for that request so the backend can handle
+WebSockets, TTS streaming, CORS, SDK calls, and provider-specific request
+shaping.
 
 <details>
 <summary><b>Prefer ENV-based fallback keys on a private local machine?</b></summary>
@@ -264,19 +265,19 @@ proxy behavior as Vite.
   </tr>
   <tr>
     <td>App settings, personas, voice bindings</td>
-    <td>Browser/local app storage</td>
+    <td>Browser <code>localStorage</code></td>
   </tr>
   <tr>
     <td>Twitch intake settings</td>
-    <td>Browser/local app storage</td>
+    <td>Browser <code>localStorage</code></td>
   </tr>
   <tr>
-    <td>Chat and queue state</td>
-    <td>Browser/local app storage</td>
+    <td>Chat history and UI state</td>
+    <td>Browser <code>localStorage</code></td>
   </tr>
   <tr>
     <td>Relationship memory and reflective diary</td>
-    <td>Browser IndexedDB/local storage paths</td>
+    <td>Relationship profile in <code>localStorage</code>; memory engine records in IndexedDB with fallback</td>
   </tr>
   <tr>
     <td>Semantic memory and embeddings</td>
@@ -288,7 +289,7 @@ proxy behavior as Vite.
   </tr>
   <tr>
     <td>Provider keys</td>
-    <td>Browser-local key storage</td>
+    <td>Browser <code>localStorage</code> through the provider-key helper</td>
   </tr>
 </table>
 
@@ -323,8 +324,8 @@ settings, so treat exported backups like private secrets files.
   </tr>
 </table>
 
-Whisper transcription needs an OpenAI-compatible transcription key plus
-`ffmpeg` and either `yt-dlp` or `streamlink`.
+Transcription uses the OpenAI-compatible transcription endpoint and needs an
+OpenAI provider key plus `ffmpeg` and either `yt-dlp` or `streamlink`.
 
 ---
 
@@ -395,7 +396,7 @@ scripts/             Benchmarks and utility scripts
   </tr>
   <tr>
     <td>Browser provider keys</td>
-    <td>Stored in local browser storage; sent to local backend per request</td>
+    <td>Stored in browser <code>localStorage</code>; sent to local backend per request</td>
   </tr>
   <tr>
     <td>Local mic chat</td>
@@ -408,6 +409,14 @@ scripts/             Benchmarks and utility scripts
   <tr>
     <td>Stream image context</td>
     <td>Optional ambient context when enabled and model-supported</td>
+  </tr>
+  <tr>
+    <td>OpenAI transport/state</td>
+    <td>Supports configured HTTP stream, WebSocket, conversation, previous-response, or stateless modes</td>
+  </tr>
+  <tr>
+    <td>OpenRouter transport/state</td>
+    <td>Normalized to HTTP stream and app-owned stateless state by default</td>
   </tr>
   <tr>
     <td>License</td>
