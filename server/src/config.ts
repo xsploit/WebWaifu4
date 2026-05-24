@@ -140,7 +140,7 @@ function parseReasoningEffort(): OpenAiReasoningEffort {
   ) {
     return raw;
   }
-  return 'none';
+  return 'minimal';
 }
 
 function parseTavilySearchDepth() {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MockChatProvider } from './ai/MockChatProvider.js';
@@ -66,10 +67,20 @@ type ProviderModelsPayload = {
 const CORS_REQUEST_HEADERS =
   'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
 const LIVE_TTS_BRIDGE_FINAL_WAIT_MS = 15000;
+const RUNTIME_CHAT_PROVIDER_CACHE_TTL_MS = 10 * 60 * 1000;
+const RUNTIME_CHAT_PROVIDER_CACHE_MAX = 8;
 const AUTH_SCHEME_PATTERNS = {
   basic: /^basic\s+/i,
   bearer: /^bearer\s+/i,
 } satisfies Record<'basic' | 'bearer', RegExp>;
+
+type CachedRuntimeChatProvider = {
+  key: string;
+  lastUsedAt: number;
+  provider: ChatProvider;
+};
+
+const runtimeChatProviderCache = new Map<string, CachedRuntimeChatProvider>();
 
 function createCorsHeaders(request?: IncomingMessage) {
   const requestedHeaders = request?.headers['access-control-request-headers'];
@@ -183,6 +194,64 @@ function createProvider(
   }
 
   return new MockChatProvider();
+}
+
+function disposeChatProvider(provider: ChatProvider) {
+  (provider as { dispose?: () => void }).dispose?.();
+}
+
+function hashCacheSecret(value: string) {
+  return createHash('sha256').update(value).digest('base64url').slice(0, 18);
+}
+
+function buildRuntimeChatProviderCacheKey(
+  runtimeConfig: StreamBotConfig,
+  providerName: RuntimeLlmProvider,
+) {
+  return [
+    providerName,
+    runtimeConfig.aiApiBaseUrl,
+    runtimeConfig.aiModel,
+    hashCacheSecret(runtimeConfig.aiApiKey),
+    hashCacheSecret(runtimeConfig.tavilyApiKey || ''),
+    runtimeConfig.openAiStateMode,
+    runtimeConfig.openAiStore ? 'store' : 'nostore',
+    runtimeConfig.openAiPromptCacheKey,
+    runtimeConfig.openAiPromptCacheRetention,
+    runtimeConfig.openAiWebSocketUrl,
+    runtimeConfig.openAiReasoningEffort,
+    runtimeConfig.openAiSafetyIdentifier,
+  ].join('|');
+}
+
+function pruneRuntimeChatProviderCache(now = Date.now()) {
+  for (const [cacheKey, cached] of runtimeChatProviderCache) {
+    if (now - cached.lastUsedAt > RUNTIME_CHAT_PROVIDER_CACHE_TTL_MS) {
+      disposeChatProvider(cached.provider);
+      runtimeChatProviderCache.delete(cacheKey);
+    }
+  }
+
+  while (runtimeChatProviderCache.size > RUNTIME_CHAT_PROVIDER_CACHE_MAX) {
+    let oldest: CachedRuntimeChatProvider | null = null;
+    for (const cached of runtimeChatProviderCache.values()) {
+      if (!oldest || cached.lastUsedAt < oldest.lastUsedAt) {
+        oldest = cached;
+      }
+    }
+    if (!oldest) {
+      return;
+    }
+    disposeChatProvider(oldest.provider);
+    runtimeChatProviderCache.delete(oldest.key);
+  }
+}
+
+function disposeRuntimeChatProviderCache() {
+  for (const cached of runtimeChatProviderCache.values()) {
+    disposeChatProvider(cached.provider);
+  }
+  runtimeChatProviderCache.clear();
 }
 
 function readRequestJson<T>(request: IncomingMessage) {
@@ -482,6 +551,28 @@ function getRuntimeChatProvider(
     openAiWebSocketUrl: appOwnedState ? '' : baseConfig.openAiWebSocketUrl,
     providerProxyEnabled: true,
   };
+  if (providerName === 'openai-responses') {
+    const now = Date.now();
+    pruneRuntimeChatProviderCache(now);
+    const cacheKey = buildRuntimeChatProviderCacheKey(runtimeConfig, providerName);
+    const cached = runtimeChatProviderCache.get(cacheKey);
+    if (cached) {
+      cached.lastUsedAt = now;
+      return cached.provider;
+    }
+    const runtimeProvider = createProvider(runtimeConfig, {
+      closeWebSocketAfterRequest: false,
+      providerName,
+    });
+    runtimeChatProviderCache.set(cacheKey, {
+      key: cacheKey,
+      lastUsedAt: now,
+      provider: runtimeProvider,
+    });
+    pruneRuntimeChatProviderCache(now);
+    return runtimeProvider;
+  }
+
   const runtimeProvider = createProvider(runtimeConfig, {
     closeWebSocketAfterRequest: true,
     providerName,
@@ -1609,6 +1700,8 @@ const batchTimer = setInterval(() => {
 
 function shutdown() {
   clearInterval(batchTimer);
+  disposeRuntimeChatProviderCache();
+  disposeChatProvider(provider);
   chatSource.stop();
   overlaySocket.close();
   httpServer.close();
