@@ -380,7 +380,11 @@ export function SettingsPanel({
     <div
       className={`settings-panel ${open ? 'open' : ''}`}
       onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
       onTouchEnd={(event) => {
+        event.stopPropagation();
         const touch = event.changedTouches.item(0);
         if (!touch) {
           return;
@@ -393,6 +397,7 @@ export function SettingsPanel({
         }
       }}
       onTouchStart={(event) => {
+        event.stopPropagation();
         const touch = event.touches.item(0);
         if (!touch) {
           return;

@@ -5680,10 +5680,18 @@ function App() {
       className={`shell ${productShellActive ? 'product-shell-mode' : ''} ${
         overlayPageActive ? 'overlay-shell-mode' : ''
       }`}
-      onClick={() => {
-        if (menuOpen) {
-          setMenuOpen(false);
+      onClick={(event) => {
+        if (!menuOpen) {
+          return;
         }
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          (target.closest('.settings-panel') || target.closest('.menu-fab'))
+        ) {
+          return;
+        }
+        setMenuOpen(false);
       }}
       style={shellStyle}
     >

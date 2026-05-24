@@ -32,6 +32,10 @@ type VoiceDraft = Omit<VoiceLabVoice, 'createdAt' | 'id' | 'status' | 'updatedAt
   createdAt?: number;
 };
 
+const DEFAULT_LANGUAGE = 'EN_US';
+const DEFAULT_REMOVE_BACKGROUND_NOISE = true;
+const DEFAULT_ENHANCE_AUDIO_QUALITY = true;
+
 const EMPTY_DRAFT: VoiceDraft = {
   accent: '',
   ageVibe: '',
@@ -107,11 +111,15 @@ export function VoiceLabTab({
     activePersona?.id ?? personas[0]?.id ?? '',
   );
   const [sampleFile, setSampleFile] = useState<File | null>(null);
-  const [language, setLanguage] = useState('EN_US');
+  const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
   const [transcription, setTranscription] = useState('');
   const [tags, setTags] = useState('');
-  const [removeBackgroundNoise, setRemoveBackgroundNoise] = useState(true);
-  const [enhanceAudioQuality, setEnhanceAudioQuality] = useState(true);
+  const [removeBackgroundNoise, setRemoveBackgroundNoise] = useState(
+    DEFAULT_REMOVE_BACKGROUND_NOISE,
+  );
+  const [enhanceAudioQuality, setEnhanceAudioQuality] = useState(
+    DEFAULT_ENHANCE_AUDIO_QUALITY,
+  );
   const [creatingVoice, setCreatingVoice] = useState(false);
   const [creationStatus, setCreationStatus] = useState('');
 
@@ -163,6 +171,11 @@ export function VoiceLabTab({
   const handleEditVoice = (voice: VoiceLabVoice) => {
     setSampleFile(null);
     setCreationStatus('');
+    setLanguage(DEFAULT_LANGUAGE);
+    setTranscription('');
+    setTags('');
+    setRemoveBackgroundNoise(DEFAULT_REMOVE_BACKGROUND_NOISE);
+    setEnhanceAudioQuality(DEFAULT_ENHANCE_AUDIO_QUALITY);
     setDraft({
       accent: voice.accent,
       ageVibe: voice.ageVibe,
@@ -212,6 +225,9 @@ export function VoiceLabTab({
     setCreationStatus('');
     setTranscription('');
     setTags('');
+    setLanguage(DEFAULT_LANGUAGE);
+    setRemoveBackgroundNoise(DEFAULT_REMOVE_BACKGROUND_NOISE);
+    setEnhanceAudioQuality(DEFAULT_ENHANCE_AUDIO_QUALITY);
   };
 
   const handleSave = () => {

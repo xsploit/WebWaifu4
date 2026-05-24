@@ -757,6 +757,21 @@ function createAiVisibleDeltaFilter(responseFormat: ChatProviderRequest['respons
     : createMetadataDeltaFilter();
 }
 
+function getSafeFinalVisibleText(
+  text: string,
+  responseFormat: ChatProviderRequest['responseFormat'],
+) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (!responseFormatHasMessageField(responseFormat) || !trimmed.startsWith('{')) {
+    return trimmed;
+  }
+  const filter = createJsonMessageDeltaFilter();
+  return `${filter.push(trimmed)}${filter.flush()}`.trim();
+}
+
 function normalizeStateKey(value: unknown, fallback: string) {
   const raw = typeof value === 'string' && value.trim() ? value : fallback;
   const key = raw
@@ -1369,6 +1384,7 @@ async function runAiChatRequest({
 
   if (body.stream === true && streamEvent) {
     const visibleDeltaFilter = createAiVisibleDeltaFilter(providerRequest.responseFormat);
+    let visibleTextLength = 0;
     const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
     const bridgeConfig = bridgeRequest
       ? getRuntimeTtsConfig(config, 'fish-speech', request, allowServerProviderProxy)
@@ -1408,14 +1424,25 @@ async function runAiChatRequest({
             if (!visibleDelta) {
               return;
             }
+            visibleTextLength += visibleDelta.length;
             void streamEvent({ type: 'delta', delta: visibleDelta });
             bridge?.push(visibleDelta);
           },
         })) ?? (await runtimeProvider.complete(providerRequest));
       const finalVisibleDelta = visibleDeltaFilter.flush();
       if (finalVisibleDelta) {
+        visibleTextLength += finalVisibleDelta.length;
         void streamEvent({ type: 'delta', delta: finalVisibleDelta });
         bridge?.push(finalVisibleDelta);
+      }
+      const finalProviderText = getSafeFinalVisibleText(
+        providerResponse.text,
+        providerRequest.responseFormat,
+      );
+      if (bridge && visibleTextLength === 0 && finalProviderText) {
+        visibleTextLength += finalProviderText.length;
+        await streamEvent({ type: 'delta', delta: finalProviderText });
+        bridge.push(finalProviderText);
       }
       bridge?.close();
       if (bridgeDone) {

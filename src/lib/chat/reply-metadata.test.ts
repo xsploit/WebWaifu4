@@ -116,6 +116,13 @@ describe('assistant reply metadata', () => {
     expect(parsed.metadata).toEqual({ emotion: 'amused' });
   });
 
+  it('does not leak structured JSON when the message field is empty', () => {
+    const parsed = stripAssistantReplyMetadata('{"message":"","emotion":"neutral"}');
+
+    expect(parsed.text).toBe('');
+    expect(parsed.metadata).toEqual({ emotion: 'neutral' });
+  });
+
   it('keeps legacy streamed metadata fallback working through the combined filter', () => {
     const filter = createAssistantReplyStreamFilter();
     const visible = [

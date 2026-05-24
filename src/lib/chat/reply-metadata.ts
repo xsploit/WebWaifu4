@@ -465,13 +465,13 @@ function parseStructuredReplyEnvelope(text: string): AssistantReplyParseResult |
     }
     const record = parsed as Record<string, unknown>;
     const visibleText = readStructuredReplyText(record);
-    if (!visibleText) {
+    if (!visibleText.found) {
       return null;
     }
 
     return {
       metadata: normalizeReplyMetadataRecord(record),
-      text: cleanupReplyText(visibleText),
+      text: cleanupReplyText(visibleText.text),
     };
   } catch {
     return null;
@@ -501,11 +501,11 @@ function readStructuredReplyText(record: Record<string, unknown>) {
     'response',
   ]) {
     const value = record[key];
-    if (typeof value === 'string' && value.trim()) {
-      return value;
+    if (typeof value === 'string') {
+      return { found: true, text: value };
     }
   }
-  return '';
+  return { found: false, text: '' };
 }
 
 function getPurposeScore(entry: AnimationEntry) {

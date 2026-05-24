@@ -11,6 +11,8 @@ coverage/
 .ralph-loop/
 .rundot-docs
 .tmp/
+.lean-ctx/
+reports/
 YourWifey_*.zip
 tmp-*-smoke.png
 .vercel
