@@ -95,7 +95,12 @@ html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell {
 
 html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'] .shell::before,
 html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell::before {
+  display: none;
+  background-color: transparent;
+  background-image: none;
+  filter: none;
   opacity: 0;
+  transform: none;
 }
 
 .stage-root {
@@ -106,6 +111,7 @@ html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell::
 }
 
 .stage-root canvas {
+  background: transparent;
   display: block;
   width: 100%;
   height: 100%;
