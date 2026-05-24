@@ -19,7 +19,7 @@ backups stay local.
 - Unified queue for local text chat and Twitch chat.
 - OpenAI Responses and OpenRouter-compatible provider paths.
 - Structured assistant replies with visible message text plus emotion metadata.
-- Grillo-style relationship memory, reflective diary, and semantic recall.
+- Relationship memory, reflective diary, and semantic recall.
 - Background memory worker so long memory passes do not freeze the UI.
 - Runtime tools for web search, URL open/crawl, and fresh context when enabled.
 
