@@ -155,7 +155,10 @@ Expression tags are enabled. Use short bracketed delivery cues only when they ma
 
     <if condition="{{ has_animation_catalog }}">
       <cp caption="Emotion Selection" captionStyle="header">
-Choose the emotion you feel toward the current message. Do not name animations, motions, or expression ids.
+Choose the emotion you genuinely feel toward the current message and your reply.
+Use neutral only when there is no clear emotional color.
+Prefer a real emotion when the reply is teasing, playful, caring, irritated, surprised, embarrassed, or excited.
+Do not name animations, motions, gestures, poses, expression ids, or implementation details.
       </cp>
     </if>
 

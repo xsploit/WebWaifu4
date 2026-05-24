@@ -104,6 +104,18 @@ describe('assistant reply metadata', () => {
     expect(parsed.metadata).toEqual({ emotion: 'happy' });
   });
 
+  it('starts streaming structured message text before the message string closes', () => {
+    const filter = createAssistantReplyStreamFilter();
+
+    expect(filter.push('{"message":"I')).toBe('I');
+    expect(filter.push("'m already live")).toBe("'m already live");
+    expect(filter.push('","emotion":"amused"}')).toBe('');
+
+    const parsed = filter.finish(`{"message":"I'm already live","emotion":"amused"}`);
+    expect(parsed.text).toBe("I'm already live");
+    expect(parsed.metadata).toEqual({ emotion: 'amused' });
+  });
+
   it('keeps legacy streamed metadata fallback working through the combined filter', () => {
     const filter = createAssistantReplyStreamFilter();
     const visible = [
@@ -207,7 +219,8 @@ describe('assistant reply metadata', () => {
     const instruction = buildReplyMetadataInstruction();
 
     expect(instruction).toContain('{"emotion":"neutral"}');
-    expect(instruction).toContain('Do not choose animation names, motions, expressions, purposes');
+    expect(instruction).toContain('Do not choose animation names, motions, gestures');
+    expect(instruction).toContain('Use neutral only when there is no clear emotional color');
     expect(buildAnimationCatalogInstruction(DEFAULT_ANIMATIONS)).toBe('');
   });
 

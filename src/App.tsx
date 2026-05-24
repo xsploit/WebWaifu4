@@ -5014,10 +5014,7 @@ function App() {
           stateScope: 'chat',
           onAudioChunk: speechPlayer.pushAudioChunk,
           onTextDelta: speechPlayer.pushDelta,
-          responseFormat:
-            ttsBridge?.provider === 'fish-speech' && ttsBridge.streamingMode === 'live-bridge'
-              ? undefined
-              : ASSISTANT_REPLY_JSON_FORMAT,
+          responseFormat: ASSISTANT_REPLY_JSON_FORMAT,
           temperature: settings.temperature,
           transportMode: settings.aiTransportMode,
           ttsBridge,

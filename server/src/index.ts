@@ -506,6 +506,257 @@ function normalizeResponseFormat(value: unknown): ChatProviderRequest['responseF
   return undefined;
 }
 
+function responseFormatHasMessageField(value: ChatProviderRequest['responseFormat']) {
+  if (!value || value.type !== 'json_schema') {
+    return false;
+  }
+  const properties = (value.schema as { properties?: unknown }).properties;
+  return Boolean(
+    properties &&
+      typeof properties === 'object' &&
+      typeof (properties as Record<string, unknown>).message === 'object',
+  );
+}
+
+function createJsonMessageDeltaFilter() {
+  let state:
+    | 'start'
+    | 'keyStart'
+    | 'key'
+    | 'colon'
+    | 'valueStart'
+    | 'valueString'
+    | 'skipValue'
+    | 'afterValue' = 'start';
+  let key = '';
+  let activeKey = '';
+  let keyEscape = false;
+  let valueEscape = false;
+  let unicodeEscape = '';
+  let skipString = false;
+  let skipEscape = false;
+  let skipDepth = 0;
+
+  const emitEscaped = (value: string) => {
+    switch (value) {
+      case '"':
+      case '\\':
+      case '/':
+        return value;
+      case 'b':
+        return '\b';
+      case 'f':
+        return '\f';
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      default:
+        return value;
+    }
+  };
+
+  return {
+    push(delta: string) {
+      let visible = '';
+      for (const char of delta) {
+        if (state === 'start') {
+          if (/\s/.test(char)) continue;
+          if (char === '{') state = 'keyStart';
+          continue;
+        }
+        if (state === 'keyStart') {
+          if (/\s|,/.test(char)) continue;
+          if (char === '}') {
+            state = 'afterValue';
+            continue;
+          }
+          if (char === '"') {
+            key = '';
+            keyEscape = false;
+            state = 'key';
+          }
+          continue;
+        }
+        if (state === 'key') {
+          if (keyEscape) {
+            key += emitEscaped(char);
+            keyEscape = false;
+            continue;
+          }
+          if (char === '\\') {
+            keyEscape = true;
+            continue;
+          }
+          if (char === '"') {
+            activeKey = key;
+            state = 'colon';
+            continue;
+          }
+          key += char;
+          continue;
+        }
+        if (state === 'colon') {
+          if (/\s/.test(char)) continue;
+          if (char === ':') state = 'valueStart';
+          continue;
+        }
+        if (state === 'valueStart') {
+          if (/\s/.test(char)) continue;
+          if (char === '"') {
+            valueEscape = false;
+            unicodeEscape = '';
+            state = 'valueString';
+            continue;
+          }
+          skipString = false;
+          skipEscape = false;
+          skipDepth = char === '{' || char === '[' ? 1 : 0;
+          state = 'skipValue';
+          continue;
+        }
+        if (state === 'valueString') {
+          if (unicodeEscape) {
+            unicodeEscape += char;
+            if (unicodeEscape.length === 4) {
+              if (activeKey === 'message') {
+                visible += String.fromCharCode(Number.parseInt(unicodeEscape, 16));
+              }
+              unicodeEscape = '';
+              valueEscape = false;
+            }
+            continue;
+          }
+          if (valueEscape) {
+            if (char === 'u') {
+              unicodeEscape = '';
+              continue;
+            }
+            if (activeKey === 'message') {
+              visible += emitEscaped(char);
+            }
+            valueEscape = false;
+            continue;
+          }
+          if (char === '\\') {
+            valueEscape = true;
+            continue;
+          }
+          if (char === '"') {
+            state = 'afterValue';
+            continue;
+          }
+          if (activeKey === 'message') {
+            visible += char;
+          }
+          continue;
+        }
+        if (state === 'skipValue') {
+          if (skipString) {
+            if (skipEscape) {
+              skipEscape = false;
+            } else if (char === '\\') {
+              skipEscape = true;
+            } else if (char === '"') {
+              skipString = false;
+            }
+            continue;
+          }
+          if (char === '"') {
+            skipString = true;
+            continue;
+          }
+          if (char === '{' || char === '[') {
+            skipDepth += 1;
+            continue;
+          }
+          if (char === '}' || char === ']') {
+            skipDepth -= 1;
+            if (skipDepth <= 0) {
+              state = 'afterValue';
+            }
+            continue;
+          }
+          if (skipDepth === 0 && (char === ',' || char === '}')) {
+            state = char === ',' ? 'keyStart' : 'afterValue';
+          }
+          continue;
+        }
+        if (state === 'afterValue') {
+          if (/\s/.test(char)) continue;
+          if (char === ',') {
+            state = 'keyStart';
+          }
+        }
+      }
+      return visible;
+    },
+    flush() {
+      return '';
+    },
+  };
+}
+
+function createMetadataDeltaFilter() {
+  const openTag = '<yw-meta>';
+  const closeTag = '</yw-meta>';
+  let buffer = '';
+  let suppressing = false;
+
+  return {
+    push(delta: string) {
+      buffer += delta;
+      let visible = '';
+      while (buffer) {
+        if (suppressing) {
+          const closeIndex = buffer.indexOf(closeTag);
+          if (closeIndex === -1) {
+            buffer = '';
+            break;
+          }
+          buffer = buffer.slice(closeIndex + closeTag.length);
+          suppressing = false;
+          continue;
+        }
+
+        const openIndex = buffer.indexOf(openTag);
+        if (openIndex !== -1) {
+          visible += buffer.slice(0, openIndex);
+          buffer = buffer.slice(openIndex + openTag.length);
+          suppressing = true;
+          continue;
+        }
+
+        const safeLength = Math.max(0, buffer.length - (openTag.length - 1));
+        if (safeLength === 0) {
+          break;
+        }
+        visible += buffer.slice(0, safeLength);
+        buffer = buffer.slice(safeLength);
+      }
+      return visible;
+    },
+    flush() {
+      if (suppressing) {
+        buffer = '';
+        suppressing = false;
+        return '';
+      }
+      const visible = buffer;
+      buffer = '';
+      return visible;
+    },
+  };
+}
+
+function createAiVisibleDeltaFilter(responseFormat: ChatProviderRequest['responseFormat']) {
+  return responseFormatHasMessageField(responseFormat)
+    ? createJsonMessageDeltaFilter()
+    : createMetadataDeltaFilter();
+}
+
 function normalizeStateKey(value: unknown, fallback: string) {
   const raw = typeof value === 'string' && value.trim() ? value : fallback;
   const key = raw
@@ -1117,6 +1368,7 @@ async function runAiChatRequest({
   };
 
   if (body.stream === true && streamEvent) {
+    const visibleDeltaFilter = createAiVisibleDeltaFilter(providerRequest.responseFormat);
     const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
     const bridgeConfig = bridgeRequest
       ? getRuntimeTtsConfig(config, 'fish-speech', request, allowServerProviderProxy)
@@ -1152,10 +1404,19 @@ async function runAiChatRequest({
       const providerResponse =
         (await runtimeProvider.completeStream?.(providerRequest, {
           onTextDelta: (delta) => {
-            void streamEvent({ type: 'delta', delta });
-            bridge?.push(delta);
+            const visibleDelta = visibleDeltaFilter.push(delta);
+            if (!visibleDelta) {
+              return;
+            }
+            void streamEvent({ type: 'delta', delta: visibleDelta });
+            bridge?.push(visibleDelta);
           },
         })) ?? (await runtimeProvider.complete(providerRequest));
+      const finalVisibleDelta = visibleDeltaFilter.flush();
+      if (finalVisibleDelta) {
+        void streamEvent({ type: 'delta', delta: finalVisibleDelta });
+        bridge?.push(finalVisibleDelta);
+      }
       bridge?.close();
       if (bridgeDone) {
         const bridgeFinished = await waitForLiveTtsBridge(bridgeDone, () => {

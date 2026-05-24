@@ -161,8 +161,9 @@ export function buildReplyMetadataInstruction() {
     `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral"}${ASSISTANT_REPLY_META_CLOSE}`,
     'The block must be valid compact JSON and must not be explained. Do not use any other wrapper name such as hidden block.',
     `emotion must be one of: ${Array.from(EMOTIONS).join(', ')}.`,
-    'Choose only the emotion you are feeling toward the current message. Do not choose animation names, motions, expressions, purposes, or implementation details.',
-    'Use neutral when there is no meaningful emotional reaction. Neutral does not trigger a reaction animation.',
+    'Choose the emotion you genuinely feel toward the current message and your reply, not the topic category.',
+    'Use neutral only when there is no clear emotional color. Prefer a real emotion when the reply is teasing, playful, caring, irritated, surprised, embarrassed, or excited.',
+    'Do not choose animation names, motions, gestures, expression ids, purposes, or implementation details.',
   ].join('\n');
 }
 
