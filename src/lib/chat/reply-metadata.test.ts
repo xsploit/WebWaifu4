@@ -33,6 +33,24 @@ describe('assistant reply metadata', () => {
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('angry');
   });
 
+  it('unwraps accidental structured reply envelopes without showing raw JSON', () => {
+    const parsed = stripAssistantReplyMetadata(
+      '{"reply":"Quit staring at the wiring, subby. I am awake.","emotion":"annoyed"}',
+    );
+
+    expect(parsed.text).toBe('Quit staring at the wiring, subby. I am awake.');
+    expect(parsed.metadata).toEqual({ emotion: 'annoyed' });
+  });
+
+  it('unwraps fenced structured reply envelopes from fallback providers', () => {
+    const parsed = stripAssistantReplyMetadata(
+      '```json\n{"message":"Yeah, I heard you that time.","emotion":"happy"}\n```',
+    );
+
+    expect(parsed.text).toBe('Yeah, I heard you that time.');
+    expect(parsed.metadata).toEqual({ emotion: 'happy' });
+  });
+
   it('does not trigger reactions for neutral metadata', () => {
     const playlist: AnimationEntry[] = [
       {

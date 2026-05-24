@@ -121,7 +121,7 @@ export function buildAnimationCatalogInstruction(_playlist: AnimationEntry[]) {
 export function stripAssistantReplyMetadata(text: string): AssistantReplyParseResult {
   const openIndex = text.lastIndexOf(ASSISTANT_REPLY_META_OPEN);
   if (openIndex === -1) {
-    return { metadata: null, text: cleanupReplyText(text) };
+    return parseStructuredReplyEnvelope(text) ?? { metadata: null, text: cleanupReplyText(text) };
   }
 
   const closeIndex = text.indexOf(
@@ -285,12 +285,71 @@ function normalizeReplyMetadata(rawJson: string): AssistantReplyMetadata | null 
   }
 
   try {
-    const parsed = JSON.parse(rawJson) as Record<string, unknown>;
-    const emotion = normalizeSetValue(parsed['emotion'], EMOTIONS, 'neutral');
-    return { emotion };
+    return normalizeReplyMetadataRecord(JSON.parse(rawJson) as Record<string, unknown>);
   } catch {
     return null;
   }
+}
+
+function normalizeReplyMetadataRecord(parsed: Record<string, unknown>): AssistantReplyMetadata {
+  const emotion = normalizeSetValue(parsed['emotion'], EMOTIONS, 'neutral');
+  return { emotion };
+}
+
+function parseStructuredReplyEnvelope(text: string): AssistantReplyParseResult | null {
+  const candidate = unwrapJsonText(text);
+  if (!candidate) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    const record = parsed as Record<string, unknown>;
+    const visibleText = readStructuredReplyText(record);
+    if (!visibleText) {
+      return null;
+    }
+
+    return {
+      metadata: normalizeReplyMetadataRecord(record),
+      text: cleanupReplyText(visibleText),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function unwrapJsonText(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const candidate = (fenced?.[1] ?? trimmed).trim();
+  return candidate.startsWith('{') && candidate.endsWith('}') ? candidate : '';
+}
+
+function readStructuredReplyText(record: Record<string, unknown>) {
+  for (const key of [
+    'reply',
+    'text',
+    'message',
+    'content',
+    'spoken',
+    'spokenText',
+    'visibleText',
+    'dialogue',
+    'response',
+  ]) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+  return '';
 }
 
 function getPurposeScore(entry: AnimationEntry) {

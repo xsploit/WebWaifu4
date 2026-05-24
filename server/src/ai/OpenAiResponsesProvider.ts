@@ -302,10 +302,20 @@ function extractNestedText(value: unknown): string {
   );
 }
 
-function extractStreamEventText(event: OpenAiWebSocketEvent) {
+function extractStreamDeltaText(event: OpenAiWebSocketEvent) {
   if (isReasoningStreamEvent(event)) {
     return '';
   }
+  const delta = readTextValue(event.delta);
+  if (delta) {
+    return delta;
+  }
+
+  const type = event.type?.toLowerCase() ?? '';
+  if (type && !type.endsWith('.delta') && type !== 'delta') {
+    return '';
+  }
+
   return (
     readTextValue(event.text) ||
     extractNestedText(event.content_part) ||
@@ -313,33 +323,6 @@ function extractStreamEventText(event: OpenAiWebSocketEvent) {
     extractNestedText(event.item) ||
     extractNestedText(event.output)
   );
-}
-
-function applyStreamText(
-  currentText: string,
-  nextText: string,
-  onTextDelta?: (delta: string) => void,
-) {
-  if (!nextText) {
-    return currentText;
-  }
-
-  let delta = nextText;
-  let updatedText = currentText + nextText;
-  if (!currentText) {
-    updatedText = nextText;
-  } else if (nextText.startsWith(currentText)) {
-    delta = nextText.slice(currentText.length);
-    updatedText = nextText;
-  } else if (currentText.includes(nextText)) {
-    delta = '';
-    updatedText = currentText;
-  }
-
-  if (delta) {
-    onTextDelta?.(delta);
-  }
-  return updatedText;
 }
 
 function isTerminalStreamEvent(type: string | undefined) {
@@ -1175,15 +1158,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
         return;
       }
 
-      const delta = readTextValue(event.delta);
+      const delta = extractStreamDeltaText(event);
       if (delta) {
         text += delta;
         onTextDelta?.(delta);
-      } else {
-        const eventText = extractStreamEventText(event);
-        if (eventText) {
-          text = applyStreamText(text, eventText, onTextDelta);
-        }
       }
       if (event.type === 'response.completed' && event.response) {
         completed = event.response;
@@ -1306,15 +1284,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
             return;
           }
 
-          const delta = readTextValue(event.delta);
+          const delta = extractStreamDeltaText(event);
           if (delta) {
             text += delta;
             onTextDelta?.(delta);
-          } else {
-            const eventText = extractStreamEventText(event);
-            if (eventText) {
-              text = applyStreamText(text, eventText, onTextDelta);
-            }
           }
           if (event.type === 'response.completed' && event.response) {
             finish(event.response);

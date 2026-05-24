@@ -136,7 +136,7 @@ function createStreamingLifecycleFetcher(calls: FetchCall[]) {
           id: 'msg_1',
           type: 'message',
           role: 'assistant',
-          content: [{ type: 'output_text', text: 'OK' }],
+          content: [{ type: 'output_text', text: '{"reply":"OK","emotion":"neutral"}' }],
         },
       },
       {
