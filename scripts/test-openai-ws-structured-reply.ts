@@ -2,7 +2,10 @@ import 'dotenv/config';
 import WebSocket from 'ws';
 
 type Args = {
+  debug: boolean;
+  maxOutputTokens: number;
   model: string;
+  reasoning: 'none' | 'minimal' | 'low' | 'medium' | 'high';
   text: string;
   url: string;
 };
@@ -53,8 +56,15 @@ function parseArgs(): Args {
     const index = args.indexOf(`--${name}`);
     return index >= 0 ? (args[index + 1] ?? fallback) : fallback;
   };
+  const reasoning = read('reasoning', 'none');
+  if (!['none', 'minimal', 'low', 'medium', 'high'].includes(reasoning)) {
+    throw new Error('Invalid --reasoning value. Use none, minimal, low, medium, or high.');
+  }
   return {
+    debug: args.includes('--debug'),
+    maxOutputTokens: Number(read('max-output-tokens', '1000')),
     model: read('model', process.env.OPENAI_MODEL || 'gpt-5-nano'),
+    reasoning: reasoning as Args['reasoning'],
     text: read('text', 'Give me one short playful line and include a [pause] tag.'),
     url: read('url', process.env.OPENAI_RESPONSES_WS_URL || 'wss://api.openai.com/v1/responses'),
   };
@@ -274,32 +284,47 @@ async function main() {
   });
 
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Responses WebSocket test timed out.')), 45000);
+    const timeout = setTimeout(() => {
+      socket.terminate();
+      reject(new Error('Responses WebSocket test timed out.'));
+    }, 45000);
 
     socket.once('open', () => {
+      if (args.debug) {
+        console.error(`[debug] websocket open: ${args.url}`);
+      }
+      const responseCreate: Record<string, unknown> = {
+        type: 'response.create',
+        model: args.model,
+        store: false,
+        instructions:
+          'Return only the required JSON. The message field is spoken aloud. The emotion field is metadata.',
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: args.text }],
+          },
+        ],
+        text: { format: REPLY_FORMAT },
+        max_output_tokens: args.maxOutputTokens,
+      };
+      if (args.reasoning !== 'none') {
+        responseCreate.reasoning = { effort: args.reasoning };
+      }
       socket.send(
-        JSON.stringify({
-          type: 'response.create',
-          model: args.model,
-          input: [
-            {
-              role: 'system',
-              content:
-                'Return only the required JSON. The message field is spoken aloud. The emotion field is metadata.',
-            },
-            { role: 'user', content: args.text },
-          ],
-          text: { format: REPLY_FORMAT },
-          max_output_tokens: 160,
-          stream: true,
-        }),
+        JSON.stringify(responseCreate),
       );
     });
 
     socket.on('message', (data) => {
       const event = JSON.parse(data.toString()) as Record<string, unknown>;
-      if (event.type === 'error' || event.type === 'response.failed') {
+      if (args.debug) {
+        console.error(`[debug] event: ${String(event.type ?? 'unknown')}`);
+      }
+      if (event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') {
         clearTimeout(timeout);
+        socket.close();
         reject(new Error(JSON.stringify(event)));
         return;
       }
@@ -324,8 +349,17 @@ async function main() {
     });
 
     socket.once('error', (error) => {
+      if (args.debug) {
+        console.error(`[debug] websocket error: ${error.message}`);
+      }
       clearTimeout(timeout);
       reject(error);
+    });
+
+    socket.once('close', (code, reason) => {
+      if (args.debug) {
+        console.error(`[debug] websocket close: ${code} ${reason.toString()}`);
+      }
     });
   });
 
@@ -335,6 +369,7 @@ async function main() {
   console.table([
     {
       model: args.model,
+      reasoning: args.reasoning,
       firstRawMs: firstRawAt ? Math.round(firstRawAt - startedAt) : null,
       firstMessageMs: firstMessageAt ? Math.round(firstMessageAt - startedAt) : null,
       rawChars: raw.length,
