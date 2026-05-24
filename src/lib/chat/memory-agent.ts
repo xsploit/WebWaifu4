@@ -4,7 +4,8 @@ export const MEMORY_AGENT_INTERVAL_TURNS = 7;
 export const MEMORY_AGENT_JSON_FORMAT = { type: 'json_object' } as const;
 
 const MEMORY_MODEL_PREFERENCES = [
-  'gpt-5.4-mini',
+  'gpt-4.1-mini',
+  'gpt-5-nano',
   'claude-haiku-4-5',
   'gpt-5',
   'claude-sonnet-4-6',

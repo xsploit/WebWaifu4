@@ -276,6 +276,20 @@ function normalizeChatMessage(value: unknown): ChatMessage | null {
   };
 }
 
+function normalizeLegacyOpenAiModel(model: string, fallback: string) {
+  const normalized = model.trim();
+  switch (normalized) {
+    case 'gpt-5-mini':
+    case 'gpt-5.4-nano':
+    case 'gpt-5_4-nano':
+    case 'gpt-5.4-mini':
+    case 'gpt-5_4-mini':
+      return fallback;
+    default:
+      return normalized;
+  }
+}
+
 function normalizeAiSettings(value: unknown): AiSettings {
   const defaults = createDefaultAiSettings();
 
@@ -287,10 +301,14 @@ function normalizeAiSettings(value: unknown): AiSettings {
   const llmProvider =
     source.llmProvider === 'openrouter-responses' ? source.llmProvider : defaults.llmProvider;
   const requestedModel = String(source.model ?? defaults.model);
-  const normalizedModel = requestedModel === 'gpt-5-mini' ? defaults.model : requestedModel;
+  const normalizedModel = normalizeLegacyOpenAiModel(requestedModel, defaults.model);
   const requestedMemoryAgentModel = String(
     source.memoryAgentModel ?? defaults.memoryAgentModel,
   ).trim();
+  const normalizedMemoryAgentModel = normalizeLegacyOpenAiModel(
+    requestedMemoryAgentModel,
+    defaults.memoryAgentModel,
+  );
   const memoryAgentIntervalMessages =
     typeof source.memoryAgentIntervalMessages === 'number' &&
     Number.isFinite(source.memoryAgentIntervalMessages)
@@ -362,7 +380,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
   return normalizeLlmProviderCompatibility({
     llmProvider,
     model: normalizedModel,
-    memoryAgentModel: requestedMemoryAgentModel || defaults.memoryAgentModel,
+    memoryAgentModel: normalizedMemoryAgentModel || defaults.memoryAgentModel,
     memoryAgentIntervalMessages,
     aiTransportMode,
     openAiStateMode,

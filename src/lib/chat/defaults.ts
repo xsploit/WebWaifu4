@@ -27,8 +27,8 @@ export const STORAGE_KEYS = {
   voiceLabVoices: 'yourwifey.voiceLabVoices.v1',
 } as const;
 
-export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
-export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-5.4-mini';
+export const DEFAULT_OPENAI_MODEL = 'gpt-5-nano';
+export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-4.1-mini';
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
 export const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 
