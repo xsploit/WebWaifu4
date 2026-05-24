@@ -220,7 +220,7 @@ Options:
   --openai-warmup true         Warm direct-ws with one tiny generated turn before timing
   --fish-warmup true           Warm Fish with one tiny realtime request before timing
   --fish-model s2              Fish backend/model, default env/backup/config
-  --gemini-model gemini-live-2.5-flash-preview
+  --gemini-model gemini-2.5-flash-native-audio-preview-12-2025
   --gemini-modality audio      Gemini Live response modality: audio or text
   --voice <reference-id>       Fish reference id, default backup/config
   --chunk-length 160           Fish chunk_length
@@ -264,7 +264,7 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
     format: parseFormat(readArg('--format'), config.fishSpeechFormat || 'pcm'),
     geminiApiKey:
       readArg('--gemini-api-key') || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-    geminiModel: readArg('--gemini-model') || 'gemini-live-2.5-flash-preview',
+    geminiModel: readArg('--gemini-model') || 'gemini-2.5-flash-native-audio-preview-12-2025',
     geminiModality: parseGeminiModality(readArg('--gemini-modality')),
     hardTimeoutMs: parseNumber(readArg('--hard-timeout-ms'), 45000, 0, 300000),
     json: process.argv.includes('--json'),
@@ -1518,7 +1518,7 @@ function average(values: Array<number | null | undefined>) {
 }
 
 function printResults(options: BenchOptions, results: ResultRow[]) {
-  console.log('OpenAI Responses + Fish Speech benchmark');
+  console.log('LLM / realtime TTS latency benchmark');
   console.log(`llm_model=${options.llmModel}`);
   console.log(`gemini_model=${options.geminiModel}`);
   console.log(`gemini_modality=${options.geminiModality}`);
