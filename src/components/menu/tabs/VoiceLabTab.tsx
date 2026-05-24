@@ -231,7 +231,7 @@ export function VoiceLabTab({
       return;
     }
     setCreatingVoice(true);
-    setCreationStatus(`Creating ${providerLabel(draft.provider)} voice...`);
+            setCreationStatus(`Cloning ${providerLabel(draft.provider)} voice from sample...`);
     try {
       const created = await onCreateProviderVoice({
         provider: draft.provider,
@@ -398,7 +398,7 @@ export function VoiceLabTab({
             onClick={handleCreateProviderVoice}
             type="button"
           >
-            {creatingVoice ? 'Creating...' : 'Create Provider Voice'}
+            {creatingVoice ? 'Cloning...' : 'Clone Provider Voice'}
           </button>
         </div>
         {creationStatus ? <div className="field-hint">{creationStatus}</div> : null}
@@ -419,7 +419,7 @@ export function VoiceLabTab({
         <textarea
           className="textarea-tech"
           onChange={(event) => updateDraft({ description: event.target.value })}
-          placeholder="Voice design notes: sarcastic raspy vtuber, energetic, dry delivery..."
+          placeholder="Clone notes: sarcastic raspy vtuber, energetic, dry delivery..."
           rows={3}
           value={draft.description}
         />
@@ -503,7 +503,7 @@ export function VoiceLabTab({
             onClick={resetDraft}
             type="button"
           >
-            New Voice
+            New Clone
           </button>
         </div>
         <div className="field-hint">
