@@ -773,6 +773,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
     } as never)) as unknown as AsyncIterable<OpenAiWebSocketEvent>;
   }
 
+  private async createSdkConversation() {
+    return (await this.getOpenAiClient().conversations.create()) as unknown as OpenAiConversationPayload;
+  }
+
   private isUnsupportedParam(param: UnsupportedOpenAiParam) {
     return this.unsupportedParamsByModel.get(this.capabilityKey)?.has(param) ?? false;
   }
@@ -849,8 +853,11 @@ export class OpenAiResponsesProvider implements ChatProvider {
       temperature: this.supportsTemperature(reasoningEffort)
         ? normalizeTemperature(request.temperature, this.options.temperature)
         : null,
-      toolNames: this.options.tavilyTools ? TAVILY_OPENAI_TOOLS.map((tool) => tool.name) : [],
-      toolsAvailable: Boolean(this.options.tavilyTools),
+      toolNames:
+        request.stateScope === 'memory' || !this.options.tavilyTools
+          ? []
+          : TAVILY_OPENAI_TOOLS.map((tool) => tool.name),
+      toolsAvailable: request.stateScope !== 'memory' && Boolean(this.options.tavilyTools),
       websocketConfigured: runtime.useWebSocket,
       websocketConnected: this.ws?.readyState === WebSocket.OPEN,
       websocketStatus: runtime.useWebSocket ? getWebSocketStatus(this.ws) : 'disabled',
@@ -927,7 +934,9 @@ export class OpenAiResponsesProvider implements ChatProvider {
       payload.temperature = normalizeTemperature(request.temperature, this.options.temperature);
     }
 
-    const runtimeInstructions = this.options.tavilyTools ? buildTavilyToolInstruction() : '';
+    const runtimeToolsAvailable =
+      request.stateScope !== 'memory' && Boolean(this.options.tavilyTools);
+    const runtimeInstructions = runtimeToolsAvailable ? buildTavilyToolInstruction() : '';
     const finalInstructions = [instructions, runtimeInstructions].filter(Boolean).join('\n\n');
     if (finalInstructions) {
       payload.instructions = finalInstructions;
@@ -960,7 +969,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       };
     }
 
-    if (this.options.tavilyTools) {
+    if (runtimeToolsAvailable) {
       payload.tools = TAVILY_OPENAI_TOOLS;
       payload.tool_choice = 'auto';
     }
@@ -1090,6 +1099,18 @@ export class OpenAiResponsesProvider implements ChatProvider {
       return state.conversationId;
     }
 
+    const data = this.useSdkHttp
+      ? await this.createSdkConversation()
+      : await this.createConversationWithFetch();
+    if (!data.id) {
+      throw new Error('OpenAI Conversations API did not return a conversation id.');
+    }
+
+    state.conversationId = data.id;
+    return data.id;
+  }
+
+  private async createConversationWithFetch() {
     const response = await this.fetcher(`${this.baseUrl}/conversations`, {
       method: 'POST',
       headers: this.headers,
@@ -1100,13 +1121,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       throw new Error(`OpenAI Conversations API failed with HTTP ${response.status}.`);
     }
 
-    const data = (await response.json()) as OpenAiConversationPayload;
-    if (!data.id) {
-      throw new Error('OpenAI Conversations API did not return a conversation id.');
-    }
-
-    state.conversationId = data.id;
-    return data.id;
+    return (await response.json()) as OpenAiConversationPayload;
   }
 
   private async completeWithHttp(payload: Record<string, unknown>) {

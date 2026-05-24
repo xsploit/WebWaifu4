@@ -712,6 +712,92 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('keeps OpenRouter tools, POML instructions, structured output, and cache hints together', async () => {
+    const calls: FetchCall[] = [];
+    const tavilyCalls: FetchCall[] = [];
+    const tavilyFetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      tavilyCalls.push({
+        url: String(input),
+        body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+      });
+      return new Response(
+        JSON.stringify({
+          answer: 'OpenRouter tool path is active.',
+          results: [{ content: 'OpenRouter can use the same tool loop.', title: 'Tool result' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as typeof fetch;
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: 'test-key',
+      model: 'anthropic/claude-3.5-haiku',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      promptCacheKey: 'yourwifey-stream',
+      promptCacheRetention: '24h',
+      store: true,
+      useWebSocket: true,
+      fetcher: createToolCallingFetcher(calls),
+      providerName: 'openrouter-responses',
+      tavilyTools: {
+        apiKey: 'test-tavily',
+        searchDepth: 'basic',
+        maxResults: 5,
+        timeoutMs: 10000,
+        fetcher: tavilyFetcher,
+      },
+    });
+
+    const response = await provider.complete({
+      ...createRequest('search current AI stream tools'),
+      responseFormat: {
+        name: 'reply_metadata',
+        schema: {
+          properties: {
+            emotion: { type: 'string' },
+            text: { type: 'string' },
+          },
+          required: ['text'],
+          type: 'object',
+        },
+        strict: true,
+        type: 'json_schema',
+      },
+      stateKey: 'twitch:subsect:persona:hikari',
+      transportMode: 'websocket',
+    });
+
+    expect(response.meta).toMatchObject({
+      provider: 'openrouter-responses',
+      stateMode: 'stateless',
+      toolsUsed: ['web_search'],
+      transport: 'http-stream',
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/responses');
+    expect(calls[0]?.body).toMatchObject({
+      cache_control: { ttl: '1h', type: 'ephemeral' },
+      include_reasoning: false,
+      instructions: expect.stringContaining('You may call these tools directly'),
+      prompt_cache_key: 'yourwifey-stream',
+      reasoning: { exclude: true },
+      tool_choice: 'auto',
+      tools: expect.arrayContaining([expect.objectContaining({ name: 'web_search' })]),
+      text: { format: { name: 'reply_metadata', strict: true, type: 'json_schema' } },
+    });
+    expect(calls[0]?.body).not.toHaveProperty('conversation');
+    expect(calls[0]?.body).not.toHaveProperty('previous_response_id');
+    expect(calls[0]?.body).not.toHaveProperty('prompt_cache_retention');
+    expect(calls[1]?.body['input']).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ call_id: 'call_search', type: 'function_call_output' }),
+      ]),
+    );
+    expect(tavilyCalls).toHaveLength(1);
+  });
+
   it('passes user image input into Responses messages', async () => {
     const calls: FetchCall[] = [];
     const provider = new OpenAiResponsesProvider({
@@ -1423,6 +1509,58 @@ describe('OpenAiResponsesProvider', () => {
       previousResponseId: null,
       stateMode: 'stateless',
       stateScope: 'memory',
+    });
+  });
+
+  it('keeps Tavily runtime tools out of memory worker requests', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-4.1-mini',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      store: false,
+      useWebSocket: false,
+      fetcher: createFetcher(calls),
+      tavilyTools: {
+        apiKey: 'test-tavily',
+        searchDepth: 'basic',
+        maxResults: 5,
+        timeoutMs: 10000,
+        fetcher: (async () => new Response('{}')) as typeof fetch,
+      },
+    });
+
+    const response = await provider.complete({
+      ...createRequest('summarize memory only'),
+      disableState: true,
+      responseFormat: {
+        name: 'grillo_worker_loop',
+        schema: {
+          properties: {
+            done: { type: 'boolean' },
+            relationship: { type: 'object' },
+          },
+          type: 'object',
+        },
+        strict: false,
+        type: 'json_schema',
+      },
+      stateKey: 'memory:twitch:subsect:persona:riko',
+      stateScope: 'memory',
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.body).not.toHaveProperty('tools');
+    expect(calls[0]?.body).not.toHaveProperty('tool_choice');
+    expect(String(calls[0]?.body['instructions'] ?? '')).not.toContain('Available Runtime Tools');
+    expect(response.meta).toMatchObject({
+      stateMode: 'stateless',
+      stateScope: 'memory',
+      toolNames: [],
+      toolsAvailable: false,
     });
   });
 
