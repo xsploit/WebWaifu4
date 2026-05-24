@@ -515,8 +515,8 @@ function normalizeReasoningEffortForModel(effort: OpenAiReasoningEffort | undefi
   return effort;
 }
 
-function supportsTemperature(model: string, reasoningEffort?: OpenAiReasoningEffort | null) {
-  return !isReasoningStyleModel(model) || !reasoningEffort || reasoningEffort === 'none';
+function supportsTemperature(model: string, _reasoningEffort?: OpenAiReasoningEffort | null) {
+  return !isReasoningStyleModel(model);
 }
 
 function isOpenRouterBaseUrl(value: string) {
@@ -1393,7 +1393,9 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return new Promise<StreamReadResult<Uint8Array>>((resolve, reject) => {
       const timeout = setTimeout(() => {
         void reader.cancel().catch(() => {});
-        reject(new Error(`OpenAI Responses stream was idle for ${Math.round(idleTimeoutMs / 1000)}s.`));
+        reject(
+          new Error(`OpenAI Responses stream was idle for ${Math.round(idleTimeoutMs / 1000)}s.`),
+        );
       }, idleTimeoutMs);
 
       reader.read().then(

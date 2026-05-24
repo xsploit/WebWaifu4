@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
+import { WebSocket, type RawData } from 'ws';
 import { loadConfig, type StreamBotConfig } from '../server/src/config.js';
-import { OpenAiResponsesProvider } from '../server/src/ai/OpenAiResponsesProvider.js';
+import {
+  OpenAiResponsesProvider,
+  type OpenAiReasoningEffort,
+} from '../server/src/ai/OpenAiResponsesProvider.js';
 import {
   streamFishSpeechTextStream,
   type FishSpeechLatency,
@@ -15,6 +19,8 @@ type Mode =
   | 'llm-ws'
   | 'pipeline-http'
   | 'pipeline-ws'
+  | 'direct-http'
+  | 'direct-ws'
   | 'route-http'
   | 'route-ws'
   | 'all';
@@ -32,6 +38,9 @@ type BenchOptions = {
   llmMaxOutputTokens: number;
   llmModel: string;
   mode: Mode;
+  openAiReasoningEffort: OpenAiReasoningEffort;
+  openAiWarmup: boolean;
+  fishWarmup: boolean;
   progress: boolean;
   prompt: string;
   repeat: number;
@@ -107,6 +116,8 @@ function parseMode(value: string): Mode {
     value === 'llm-ws' ||
     value === 'pipeline-http' ||
     value === 'pipeline-ws' ||
+    value === 'direct-http' ||
+    value === 'direct-ws' ||
     value === 'route-http' ||
     value === 'route-ws' ||
     value === 'all'
@@ -150,6 +161,26 @@ function parseBridgeChunkingStrategy(value: string): BenchOptions['routeBridgeCh
   return 'app';
 }
 
+function parseReasoningEffort(
+  value: string,
+  fallback: OpenAiReasoningEffort,
+): OpenAiReasoningEffort {
+  if (!value.trim()) {
+    return fallback;
+  }
+  if (
+    value === 'none' ||
+    value === 'minimal' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh'
+  ) {
+    return value;
+  }
+  return fallback;
+}
+
 function printHelp() {
   console.log(`OpenAI Responses + Fish Speech latency benchmark
 
@@ -162,6 +193,8 @@ Modes:
   llm-ws         OpenAI Responses WebSocket only
   pipeline-http  OpenAI HTTP deltas into Fish live bridge
   pipeline-ws    OpenAI WebSocket deltas into Fish live bridge
+  direct-http    Raw OpenAI HTTP stream into one Fish realtime stream, no app backend route
+  direct-ws      Raw persistent OpenAI WS into one Fish realtime stream, no app backend route
   route-http     Exact /ai/chat SSE route with HTTP-stream transport + Fish bridge
   route-ws       Exact /ai/chat SSE route with WebSocket transport + Fish bridge
   all            Run every mode above
@@ -172,6 +205,9 @@ Options:
   --repeat 3                   Repeats per mode, default 1
   --llm-model gpt-5-nano       OpenAI model, default gpt-5-nano
   --max-output-tokens 120      LLM output cap, default 120
+  --reasoning minimal          Reasoning effort for reasoning models, default minimal
+  --openai-warmup true         Warm direct-ws with one tiny generated turn before timing
+  --fish-warmup true           Warm Fish with one tiny realtime request before timing
   --fish-model s2              Fish backend/model, default env/backup/config
   --voice <reference-id>       Fish reference id, default backup/config
   --chunk-length 160           Fish chunk_length
@@ -215,9 +251,12 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
     format: parseFormat(readArg('--format'), config.fishSpeechFormat || 'pcm'),
     hardTimeoutMs: parseNumber(readArg('--hard-timeout-ms'), 45000, 0, 300000),
     json: process.argv.includes('--json'),
-    llmMaxOutputTokens: parseNumber(readArg('--max-output-tokens'), 120, 16, 4096),
+    llmMaxOutputTokens: parseNumber(readArg('--max-output-tokens'), 200, 16, 4096),
     llmModel,
     mode: parseMode(readArg('--mode')),
+    openAiReasoningEffort: parseReasoningEffort(readArg('--reasoning'), 'minimal'),
+    openAiWarmup: parseBoolean(readArg('--openai-warmup'), false),
+    fishWarmup: parseBoolean(readArg('--fish-warmup'), false),
     progress: process.argv.includes('--progress'),
     prompt: readArg('--prompt') || DEFAULT_PROMPT,
     repeat: parseNumber(readArg('--repeat'), 1, 1, 20),
@@ -415,7 +454,7 @@ function createOpenAiProvider(
     closeWebSocketAfterRequest: true,
     maxOutputTokens: options.llmMaxOutputTokens,
     model: options.llmModel,
-    reasoningEffort: 'none',
+    reasoningEffort: options.openAiReasoningEffort,
     requestTimeoutMs: Math.max(options.hardTimeoutMs || 45000, 15000),
     safetyIdentifier: '',
     stateMode: 'stateless',
@@ -443,6 +482,298 @@ function createOpenAiRequest(options: BenchOptions, useWebSocket: boolean) {
     sourceMessages: [],
     transportMode: useWebSocket ? ('websocket' as const) : ('http-stream' as const),
   };
+}
+
+type DirectOpenAiEvent = {
+  type?: string;
+  delta?: string;
+  response?: {
+    id?: string;
+    incomplete_details?: {
+      reason?: string;
+    };
+  };
+  error?: {
+    message?: string;
+  };
+};
+
+function isReasoningStyleModelName(model: string) {
+  const normalized = model.trim().toLowerCase();
+  return (
+    normalized.startsWith('gpt-5') ||
+    normalized.startsWith('o1') ||
+    normalized.startsWith('o3') ||
+    normalized.startsWith('o4')
+  );
+}
+
+function createDirectOpenAiPayload(options: BenchOptions, prompt = options.prompt) {
+  const payload: Record<string, unknown> = {
+    model: options.llmModel,
+    instructions:
+      'You are a live VTuber assistant. Reply briefly and naturally. Do not include hidden reasoning.',
+    input: [
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: prompt }],
+      },
+    ],
+    max_output_tokens: options.llmMaxOutputTokens,
+    store: false,
+  };
+  if (isReasoningStyleModelName(options.llmModel)) {
+    if (options.openAiReasoningEffort !== 'none') {
+      payload.reasoning = { effort: options.openAiReasoningEffort };
+    }
+  } else {
+    payload.temperature = 0.4;
+  }
+  return payload;
+}
+
+function handleDirectOpenAiEvent(event: DirectOpenAiEvent, onTextDelta: (delta: string) => void) {
+  if (event.type === 'error' || event.type === 'response.failed') {
+    throw new Error(event.error?.message ?? `OpenAI Responses WS event ${event.type}.`);
+  }
+  if (typeof event.delta === 'string' && event.delta) {
+    onTextDelta(event.delta);
+  }
+  if (event.type === 'response.completed') {
+    return 'completed' as const;
+  }
+  if (event.type === 'response.incomplete') {
+    const reason = event.response?.incomplete_details?.reason ?? 'unknown';
+    throw new Error(`OpenAI Responses API returned an incomplete response: ${reason}.`);
+  }
+  return 'continue' as const;
+}
+
+class DirectOpenAiWsSession {
+  private queue = Promise.resolve();
+  private socket: WebSocket | null = null;
+  private socketReady: Promise<WebSocket> | null = null;
+
+  constructor(
+    private readonly config: StreamBotConfig,
+    private readonly options: BenchOptions,
+  ) {}
+
+  dispose() {
+    if (
+      this.socket &&
+      (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)
+    ) {
+      this.socket.close();
+    }
+    this.socket = null;
+    this.socketReady = null;
+  }
+
+  warmup() {
+    return this.complete('Say ready.', () => undefined);
+  }
+
+  complete(prompt: string, onTextDelta: (delta: string) => void) {
+    const run = () => this.completeNow(prompt, onTextDelta);
+    const result = this.queue.then(run, run);
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async completeNow(prompt: string, onTextDelta: (delta: string) => void) {
+    const socket = await this.getSocket();
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        fail(new Error(`Direct OpenAI WS timed out after ${this.options.hardTimeoutMs}ms.`), true);
+      }, this.options.hardTimeoutMs);
+
+      const cleanup = () => {
+        settled = true;
+        clearTimeout(timeout);
+        socket.off('message', onMessage);
+        socket.off('close', onClose);
+        socket.off('error', onError);
+      };
+
+      const finish = () => {
+        cleanup();
+        resolve();
+      };
+
+      const fail = (error: Error, closeSocket = false) => {
+        cleanup();
+        if (closeSocket) {
+          this.dispose();
+        }
+        reject(error);
+      };
+
+      const onMessage = (raw: RawData) => {
+        if (settled) {
+          return;
+        }
+        try {
+          const event = JSON.parse(raw.toString()) as DirectOpenAiEvent;
+          if (handleDirectOpenAiEvent(event, onTextDelta) === 'completed') {
+            finish();
+          }
+        } catch (error) {
+          fail(error instanceof Error ? error : new Error(String(error)), true);
+        }
+      };
+
+      const onClose = (code: number, reason: Buffer) => {
+        if (!settled) {
+          fail(
+            new Error(
+              `Direct OpenAI WS closed before completion: ${code}${reason.length ? ` ${reason.toString()}` : ''}.`,
+            ),
+          );
+        }
+      };
+
+      const onError = (error: Error) => {
+        if (!settled) {
+          fail(error, true);
+        }
+      };
+
+      socket.on('message', onMessage);
+      socket.on('close', onClose);
+      socket.on('error', onError);
+      socket.send(
+        JSON.stringify({
+          type: 'response.create',
+          ...createDirectOpenAiPayload(this.options, prompt),
+        }),
+      );
+    });
+  }
+
+  private async getSocket() {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      return this.socket;
+    }
+    if (this.socketReady) {
+      return this.socketReady;
+    }
+    this.socketReady = new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket('wss://api.openai.com/v1/responses', {
+        headers: {
+          Authorization: `Bearer ${this.config.aiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      socket.once('open', () => {
+        this.socket = socket;
+        resolve(socket);
+      });
+      socket.once('error', (error) => {
+        this.socket = null;
+        this.socketReady = null;
+        reject(error);
+      });
+      socket.once('close', () => {
+        if (this.socket === socket) {
+          this.socket = null;
+          this.socketReady = null;
+        }
+      });
+    });
+    return this.socketReady;
+  }
+}
+
+async function streamDirectOpenAiHttp(
+  config: StreamBotConfig,
+  options: BenchOptions,
+  onTextDelta: (delta: string) => void,
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.hardTimeoutMs);
+  let response: Response;
+  try {
+    response = await fetch('https://api.openai.com/v1/responses', {
+      body: JSON.stringify({ ...createDirectOpenAiPayload(options), stream: true }),
+      headers: {
+        Authorization: `Bearer ${config.aiApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) {
+    throw new Error(
+      `Direct OpenAI HTTP failed with HTTP ${response.status}: ${await response.text()}`,
+    );
+  }
+  if (!response.body) {
+    throw new Error('Direct OpenAI HTTP did not return a readable stream.');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const handleBlock = (block: string) => {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n')
+      .trim();
+    if (!data || data === '[DONE]') {
+      return;
+    }
+    const event = JSON.parse(data) as DirectOpenAiEvent;
+    handleDirectOpenAiEvent(event, onTextDelta);
+  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop() ?? '';
+      for (const block of blocks) {
+        handleBlock(block);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      handleBlock(buffer);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function warmFish(config: StreamBotConfig, options: BenchOptions) {
+  await streamFishSpeechTextStream(
+    createFishConfig(config, options),
+    {
+      chunkLength: options.fishChunkLength,
+      conditionOnPreviousChunks: options.conditionOnPreviousChunks,
+      latency: options.fishLatency,
+      modelId: options.fishModel,
+      voiceId: options.fishVoiceId,
+    },
+    createMeasuredTextStream('warmup.', 999, 0, () => undefined),
+    {
+      onAudioChunk() {
+        // Warmup only.
+      },
+    },
+  );
 }
 
 async function withHardTimeout<T>(
@@ -679,6 +1010,115 @@ async function runPipeline(
   };
 }
 
+async function runDirectPipeline(
+  config: StreamBotConfig,
+  options: BenchOptions,
+  run: number,
+  transport: 'http' | 'ws',
+  wsSession?: DirectOpenAiWsSession,
+): Promise<ResultRow> {
+  const startedAt = performance.now();
+  let firstDeltaAt: number | null = null;
+  let firstTextAt: number | null = null;
+  let firstAudioAt: number | null = null;
+  let lastAudioAt: number | null = null;
+  let deltaCount = 0;
+  let deltaChars = 0;
+  let textChunks = 0;
+  let audioChunks = 0;
+  let audioBytes = 0;
+  const mode: ResultRow['mode'] = transport === 'ws' ? 'direct-ws' : 'direct-http';
+  const bridge = createLiveSpeechTextBridge((chunk) => {
+    firstTextAt ??= performance.now();
+    textChunks += 1;
+    if (options.progress) {
+      console.log(`[${mode} run ${run}] fish text ${textChunks} chars=${chunk.length}`);
+    }
+  });
+
+  let fishDone: Promise<void> | null = null;
+  await withHardTimeout(
+    options,
+    mode,
+    async () => {
+      fishDone = streamFishSpeechTextStream(
+        createFishConfig(config, options),
+        {
+          chunkLength: options.fishChunkLength,
+          conditionOnPreviousChunks: options.conditionOnPreviousChunks,
+          latency: options.fishLatency,
+          modelId: options.fishModel,
+          voiceId: options.fishVoiceId,
+        },
+        bridge.stream,
+        {
+          onAudioChunk(chunk) {
+            const now = performance.now();
+            firstAudioAt ??= now;
+            lastAudioAt = now;
+            audioChunks += 1;
+            audioBytes += chunk.audio.length;
+            if (options.progress) {
+              console.log(
+                `[${mode} run ${run}] audio ${audioChunks} ${Math.round(now - startedAt)}ms`,
+              );
+            }
+          },
+        },
+      );
+
+      const onDelta = (delta: string) => {
+        const now = performance.now();
+        firstDeltaAt ??= now;
+        deltaCount += 1;
+        deltaChars += delta.length;
+        bridge.push(delta);
+        if (options.progress) {
+          console.log(
+            `[${mode} run ${run}] delta ${deltaCount} ${Math.round(now - startedAt)}ms chars=${delta.length}`,
+          );
+        }
+      };
+
+      try {
+        if (transport === 'ws') {
+          if (!wsSession) {
+            throw new Error('Missing direct OpenAI WS session.');
+          }
+          await wsSession.complete(options.prompt, onDelta);
+        } else {
+          await streamDirectOpenAiHttp(config, options, onDelta);
+        }
+        bridge.close();
+        await fishDone;
+      } catch (error) {
+        bridge.fail(error instanceof Error ? error : new Error(String(error)));
+        await fishDone.catch(() => undefined);
+        throw error;
+      }
+    },
+    () => {
+      bridge.fail(new Error(`${mode} timed out`));
+    },
+  );
+
+  return {
+    audioBytes,
+    audioChunks,
+    deltaChars,
+    deltaCount,
+    firstAudioMs: firstAudioAt === null ? null : firstAudioAt - startedAt,
+    firstDeltaMs: firstDeltaAt === null ? null : firstDeltaAt - startedAt,
+    firstTextToAudioMs:
+      firstAudioAt === null || firstTextAt === null ? null : firstAudioAt - firstTextAt,
+    lastAudioMs: lastAudioAt === null ? null : lastAudioAt - startedAt,
+    mode,
+    run,
+    textChunks,
+    totalMs: performance.now() - startedAt,
+  };
+}
+
 function createRouteTtsBridge(options: BenchOptions): RemoteTtsRequest {
   return {
     provider: 'fish-speech',
@@ -895,13 +1335,31 @@ async function runRoutePipeline(
 
 function modesToRun(mode: Mode): Array<Exclude<Mode, 'all'>> {
   if (mode === 'all') {
-    return ['fish', 'llm-http', 'llm-ws', 'pipeline-http', 'pipeline-ws', 'route-http', 'route-ws'];
+    return [
+      'fish',
+      'llm-http',
+      'llm-ws',
+      'pipeline-http',
+      'pipeline-ws',
+      'direct-http',
+      'direct-ws',
+      'route-http',
+      'route-ws',
+    ];
   }
   return [mode];
 }
 
 function formatMs(value: number | null | undefined) {
   return value === null || value === undefined ? 'n/a' : `${Math.round(value)}ms`;
+}
+
+function average(values: Array<number | null | undefined>) {
+  const real = values.filter((value): value is number => Number.isFinite(value));
+  if (!real.length) {
+    return null;
+  }
+  return real.reduce((sum, value) => sum + value, 0) / real.length;
 }
 
 function printResults(options: BenchOptions, results: ResultRow[]) {
@@ -911,6 +1369,9 @@ function printResults(options: BenchOptions, results: ResultRow[]) {
   console.log(`fish_latency=${options.fishLatency}`);
   console.log(`chunk_length=${options.fishChunkLength}`);
   console.log(`condition_on_previous_chunks=${options.conditionOnPreviousChunks}`);
+  console.log(`reasoning=${options.openAiReasoningEffort}`);
+  console.log(`openai_warmup=${options.openAiWarmup}`);
+  console.log(`fish_warmup=${options.fishWarmup}`);
   if (options.mode === 'route-http' || options.mode === 'route-ws' || options.mode === 'all') {
     console.log(
       `bridge_chunking=${options.routeBridgeChunkingStrategy} min=${options.routeBridgeMinChars} max=${options.routeBridgeMaxChars} soft=${options.routeBridgeSoftChars}`,
@@ -941,6 +1402,36 @@ function printResults(options: BenchOptions, results: ResultRow[]) {
       error: result.error ?? '',
     })),
   );
+  const modes = Array.from(new Set(results.map((result) => result.mode)));
+  const summary = modes.map((mode) => {
+    const rows = results.filter((result) => result.mode === mode && !result.error);
+    const avgFirstDelta = average(rows.map((row) => row.firstDeltaMs));
+    const avgFirstAudio = average(rows.map((row) => row.firstAudioMs));
+    const avgDeltaToAudio = average(
+      rows.map((row) =>
+        row.firstAudioMs !== undefined &&
+        row.firstAudioMs !== null &&
+        row.firstDeltaMs !== undefined &&
+        row.firstDeltaMs !== null
+          ? row.firstAudioMs - row.firstDeltaMs
+          : null,
+      ),
+    );
+    const avgTotal = average(rows.map((row) => row.totalMs));
+    return {
+      mode,
+      ok: rows.length,
+      avgFirstDelta: formatMs(avgFirstDelta),
+      avgFirstAudio: formatMs(avgFirstAudio),
+      avgDeltaToAudio: formatMs(avgDeltaToAudio),
+      avgTotal: formatMs(avgTotal),
+      avgFirstAudioSeconds:
+        avgFirstAudio === null ? 'n/a' : `${(avgFirstAudio / 1000).toFixed(3)}s`,
+      avgTotalSeconds: avgTotal === null ? 'n/a' : `${(avgTotal / 1000).toFixed(3)}s`,
+    };
+  });
+  console.log('');
+  console.table(summary);
 }
 
 async function main() {
@@ -953,10 +1444,18 @@ async function main() {
   hydrateFromBackup(config, options);
   const modes = modesToRun(options.mode);
   const needsFish = modes.some(
-    (mode) => mode === 'fish' || mode.startsWith('pipeline-') || mode.startsWith('route-'),
+    (mode) =>
+      mode === 'fish' ||
+      mode.startsWith('pipeline-') ||
+      mode.startsWith('direct-') ||
+      mode.startsWith('route-'),
   );
   const needsOpenAi = modes.some(
-    (mode) => mode.startsWith('llm-') || mode.startsWith('pipeline-') || mode.startsWith('route-'),
+    (mode) =>
+      mode.startsWith('llm-') ||
+      mode.startsWith('pipeline-') ||
+      mode.startsWith('direct-') ||
+      mode.startsWith('route-'),
   );
   if (needsFish && !config.fishSpeechApiKey) {
     throw new Error('Missing Fish key. Set FISH_AUDIO_API_KEY or pass --backup.');
@@ -970,31 +1469,49 @@ async function main() {
 
   const results: ResultRow[] = [];
   for (const mode of modes) {
-    for (let run = 1; run <= options.repeat; run += 1) {
-      try {
-        if (mode === 'fish') {
-          results.push(await runFishOnly(config, options, run));
-        } else if (mode === 'llm-http') {
-          results.push(await runLlmOnly(config, options, run, false));
-        } else if (mode === 'llm-ws') {
-          results.push(await runLlmOnly(config, options, run, true));
-        } else if (mode === 'pipeline-http') {
-          results.push(await runPipeline(config, options, run, false));
-        } else if (mode === 'pipeline-ws') {
-          results.push(await runPipeline(config, options, run, true));
-        } else if (mode === 'route-http') {
-          results.push(await runRoutePipeline(config, options, run, false));
-        } else {
-          results.push(await runRoutePipeline(config, options, run, true));
-        }
-      } catch (error) {
-        results.push({
-          error: error instanceof Error ? error.message : String(error),
-          mode,
-          run,
-          totalMs: 0,
-        });
+    const directWsSession =
+      mode === 'direct-ws' ? new DirectOpenAiWsSession(config, options) : null;
+    try {
+      if (directWsSession && options.openAiWarmup) {
+        await directWsSession.warmup();
       }
+      if ((mode === 'direct-http' || mode === 'direct-ws') && options.fishWarmup) {
+        await warmFish(config, options);
+      }
+      for (let run = 1; run <= options.repeat; run += 1) {
+        try {
+          if (mode === 'fish') {
+            results.push(await runFishOnly(config, options, run));
+          } else if (mode === 'llm-http') {
+            results.push(await runLlmOnly(config, options, run, false));
+          } else if (mode === 'llm-ws') {
+            results.push(await runLlmOnly(config, options, run, true));
+          } else if (mode === 'pipeline-http') {
+            results.push(await runPipeline(config, options, run, false));
+          } else if (mode === 'pipeline-ws') {
+            results.push(await runPipeline(config, options, run, true));
+          } else if (mode === 'direct-http') {
+            results.push(await runDirectPipeline(config, options, run, 'http'));
+          } else if (mode === 'direct-ws') {
+            results.push(
+              await runDirectPipeline(config, options, run, 'ws', directWsSession ?? undefined),
+            );
+          } else if (mode === 'route-http') {
+            results.push(await runRoutePipeline(config, options, run, false));
+          } else {
+            results.push(await runRoutePipeline(config, options, run, true));
+          }
+        } catch (error) {
+          results.push({
+            error: error instanceof Error ? error.message : String(error),
+            mode,
+            run,
+            totalMs: 0,
+          });
+        }
+      }
+    } finally {
+      directWsSession?.dispose();
     }
   }
 
