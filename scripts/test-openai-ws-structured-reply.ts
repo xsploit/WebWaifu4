@@ -56,7 +56,7 @@ function parseArgs(): Args {
     const index = args.indexOf(`--${name}`);
     return index >= 0 ? (args[index + 1] ?? fallback) : fallback;
   };
-  const reasoning = read('reasoning', 'none');
+  const reasoning = read('reasoning', 'minimal');
   if (!['none', 'minimal', 'low', 'medium', 'high'].includes(reasoning)) {
     throw new Error('Invalid --reasoning value. Use none, minimal, low, medium, or high.');
   }
