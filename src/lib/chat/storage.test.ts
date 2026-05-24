@@ -338,6 +338,20 @@ describe('chat settings persistence', () => {
     });
   });
 
+  it('normalizes stream transcription away from chat and premium models', async () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.twitchSettings,
+      JSON.stringify({
+        ...createDefaultTwitchSettings(),
+        streamTranscriptionModel: 'o1-pro-2025-03-19',
+      }),
+    );
+
+    const loaded = await loadPersistedChatState();
+
+    expect(loaded.twitchSettings.streamTranscriptionModel).toBe('whisper-1');
+  });
+
   it('keeps edited built-in personas instead of replacing them with defaults', async () => {
     const personas = createDefaultPersonas();
     const editedPersonas = personas.map((persona) =>

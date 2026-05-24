@@ -1,4 +1,5 @@
 import type { ChatProvider } from '../ai/ChatProvider.js';
+import { isPremiumCostModelId } from '../runtimeSafety.js';
 import type { StreamBotEvent } from '../scheduler/ChatScheduler.js';
 import type { TwitchChatMessage, TwitchChatSource } from '../twitch/TwitchChatSource.js';
 import { getCommandHelp, parseStreamCommand } from './CommandParser.js';
@@ -73,6 +74,10 @@ export class CommandRouter {
         this.reply(`Switching Twitch chat to #${command.channel}.`);
         break;
       case 'set-ai-model':
+        if (isPremiumCostModelId(command.model)) {
+          this.reply('That high-cost model is blocked by default.');
+          break;
+        }
         this.options.provider.setModel?.(command.model);
         this.options.emit({
           type: 'overlay:command',

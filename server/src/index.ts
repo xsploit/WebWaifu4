@@ -32,6 +32,8 @@ import {
 } from './twitch/TwitchStreamTranscriber.js';
 import {
   isPremiumCostModelId,
+  normalizeEmbeddingModel,
+  normalizeOpenAiTranscriptionModel,
   resolveRuntimeHealthStateKey,
   resolveServerProviderProxyModel,
 } from './runtimeSafety.js';
@@ -468,7 +470,9 @@ function getRuntimeChatProvider(
     ...baseConfig,
     aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
     aiApiKey: effectiveApiKey,
-    aiModel: model?.trim() || baseConfig.aiModel,
+    aiModel: isPremiumCostModelId(model)
+      ? getDefaultModelForProvider(providerName)
+      : model?.trim() || baseConfig.aiModel,
     aiProvider: providerName,
     tavilyApiKey,
     openAiStateMode: appOwnedState ? 'stateless' : baseConfig.openAiStateMode,
@@ -1171,13 +1175,13 @@ const httpServer = createServer(async (request, response) => {
         return;
       }
 
-      const model =
-        typeof body.model === 'string' && body.model.trim()
-          ? body.model.trim()
-          : getProviderEmbeddingModel(
-              normalizeRuntimeLlmProvider(body.llmProvider),
-              process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small',
-            );
+      const model = normalizeEmbeddingModel(
+        body.model,
+        getProviderEmbeddingModel(
+          normalizeRuntimeLlmProvider(body.llmProvider),
+          process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small',
+        ),
+      );
       const embedding = await createOpenAiEmbedding(embeddingConfig, input, model);
       writeJson(response, 200, {
         embedding,
@@ -1200,8 +1204,7 @@ const httpServer = createServer(async (request, response) => {
         model?: unknown;
         sampleSeconds?: unknown;
       }>(request);
-      const model =
-        typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'whisper-1';
+      const model = normalizeOpenAiTranscriptionModel(body.model);
       const sampleSeconds =
         typeof body.sampleSeconds === 'number' && Number.isFinite(body.sampleSeconds)
           ? body.sampleSeconds

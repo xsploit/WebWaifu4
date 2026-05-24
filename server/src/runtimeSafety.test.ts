@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   getRawPathParts,
+  normalizeEmbeddingModel,
+  normalizeOpenAiTranscriptionModel,
   resolveServerProviderProxyModel,
   resolveRuntimeHealthStateKey,
   safeDecodePathParts,
@@ -95,5 +97,29 @@ describe('runtimeSafety', () => {
         requestedModel: 'gpt-5_4-pro',
       }),
     ).toEqual({ allowed: true, model: 'gpt-5_4-pro' });
+  });
+
+  it('forces stream transcription onto OpenAI transcription models', () => {
+    expect(normalizeOpenAiTranscriptionModel('whisper-1')).toBe('whisper-1');
+    expect(normalizeOpenAiTranscriptionModel('gpt-4o-mini-transcribe')).toBe(
+      'gpt-4o-mini-transcribe',
+    );
+    expect(normalizeOpenAiTranscriptionModel('o1-pro-2025-03-19')).toBe('whisper-1');
+    expect(normalizeOpenAiTranscriptionModel('gpt-5_4-pro')).toBe('whisper-1');
+  });
+
+  it('forces embeddings onto embedding-only models', () => {
+    expect(normalizeEmbeddingModel('text-embedding-3-small', 'text-embedding-3-small')).toBe(
+      'text-embedding-3-small',
+    );
+    expect(normalizeEmbeddingModel('openai/text-embedding-3-small', 'text-embedding-3-small')).toBe(
+      'openai/text-embedding-3-small',
+    );
+    expect(normalizeEmbeddingModel('o1-pro-2025-03-19', 'text-embedding-3-small')).toBe(
+      'text-embedding-3-small',
+    );
+    expect(normalizeEmbeddingModel('gpt-5_4-pro', 'text-embedding-3-small')).toBe(
+      'text-embedding-3-small',
+    );
   });
 });

@@ -10,6 +10,7 @@ import {
   STORAGE_KEYS,
 } from './defaults';
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
+import { normalizeTwitchStreamTranscriptionModel } from '../twitch/stream-transcription';
 import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
 import { normalizeLlmProviderCompatibility } from './provider-defaults';
 import type {
@@ -597,11 +598,9 @@ function normalizeTwitchSettings(value: unknown): TwitchSettings {
       30,
       600,
     ),
-    streamTranscriptionModel:
-      typeof source.streamTranscriptionModel === 'string' &&
-      source.streamTranscriptionModel.trim().length > 0
-        ? source.streamTranscriptionModel.trim().slice(0, 80)
-        : defaults.streamTranscriptionModel,
+    streamTranscriptionModel: normalizeTwitchStreamTranscriptionModel(
+      source.streamTranscriptionModel,
+    ),
     streamTranscriptionSampleSeconds: clampInteger(
       source.streamTranscriptionSampleSeconds,
       defaults.streamTranscriptionSampleSeconds,

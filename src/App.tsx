@@ -142,6 +142,7 @@ import { DirectTwitchIrcClient, type DirectTwitchChatMessage } from './lib/twitc
 import {
   formatTwitchStreamTranscriptContext,
   isLikelyVisionModel,
+  normalizeTwitchStreamTranscriptionModel,
   type TwitchStreamFrame,
   type TwitchStreamFrameResponse,
   type TwitchStreamTranscript,
@@ -997,15 +998,16 @@ async function requestTwitchStreamTranscript(input: {
   providerKeyVaultWorkspaceId?: string;
   sampleSeconds: number;
 }) {
+  const model = normalizeTwitchStreamTranscriptionModel(input.model);
   const response = await fetch(getTwitchTranscriptionUrl(), {
     body: JSON.stringify({
       channel: input.channel,
-      model: input.model,
+      model,
       sampleSeconds: input.sampleSeconds,
     }),
     headers: await buildBackendProviderHeaders({
       llmProvider: input.llmProvider,
-      model: input.model,
+      model,
       providerKeyVaultWorkspaceId: input.providerKeyVaultWorkspaceId,
     }),
     method: 'POST',
@@ -1017,7 +1019,7 @@ async function requestTwitchStreamTranscript(input: {
   return {
     channel: data.transcript.channel || input.channel,
     createdAt: Date.now(),
-    model: data.transcript.model || input.model,
+    model: normalizeTwitchStreamTranscriptionModel(data.transcript.model || model),
     sampleSeconds: data.transcript.sampleSeconds || input.sampleSeconds,
     text: data.transcript.text.trim(),
   } satisfies TwitchStreamTranscript;
@@ -1062,7 +1064,12 @@ function getFreshTwitchStreamFrameForPrompt({
   model: string;
   visionEnabled: boolean;
 }) {
-  if (!visionEnabled || !frame || !isLikelyVisionModel(llmProvider, model)) {
+  if (
+    !visionEnabled ||
+    !frame ||
+    isPremiumCostModelId(model) ||
+    !isLikelyVisionModel(llmProvider, model)
+  ) {
     return null;
   }
   const maxAgeMs = Math.max(15, Math.min(600, maxAgeSeconds)) * 1000;

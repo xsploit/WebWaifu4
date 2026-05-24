@@ -8,6 +8,21 @@ export type ServerProviderProxyModelDecision =
       error: string;
     };
 
+const SAFE_OPENAI_TRANSCRIPTION_MODELS = new Set([
+  'whisper-1',
+  'gpt-4o-transcribe',
+  'gpt-4o-mini-transcribe',
+]);
+
+const SAFE_EMBEDDING_MODELS = new Set([
+  'text-embedding-3-small',
+  'text-embedding-3-large',
+  'text-embedding-ada-002',
+  'openai/text-embedding-3-small',
+  'openai/text-embedding-3-large',
+  'openai/text-embedding-ada-002',
+]);
+
 export function isPremiumCostModelId(value: unknown) {
   if (typeof value !== 'string') {
     return false;
@@ -25,6 +40,19 @@ export function isPremiumCostModelId(value: unknown) {
     /^gpt-5[.-]4-pro(?:[.-]|$)/.test(leaf) ||
     /^gpt-5[.-]5(?:[.-]|$)/.test(leaf)
   );
+}
+
+export function normalizeOpenAiTranscriptionModel(value: unknown, fallback = 'whisper-1') {
+  const model = normalizeModelName(value);
+  return SAFE_OPENAI_TRANSCRIPTION_MODELS.has(model.toLowerCase()) ? model : fallback;
+}
+
+export function normalizeEmbeddingModel(value: unknown, fallback: string) {
+  const model = normalizeModelName(value);
+  if (!model || isPremiumCostModelId(model)) {
+    return fallback;
+  }
+  return SAFE_EMBEDDING_MODELS.has(model.toLowerCase()) ? model : fallback;
 }
 
 export function resolveServerProviderProxyModel(input: {
