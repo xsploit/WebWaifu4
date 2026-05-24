@@ -274,6 +274,8 @@ async function main() {
   let message = '';
   let firstRawAt = 0;
   let firstMessageAt = 0;
+  let parserTimeMs = 0;
+  const debugEvents: string[] = [];
   const startedAt = performance.now();
 
   const socket = new WebSocket(args.url, {
@@ -291,7 +293,7 @@ async function main() {
 
     socket.once('open', () => {
       if (args.debug) {
-        console.error(`[debug] websocket open: ${args.url}`);
+        debugEvents.push(`websocket open: ${args.url}`);
       }
       const responseCreate: Record<string, unknown> = {
         type: 'response.create',
@@ -320,7 +322,7 @@ async function main() {
     socket.on('message', (data) => {
       const event = JSON.parse(data.toString()) as Record<string, unknown>;
       if (args.debug) {
-        console.error(`[debug] event: ${String(event.type ?? 'unknown')}`);
+        debugEvents.push(`event: ${String(event.type ?? 'unknown')}`);
       }
       if (event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') {
         clearTimeout(timeout);
@@ -333,7 +335,9 @@ async function main() {
       if (delta) {
         raw += delta;
         firstRawAt ||= performance.now();
+        const parseStartedAt = performance.now();
         const visible = extractor.push(delta);
+        parserTimeMs += performance.now() - parseStartedAt;
         if (visible) {
           message += visible;
           firstMessageAt ||= performance.now();
@@ -350,7 +354,7 @@ async function main() {
 
     socket.once('error', (error) => {
       if (args.debug) {
-        console.error(`[debug] websocket error: ${error.message}`);
+        debugEvents.push(`websocket error: ${error.message}`);
       }
       clearTimeout(timeout);
       reject(error);
@@ -358,13 +362,14 @@ async function main() {
 
     socket.once('close', (code, reason) => {
       if (args.debug) {
-        console.error(`[debug] websocket close: ${code} ${reason.toString()}`);
+        debugEvents.push(`websocket close: ${code} ${reason.toString()}`);
       }
     });
   });
 
   const parsed = JSON.parse(raw) as { emotion?: string; message?: string };
   const leakPattern = /[{}]|"message"|"emotion"/;
+  const firstMessageParserDelayMs = firstRawAt && firstMessageAt ? Math.round(firstMessageAt - firstRawAt) : null;
   console.log('\n\nStructured WS reply harness');
   console.table([
     {
@@ -372,6 +377,8 @@ async function main() {
       reasoning: args.reasoning,
       firstRawMs: firstRawAt ? Math.round(firstRawAt - startedAt) : null,
       firstMessageMs: firstMessageAt ? Math.round(firstMessageAt - startedAt) : null,
+      firstMessageParserDelayMs,
+      parserTimeMs: Number(parserTimeMs.toFixed(3)),
       rawChars: raw.length,
       streamedMessageChars: message.length,
       finalMessageMatches: parsed.message === message,
@@ -380,6 +387,12 @@ async function main() {
     },
   ]);
   console.log('\nraw JSON:', raw);
+  if (args.debug) {
+    console.log('\ndebug events:');
+    for (const event of debugEvents) {
+      console.log(`[debug] ${event}`);
+    }
+  }
 }
 
 main().catch((error) => {
