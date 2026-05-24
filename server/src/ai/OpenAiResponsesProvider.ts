@@ -1,3 +1,4 @@
+import OpenAI from 'openai';
 import { WebSocket } from 'ws';
 import type { RawData } from 'ws';
 import type {
@@ -128,6 +129,7 @@ type StreamReadResult<T> = { done: false; value: T } | { done: true; value?: T }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120000;
 const MAX_WEBSOCKET_QUEUE_DEPTH = 10;
+const OPENROUTER_ANTHROPIC_MODEL_PATTERN = /(?:^|\/)(?:anthropic\/)?claude-|^anthropic\//i;
 
 function getWebSocketStatus(ws: WebSocket | null) {
   if (!ws) {
@@ -510,6 +512,16 @@ function isOpenRouterBaseUrl(value: string) {
   }
 }
 
+function getOpenRouterCacheControl(
+  model: string,
+  retention: OpenAiResponsesProviderOptions['promptCacheRetention'] | undefined,
+) {
+  if (!OPENROUTER_ANTHROPIC_MODEL_PATTERN.test(model.trim())) {
+    return null;
+  }
+  return retention === '24h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' };
+}
+
 function normalizeMaxOutputTokens(requested: number | undefined, fallback: number) {
   const value = Number.isFinite(requested) ? requested! : fallback;
   return Math.max(16, Math.floor(value));
@@ -542,9 +554,12 @@ export class OpenAiResponsesProvider implements ChatProvider {
   private wsReady: Promise<WebSocket> | null = null;
   private wsQueue: Promise<void> = Promise.resolve();
   private wsQueueDepth = 0;
+  private sdkClient: OpenAI | null = null;
   private readonly fetcher: typeof fetch;
+  private readonly useSdkHttp: boolean;
 
   constructor(private readonly options: OpenAiResponsesProviderOptions) {
+    this.useSdkHttp = !options.fetcher;
     this.fetcher = options.fetcher ?? fetch;
     this.states.set('default', this.createInitialState());
   }
@@ -734,6 +749,30 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return `${this.baseUrl}|${this.options.model.trim().toLowerCase()}`;
   }
 
+  private getOpenAiClient() {
+    if (!this.sdkClient) {
+      this.sdkClient = new OpenAI({
+        apiKey: this.options.apiKey,
+        baseURL: this.baseUrl,
+        timeout: this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      });
+    }
+    return this.sdkClient;
+  }
+
+  private async createSdkResponse(payload: Record<string, unknown>) {
+    return (await this.getOpenAiClient().responses.create(
+      payload as never,
+    )) as unknown as OpenAiResponsePayload;
+  }
+
+  private async createSdkResponseStream(payload: Record<string, unknown>) {
+    return (await this.getOpenAiClient().responses.create({
+      ...payload,
+      stream: true,
+    } as never)) as unknown as AsyncIterable<OpenAiWebSocketEvent>;
+  }
+
   private isUnsupportedParam(param: UnsupportedOpenAiParam) {
     return this.unsupportedParamsByModel.get(this.capabilityKey)?.has(param) ?? false;
   }
@@ -898,15 +937,23 @@ export class OpenAiResponsesProvider implements ChatProvider {
       payload.prompt_cache_key = this.options.promptCacheKey;
     }
 
-    if (this.options.promptCacheRetention) {
+    const isOpenRouter = this.isOpenRouterRuntime();
+    if (!isOpenRouter && this.options.promptCacheRetention) {
       payload.prompt_cache_retention = this.options.promptCacheRetention;
     }
 
-    if (isOpenRouterBaseUrl(this.baseUrl)) {
+    if (isOpenRouter) {
       payload.reasoning = {
         exclude: true,
       };
       payload.include_reasoning = false;
+      const cacheControl = getOpenRouterCacheControl(
+        this.options.model,
+        this.options.promptCacheRetention,
+      );
+      if (cacheControl) {
+        payload.cache_control = cacheControl;
+      }
     } else if (reasoningEffort) {
       payload.reasoning = {
         effort: reasoningEffort,
@@ -1063,6 +1110,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
   }
 
   private async completeWithHttp(payload: Record<string, unknown>) {
+    if (this.useSdkHttp) {
+      return this.createSdkResponse(payload);
+    }
+
     const { controller, timeout } = this.createRequestAbortController();
     let response: Response;
     try {
@@ -1090,6 +1141,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
     payload: Record<string, unknown>,
     onTextDelta?: (delta: string) => void,
   ) {
+    if (this.useSdkHttp) {
+      return this.completeWithSdkStream(payload, onTextDelta);
+    }
+
     const { controller, timeout } = this.createRequestAbortController();
     let response: Response;
     try {
@@ -1111,6 +1166,72 @@ export class OpenAiResponsesProvider implements ChatProvider {
     }
 
     return this.parseHttpStreamResponse(response, onTextDelta);
+  }
+
+  private async completeWithSdkStream(
+    payload: Record<string, unknown>,
+    onTextDelta?: (delta: string) => void,
+  ): Promise<OpenAiResponsePayload> {
+    const stream = await this.createSdkResponseStream(payload);
+    let text = '';
+    let completed: OpenAiResponsePayload | null = null;
+    const functionCalls = createStreamingFunctionCallState();
+
+    for await (const event of stream) {
+      if (event.type === 'response.output_item.added' && isStreamingFunctionCallItem(event.item)) {
+        rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
+        continue;
+      }
+      if (event.type === 'response.function_call_arguments.delta') {
+        const current = getStreamingFunctionCallForEvent(functionCalls, event);
+        if (current) {
+          current.arguments = `${current.arguments ?? ''}${event.delta ?? ''}`;
+        }
+        continue;
+      }
+      if (event.type === 'response.function_call_arguments.done') {
+        const current = getStreamingFunctionCallForEvent(functionCalls, event);
+        if (current && typeof event.arguments === 'string') {
+          current.arguments = event.arguments;
+        }
+        continue;
+      }
+      if (event.type === 'response.output_item.done' && isStreamingFunctionCallItem(event.item)) {
+        rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
+        continue;
+      }
+      if (isReasoningStreamEvent(event)) {
+        continue;
+      }
+
+      const delta = extractStreamDeltaText(event);
+      if (delta) {
+        text += delta;
+        onTextDelta?.(delta);
+      }
+      if (event.type === 'response.completed' && event.response) {
+        completed = event.response;
+        continue;
+      }
+      if (event.type === 'response.incomplete') {
+        completed = event.response ?? completed;
+        continue;
+      }
+      if (isTerminalStreamEvent(event.type)) {
+        completed = event.response ?? completed;
+        continue;
+      }
+      if (event.type === 'response.failed' || event.type === 'error') {
+        throw new Error(event.error?.message ?? `OpenAI Responses stream event ${event.type}.`);
+      }
+    }
+
+    const completedPayload = (completed ?? {}) as OpenAiResponsePayload;
+    const output = [...(completedPayload.output ?? [])];
+    mergeStreamingFunctionCalls(output, functionCalls);
+
+    const response = text ? { ...completedPayload, output_text: text } : completedPayload;
+    return output.length > 0 ? { ...response, output } : response;
   }
 
   private async parseHttpStreamResponse(

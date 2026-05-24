@@ -257,13 +257,12 @@ export function loadConfig(): StreamBotConfig {
     commandAllowMods: booleanFromEnv('COMMAND_ALLOW_MODS', true),
     botAliases: aliasesFromEnv(twitchBotUsername),
     aiProvider,
-    aiApiBaseUrl:
-      (isOpenRouterProvider
-        ? process.env.OPENROUTER_BASE_URL?.trim().replace(/\/+$/, '') ||
-          'https://openrouter.ai/api/v1'
-        : process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-          process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-          (isOpenAiResponsesProvider ? 'https://api.openai.com/v1' : 'http://127.0.0.1:1234/v1')),
+    aiApiBaseUrl: isOpenRouterProvider
+      ? process.env.OPENROUTER_BASE_URL?.trim().replace(/\/+$/, '') ||
+        'https://openrouter.ai/api/v1'
+      : process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
+        process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
+        (isOpenAiResponsesProvider ? 'https://api.openai.com/v1' : 'http://127.0.0.1:1234/v1'),
     aiApiKey: isOpenRouterProvider
       ? process.env.OPENROUTER_API_KEY?.trim() || ''
       : process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || '',
@@ -271,14 +270,18 @@ export function loadConfig(): StreamBotConfig {
       (isOpenRouterProvider
         ? process.env.OPENROUTER_MODEL?.trim() || process.env.AI_MODEL?.trim()
         : process.env.OPENAI_MODEL?.trim() || process.env.AI_MODEL?.trim()) ||
-      (isOpenRouterProvider ? 'openai/gpt-4o-mini' : isResponsesProvider ? 'gpt-5-nano' : 'local-model'),
+      (isOpenRouterProvider
+        ? 'openai/gpt-4o-mini'
+        : isResponsesProvider
+          ? 'gpt-5-nano'
+          : 'local-model'),
     openAiWebSocketUrl: process.env.OPENAI_WS_URL?.trim() ?? '',
     openAiStateMode: parseOpenAiStateMode(),
     openAiConversationId: process.env.OPENAI_CONVERSATION_ID?.trim() ?? '',
     openAiStore: booleanFromEnv('OPENAI_STORE', false),
     openAiPromptCacheKey:
       process.env.OPENAI_PROMPT_CACHE_KEY?.trim() ||
-      (isOpenAiResponsesProvider ? 'yourwifey-stream' : ''),
+      (isResponsesProvider ? 'yourwifey-stream' : ''),
     openAiPromptCacheRetention: parsePromptCacheRetention(),
     openAiReasoningEffort: parseReasoningEffort(),
     openAiSafetyIdentifier: process.env.OPENAI_SAFETY_IDENTIFIER?.trim() ?? '',
@@ -287,8 +290,10 @@ export function loadConfig(): StreamBotConfig {
     tavilyMaxResults: numberFromEnv('TAVILY_MAX_RESULTS', 5),
     tavilyCrawlLimit: numberFromEnv('TAVILY_CRAWL_LIMIT', 8),
     tavilyTimeoutMs: numberFromEnv('TAVILY_TIMEOUT_MS', 10000),
-    fishSpeechApiKey:
-      stripAuthScheme(process.env.FISH_AUDIO_API_KEY || process.env.FISHSPEECH_API_KEY, 'bearer'),
+    fishSpeechApiKey: stripAuthScheme(
+      process.env.FISH_AUDIO_API_KEY || process.env.FISHSPEECH_API_KEY,
+      'bearer',
+    ),
     fishSpeechBaseUrl:
       process.env.FISH_AUDIO_BASE_URL?.trim() ||
       process.env.FISH_SPEECH_BASE_URL?.trim() ||

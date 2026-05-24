@@ -61,6 +61,7 @@
     "fish-audio": "^0.1.0",
     "ioredis": "^5.10.1",
     "onnxruntime-web": "^1.18.0",
+    "openai": "^6.39.0",
     "phonemizer": "^1.2.1",
     "pomljs": "file:vendor/pomljs-0.0.9.tgz",
     "react": "^18.3.1",

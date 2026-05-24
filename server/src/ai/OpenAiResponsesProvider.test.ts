@@ -658,6 +658,8 @@ describe('OpenAiResponsesProvider', () => {
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
+      promptCacheKey: 'yourwifey-stream',
+      promptCacheRetention: '24h',
       store: true,
       useWebSocket: true,
       fetcher: createFetcher(calls),
@@ -687,7 +689,9 @@ describe('OpenAiResponsesProvider', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/responses');
     expect(calls[0]?.body).toMatchObject({
+      cache_control: { ttl: '1h', type: 'ephemeral' },
       include_reasoning: false,
+      prompt_cache_key: 'yourwifey-stream',
       reasoning: { exclude: true },
       text: {
         format: {
@@ -698,6 +702,7 @@ describe('OpenAiResponsesProvider', () => {
       },
     });
     expect(calls[0]?.body).not.toHaveProperty('conversation');
+    expect(calls[0]?.body).not.toHaveProperty('prompt_cache_retention');
     expect(calls[0]?.body).not.toHaveProperty('previous_response_id');
     expect(response.meta).toMatchObject({
       provider: 'openrouter-responses',

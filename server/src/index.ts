@@ -209,10 +209,8 @@ function createProvider(
       temperature: 0.7,
       stateMode: isOpenRouter ? 'stateless' : config.openAiStateMode,
       conversationId: isOpenRouter ? undefined : config.openAiConversationId || undefined,
-      promptCacheKey: isOpenRouter ? undefined : config.openAiPromptCacheKey || undefined,
-      promptCacheRetention: isOpenRouter
-        ? undefined
-        : config.openAiPromptCacheRetention || undefined,
+      promptCacheKey: config.openAiPromptCacheKey || undefined,
+      promptCacheRetention: config.openAiPromptCacheRetention || undefined,
       providerName: options.providerName ?? (isOpenRouter ? 'openrouter-responses' : undefined),
       reasoningEffort: config.openAiReasoningEffort,
       safetyIdentifier: config.openAiSafetyIdentifier || undefined,
@@ -619,8 +617,8 @@ function getRuntimeChatProvider(
     tavilyApiKey,
     openAiStateMode: appOwnedState ? 'stateless' : baseConfig.openAiStateMode,
     openAiStore: appOwnedState ? false : baseConfig.openAiStore,
-    openAiPromptCacheKey: appOwnedState ? '' : baseConfig.openAiPromptCacheKey,
-    openAiPromptCacheRetention: appOwnedState ? '' : baseConfig.openAiPromptCacheRetention,
+    openAiPromptCacheKey: baseConfig.openAiPromptCacheKey,
+    openAiPromptCacheRetention: baseConfig.openAiPromptCacheRetention,
     openAiWebSocketUrl: appOwnedState ? '' : baseConfig.openAiWebSocketUrl,
     providerProxyEnabled: true,
   };
@@ -1108,9 +1106,7 @@ async function runAiChatRequest({
     stateScope: normalizeStateScope(body.stateScope),
     temperature: body.temperature,
     transportMode: appOwnedState ? 'http-stream' : normalizeAiTransportMode(body.transportMode),
-    openAiStateMode: appOwnedState
-      ? 'stateless'
-      : normalizeOpenAiStateMode(body.openAiStateMode),
+    openAiStateMode: appOwnedState ? 'stateless' : normalizeOpenAiStateMode(body.openAiStateMode),
   };
 
   if (body.stream === true && streamEvent) {
@@ -1734,11 +1730,7 @@ function sendAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
   return true;
 }
 
-async function handleAiLiveMessage(
-  socket: WebSocket,
-  request: IncomingMessage,
-  raw: RawData,
-) {
+async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, raw: RawData) {
   let message: AiLiveClientMessage;
   try {
     message = JSON.parse(rawDataToUtf8(raw)) as AiLiveClientMessage;
