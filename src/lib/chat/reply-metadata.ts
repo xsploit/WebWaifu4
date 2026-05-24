@@ -162,6 +162,7 @@ export function buildReplyMetadataInstruction() {
     'The block must be valid compact JSON and must not be explained. Do not use any other wrapper name such as hidden block.',
     `emotion must be one of: ${Array.from(EMOTIONS).join(', ')}.`,
     'Choose the emotion you genuinely feel toward the current message and your reply, not the topic category.',
+    'Use amused for playful teasing, annoyed or angry for irritation, embarrassed or nervous for flustered/shy replies, caring or grateful for warmth, and surprised, confused, curious, or thinking for uncertainty or discovery.',
     'Use neutral only when there is no clear emotional color. Prefer a real emotion when the reply is teasing, playful, caring, irritated, surprised, embarrassed, or excited.',
     'Do not choose animation names, motions, gestures, expression ids, purposes, or implementation details.',
   ].join('\n');
@@ -336,7 +337,7 @@ export function resolveAnimationIndexForReplyMetadata(
         `${entry.name} ${entry.id} ${entry.purpose ?? ''} ${(entry.tags ?? []).join(' ')}`,
       ),
     }))
-    .filter((candidate) => candidate.entry.enabled)
+    .filter((candidate) => candidate.entry.enabled && candidate.entry.purpose === 'emotion')
     .map((candidate) => {
       const semanticScore =
         scoreAnimationKeywords(candidate.haystack, emotionKeywords, 2) +

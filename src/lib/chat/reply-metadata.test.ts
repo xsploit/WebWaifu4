@@ -213,8 +213,7 @@ describe('assistant reply metadata', () => {
 
       expect(index, emotion).toBeGreaterThanOrEqual(0);
       expect(selected?.enabled, emotion).toBe(true);
-      expect(selected?.purpose, emotion).not.toBe('movement');
-      expect(selected?.purpose, emotion).not.toBe('pose');
+      expect(selected?.purpose, emotion).toBe('emotion');
       expect(
         expectedKeywords.some((keyword) => haystack.includes(keyword)),
         `${emotion} selected ${selected?.id}`,
@@ -228,6 +227,7 @@ describe('assistant reply metadata', () => {
     expect(instruction).toContain('{"emotion":"neutral"}');
     expect(instruction).toContain('Do not choose animation names, motions, gestures');
     expect(instruction).toContain('Use neutral only when there is no clear emotional color');
+    expect(instruction).toContain('Use amused for playful teasing');
     expect(buildAnimationCatalogInstruction(DEFAULT_ANIMATIONS)).toBe('');
   });
 

@@ -82,6 +82,8 @@ const LEGACY_ANIMATIONS: BundledAnimationDefinition[] = [
     name: 'Thinking',
     url: '/assets/animations/Thinking.fbx',
     format: 'fbx',
+    enabled: true,
+    loopEligible: false,
     purpose: 'emotion',
     tags: ['thinking'],
   },
@@ -534,10 +536,11 @@ function classifySillyAnimation(
     .replace(/\.[^.]+/g, ' ')
     .split(/[^a-z0-9]+/g)
     .filter((tag) => tag.length >= 3 && tag !== 'bvh' && tag !== 'silly');
-  const isAmbient = lower.includes('neutral') || lower.includes('idle');
-  const isMovement = lower.includes('walk') || lower.includes('standup') || lower.includes('kneel');
-  const isPose = lower.includes('sit') || lower.includes('kneel');
-  const isGreeting = lower.includes('greeting');
+  const tagSet = new Set(tags);
+  const isAmbient = tagSet.has('neutral') || tagSet.has('idle');
+  const isMovement = tagSet.has('walk') || tagSet.has('standup') || tagSet.has('kneel');
+  const isPose = tagSet.has('sit') || tagSet.has('kneel') || tagSet.has('pose');
+  const isGreeting = tagSet.has('greeting');
   const isUnknown = tags.includes('unknown');
 
   return {

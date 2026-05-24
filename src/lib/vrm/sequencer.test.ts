@@ -32,9 +32,17 @@ describe('animation sequencer catalog', () => {
 
   it('enables emotion reactions without making them autoplay candidates', () => {
     const annoyance = DEFAULT_ANIMATIONS.find((entry) => entry.id === 'silly-annoyance');
+    const curiosity = DEFAULT_ANIMATIONS.find((entry) => entry.id === 'silly-curiosity');
+    const thinking = DEFAULT_ANIMATIONS.find((entry) => entry.id === 'thinking');
 
     expect(annoyance?.enabled).toBe(true);
     expect(annoyance?.purpose).toBe('emotion');
     expect(isBaseLoopAnimation(annoyance!)).toBe(false);
+    expect(curiosity?.enabled).toBe(true);
+    expect(curiosity?.purpose).toBe('emotion');
+    expect(isBaseLoopAnimation(curiosity!)).toBe(false);
+    expect(thinking?.enabled).toBe(true);
+    expect(thinking?.purpose).toBe('emotion');
+    expect(isBaseLoopAnimation(thinking!)).toBe(false);
   });
 });
