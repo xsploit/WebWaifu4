@@ -243,6 +243,33 @@ function createToolCallingFetcher(calls: FetchCall[]) {
   }) as typeof fetch;
 }
 
+function createEndlessToolCallingFetcher(calls: FetchCall[]) {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+    });
+
+    return new Response(
+      JSON.stringify({
+        id: `resp_loop_${calls.length}`,
+        output: [
+          {
+            type: 'function_call',
+            call_id: `call_search_${calls.length}`,
+            name: 'web_search',
+            arguments: JSON.stringify({ query: `loop ${calls.length}`, max_results: 1 }),
+          },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+  }) as typeof fetch;
+}
+
 function createStreamingToolCallingFetcher(calls: FetchCall[]) {
   let responseIndex = 0;
 
@@ -979,6 +1006,38 @@ describe('OpenAiResponsesProvider', () => {
         call_id: 'call_search',
       }),
     ]);
+  });
+
+  it('fails clearly when an agentic tool loop never reaches a final answer', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-4.1-mini',
+      maxOutputTokens: 300,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createEndlessToolCallingFetcher(calls),
+      tavilyTools: {
+        apiKey: 'test-tavily',
+        searchDepth: 'basic',
+        maxResults: 5,
+        timeoutMs: 10000,
+        fetcher: (async () =>
+          new Response(JSON.stringify({ answer: 'loop', results: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })) as typeof fetch,
+      },
+    });
+
+    await expect(provider.complete(createRequest('keep searching forever'))).rejects.toThrow(
+      'AI tool loop exceeded 5 rounds.',
+    );
+    expect(calls).toHaveLength(6);
   });
 
   it('maps streamed function-call argument events by stable call id', async () => {

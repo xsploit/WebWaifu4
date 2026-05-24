@@ -195,6 +195,7 @@ export function buildTavilyToolInstruction() {
     '',
     'Tool Use Rules:',
     '- You may call these tools directly when the user asks for current, external, source-backed, or URL-specific information.',
+    '- You may use multiple tool rounds when a search result points to a page that needs open_url or a small crawl_site follow-up.',
     '- Use web_search for current facts, news, pricing, streamer/profile context, and anything likely to have changed.',
     '- Use open_url when the chat gives a specific page or a search result needs inspection.',
     '- Use crawl_site for a small docs/site section when one page is not enough.',

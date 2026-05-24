@@ -1032,6 +1032,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
       response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime);
     }
 
+    if (this.options.tavilyTools && getFunctionCalls(response).length > 0) {
+      throw new Error(`AI tool loop exceeded ${MAX_TOOL_ROUNDS} rounds.`);
+    }
+
     return { response, toolsUsed };
   }
 
