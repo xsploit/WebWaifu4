@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { WebSocket, type RawData } from 'ws';
+import { GoogleGenAI, Modality } from '@google/genai';
 import { loadConfig, type StreamBotConfig } from '../server/src/config.js';
 import {
   OpenAiResponsesProvider,
@@ -21,6 +22,7 @@ type Mode =
   | 'pipeline-ws'
   | 'direct-http'
   | 'direct-ws'
+  | 'gemini-live'
   | 'route-http'
   | 'route-ws'
   | 'all';
@@ -33,6 +35,9 @@ type BenchOptions = {
   fishModel: string;
   fishVoiceId: string;
   format: StreamBotConfig['fishSpeechFormat'];
+  geminiApiKey: string;
+  geminiModel: string;
+  geminiModality: 'audio' | 'text';
   hardTimeoutMs: number;
   json: boolean;
   llmMaxOutputTokens: number;
@@ -118,6 +123,7 @@ function parseMode(value: string): Mode {
     value === 'pipeline-ws' ||
     value === 'direct-http' ||
     value === 'direct-ws' ||
+    value === 'gemini-live' ||
     value === 'route-http' ||
     value === 'route-ws' ||
     value === 'all'
@@ -161,6 +167,10 @@ function parseBridgeChunkingStrategy(value: string): BenchOptions['routeBridgeCh
   return 'app';
 }
 
+function parseGeminiModality(value: string): BenchOptions['geminiModality'] {
+  return value === 'text' ? 'text' : 'audio';
+}
+
 function parseReasoningEffort(
   value: string,
   fallback: OpenAiReasoningEffort,
@@ -195,6 +205,7 @@ Modes:
   pipeline-ws    OpenAI WebSocket deltas into Fish live bridge
   direct-http    Raw OpenAI HTTP stream into one Fish realtime stream, no app backend route
   direct-ws      Raw persistent OpenAI WS into one Fish realtime stream, no app backend route
+  gemini-live    Gemini Live API direct session, default native audio output
   route-http     Exact /ai/chat SSE route with HTTP-stream transport + Fish bridge
   route-ws       Exact /ai/chat SSE route with WebSocket transport + Fish bridge
   all            Run every mode above
@@ -209,6 +220,8 @@ Options:
   --openai-warmup true         Warm direct-ws with one tiny generated turn before timing
   --fish-warmup true           Warm Fish with one tiny realtime request before timing
   --fish-model s2              Fish backend/model, default env/backup/config
+  --gemini-model gemini-live-2.5-flash-preview
+  --gemini-modality audio      Gemini Live response modality: audio or text
   --voice <reference-id>       Fish reference id, default backup/config
   --chunk-length 160           Fish chunk_length
   --condition true|false       Fish condition_on_previous_chunks
@@ -249,6 +262,10 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
     fishModel,
     fishVoiceId: readArg('--voice') || config.fishSpeechVoiceId,
     format: parseFormat(readArg('--format'), config.fishSpeechFormat || 'pcm'),
+    geminiApiKey:
+      readArg('--gemini-api-key') || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
+    geminiModel: readArg('--gemini-model') || 'gemini-live-2.5-flash-preview',
+    geminiModality: parseGeminiModality(readArg('--gemini-modality')),
     hardTimeoutMs: parseNumber(readArg('--hard-timeout-ms'), 45000, 0, 300000),
     json: process.argv.includes('--json'),
     llmMaxOutputTokens: parseNumber(readArg('--max-output-tokens'), 200, 16, 4096),
@@ -291,12 +308,18 @@ function hydrateFromBackup(config: StreamBotConfig, options: BenchOptions) {
     (entry) => entry.provider === 'fish_speech',
   )?.secret;
   const openAiSecret = backup.providerSecrets?.find((entry) => entry.provider === 'openai')?.secret;
+  const geminiSecret = backup.providerSecrets?.find(
+    (entry) => entry.provider === 'gemini' || entry.provider === 'google_gemini',
+  )?.secret;
   const hikariFish = backup.state?.personaVoiceBindings?.['hikari-chan'];
   if (fishSecret && !config.fishSpeechApiKey) {
     config.fishSpeechApiKey = fishSecret;
   }
   if (openAiSecret && !config.aiApiKey) {
     config.aiApiKey = openAiSecret;
+  }
+  if (geminiSecret && !options.geminiApiKey) {
+    options.geminiApiKey = geminiSecret;
   }
   if (!options.fishVoiceId && hikariFish?.provider === 'fish-speech' && hikariFish.voiceId) {
     options.fishVoiceId = hikariFish.voiceId;
@@ -1119,6 +1142,137 @@ async function runDirectPipeline(
   };
 }
 
+async function runGeminiLive(options: BenchOptions, run: number): Promise<ResultRow> {
+  const startedAt = performance.now();
+  let firstDeltaAt: number | null = null;
+  let firstAudioAt: number | null = null;
+  let lastAudioAt: number | null = null;
+  let deltaCount = 0;
+  let deltaChars = 0;
+  let audioChunks = 0;
+  let audioBytes = 0;
+  let session: { close: () => void; sendClientContent: (input: unknown) => void } | null = null;
+
+  await withHardTimeout(
+    options,
+    'gemini-live',
+    async () => {
+      await new Promise<void>(async (resolve, reject) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          resolve();
+        };
+        const fail = (error: Error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          reject(error);
+        };
+
+        const ai = new GoogleGenAI({ apiKey: options.geminiApiKey });
+        try {
+          session = (await ai.live.connect({
+            model: options.geminiModel,
+            callbacks: {
+              onopen() {
+                if (options.progress) {
+                  console.log(
+                    `[gemini-live run ${run}] open ${Math.round(performance.now() - startedAt)}ms`,
+                  );
+                }
+              },
+              onmessage(message) {
+                const now = performance.now();
+                const serverContent = (message as any).serverContent;
+                const parts = serverContent?.modelTurn?.parts ?? [];
+                for (const part of parts) {
+                  const inlineData = part.inlineData;
+                  if (inlineData?.data) {
+                    firstAudioAt ??= now;
+                    lastAudioAt = now;
+                    audioChunks += 1;
+                    audioBytes += Buffer.byteLength(inlineData.data, 'base64');
+                    if (options.progress) {
+                      console.log(
+                        `[gemini-live run ${run}] audio ${audioChunks} ${Math.round(now - startedAt)}ms`,
+                      );
+                    }
+                  }
+                  if (part.text) {
+                    firstDeltaAt ??= now;
+                    deltaCount += 1;
+                    deltaChars += String(part.text).length;
+                    if (options.progress) {
+                      console.log(
+                        `[gemini-live run ${run}] text ${deltaCount} ${Math.round(now - startedAt)}ms chars=${String(part.text).length}`,
+                      );
+                    }
+                  }
+                }
+                const transcript = serverContent?.outputTranscription?.text;
+                if (transcript) {
+                  firstDeltaAt ??= now;
+                  deltaCount += 1;
+                  deltaChars += String(transcript).length;
+                }
+                if (serverContent?.turnComplete) {
+                  finish();
+                }
+              },
+              onerror(error) {
+                fail(error instanceof Error ? error : new Error(String(error)));
+              },
+              onclose(event) {
+                if (!settled) {
+                  fail(
+                    new Error(
+                      `Gemini Live closed before completion: ${event.reason || 'no reason'}.`,
+                    ),
+                  );
+                }
+              },
+            },
+            config: {
+              responseModalities: [
+                options.geminiModality === 'audio' ? Modality.AUDIO : Modality.TEXT,
+              ],
+              ...(options.geminiModality === 'audio' ? { outputAudioTranscription: {} } : {}),
+            },
+          })) as typeof session;
+          session?.sendClientContent({
+            turns: [{ role: 'user', parts: [{ text: options.prompt }] }],
+            turnComplete: true,
+          });
+        } catch (error) {
+          fail(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    },
+    () => {
+      session?.close();
+    },
+  );
+  session?.close();
+
+  return {
+    audioBytes,
+    audioChunks,
+    deltaChars,
+    deltaCount,
+    firstAudioMs: firstAudioAt === null ? null : firstAudioAt - startedAt,
+    firstDeltaMs: firstDeltaAt === null ? null : firstDeltaAt - startedAt,
+    lastAudioMs: lastAudioAt === null ? null : lastAudioAt - startedAt,
+    mode: 'gemini-live',
+    run,
+    totalMs: performance.now() - startedAt,
+  };
+}
+
 function createRouteTtsBridge(options: BenchOptions): RemoteTtsRequest {
   return {
     provider: 'fish-speech',
@@ -1343,6 +1497,7 @@ function modesToRun(mode: Mode): Array<Exclude<Mode, 'all'>> {
       'pipeline-ws',
       'direct-http',
       'direct-ws',
+      'gemini-live',
       'route-http',
       'route-ws',
     ];
@@ -1365,6 +1520,8 @@ function average(values: Array<number | null | undefined>) {
 function printResults(options: BenchOptions, results: ResultRow[]) {
   console.log('OpenAI Responses + Fish Speech benchmark');
   console.log(`llm_model=${options.llmModel}`);
+  console.log(`gemini_model=${options.geminiModel}`);
+  console.log(`gemini_modality=${options.geminiModality}`);
   console.log(`fish_model=${options.fishModel}`);
   console.log(`fish_latency=${options.fishLatency}`);
   console.log(`chunk_length=${options.fishChunkLength}`);
@@ -1457,11 +1614,17 @@ async function main() {
       mode.startsWith('direct-') ||
       mode.startsWith('route-'),
   );
+  const needsGemini = modes.some((mode) => mode === 'gemini-live');
   if (needsFish && !config.fishSpeechApiKey) {
     throw new Error('Missing Fish key. Set FISH_AUDIO_API_KEY or pass --backup.');
   }
   if (needsOpenAi && !config.aiApiKey) {
     throw new Error('Missing OpenAI key. Set OPENAI_API_KEY or pass --backup.');
+  }
+  if (needsGemini && !options.geminiApiKey) {
+    throw new Error(
+      'Missing Gemini key. Set GEMINI_API_KEY, GOOGLE_API_KEY, or pass --gemini-api-key.',
+    );
   }
   if (needsFish && !options.fishVoiceId) {
     throw new Error('Missing Fish voice id. Set FISH_SPEECH_VOICE_ID or pass --voice/--backup.');
@@ -1496,6 +1659,8 @@ async function main() {
             results.push(
               await runDirectPipeline(config, options, run, 'ws', directWsSession ?? undefined),
             );
+          } else if (mode === 'gemini-live') {
+            results.push(await runGeminiLive(options, run));
           } else if (mode === 'route-http') {
             results.push(await runRoutePipeline(config, options, run, false));
           } else {
