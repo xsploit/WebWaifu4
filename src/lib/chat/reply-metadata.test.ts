@@ -6,6 +6,7 @@ import {
   ASSISTANT_REPLY_META_OPEN,
   buildAnimationCatalogInstruction,
   buildReplyMetadataInstruction,
+  createAssistantMetadataStreamFilter,
   resolveAnimationIndexForReplyMetadata,
   resolveFacialExpressionForReplyMetadata,
   resolveFacialExpressionIntensityForReplyMetadata,
@@ -22,6 +23,29 @@ describe('assistant reply metadata', () => {
     expect(parsed.metadata).toEqual({ emotion: 'amused' });
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('happy');
     expect(resolveFacialExpressionIntensityForReplyMetadata(parsed.metadata)).toBeGreaterThan(0.5);
+  });
+
+  it('strips accidental hidden block metadata without removing TTS tags', () => {
+    const parsed = stripAssistantReplyMetadata(
+      'Spend the chaos budget. [pause] Keep it moving. <hidden block>{"emotion":"excited"}</hidden block>',
+    );
+
+    expect(parsed.text).toBe('Spend the chaos budget. [pause] Keep it moving.');
+    expect(parsed.metadata).toEqual({ emotion: 'excited' });
+  });
+
+  it('filters streamed accidental hidden block metadata', () => {
+    const filter = createAssistantMetadataStreamFilter();
+    const visible = [
+      filter.push('Spend the chaos budget. [pause] <hid'),
+      filter.push('den block>{"emotion":"happy"}</hidden'),
+      filter.push(' block>'),
+    ].join('');
+    const parsed = filter.finish('Spend the chaos budget. [pause] <hidden block>{"emotion":"happy"}</hidden block>');
+
+    expect(visible).toBe('Spend the chaos budget. [pause] ');
+    expect(parsed.text).toBe('Spend the chaos budget. [pause]');
+    expect(parsed.metadata).toEqual({ emotion: 'happy' });
   });
 
   it('ignores old over-specified fields and keeps only emotion', () => {

@@ -3,6 +3,12 @@ import type { AnimationEntry } from '../menu/types';
 export const ASSISTANT_REPLY_META_OPEN = '<yw-meta>';
 export const ASSISTANT_REPLY_META_CLOSE = '</yw-meta>';
 
+const ASSISTANT_REPLY_META_DELIMITERS = [
+  { open: ASSISTANT_REPLY_META_OPEN, close: ASSISTANT_REPLY_META_CLOSE },
+  { open: '<hidden block>', close: '</hidden block>' },
+  { open: '<hidden-block>', close: '</hidden-block>' },
+] as const;
+
 export type AssistantEmotion =
   | 'neutral'
   | 'amused'
@@ -105,9 +111,9 @@ const EMOTION_ANIMATION_KEYWORDS: Record<AssistantEmotion, string[]> = {
 
 export function buildReplyMetadataInstruction() {
   return [
-    'At the very end of every assistant reply, append exactly one hidden emotion block using this shape:',
+    'At the very end of every assistant reply, append exactly one metadata block using this exact tag shape:',
     `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral"}${ASSISTANT_REPLY_META_CLOSE}`,
-    'The block must be valid compact JSON and must not be explained.',
+    'The block must be valid compact JSON and must not be explained. Do not use any other wrapper name such as hidden block.',
     `emotion must be one of: ${Array.from(EMOTIONS).join(', ')}.`,
     'Choose only the emotion you are feeling toward the current message. Do not choose animation names, motions, expressions, purposes, or implementation details.',
     'Use neutral when there is no meaningful emotional reaction. Neutral does not trigger a reaction animation.',
@@ -119,22 +125,18 @@ export function buildAnimationCatalogInstruction(_playlist: AnimationEntry[]) {
 }
 
 export function stripAssistantReplyMetadata(text: string): AssistantReplyParseResult {
-  const openIndex = text.lastIndexOf(ASSISTANT_REPLY_META_OPEN);
-  if (openIndex === -1) {
+  const block = findLastMetadataBlock(text);
+  if (!block) {
     return parseStructuredReplyEnvelope(text) ?? { metadata: null, text: cleanupReplyText(text) };
   }
 
-  const closeIndex = text.indexOf(
-    ASSISTANT_REPLY_META_CLOSE,
-    openIndex + ASSISTANT_REPLY_META_OPEN.length,
-  );
-  if (closeIndex === -1) {
-    return { metadata: null, text: cleanupReplyText(text.slice(0, openIndex)) };
+  if (block.closeIndex === -1) {
+    return { metadata: null, text: cleanupReplyText(text.slice(0, block.openIndex)) };
   }
 
-  const rawJson = text.slice(openIndex + ASSISTANT_REPLY_META_OPEN.length, closeIndex).trim();
-  const before = text.slice(0, openIndex);
-  const after = text.slice(closeIndex + ASSISTANT_REPLY_META_CLOSE.length);
+  const rawJson = text.slice(block.openIndex + block.open.length, block.closeIndex).trim();
+  const before = text.slice(0, block.openIndex);
+  const after = text.slice(block.closeIndex + block.close.length);
 
   return {
     metadata: normalizeReplyMetadata(rawJson),
@@ -145,6 +147,7 @@ export function stripAssistantReplyMetadata(text: string): AssistantReplyParseRe
 export function createAssistantMetadataStreamFilter() {
   let buffer = '';
   let suppressing = false;
+  let activeCloseTag = ASSISTANT_REPLY_META_CLOSE;
   let metadataBuffer = '';
   let hiddenTextLength = 0;
 
@@ -155,7 +158,7 @@ export function createAssistantMetadataStreamFilter() {
 
       while (buffer) {
         if (suppressing) {
-          const closeIndex = buffer.indexOf(ASSISTANT_REPLY_META_CLOSE);
+          const closeIndex = buffer.indexOf(activeCloseTag);
           if (closeIndex === -1) {
             metadataBuffer += buffer;
             hiddenTextLength += buffer.length;
@@ -165,15 +168,17 @@ export function createAssistantMetadataStreamFilter() {
 
           metadataBuffer += buffer.slice(0, closeIndex);
           hiddenTextLength += closeIndex;
-          buffer = buffer.slice(closeIndex + ASSISTANT_REPLY_META_CLOSE.length);
+          buffer = buffer.slice(closeIndex + activeCloseTag.length);
           suppressing = false;
+          activeCloseTag = ASSISTANT_REPLY_META_CLOSE;
           continue;
         }
 
-        const openIndex = buffer.indexOf(ASSISTANT_REPLY_META_OPEN);
-        if (openIndex !== -1) {
-          visible += buffer.slice(0, openIndex);
-          buffer = buffer.slice(openIndex + ASSISTANT_REPLY_META_OPEN.length);
+        const openMatch = findNextMetadataOpen(buffer);
+        if (openMatch) {
+          visible += buffer.slice(0, openMatch.index);
+          buffer = buffer.slice(openMatch.index + openMatch.open.length);
+          activeCloseTag = openMatch.close;
           suppressing = true;
           continue;
         }
@@ -291,6 +296,52 @@ function normalizeReplyMetadata(rawJson: string): AssistantReplyMetadata | null 
   }
 }
 
+function findLastMetadataBlock(text: string) {
+  let match:
+    | {
+        close: string;
+        closeIndex: number;
+        open: string;
+        openIndex: number;
+      }
+    | null = null;
+  for (const delimiter of ASSISTANT_REPLY_META_DELIMITERS) {
+    const openIndex = text.lastIndexOf(delimiter.open);
+    if (openIndex === -1 || (match && openIndex < match.openIndex)) {
+      continue;
+    }
+    match = {
+      close: delimiter.close,
+      closeIndex: text.indexOf(delimiter.close, openIndex + delimiter.open.length),
+      open: delimiter.open,
+      openIndex,
+    };
+  }
+  return match;
+}
+
+function findNextMetadataOpen(text: string) {
+  let match:
+    | {
+        close: string;
+        index: number;
+        open: string;
+      }
+    | null = null;
+  for (const delimiter of ASSISTANT_REPLY_META_DELIMITERS) {
+    const index = text.indexOf(delimiter.open);
+    if (index === -1 || (match && index >= match.index)) {
+      continue;
+    }
+    match = {
+      close: delimiter.close,
+      index,
+      open: delimiter.open,
+    };
+  }
+  return match;
+}
+
 function normalizeReplyMetadataRecord(parsed: Record<string, unknown>): AssistantReplyMetadata {
   const emotion = normalizeSetValue(parsed['emotion'], EMOTIONS, 'neutral');
   return { emotion };
@@ -387,10 +438,13 @@ function cleanupReplyText(text: string) {
 }
 
 function getSafeVisibleLength(value: string) {
-  const maxTail = ASSISTANT_REPLY_META_OPEN.length - 1;
+  const maxTail = Math.max(
+    ...ASSISTANT_REPLY_META_DELIMITERS.map((delimiter) => delimiter.open.length - 1),
+  );
   const maxLength = value.length;
   for (let tailLength = Math.min(maxTail, maxLength); tailLength > 0; tailLength -= 1) {
-    if (ASSISTANT_REPLY_META_OPEN.startsWith(value.slice(maxLength - tailLength))) {
+    const tail = value.slice(maxLength - tailLength);
+    if (ASSISTANT_REPLY_META_DELIMITERS.some((delimiter) => delimiter.open.startsWith(tail))) {
       return maxLength - tailLength;
     }
   }
