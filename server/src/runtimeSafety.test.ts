@@ -57,9 +57,29 @@ describe('runtimeSafety', () => {
         browserProviderKeyPresent: true,
         configuredModel: 'gpt-5.4-nano',
         defaultModel: 'gpt-5-nano',
-        requestedModel: 'gpt-5_4-pro',
+        requestedModel: 'gpt-5.4-mini',
       }),
-    ).toEqual({ allowed: true, model: 'gpt-5_4-pro' });
+    ).toEqual({ allowed: true, model: 'gpt-5.4-mini' });
+  });
+
+  it('blocks known high-cost models even when a browser provider key is present', () => {
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: true,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
+        requestedModel: 'o1-pro-2025-03-19',
+      }),
+    ).toMatchObject({ allowed: false });
+
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: true,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
+        requestedModel: 'openai/o1-pro-2025-03-19',
+      }),
+    ).toMatchObject({ allowed: false });
   });
 
   it('supports an explicit server model allowlist for trusted deployments', () => {
@@ -70,6 +90,7 @@ describe('runtimeSafety', () => {
         defaultModel: 'gpt-5-nano',
         env: {
           BYOK_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST: 'gpt-5.4-mini,gpt-5_4-pro',
+          YOURWIFEY_ALLOW_PREMIUM_MODELS: 'true',
         },
         requestedModel: 'gpt-5_4-pro',
       }),

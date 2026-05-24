@@ -342,7 +342,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -368,7 +368,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -394,7 +394,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -413,7 +413,7 @@ describe('OpenAiResponsesProvider', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.body).toMatchObject({
       max_output_tokens: 340,
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       temperature: 0.35,
     });
     expect(calls[0]?.body).not.toHaveProperty('reasoning');
@@ -429,7 +429,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5-nano',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -459,7 +459,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 8,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -487,7 +487,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -576,7 +576,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -607,7 +607,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -722,7 +722,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 300,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -795,7 +795,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 300,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -855,7 +855,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 300,
       temperature: 0.7,
       stateMode: 'stateless',
@@ -998,7 +998,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'previous-response',
@@ -1014,7 +1014,7 @@ describe('OpenAiResponsesProvider', () => {
 
     expect(calls).toHaveLength(2);
     expect(calls[0]?.body).toMatchObject({
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       instructions: 'You are Riko. Keep replies short.',
       prompt_cache_key: 'yourwifey-stream-test',
       prompt_cache_retention: '24h',
@@ -1034,7 +1034,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'previous-response',
@@ -1062,7 +1062,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -1091,7 +1091,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -1151,7 +1151,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -1191,7 +1191,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -1250,7 +1250,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -1279,7 +1279,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'previous-response',
@@ -1303,7 +1303,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'conversation',
@@ -1347,7 +1347,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'previous-response',
@@ -1447,7 +1447,7 @@ describe('OpenAiResponsesProvider', () => {
     const provider = new OpenAiResponsesProvider({
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      model: 'gpt-5.5',
+      model: 'gpt-4.1-mini',
       maxOutputTokens: 120,
       temperature: 0.7,
       stateMode: 'previous-response',

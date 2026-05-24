@@ -18,8 +18,10 @@ import {
   createDefaultUiState,
 } from './lib/chat/defaults';
 import {
+  filterSafeProviderModels,
   getAiProviderSwitchDefaults,
   getProviderFallbackModels,
+  isPremiumCostModelId,
 } from './lib/chat/provider-defaults';
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
 import {
@@ -422,17 +424,26 @@ function pickAvailableModel(
   availableModels: readonly string[],
   fallbackModel: string = DEFAULT_OPENAI_MODEL,
 ) {
+  const safeAvailableModels = filterSafeProviderModels(availableModels);
   const normalizedPreferred = preferredModel?.trim();
-  if (normalizedPreferred && availableModels.includes(normalizedPreferred)) {
+  if (
+    normalizedPreferred &&
+    !isPremiumCostModelId(normalizedPreferred) &&
+    safeAvailableModels.includes(normalizedPreferred)
+  ) {
     return normalizedPreferred;
   }
 
   const normalizedFallback = fallbackModel.trim();
-  if (normalizedFallback && availableModels.includes(normalizedFallback)) {
+  if (
+    normalizedFallback &&
+    !isPremiumCostModelId(normalizedFallback) &&
+    safeAvailableModels.includes(normalizedFallback)
+  ) {
     return normalizedFallback;
   }
 
-  return availableModels[0]?.trim() ?? normalizedPreferred ?? normalizedFallback;
+  return safeAvailableModels[0]?.trim() ?? normalizedFallback;
 }
 
 function sanitizeAiModels(current: AiSettings, availableModels: readonly string[]) {
@@ -456,7 +467,9 @@ function getProviderModelPool(
   llmProvider: AiSettings['llmProvider'],
   availableModels: readonly string[],
 ) {
-  return mergeModels(getProviderFallbackModels(llmProvider), availableModels);
+  return filterSafeProviderModels(
+    mergeModels(getProviderFallbackModels(llmProvider), availableModels),
+  );
 }
 
 function createChatMessage(role: ChatMessage['role'], content: string): ChatMessage {
@@ -860,9 +873,11 @@ async function requestChatCompletion({
   providerKeyVaultWorkspaceId?: string;
   signal?: AbortSignal;
 }): Promise<AppCompletionResponse> {
+  const providerDefaults = getAiProviderSwitchDefaults(llmProvider);
+  const safeModel = isPremiumCostModelId(model) ? providerDefaults.model : model;
   const headers = await buildBackendProviderHeaders({
     llmProvider,
-    model,
+    model: safeModel,
     providerKeyVaultWorkspaceId,
     ttsBridge,
   });
@@ -877,7 +892,7 @@ async function requestChatCompletion({
       maxTokens,
       messages,
       mode,
-      model,
+      model: safeModel,
       openAiStateMode: openAiStateMode === 'server-default' ? undefined : openAiStateMode,
       responseFormat,
       stateKey,
@@ -2242,7 +2257,9 @@ function App() {
       const chunkTtsRequests = shouldChunkTtsRequests(ttsRuntimeSettings);
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
       const liveBridgeTts =
-        canSpeak && ttsProvider === 'fish-speech' && ttsRuntimeSettings.remoteTtsMode === 'live-bridge';
+        canSpeak &&
+        ttsProvider === 'fish-speech' &&
+        ttsRuntimeSettings.remoteTtsMode === 'live-bridge';
       const metadataFilter = createAssistantMetadataStreamFilter();
       let fullText = '';
       let displayText = '';
@@ -2390,9 +2407,12 @@ function App() {
                   ttsProvider,
                   providerKeyVaultWorkspaceId,
                 );
-                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, ttsRuntimeSettings), {
-                  providerApiKey,
-                });
+                return ttsManager.queueRemoteText(
+                  createRemoteTtsRequest(chunk, ttsRuntimeSettings),
+                  {
+                    providerApiKey,
+                  },
+                );
               })();
         speechPromises.push(
           task.catch((error) => {
@@ -2639,9 +2659,12 @@ function App() {
                   ttsProvider,
                   providerKeyVaultWorkspaceId,
                 );
-                return ttsManager.queueRemoteText(createRemoteTtsRequest(chunk, ttsRuntimeSettings), {
-                  providerApiKey,
-                });
+                return ttsManager.queueRemoteText(
+                  createRemoteTtsRequest(chunk, ttsRuntimeSettings),
+                  {
+                    providerApiKey,
+                  },
+                );
               })();
         speechPromises.push(
           task.catch((error) => {
@@ -2893,7 +2916,11 @@ function App() {
       const isStale = () => assistantRenderRunRef.current !== thisRun;
       const chunkTtsRequests = shouldChunkTtsRequests(ttsRuntimeSettings);
 
-      if (!ttsRuntimeSettings.ttsSimulatedStreaming || revealChunks.length === 1 || !chunkTtsRequests) {
+      if (
+        !ttsRuntimeSettings.ttsSimulatedStreaming ||
+        revealChunks.length === 1 ||
+        !chunkTtsRequests
+      ) {
         clearChatDisplayOverride(assistantMessage.id);
         if (shouldSpeak) {
           await speakWithSelectedTts(content, label);
@@ -3588,10 +3615,7 @@ function App() {
         [personaId]: binding,
       }));
     },
-    [
-      ttsRuntimeSettings,
-      ttsVoices,
-    ],
+    [ttsRuntimeSettings, ttsVoices],
   );
 
   const handleSaveVoiceLabVoice = useCallback((voice: VoiceLabVoice) => {

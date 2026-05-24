@@ -8,6 +8,25 @@ export type ServerProviderProxyModelDecision =
       error: string;
     };
 
+export function isPremiumCostModelId(value: unknown) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  const leaf = (normalized.split('/').pop() ?? normalized).replace(/_/g, '.');
+  return (
+    leaf === 'o1' ||
+    leaf.startsWith('o1-') ||
+    leaf.startsWith('o1.') ||
+    leaf.startsWith('o1pro') ||
+    leaf.startsWith('o1-pro') ||
+    leaf.startsWith('o3-pro') ||
+    leaf.startsWith('o4-pro') ||
+    /^gpt-5[.-]4-pro(?:[.-]|$)/.test(leaf) ||
+    /^gpt-5[.-]5(?:[.-]|$)/.test(leaf)
+  );
+}
+
 export function resolveServerProviderProxyModel(input: {
   allowlistEnvNames?: readonly string[];
   browserProviderKeyPresent: boolean;
@@ -16,17 +35,27 @@ export function resolveServerProviderProxyModel(input: {
   env?: Record<string, string | undefined>;
   requestedModel?: unknown;
 }): ServerProviderProxyModelDecision {
+  const env = input.env ?? process.env;
+  const premiumModelsAllowed = isPremiumModelOptInEnabled(env);
   const configuredModel = normalizeModelName(input.configuredModel) || input.defaultModel;
   const requestedModel = normalizeModelName(input.requestedModel);
+  const effectiveModel = requestedModel || configuredModel;
+  if (isPremiumCostModelId(effectiveModel) && !premiumModelsAllowed) {
+    return {
+      allowed: false,
+      error:
+        'This high-cost model is blocked by default. Set YOURWIFEY_ALLOW_PREMIUM_MODELS=true only if you intentionally want to allow it.',
+    };
+  }
   if (input.browserProviderKeyPresent) {
-    return { allowed: true, model: requestedModel || configuredModel };
+    return { allowed: true, model: effectiveModel };
   }
 
   if (!requestedModel || requestedModel === configuredModel) {
     return { allowed: true, model: configuredModel };
   }
 
-  const allowlist = readServerProviderModelAllowlist(input.env ?? process.env, [
+  const allowlist = readServerProviderModelAllowlist(env, [
     ...(input.allowlistEnvNames ?? []),
     'BYOK_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST',
     'SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST',
@@ -40,6 +69,12 @@ export function resolveServerProviderProxyModel(input: {
     error:
       'Server provider proxy cannot be steered to an unapproved model. Use a browser-vault provider key or configure the server model allowlist.',
   };
+}
+
+function isPremiumModelOptInEnabled(env: Record<string, string | undefined>) {
+  return ['YOURWIFEY_ALLOW_PREMIUM_MODELS', 'ALLOW_PREMIUM_MODELS'].some((name) =>
+    ['1', 'true', 'yes', 'on'].includes((env[name] ?? '').trim().toLowerCase()),
+  );
 }
 
 export function getRawPathParts(pathname: string) {

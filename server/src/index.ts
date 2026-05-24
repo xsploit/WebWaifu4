@@ -30,7 +30,11 @@ import {
   captureTwitchStreamFrame,
   transcribeTwitchStreamSample,
 } from './twitch/TwitchStreamTranscriber.js';
-import { resolveServerProviderProxyModel, resolveRuntimeHealthStateKey } from './runtimeSafety.js';
+import {
+  isPremiumCostModelId,
+  resolveRuntimeHealthStateKey,
+  resolveServerProviderProxyModel,
+} from './runtimeSafety.js';
 import {
   getProviderEmbeddingModel,
   getProviderEnvApiKey,
@@ -562,7 +566,7 @@ async function listProviderModels(config: StreamBotConfig) {
 
   return (data.data ?? [])
     .map((model) => (typeof model.id === 'string' ? model.id.trim() : ''))
-    .filter(Boolean);
+    .filter((model) => model && !isPremiumCostModelId(model));
 }
 
 function getRuntimeTtsConfig(

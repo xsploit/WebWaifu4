@@ -32,6 +32,29 @@ export function getProviderFallbackModels(llmProvider: LlmProvider): string[] {
   return Array.from(new Set([defaults.model, defaults.memoryAgentModel])).filter(Boolean);
 }
 
+export function isPremiumCostModelId(value: unknown) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  const leaf = (normalized.split('/').pop() ?? normalized).replace(/_/g, '.');
+  return (
+    leaf === 'o1' ||
+    leaf.startsWith('o1-') ||
+    leaf.startsWith('o1.') ||
+    leaf.startsWith('o1pro') ||
+    leaf.startsWith('o1-pro') ||
+    leaf.startsWith('o3-pro') ||
+    leaf.startsWith('o4-pro') ||
+    /^gpt-5[.-]4-pro(?:[.-]|$)/.test(leaf) ||
+    /^gpt-5[.-]5(?:[.-]|$)/.test(leaf)
+  );
+}
+
+export function filterSafeProviderModels(models: readonly string[]) {
+  return models.filter((model) => !isPremiumCostModelId(model));
+}
+
 function normalizeModelId(value: string | undefined) {
   return (value ?? '').trim();
 }
@@ -43,6 +66,9 @@ function isRoutedModelId(value: string) {
 function pickProviderModel(llmProvider: LlmProvider, value: string, fallback: string) {
   const model = normalizeModelId(value);
   if (!model) {
+    return fallback;
+  }
+  if (isPremiumCostModelId(model)) {
     return fallback;
   }
 

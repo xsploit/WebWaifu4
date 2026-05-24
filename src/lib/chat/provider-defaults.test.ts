@@ -7,7 +7,9 @@ import {
 } from './defaults';
 import {
   applyLlmProviderSwitchDefaults,
+  filterSafeProviderModels,
   getProviderFallbackModels,
+  isPremiumCostModelId,
   normalizeLlmProviderCompatibility,
 } from './provider-defaults';
 
@@ -95,5 +97,24 @@ describe('LLM provider defaults', () => {
       DEFAULT_OPENAI_MODEL,
       DEFAULT_MEMORY_AGENT_MODEL,
     ]);
+  });
+
+  it('blocks known high-cost model ids from persisted settings and model pickers', () => {
+    expect(isPremiumCostModelId('o1-pro-2025-03-19')).toBe(true);
+    expect(isPremiumCostModelId('openai/o1-pro-2025-03-19')).toBe(true);
+    expect(isPremiumCostModelId('gpt-5_4-pro-2026-03-05')).toBe(true);
+    expect(isPremiumCostModelId(DEFAULT_OPENAI_MODEL)).toBe(false);
+
+    const next = normalizeLlmProviderCompatibility({
+      ...createDefaultAiSettings(),
+      memoryAgentModel: 'o1-pro-2025-03-19',
+      model: 'o1-pro-2025-03-19',
+    });
+
+    expect(next.model).toBe(DEFAULT_OPENAI_MODEL);
+    expect(next.memoryAgentModel).toBe(DEFAULT_MEMORY_AGENT_MODEL);
+    expect(
+      filterSafeProviderModels(['gpt-5.4-nano', 'o1-pro-2025-03-19', 'openai/o1-pro-2025-03-19']),
+    ).toEqual(['gpt-5.4-nano']);
   });
 });
