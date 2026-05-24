@@ -659,6 +659,15 @@ function normalizeHexColor(value: unknown, fallback: string): string {
   return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : fallback;
 }
 
+function normalizeBoundedString(value: unknown, fallback: string, maxLength: number): string {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const normalized = value.trim();
+  return normalized.slice(0, maxLength);
+}
+
 function normalizeVisualSettings(value: unknown): VisualSettings {
   const defaults = createDefaultVisualSettings();
 
@@ -748,6 +757,29 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   if (source.cameraRigMode === 'locked' || source.cameraRigMode === 'custom') {
     next.cameraRigMode = source.cameraRigMode;
   }
+  if (
+    source.sceneBackgroundMode === 'persona' ||
+    source.sceneBackgroundMode === 'custom' ||
+    source.sceneBackgroundMode === 'chroma'
+  ) {
+    next.sceneBackgroundMode = source.sceneBackgroundMode;
+  }
+  next.sceneBackgroundImage = normalizeBoundedString(
+    source.sceneBackgroundImage,
+    defaults.sceneBackgroundImage,
+    2048,
+  );
+  next.sceneBackgroundOverlay = normalizeBoundedString(
+    source.sceneBackgroundOverlay,
+    defaults.sceneBackgroundOverlay,
+    512,
+  );
+  next.sceneBackgroundFilter = normalizeBoundedString(
+    source.sceneBackgroundFilter,
+    defaults.sceneBackgroundFilter,
+    256,
+  );
+  next.sceneChromaColor = normalizeHexColor(source.sceneChromaColor, defaults.sceneChromaColor);
   next.outlineColor = normalizeHexColor(source.outlineColor, defaults.outlineColor);
   next.mtoonRimColor = normalizeHexColor(source.mtoonRimColor, defaults.mtoonRimColor);
   next.mtoonShadeColor = normalizeHexColor(source.mtoonShadeColor, defaults.mtoonShadeColor);

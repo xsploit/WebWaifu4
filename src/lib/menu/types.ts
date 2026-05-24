@@ -1,6 +1,7 @@
 export type SettingsTabId =
   | 'account'
   | 'vrm'
+  | 'background'
   | 'anim'
   | 'character'
   | 'ai'
@@ -12,6 +13,8 @@ export type SettingsTabId =
 export type CameraViewMode = 'full-body' | 'half-body';
 
 export type CameraRigMode = 'locked' | 'custom';
+
+export type SceneBackgroundMode = 'persona' | 'custom' | 'chroma';
 
 export type BundledVrmOption = {
   id: string;
@@ -47,6 +50,11 @@ export type AnimationEntry = {
 };
 
 export type VisualSettings = {
+  sceneBackgroundMode: SceneBackgroundMode;
+  sceneBackgroundImage: string;
+  sceneBackgroundOverlay: string;
+  sceneBackgroundFilter: string;
+  sceneChromaColor: string;
   cameraViewMode: CameraViewMode;
   cameraRigMode: CameraRigMode;
   cameraVerticalOffset: number;

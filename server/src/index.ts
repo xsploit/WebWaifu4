@@ -21,9 +21,11 @@ import { MockTwitchChatSource, type MockChatInjection } from './mock/MockTwitchC
 import { OverlaySocket, type OverlayClientEvent } from './overlay/OverlaySocket.js';
 import { ChatScheduler } from './scheduler/ChatScheduler.js';
 import {
+  createRemoteTtsVoice,
   listRemoteTtsVoices,
   streamFishSpeechTextStream,
   streamRemoteTts,
+  type CreateRemoteTtsVoiceRequest,
   type RemoteTtsProvider,
   type RemoteTtsRequest,
 } from './tts/RemoteTtsProvider.js';
@@ -303,17 +305,22 @@ function disposeRuntimeChatProviderCache() {
   runtimeChatProviderCache.clear();
 }
 
-function readRequestJson<T>(request: IncomingMessage) {
+function readRequestJson<T>(request: IncomingMessage, maxBodyLength = 100000) {
   return new Promise<T>((resolve, reject) => {
     let body = '';
+    let rejected = false;
     request.setEncoding('utf8');
     request.on('data', (chunk: string) => {
       body += chunk;
-      if (body.length > 100000) {
+      if (!rejected && body.length > maxBodyLength) {
+        rejected = true;
         reject(new Error('Request body too large.'));
       }
     });
     request.on('end', () => {
+      if (rejected) {
+        return;
+      }
       try {
         resolve((body ? JSON.parse(body) : {}) as T);
       } catch (error) {
@@ -1355,6 +1362,33 @@ const httpServer = createServer(async (request, response) => {
         ok: false,
         error: error instanceof Error ? error.message : 'Remote TTS voice fetch failed.',
         voices: [],
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/tts/voices/create') {
+    try {
+      const body = await readRequestJson<CreateRemoteTtsVoiceRequest>(request, 28 * 1024 * 1024);
+      const providerName = normalizeRemoteTtsProvider(body.provider);
+      const ttsConfig = getRuntimeTtsConfig(config, providerName, request, allowServerProviderProxy);
+      if (!ttsConfig) {
+        writeJson(response, 200, {
+          ok: false,
+          error: 'Remote TTS provider key is not configured.',
+        });
+        return;
+      }
+      const voice = await createRemoteTtsVoice(ttsConfig, { ...body, provider: providerName });
+      writeJson(response, 200, {
+        ok: true,
+        provider: providerName,
+        voice,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Remote TTS voice creation failed.',
       });
     }
     return;

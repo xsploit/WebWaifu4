@@ -3,6 +3,12 @@ import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
 
 export function createDefaultVisualSettings(): VisualSettings {
   return {
+    sceneBackgroundMode: 'persona',
+    sceneBackgroundImage: '',
+    sceneBackgroundOverlay:
+      'linear-gradient(180deg, rgba(2, 2, 5, 0.03), rgba(9, 1, 3, 0.22))',
+    sceneBackgroundFilter: 'saturate(1.08) brightness(0.9) contrast(1.04)',
+    sceneChromaColor: '#00ff00',
     cameraViewMode: 'half-body',
     cameraRigMode: 'locked',
     cameraVerticalOffset: 0,

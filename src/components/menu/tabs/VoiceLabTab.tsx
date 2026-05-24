@@ -8,12 +8,17 @@ import type {
   VoiceLabVoice,
 } from '../../../lib/chat/types';
 import type { PiperVoiceProfile } from '../../../lib/tts/piper';
+import type {
+  CreatedRemoteTtsVoice,
+  CreateRemoteTtsVoiceRequest,
+} from '../../../lib/tts/remote';
 
 type VoiceLabTabProps = {
   activePersona: PersonaProfile | null;
   aiSettings: AiSettings;
   onApplyPersonaVoice: (personaId: string) => void;
   onDeleteVoice: (voiceId: string) => void;
+  onCreateProviderVoice: (request: CreateRemoteTtsVoiceRequest) => Promise<CreatedRemoteTtsVoice>;
   onSaveVoice: (voice: VoiceLabVoice) => void;
   onUseCurrentVoiceAsPersonaDefault: (personaId: string) => void;
   personaVoiceBindings: Record<string, PersonaVoiceBinding>;
@@ -88,6 +93,7 @@ export function VoiceLabTab({
   activePersona,
   aiSettings,
   onApplyPersonaVoice,
+  onCreateProviderVoice,
   onDeleteVoice,
   onSaveVoice,
   onUseCurrentVoiceAsPersonaDefault,
@@ -100,6 +106,14 @@ export function VoiceLabTab({
   const [selectedPersonaId, setSelectedPersonaId] = useState(
     activePersona?.id ?? personas[0]?.id ?? '',
   );
+  const [sampleFile, setSampleFile] = useState<File | null>(null);
+  const [language, setLanguage] = useState('EN_US');
+  const [transcription, setTranscription] = useState('');
+  const [tags, setTags] = useState('');
+  const [removeBackgroundNoise, setRemoveBackgroundNoise] = useState(true);
+  const [enhanceAudioQuality, setEnhanceAudioQuality] = useState(true);
+  const [creatingVoice, setCreatingVoice] = useState(false);
+  const [creationStatus, setCreationStatus] = useState('');
 
   useEffect(() => {
     if (activePersona?.id) {
@@ -147,6 +161,8 @@ export function VoiceLabTab({
   };
 
   const handleEditVoice = (voice: VoiceLabVoice) => {
+    setSampleFile(null);
+    setCreationStatus('');
     setDraft({
       accent: voice.accent,
       ageVibe: voice.ageVibe,
@@ -166,6 +182,38 @@ export function VoiceLabTab({
     });
   };
 
+  const buildVoiceFromDraft = (
+    voiceDraft: VoiceDraft,
+    now: number,
+    status: VoiceLabVoice['status'],
+  ): VoiceLabVoice => ({
+    accent: voiceDraft.accent.trim(),
+    ageVibe: voiceDraft.ageVibe.trim(),
+    assignedPersonaIds: voiceDraft.assignedPersonaIds,
+    createdAt: voiceDraft.createdAt ?? now,
+    description: voiceDraft.description.trim(),
+    emotionalTone: voiceDraft.emotionalTone.trim(),
+    expressiveness: voiceDraft.expressiveness,
+    id: voiceDraft.id ?? `voice-lab-${now}`,
+    modelId: voiceDraft.modelId.trim(),
+    name: voiceDraft.name.trim(),
+    provider: voiceDraft.provider,
+    providerVoiceId: voiceDraft.providerVoiceId.trim(),
+    sample: voiceDraft.sample,
+    speakingStyle: voiceDraft.speakingStyle.trim(),
+    stability: voiceDraft.stability,
+    status,
+    updatedAt: now,
+  });
+
+  const resetDraft = () => {
+    setDraft(EMPTY_DRAFT);
+    setSampleFile(null);
+    setCreationStatus('');
+    setTranscription('');
+    setTags('');
+  };
+
   const handleSave = () => {
     const now = Date.now();
     const name = draft.name.trim();
@@ -173,26 +221,50 @@ export function VoiceLabTab({
       return;
     }
 
-    onSaveVoice({
-      accent: draft.accent.trim(),
-      ageVibe: draft.ageVibe.trim(),
-      assignedPersonaIds: draft.assignedPersonaIds,
-      createdAt: draft.createdAt ?? now,
-      description: draft.description.trim(),
-      emotionalTone: draft.emotionalTone.trim(),
-      expressiveness: draft.expressiveness,
-      id: draft.id ?? `voice-lab-${now}`,
-      modelId: draft.modelId.trim(),
-      name,
-      provider: draft.provider,
-      providerVoiceId: draft.providerVoiceId.trim(),
-      sample: draft.sample,
-      speakingStyle: draft.speakingStyle.trim(),
-      stability: draft.stability,
-      status: draft.providerVoiceId.trim() ? 'ready' : 'draft',
-      updatedAt: now,
-    });
-    setDraft(EMPTY_DRAFT);
+    onSaveVoice(buildVoiceFromDraft(draft, now, draft.providerVoiceId.trim() ? 'ready' : 'draft'));
+    resetDraft();
+  };
+
+  const handleCreateProviderVoice = async () => {
+    const name = draft.name.trim();
+    if (!name || !sampleFile) {
+      return;
+    }
+    setCreatingVoice(true);
+    setCreationStatus(`Creating ${providerLabel(draft.provider)} voice...`);
+    try {
+      const created = await onCreateProviderVoice({
+        provider: draft.provider,
+        name,
+        sampleFile,
+        description: draft.description.trim() || undefined,
+        language: language.trim() || undefined,
+        transcription: transcription.trim() || undefined,
+        tags: tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        removeBackgroundNoise,
+        enhanceAudioQuality,
+        visibility: draft.provider === 'fish-speech' ? 'private' : undefined,
+      });
+      const now = Date.now();
+      const nextDraft: VoiceDraft = {
+        ...draft,
+        modelId:
+          created.modelId ??
+          (draft.modelId || (draft.provider === 'fish-speech' ? 's2' : 'inworld-tts-2')),
+        providerVoiceId: created.id,
+        sample: draft.sample,
+      };
+      onSaveVoice(buildVoiceFromDraft(nextDraft, now, 'ready'));
+      resetDraft();
+      setCreationStatus(`Created ${created.name || name} (${created.id}).`);
+    } catch (error) {
+      setCreationStatus(error instanceof Error ? error.message : 'Voice creation failed.');
+    } finally {
+      setCreatingVoice(false);
+    }
   };
 
   return (
@@ -267,6 +339,7 @@ export function VoiceLabTab({
           className="input-tech"
           onChange={(event) => {
             const file = event.target.files?.[0];
+            setSampleFile(file ?? null);
             updateDraft({
               sample: file
                 ? {
@@ -281,6 +354,54 @@ export function VoiceLabTab({
           type="file"
         />
         <div className="field-hint">Sample: {sampleLabel(draft.sample)}</div>
+        <input
+          className="input-tech"
+          onChange={(event) => setLanguage(event.target.value)}
+          placeholder="Language, e.g. EN_US..."
+          type="text"
+          value={language}
+        />
+        <textarea
+          className="textarea-tech"
+          onChange={(event) => setTranscription(event.target.value)}
+          placeholder="Optional sample transcript. Helps the provider clone the sample accurately."
+          rows={2}
+          value={transcription}
+        />
+        <input
+          className="input-tech"
+          onChange={(event) => setTags(event.target.value)}
+          placeholder="Tags, comma separated..."
+          type="text"
+          value={tags}
+        />
+        <label className="toggle-row">
+          <span>Remove background noise</span>
+          <input
+            checked={removeBackgroundNoise}
+            onChange={(event) => setRemoveBackgroundNoise(event.target.checked)}
+            type="checkbox"
+          />
+        </label>
+        <label className="toggle-row">
+          <span>Enhance audio quality</span>
+          <input
+            checked={enhanceAudioQuality}
+            onChange={(event) => setEnhanceAudioQuality(event.target.checked)}
+            type="checkbox"
+          />
+        </label>
+        <div className="btn-row">
+          <button
+            className="btn-tech"
+            disabled={!draft.name.trim() || !sampleFile || creatingVoice}
+            onClick={handleCreateProviderVoice}
+            type="button"
+          >
+            {creatingVoice ? 'Creating...' : 'Create Provider Voice'}
+          </button>
+        </div>
+        {creationStatus ? <div className="field-hint">{creationStatus}</div> : null}
         <input
           className="input-tech"
           onChange={(event) => updateDraft({ providerVoiceId: event.target.value })}
@@ -379,7 +500,7 @@ export function VoiceLabTab({
           </button>
           <button
             className="btn-tech secondary"
-            onClick={() => setDraft(EMPTY_DRAFT)}
+            onClick={resetDraft}
             type="button"
           >
             New Voice
@@ -387,7 +508,7 @@ export function VoiceLabTab({
         </div>
         <div className="field-hint">
           Saving a ready voice with a provider id also updates the selected persona defaults.
-          Fish Speech is the zero-shot/custom voice path; Inworld voices can be registered by id.
+          Fish Speech and Inworld can create provider voices from the uploaded sample, or you can paste an existing provider id.
         </div>
       </div>
 

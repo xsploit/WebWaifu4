@@ -33,6 +33,24 @@ export type RemoteTtsVoice = {
   source?: string;
 };
 
+export type CreateRemoteTtsVoiceRequest = {
+  provider: RemoteTtsProvider;
+  name: string;
+  sampleFile: File;
+  description?: string;
+  language?: string;
+  transcription?: string;
+  tags?: string[];
+  removeBackgroundNoise?: boolean;
+  enhanceAudioQuality?: boolean;
+  visibility?: 'public' | 'unlist' | 'private';
+};
+
+export type CreatedRemoteTtsVoice = RemoteTtsVoice & {
+  modelId?: string;
+  status?: string;
+};
+
 export type RemoteTtsProxyOptions = {
   providerApiKey?: string | null;
 };
@@ -61,9 +79,10 @@ function getTtsProxyUrl(path = '/tts/stream') {
   if (TTS_PROXY_URL) {
     const url = new URL(TTS_PROXY_URL, window.location.href);
     if (path !== '/tts/stream') {
-      url.pathname = url.pathname.replace(/\/stream$/, '/voices');
-      if (!url.pathname.endsWith('/voices')) {
-        url.pathname = path;
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+      url.pathname = url.pathname.replace(/\/tts\/stream\/?$/, normalizedPath);
+      if (!url.pathname.endsWith(normalizedPath)) {
+        url.pathname = normalizedPath;
       }
       url.search = '';
     }
@@ -81,6 +100,19 @@ function base64ToBytes(value: string) {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read voice sample.'));
+    reader.onload = () => {
+      const value = String(reader.result ?? '');
+      const commaIndex = value.indexOf(',');
+      resolve(commaIndex === -1 ? value : value.slice(commaIndex + 1));
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export function createRemoteTtsStream(
@@ -231,6 +263,44 @@ export async function fetchRemoteTtsVoices(
     throw new Error(data.error || 'Remote TTS voice fetch failed.');
   }
   return data.voices ?? [];
+}
+
+export async function createRemoteTtsVoice(
+  request: CreateRemoteTtsVoiceRequest,
+  options: RemoteTtsProxyOptions = {},
+) {
+  const sampleBase64 = await fileToBase64(request.sampleFile);
+  const response = await fetch(getTtsProxyUrl('/tts/voices/create'), {
+    method: 'POST',
+    headers: buildRemoteTtsHeaders(options),
+    body: JSON.stringify({
+      provider: request.provider,
+      name: request.name,
+      sampleBase64,
+      sampleFileName: request.sampleFile.name,
+      sampleMimeType: request.sampleFile.type,
+      description: request.description,
+      language: request.language,
+      transcription: request.transcription,
+      tags: request.tags,
+      removeBackgroundNoise: request.removeBackgroundNoise,
+      enhanceAudioQuality: request.enhanceAudioQuality,
+      visibility: request.visibility,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Remote TTS voice creation failed with HTTP ${response.status}.`);
+  }
+
+  const data = (await response.json()) as {
+    ok?: boolean;
+    error?: string;
+    voice?: CreatedRemoteTtsVoice;
+  };
+  if (!data.ok || !data.voice) {
+    throw new Error(data.error || 'Remote TTS voice creation failed.');
+  }
+  return data.voice;
 }
 
 function buildRemoteTtsHeaders(

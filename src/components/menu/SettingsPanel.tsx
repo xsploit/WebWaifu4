@@ -19,12 +19,18 @@ import type {
   VisualSettings,
 } from '../../lib/menu/types';
 import type { PiperVoiceProfile } from '../../lib/tts/piper';
-import type { RemoteTtsProvider, RemoteTtsVoice } from '../../lib/tts/remote';
+import type {
+  CreatedRemoteTtsVoice,
+  CreateRemoteTtsVoiceRequest,
+  RemoteTtsProvider,
+  RemoteTtsVoice,
+} from '../../lib/tts/remote';
 import { DEFAULT_PERSONA } from '../../lib/chat/defaults';
 import type { GrilloMemoryState } from '../../lib/chat/grillo-memory';
 import { AccountTab } from './tabs/AccountTab';
 import { AiTab } from './tabs/AiTab';
 import { AnimTab } from './tabs/AnimTab';
+import { BackgroundTab } from './tabs/BackgroundTab';
 import { CharacterTab } from './tabs/CharacterTab';
 import { ContextTab } from './tabs/ContextTab';
 import { TtsTab } from './tabs/TtsTab';
@@ -71,6 +77,9 @@ type SettingsPanelProps = {
   onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
   onApplyPersonaVoice: (personaId: string) => void;
+  onCreateVoiceLabProviderVoice: (
+    request: CreateRemoteTtsVoiceRequest,
+  ) => Promise<CreatedRemoteTtsVoice>;
   onDeleteVoiceLabVoice: (voiceId: string) => void;
   onResetContext: () => void;
   onResetTwitchState: () => void;
@@ -127,6 +136,7 @@ type SettingsPanelProps = {
 const TABS: { id: SettingsTabId; label: string }[] = [
   { id: 'account', label: 'Account' },
   { id: 'vrm', label: 'Avatar' },
+  { id: 'background', label: 'Background' },
   { id: 'anim', label: 'Animation' },
   { id: 'character', label: 'Character' },
   { id: 'voice-lab', label: 'Voice Lab' },
@@ -175,6 +185,7 @@ export function SettingsPanel({
   onRefreshRemoteVoices,
   onRefreshVoices,
   onApplyPersonaVoice,
+  onCreateVoiceLabProviderVoice,
   onDeleteVoiceLabVoice,
   onResetContext,
   onResetTwitchState,
@@ -244,6 +255,12 @@ export function SettingsPanel({
         sequencerSettings={sequencerSettings}
         setSequencerSettings={setSequencerSettings}
       />
+    ) : activeTab === 'background' ? (
+      <BackgroundTab
+        activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
+        setVisualSettings={setVisualSettings}
+        visualSettings={visualSettings}
+      />
     ) : activeTab === 'character' ? (
       <CharacterTab
         activePersona={activePersona}
@@ -257,6 +274,7 @@ export function SettingsPanel({
         activePersona={activePersona}
         aiSettings={aiSettings}
         onApplyPersonaVoice={onApplyPersonaVoice}
+        onCreateProviderVoice={onCreateVoiceLabProviderVoice}
         onDeleteVoice={onDeleteVoiceLabVoice}
         onSaveVoice={onSaveVoiceLabVoice}
         onUseCurrentVoiceAsPersonaDefault={onUseCurrentVoiceAsPersonaDefault}

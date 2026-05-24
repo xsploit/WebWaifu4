@@ -48,6 +48,26 @@ export type RemoteTtsVoice = {
   source?: string;
 };
 
+export type CreateRemoteTtsVoiceRequest = {
+  provider: RemoteTtsProvider;
+  name: string;
+  sampleBase64: string;
+  sampleFileName?: string;
+  sampleMimeType?: string;
+  description?: string;
+  language?: string;
+  transcription?: string;
+  tags?: string[];
+  removeBackgroundNoise?: boolean;
+  enhanceAudioQuality?: boolean;
+  visibility?: 'public' | 'unlist' | 'private';
+};
+
+export type CreatedRemoteTtsVoice = RemoteTtsVoice & {
+  modelId?: string;
+  status?: string;
+};
+
 type StreamHandlers = {
   onAudioChunk: (chunk: RemoteTtsAudioChunk) => void;
 };
@@ -76,6 +96,25 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 function normalizeRemoteText(value: string) {
   return value.replace(/\s+/g, ' ').trim().slice(0, 2000);
+}
+
+function normalizeVoiceCreateText(value: unknown, maxLength: number) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function normalizeVoiceCreateTags(tags: unknown) {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+  return tags
+    .map((tag) => normalizeVoiceCreateText(tag, 32))
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function decodeVoiceSampleBase64(value: string) {
+  const encoded = value.includes(',') ? value.slice(value.indexOf(',') + 1) : value;
+  return Buffer.from(encoded, 'base64');
 }
 
 function getFishMimeType(format: string) {
@@ -259,6 +298,28 @@ export async function listRemoteTtsVoices(
   return listInworldVoices(config);
 }
 
+export async function createRemoteTtsVoice(
+  config: StreamBotConfig,
+  request: CreateRemoteTtsVoiceRequest,
+): Promise<CreatedRemoteTtsVoice> {
+  const name = normalizeVoiceCreateText(request.name, 80);
+  if (!name) {
+    throw new Error('Voice name is required.');
+  }
+  const sample = decodeVoiceSampleBase64(request.sampleBase64);
+  if (!sample.length) {
+    throw new Error('Voice sample is required.');
+  }
+  if (sample.length > 20 * 1024 * 1024) {
+    throw new Error('Voice sample must be 20 MB or smaller.');
+  }
+
+  if (request.provider === 'fish-speech') {
+    return createFishSpeechVoice(config, request, name, sample);
+  }
+  return createInworldVoice(config, request, name, sample);
+}
+
 async function listFishSpeechVoices(config: StreamBotConfig, scope: FishSpeechVoiceScope) {
   if (!config.fishSpeechApiKey) {
     throw new Error('FishSpeech voices require FISH_AUDIO_API_KEY or FISHSPEECH_API_KEY.');
@@ -314,6 +375,82 @@ async function listInworldVoices(config: StreamBotConfig) {
   });
   const voices = await client.listVoices();
   return voices.map(mapInworldVoice).filter((voice) => voice.id);
+}
+
+async function createFishSpeechVoice(
+  config: StreamBotConfig,
+  request: CreateRemoteTtsVoiceRequest,
+  name: string,
+  sample: Buffer,
+): Promise<CreatedRemoteTtsVoice> {
+  if (!config.fishSpeechApiKey) {
+    throw new Error('FishSpeech voice creation requires FISH_AUDIO_API_KEY or FISHSPEECH_API_KEY.');
+  }
+  if (typeof File === 'undefined') {
+    throw new Error('FishSpeech voice creation requires a Node runtime with File upload support.');
+  }
+
+  const client = new FishAudioClient({
+    apiKey: config.fishSpeechApiKey,
+    ...(config.fishSpeechBaseUrl ? { baseUrl: config.fishSpeechBaseUrl } : {}),
+  });
+  const file = new File([new Uint8Array(sample)], request.sampleFileName || 'voice-sample.wav', {
+    type: request.sampleMimeType || 'audio/wav',
+  });
+  const transcription = normalizeVoiceCreateText(request.transcription, 2000);
+  const voice = await client.voices.ivc.create(
+    {
+      type: 'tts',
+      title: name,
+      train_mode: 'fast',
+      voices: [file],
+      visibility: request.visibility ?? 'private',
+      description: normalizeVoiceCreateText(request.description, 500) || undefined,
+      texts: transcription ? [transcription] : undefined,
+      tags: normalizeVoiceCreateTags(request.tags),
+      enhance_audio_quality: request.enhanceAudioQuality ?? true,
+    },
+    { timeoutInSeconds: 120 },
+  );
+
+  return {
+    ...mapFishVoice(voice),
+    modelId: 's2',
+    status: 'ready',
+  };
+}
+
+async function createInworldVoice(
+  config: StreamBotConfig,
+  request: CreateRemoteTtsVoiceRequest,
+  name: string,
+  sample: Buffer,
+): Promise<CreatedRemoteTtsVoice> {
+  if (!config.inworldApiKey) {
+    throw new Error('Inworld voice creation requires INWORLD_API_KEY.');
+  }
+
+  const client = InworldTTS({
+    apiKey: config.inworldApiKey,
+    timeout: 120000,
+    ...(config.inworldBaseUrl ? { baseUrl: config.inworldBaseUrl } : {}),
+  });
+  const transcription = normalizeVoiceCreateText(request.transcription, 2000);
+  const result = await client.cloneVoice({
+    displayName: name,
+    audioSamples: [sample],
+    lang: normalizeVoiceCreateText(request.language, 24) || 'EN_US',
+    description: normalizeVoiceCreateText(request.description, 500) || undefined,
+    tags: normalizeVoiceCreateTags(request.tags),
+    transcriptions: transcription ? [transcription] : undefined,
+    removeBackgroundNoise: request.removeBackgroundNoise ?? true,
+  });
+
+  return {
+    ...mapInworldVoice(result.voice),
+    modelId: 'inworld-tts-2',
+    status: 'ready',
+  };
 }
 
 function mapFishVoice(voice: ModelEntity): RemoteTtsVoice {

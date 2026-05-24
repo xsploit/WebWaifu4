@@ -125,8 +125,10 @@ import {
 import type { PiperVoiceProfile, WordBoundary } from './lib/tts/piper';
 import { getTtsProviderLabel } from './lib/tts/labels';
 import { getTtsManager, type RemotePcmPushStream } from './lib/tts/manager';
-import { fetchRemoteTtsVoices } from './lib/tts/remote';
+import { createRemoteTtsVoice, fetchRemoteTtsVoices } from './lib/tts/remote';
 import type {
+  CreateRemoteTtsVoiceRequest,
+  CreatedRemoteTtsVoice,
   RemoteTtsAudioChunk,
   RemoteTtsProvider,
   RemoteTtsRequest,
@@ -2229,23 +2231,42 @@ function App() {
     };
   }, []);
 
-  const shellStyle = useMemo(
-    () =>
-      ({
-        '--safe-top': `${safeArea.top}px`,
-        '--safe-right': `${safeArea.right}px`,
-        '--safe-bottom': `${safeArea.bottom}px`,
-        '--safe-left': `${safeArea.left}px`,
-        '--stream-bg-image': `url("${activePersonaScenePreset.backgroundImage}")`,
-        '--stream-bg-overlay': activePersonaScenePreset.backgroundOverlay,
-        '--stream-bg-filter': activePersonaScenePreset.backgroundFilter,
-        '--c-text-accent': activePersonaScenePreset.accent,
-        '--c-border': activePersonaScenePreset.border,
-        '--c-panel': activePersonaScenePreset.panel,
-        '--text-muted': activePersonaScenePreset.textMuted,
-      }) as CSSProperties,
-    [activePersonaScenePreset, safeArea],
-  );
+  const shellStyle = useMemo(() => {
+    const backgroundMode = visualSettings.sceneBackgroundMode;
+    const customImage = visualSettings.sceneBackgroundImage.trim();
+    const customOverlay = visualSettings.sceneBackgroundOverlay.trim();
+    const customFilter = visualSettings.sceneBackgroundFilter.trim();
+    const backgroundImage =
+      backgroundMode === 'custom' && customImage ? customImage : activePersonaScenePreset.backgroundImage;
+    const backgroundOverlay =
+      backgroundMode === 'chroma'
+        ? 'linear-gradient(0deg, var(--stream-chroma-color), var(--stream-chroma-color))'
+        : backgroundMode === 'custom' && customOverlay
+          ? customOverlay
+          : activePersonaScenePreset.backgroundOverlay;
+    const backgroundFilter =
+      backgroundMode === 'chroma'
+        ? 'none'
+        : backgroundMode === 'custom' && customFilter
+          ? customFilter
+          : activePersonaScenePreset.backgroundFilter;
+
+    return {
+      '--safe-top': `${safeArea.top}px`,
+      '--safe-right': `${safeArea.right}px`,
+      '--safe-bottom': `${safeArea.bottom}px`,
+      '--safe-left': `${safeArea.left}px`,
+      '--stream-bg-image': backgroundMode === 'chroma' ? 'none' : `url("${backgroundImage}")`,
+      '--stream-bg-color': backgroundMode === 'chroma' ? visualSettings.sceneChromaColor : '#02040a',
+      '--stream-bg-overlay': backgroundOverlay,
+      '--stream-bg-filter': backgroundFilter,
+      '--stream-chroma-color': visualSettings.sceneChromaColor,
+      '--c-text-accent': activePersonaScenePreset.accent,
+      '--c-border': activePersonaScenePreset.border,
+      '--c-panel': activePersonaScenePreset.panel,
+      '--text-muted': activePersonaScenePreset.textMuted,
+    } as CSSProperties;
+  }, [activePersonaScenePreset, safeArea, visualSettings]);
 
   const loadAvailableModels = useCallback(async () => {
     setModelsLoading(true);
@@ -2420,6 +2441,26 @@ function App() {
       }
     },
     [providerKeyVaultWorkspaceId],
+  );
+
+  const handleCreateVoiceLabProviderVoice = useCallback(
+    async (request: CreateRemoteTtsVoiceRequest): Promise<CreatedRemoteTtsVoice> => {
+      const providerApiKey = await getBrowserRemoteTtsApiKey(
+        request.provider,
+        providerKeyVaultWorkspaceId,
+      );
+      const voice = await createRemoteTtsVoice(request, { providerApiKey });
+      remoteTtsVoiceFetchAttemptedRef.current.delete(request.provider);
+      for (const key of Array.from(remoteTtsVoiceFetchAttemptedRef.current)) {
+        if (key.startsWith(`${request.provider}:`)) {
+          remoteTtsVoiceFetchAttemptedRef.current.delete(key);
+        }
+      }
+      void loadRemoteTtsVoices(request.provider, true);
+      setTtsStatus(`${getTtsProviderLabel(request.provider)} voice created: ${voice.name}.`);
+      return voice;
+    },
+    [loadRemoteTtsVoices, providerKeyVaultWorkspaceId],
   );
 
   useEffect(() => {
@@ -5782,6 +5823,7 @@ function App() {
                 void refreshAiProxyHealth();
               }}
               onApplyPersonaVoice={handleApplyPersonaVoice}
+              onCreateVoiceLabProviderVoice={handleCreateVoiceLabProviderVoice}
               onDeleteVoiceLabVoice={handleDeleteVoiceLabVoice}
               onRefreshRemoteVoices={(provider) => {
                 for (const key of Array.from(remoteTtsVoiceFetchAttemptedRef.current)) {
