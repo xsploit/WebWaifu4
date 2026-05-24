@@ -18,6 +18,7 @@
     "start:stream": "concurrently -k -n overlay,ai -c cyan,magenta \"cross-env OVERLAY_PORT=4173 BOT_PORT=8797 node serve-dist.mjs\" \"npm run start:bot\"",
     "bench:fish": "tsx scripts/bench-fish-websocket.ts",
     "bench:pipeline": "tsx scripts/bench-openai-fish-pipeline.ts",
+    "test:structured-ws": "tsx scripts/test-openai-ws-structured-reply.ts",
     "sync:silly-tavern": "node scripts/sync-silly-tavern.mjs",
     "test": "vitest",
     "deploy": "npm run build",
