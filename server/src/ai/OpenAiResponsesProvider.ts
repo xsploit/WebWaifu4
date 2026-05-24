@@ -616,6 +616,9 @@ export class OpenAiResponsesProvider implements ChatProvider {
   }
 
   private getRequestRuntime(request: ChatProviderRequest): OpenAiRequestRuntime {
+    if (this.isOpenRouterRuntime()) {
+      return { stateMode: 'stateless', useWebSocket: false };
+    }
     const stateMode = request.openAiStateMode ?? this.options.stateMode;
     const useWebSocket =
       request.transportMode === 'websocket'
@@ -626,8 +629,14 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return { stateMode, useWebSocket };
   }
 
+  private isOpenRouterRuntime() {
+    return (
+      this.options.providerName === 'openrouter-responses' || isOpenRouterBaseUrl(this.baseUrl)
+    );
+  }
+
   private getRuntimeProviderName(runtime: OpenAiRequestRuntime) {
-    if (this.options.providerName === 'openrouter-responses') {
+    if (this.isOpenRouterRuntime()) {
       return 'openrouter-responses';
     }
     return runtime.useWebSocket ? 'openai-responses-ws' : 'openai-responses';

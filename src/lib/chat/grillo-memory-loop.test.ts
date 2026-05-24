@@ -85,7 +85,14 @@ describe('Grillo memory worker loop', () => {
     });
 
     expect(result.rounds).toBe(2);
-    expect(requests[0]?.responseFormat).toEqual(GRILLO_WORKER_LOOP_RESPONSE_FORMAT);
+    expect(requests).toHaveLength(2);
+    expect(
+      requests.every((request) => request.responseFormat === GRILLO_WORKER_LOOP_RESPONSE_FORMAT),
+    ).toBe(true);
+    expect(
+      requests.every((request) => request.stateKey === 'memory:twitch:subsect:persona:hikari'),
+    ).toBe(true);
+    expect(requests.every((request) => request.stateScope === 'memory')).toBe(true);
     expect(result.toolCalls[0]?.name).toBe('core.worker_memory_read');
     const secondRequestMessages = requests[1]?.messages ?? [];
     expect(secondRequestMessages[secondRequestMessages.length - 2]?.content).toContain(

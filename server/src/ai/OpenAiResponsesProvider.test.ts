@@ -649,6 +649,64 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('keeps OpenRouter Responses structured output stateless even if configured otherwise', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: 'test-key',
+      model: 'anthropic/claude-3.5-haiku',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'conversation',
+      store: true,
+      useWebSocket: true,
+      fetcher: createFetcher(calls),
+      providerName: 'openrouter-responses',
+    });
+
+    const response = await provider.complete({
+      ...createRequest('structured openrouter worker'),
+      openAiStateMode: 'conversation',
+      responseFormat: {
+        name: 'reply_metadata',
+        schema: {
+          properties: {
+            emotion: { type: 'string' },
+            text: { type: 'string' },
+          },
+          required: ['text'],
+          type: 'object',
+        },
+        strict: true,
+        type: 'json_schema',
+      },
+      stateKey: 'twitch:subsect:persona:hikari',
+      transportMode: 'websocket',
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/responses');
+    expect(calls[0]?.body).toMatchObject({
+      include_reasoning: false,
+      reasoning: { exclude: true },
+      text: {
+        format: {
+          name: 'reply_metadata',
+          strict: true,
+          type: 'json_schema',
+        },
+      },
+    });
+    expect(calls[0]?.body).not.toHaveProperty('conversation');
+    expect(calls[0]?.body).not.toHaveProperty('previous_response_id');
+    expect(response.meta).toMatchObject({
+      provider: 'openrouter-responses',
+      stateMode: 'stateless',
+      transport: 'http-stream',
+      websocketConfigured: false,
+    });
+  });
+
   it('passes user image input into Responses messages', async () => {
     const calls: FetchCall[] = [];
     const provider = new OpenAiResponsesProvider({
@@ -1315,6 +1373,18 @@ describe('OpenAiResponsesProvider', () => {
     const memoryResponse = await provider.complete({
       ...createRequest('summarize diary'),
       disableState: true,
+      responseFormat: {
+        name: 'grillo_worker_loop',
+        schema: {
+          properties: {
+            done: { type: 'boolean' },
+            relationship: { type: 'object' },
+          },
+          type: 'object',
+        },
+        strict: false,
+        type: 'json_schema',
+      },
       stateKey: 'memory:twitch:subsect:persona:riko',
       stateScope: 'memory',
     });
@@ -1330,6 +1400,16 @@ describe('OpenAiResponsesProvider', () => {
     ]);
     expect(calls[0]?.body).not.toHaveProperty('conversation');
     expect(calls[0]?.body).not.toHaveProperty('previous_response_id');
+    expect(calls[0]?.body).toMatchObject({
+      store: false,
+      text: {
+        format: {
+          name: 'grillo_worker_loop',
+          strict: false,
+          type: 'json_schema',
+        },
+      },
+    });
     expect(calls[0]?.body).toHaveProperty('instructions');
     expect(calls[2]?.body['conversation']).toBe('conv_subsect');
     expect(memoryResponse.meta).toMatchObject({
