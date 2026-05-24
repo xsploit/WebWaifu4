@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RalphResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "selected_task",
+    "summary",
+    "files_changed",
+    "commands_run",
+    "verification",
+    "next_task",
+    "blockers",
+    "completion_signal"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["progress_made", "complete", "stuck", "no_change"]
+    },
+    "selected_task": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "exit_code", "purpose"],
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["pytest_passed", "ralph_eval_passed", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "pytest_passed": {
+          "type": "boolean"
+        },
+        "ralph_eval_passed": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "next_task": {
+      "type": "string"
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "completion_signal": {
+      "type": "string",
+      "enum": ["continue", "work_complete", "work_stuck"]
+    }
+  }
+}

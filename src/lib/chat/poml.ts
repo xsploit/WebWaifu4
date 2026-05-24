@@ -1,4 +1,5 @@
 import yourWifeyPromptTemplate from './templates/yourwifey-responses.poml?raw';
+import { getDesktopBackendUrl } from '../desktop/runtime';
 
 type PromptRole = 'system' | 'user' | 'assistant';
 type PomlDynamicStateValue = string | number | boolean | null | undefined;
@@ -152,6 +153,11 @@ async function renderPomlMessagesOnServer(
 }
 
 function getPomlRenderUrl() {
+  const desktopUrl = getDesktopBackendUrl('/ai/poml/render');
+  if (desktopUrl) {
+    return desktopUrl;
+  }
+
   const explicitUrl = (import.meta.env['VITE_POML_RENDER_URL'] || '').trim();
   if (explicitUrl) {
     return explicitUrl;

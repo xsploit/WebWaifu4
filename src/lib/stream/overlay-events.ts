@@ -1,3 +1,5 @@
+import { getDesktopOverlaySocketUrl } from '../desktop/runtime';
+
 export type OverlayTwitchChatMessage = {
   id: string;
   user: string;
@@ -110,6 +112,11 @@ export function getOverlaySocketUrl() {
   const configured = getConfiguredOverlaySocketUrl();
   if (configured) {
     return configured;
+  }
+
+  const desktopUrl = getDesktopOverlaySocketUrl();
+  if (desktopUrl) {
+    return desktopUrl;
   }
 
   const url = new URL('/ws', window.location.href);

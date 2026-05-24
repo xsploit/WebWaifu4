@@ -8,6 +8,7 @@ api-dist/
 .vscode/
 .idea/
 coverage/
+release/
 .ralph-loop/
 .rundot-docs
 .tmp/

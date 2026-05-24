@@ -2,7 +2,7 @@
 
 # 💋 Web Waifu 4
 
-### *Your own VTuber co-host. Running on your machine.*
+### _Your own VTuber co-host. Running on your machine._
 
 Local-first OBS/Twitch assistant with a VRM avatar, realtime TTS, Twitch/local
 chat intake, memory, tools, and provider keys stored in local browser storage.
@@ -14,20 +14,21 @@ chat intake, memory, tools, and provider keys stored in local browser storage.
 ![react](https://img.shields.io/badge/react-18-61dafb?style=for-the-badge&logo=react&logoColor=black)
 ![three.js](https://img.shields.io/badge/three.js-r170-000?style=for-the-badge&logo=three.js&logoColor=white)
 ![vite](https://img.shields.io/badge/vite-6-646cff?style=for-the-badge&logo=vite&logoColor=white)
+![electron](https://img.shields.io/badge/electron-desktop-47848f?style=for-the-badge&logo=electron&logoColor=white)
 ![twitch](https://img.shields.io/badge/twitch-IRC-9146ff?style=for-the-badge&logo=twitch&logoColor=white)
 
 <br/>
 
 <a href="#-what-this-is">What This Is</a>
- ·
+·
 <a href="#-features">Features</a>
- ·
+·
 <a href="#-quick-start">Quick Start</a>
- ·
+·
 <a href="#-provider-keys">Provider Keys</a>
- ·
+·
 <a href="#-obs-setup">OBS Setup</a>
- ·
+·
 <a href="#-truth-table">Truth Table</a>
 
 </div>
@@ -85,6 +86,7 @@ chat intake, memory, tools, and provider keys stored in local browser storage.
     <td width="50%" valign="top">
       <h3 align="center">🎭 Avatar</h3>
       <ul>
+        <li>Electron desktop shell plus browser/OBS runtime.</li>
         <li>React + Three.js VRM overlay for OBS or standalone editor use.</li>
         <li>Custom VRM upload and saved local avatar library.</li>
         <li>Facial expressions, gaze, blink, animation playlists, and tuning controls.</li>
@@ -170,6 +172,43 @@ unless you run the real IRC command below.
 
 ---
 
+<h2 align="center">🖥️ Desktop App</h2>
+
+```powershell
+npm run desktop:dev      # Electron + Vite + mocked Twitch backend
+npm run desktop:dev:irc  # Electron + Vite + real Twitch IRC backend
+npm run desktop:start    # build, start compiled backend, and open Electron
+npm run desktop:pack     # build unpacked desktop app
+```
+
+The desktop shell is Electron. It keeps the existing React/Three.js app and
+local Node backend, then adds desktop window modes:
+
+<table align="center">
+  <tr>
+    <th>Mode</th>
+    <th>Use</th>
+  </tr>
+  <tr>
+    <td>Editor</td>
+    <td>Normal framed desktop app for setup and testing</td>
+  </tr>
+  <tr>
+    <td>Desktop Transparent</td>
+    <td>Frameless transparent avatar window for sitting on the desktop</td>
+  </tr>
+  <tr>
+    <td>Overlay</td>
+    <td>Frameless always-on-top transparent window with optional click-through</td>
+  </tr>
+</table>
+
+Use the Electron menu to relaunch between modes. The renderer still sends
+provider requests to the same local backend on `127.0.0.1:8797`; API keys are
+not moved into Electron main storage.
+
+---
+
 <h2 align="center">🔑 Provider Keys</h2>
 
 <p align="center">
@@ -223,6 +262,7 @@ TAVILY_API_KEY=
 
 If `SERVER_PROVIDER_PROXY_ENABLED=false`, the backend will not use ENV provider
 keys as fallbacks.
+
 </details>
 
 ---
@@ -335,6 +375,9 @@ OpenAI provider key plus `ffmpeg` and either `yt-dlp` or `streamlink`.
 npm run dev            # overlay/editor plus local backend
 npm run build          # production build for OBS/local serving
 npm run start:stream   # serve built overlay plus local bot/backend
+npm run desktop:dev    # desktop app dev mode
+npm run desktop:start  # built desktop app from this checkout
+npm run desktop:pack   # unpacked Electron build
 npm test               # vitest suite
 npm run bench:fish     # Fish Speech websocket latency benchmark
 npm run bench:pipeline # LLM-to-Fish pipeline latency benchmark
@@ -349,6 +392,7 @@ npm run dev:bot      # bot with mocked Twitch source
 npm run dev:bot:irc  # bot with real Twitch IRC
 npm run build:bot    # compile server TypeScript
 ```
+
 </details>
 
 ---
@@ -357,6 +401,7 @@ npm run build:bot    # compile server TypeScript
 
 ```text
 src/                 React overlay / editor
+electron/            Electron desktop shell and preload bridge
 server/src/          Local AI, Twitch, TTS, websocket backend
 public/assets/       VRM, background, animation assets
 public/cdn-assets/   Large static local assets
@@ -377,6 +422,10 @@ scripts/             Benchmarks and utility scripts
   <tr>
     <td>Local-first app</td>
     <td>True: app state and runtime shell are local</td>
+  </tr>
+  <tr>
+    <td>Desktop app</td>
+    <td>Electron wrapper added; renderer and backend are still the same local stack</td>
   </tr>
   <tr>
     <td>Hosted accounts</td>

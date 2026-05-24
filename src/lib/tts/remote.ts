@@ -1,3 +1,5 @@
+import { getDesktopBackendUrl } from '../desktop/runtime';
+
 export type RemoteTtsProvider = 'fish-speech' | 'inworld';
 export type RemoteTtsMode = 'live-bridge' | 'full-response' | 'sentence-chunks';
 export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
@@ -76,6 +78,11 @@ const TTS_PROXY_URL = (import.meta.env['VITE_TTS_PROXY_URL'] || '').trim();
 const TTS_PROVIDER_KEY_HEADER = 'x-yourwifey-tts-provider-key';
 
 function getTtsProxyUrl(path = '/tts/stream') {
+  const desktopUrl = getDesktopBackendUrl(path);
+  if (desktopUrl) {
+    return desktopUrl;
+  }
+
   if (TTS_PROXY_URL) {
     const url = new URL(TTS_PROXY_URL, window.location.href);
     if (path !== '/tts/stream') {

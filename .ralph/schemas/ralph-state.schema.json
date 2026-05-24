@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RalphStateSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "iteration",
+    "timestamp",
+    "before_hash",
+    "after_hash",
+    "changed",
+    "codex_exit_code",
+    "eval_exit_code",
+    "result",
+    "status",
+    "completion_signal"
+  ],
+  "properties": {
+    "iteration": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "before_hash": {
+      "type": "string"
+    },
+    "after_hash": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "boolean"
+    },
+    "codex_exit_code": {
+      "type": "integer"
+    },
+    "eval_exit_code": {
+      "type": "integer"
+    },
+    "result": {
+      "type": "object"
+    },
+    "status": {
+      "type": "string"
+    },
+    "completion_signal": {
+      "type": "string"
+    }
+  }
+}

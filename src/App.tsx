@@ -153,6 +153,7 @@ import {
 } from './lib/twitch/stream-transcription';
 import type { ProviderKind } from './lib/product/byok';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
+import { getDesktopBackendUrl } from './lib/desktop/runtime';
 import {
   base64ToBlob,
   blobToBase64,
@@ -496,6 +497,11 @@ function createChatMessage(role: ChatMessage['role'], content: string): ChatMess
 }
 
 function getAiProxyUrl() {
+  const desktopUrl = getDesktopBackendUrl('/ai/chat');
+  if (desktopUrl) {
+    return desktopUrl;
+  }
+
   if (AI_PROXY_URL) {
     return AI_PROXY_URL;
   }
@@ -2234,7 +2240,9 @@ function App() {
     const customOverlay = visualSettings.sceneBackgroundOverlay.trim();
     const customFilter = visualSettings.sceneBackgroundFilter.trim();
     const backgroundImage =
-      backgroundMode === 'custom' && customImage ? customImage : activePersonaScenePreset.backgroundImage;
+      backgroundMode === 'custom' && customImage
+        ? customImage
+        : activePersonaScenePreset.backgroundImage;
     const backgroundOverlay =
       backgroundMode === 'chroma'
         ? 'linear-gradient(0deg, var(--stream-chroma-color), var(--stream-chroma-color))'
@@ -2254,7 +2262,8 @@ function App() {
       '--safe-bottom': `${safeArea.bottom}px`,
       '--safe-left': `${safeArea.left}px`,
       '--stream-bg-image': backgroundMode === 'chroma' ? 'none' : `url("${backgroundImage}")`,
-      '--stream-bg-color': backgroundMode === 'chroma' ? visualSettings.sceneChromaColor : '#02040a',
+      '--stream-bg-color':
+        backgroundMode === 'chroma' ? visualSettings.sceneChromaColor : '#02040a',
       '--stream-bg-overlay': backgroundOverlay,
       '--stream-bg-filter': backgroundFilter,
       '--stream-chroma-color': visualSettings.sceneChromaColor,

@@ -42,6 +42,15 @@ body {
   background: #02040a;
 }
 
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'],
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'],
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'] body,
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] body,
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'] #root,
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] #root {
+  background: transparent;
+}
+
 button,
 input,
 textarea,
@@ -63,6 +72,11 @@ select {
   background: #02040a;
 }
 
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'] .shell,
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell {
+  background: transparent;
+}
+
 .shell::before {
   content: '';
   position: absolute;
@@ -77,6 +91,11 @@ select {
   background-repeat: no-repeat;
   filter: var(--stream-bg-filter, saturate(1.08) brightness(0.9) contrast(1.04));
   transform: scale(1.01);
+}
+
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'] .shell::before,
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell::before {
+  opacity: 0;
 }
 
 .stage-root {
@@ -168,7 +187,9 @@ select {
   z-index: 50;
   border-radius: 100px !important;
   clip-path: none !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0, 255, 255, 0.15) !important;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.4),
+    0 0 15px rgba(0, 255, 255, 0.15) !important;
   transition: all 0.25s cubic-bezier(0.2, 0.85, 0.25, 1);
 }
 
@@ -1442,7 +1463,9 @@ input[type='range']::-webkit-slider-thumb:hover {
   z-index: 50;
   border-radius: 50% !important;
   clip-path: none !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0, 255, 255, 0.15) !important;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.4),
+    0 0 15px rgba(0, 255, 255, 0.15) !important;
   transition: all 0.25s cubic-bezier(0.2, 0.85, 0.25, 1);
 }
 
@@ -1533,7 +1556,8 @@ input[type='range']::-webkit-slider-thumb:hover {
 }
 
 @keyframes breathing-green {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 0.6;
     box-shadow: 0 0 8px rgba(0, 255, 102, 0.4);
@@ -1541,7 +1565,9 @@ input[type='range']::-webkit-slider-thumb:hover {
   50% {
     transform: scale(1.15);
     opacity: 1;
-    box-shadow: 0 0 16px rgba(0, 255, 102, 0.9), 0 0 3px rgba(255, 255, 255, 0.9);
+    box-shadow:
+      0 0 16px rgba(0, 255, 102, 0.9),
+      0 0 3px rgba(255, 255, 255, 0.9);
   }
 }
 
@@ -1634,12 +1660,7 @@ input[type='range']::-webkit-slider-thumb:hover {
 .log-deco {
   height: 1px;
   margin: 10px 0 8px;
-  background: linear-gradient(
-    90deg,
-    rgba(0, 255, 255, 0.7),
-    rgba(255, 0, 127, 0.3),
-    transparent
-  );
+  background: linear-gradient(90deg, rgba(0, 255, 255, 0.7), rgba(255, 0, 127, 0.3), transparent);
   opacity: 0.82;
 }
 
@@ -2957,7 +2978,6 @@ input[type='range']::-webkit-slider-thumb:hover {
     display: none;
   }
 }
-
 
 /* ======================================================================
    Web Waifu 4 marketing home — Adapted to Cyber-Garden Concept
