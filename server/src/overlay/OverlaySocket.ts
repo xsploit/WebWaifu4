@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingHttpHeaders, IncomingMessage, Server as HttpServer } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { StreamBotEvent } from '../scheduler/ChatScheduler.js';
 
@@ -151,9 +152,10 @@ function isLocalHost(value: string) {
 export class OverlaySocket {
   private readonly server: WebSocketServer;
   private readonly clients = new Set<WebSocket>();
+  private readonly handleUpgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
   constructor(
-    httpServer: HttpServer,
+    private readonly httpServer: HttpServer,
     private readonly onClientEvent?: (event: OverlayClientEvent) => void,
     private readonly options: OverlaySocketOptions = {},
   ) {
@@ -161,9 +163,19 @@ export class OverlaySocket {
       handleProtocols(protocols) {
         return protocols.has(OVERLAY_SOCKET_PROTOCOL) ? OVERLAY_SOCKET_PROTOCOL : false;
       },
-      path: '/ws',
-      server: httpServer,
+      noServer: true,
     });
+    this.handleUpgrade = (request, socket, head) => {
+      const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
+      if (url.pathname !== '/ws') {
+        return;
+      }
+      this.server.handleUpgrade(request, socket, head, (webSocket) => {
+        this.server.emit('connection', webSocket, request);
+      });
+    };
+    this.httpServer.on('upgrade', this.handleUpgrade);
+
     this.server.on('connection', (socket, request) => {
       const auth = authorizeOverlaySocketRequest(request, this.options);
       if (!auth.allowed) {
@@ -227,6 +239,7 @@ export class OverlaySocket {
   }
 
   close() {
+    this.httpServer.off('upgrade', this.handleUpgrade);
     this.server.close();
     for (const client of this.clients) {
       client.close();

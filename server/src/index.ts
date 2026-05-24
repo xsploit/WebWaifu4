@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
 import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
@@ -64,8 +66,57 @@ type ProviderModelsPayload = {
   };
 };
 
+type AiChatRequestBody = {
+  mode?: 'direct' | 'batch';
+  activeChatters?: number;
+  disableState?: boolean;
+  model?: string;
+  messages?: unknown;
+  maxTokens?: number;
+  responseFormat?: unknown;
+  stateKey?: string;
+  stateScope?: 'chat' | 'memory';
+  stream?: boolean;
+  temperature?: number;
+  transportMode?: unknown;
+  openAiStateMode?: unknown;
+  ttsBridge?: unknown;
+  llmProvider?: unknown;
+};
+
+type AiChatStreamEvent =
+  | { type: 'delta'; delta: string }
+  | { type: 'audio'; audio: string; mimeType: string; sampleRate?: number }
+  | { type: 'tts-error'; ok: false; error: string };
+
+type AiLiveClientMessage = {
+  type?: string;
+  requestId?: string;
+  body?: AiChatRequestBody;
+  headers?: Record<string, unknown>;
+};
+
+type AiLiveServerEvent =
+  | (AiChatStreamEvent & { requestId: string })
+  | {
+      type: 'done';
+      ok: true;
+      requestId: string;
+      text: string;
+      meta: unknown;
+    }
+  | { type: 'error'; ok: false; requestId: string; error: string };
+
 const CORS_REQUEST_HEADERS =
   'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
+const AI_LIVE_SOCKET_PATH = '/ai/live';
+const AI_LIVE_MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
+const AI_LIVE_ALLOWED_HEADERS = new Set([
+  'x-yourwifey-llm-provider',
+  'x-yourwifey-llm-provider-key',
+  'x-yourwifey-tts-provider-key',
+  'x-yourwifey-tavily-provider-key',
+]);
 const LIVE_TTS_BRIDGE_FINAL_WAIT_MS = 15000;
 const RUNTIME_CHAT_PROVIDER_CACHE_TTL_MS = 10 * 60 * 1000;
 const RUNTIME_CHAT_PROVIDER_CACHE_MAX = 8;
@@ -472,6 +523,28 @@ function getHeaderValue(request: IncomingMessage, name: string) {
 
 function getHeaderSecret(request: IncomingMessage, name: string) {
   return getHeaderValue(request, name)?.trim() ?? '';
+}
+
+function createAiLiveRuntimeRequest(
+  request: IncomingMessage,
+  headers: AiLiveClientMessage['headers'],
+) {
+  const mergedHeaders: IncomingMessage['headers'] = { ...request.headers };
+  for (const [rawName, rawValue] of Object.entries(headers ?? {})) {
+    const name = rawName.toLowerCase();
+    if (!AI_LIVE_ALLOWED_HEADERS.has(name) || typeof rawValue !== 'string') {
+      continue;
+    }
+    const value = rawValue.trim();
+    if (value) {
+      mergedHeaders[name] = value;
+    }
+  }
+
+  return {
+    ...request,
+    headers: mergedHeaders,
+  } as IncomingMessage;
 }
 
 function stripAuthScheme(value: string, scheme: 'bearer' | 'basic') {
@@ -977,6 +1050,142 @@ function normalizeOpenAiStateMode(value: unknown): ChatProviderRequest['openAiSt
     : undefined;
 }
 
+async function runAiChatRequest({
+  allowServerProviderProxy,
+  body,
+  request,
+  streamEvent,
+}: {
+  allowServerProviderProxy: boolean;
+  body: AiChatRequestBody;
+  request: IncomingMessage;
+  streamEvent?: (event: AiChatStreamEvent) => void | Promise<void>;
+}) {
+  const messages = normalizeProviderMessages(body.messages);
+  if (messages.length === 0) {
+    throw new Error('messages[] is required.');
+  }
+
+  const targetStateKey = normalizeStateKey(
+    body.stateKey,
+    `twitch:${config.twitchChannel}:persona:riko`,
+  );
+  const providerName = normalizeRuntimeLlmProvider(body.llmProvider);
+  const appOwnedState = providerUsesAppOwnedState(providerName);
+  const requestedModel = typeof body.model === 'string' ? body.model : '';
+  const modelDecision = resolveServerProviderProxyModel({
+    allowlistEnvNames: getAllowlistEnvNamesForProvider(providerName),
+    browserProviderKeyPresent: Boolean(getHeaderSecret(request, 'x-yourwifey-llm-provider-key')),
+    configuredModel: getConfiguredModelForProvider(providerName, config),
+    defaultModel: getDefaultModelForProvider(providerName),
+    requestedModel,
+  });
+  if (!modelDecision.allowed) {
+    throw new Error(modelDecision.error);
+  }
+
+  const runtimeProvider = getRuntimeChatProvider(
+    config,
+    request,
+    body.llmProvider,
+    modelDecision.model,
+    allowServerProviderProxy,
+  );
+  if (!runtimeProvider) {
+    throw new Error('AI provider key is not configured.');
+  }
+  runtimeProvider.setModel?.(modelDecision.model);
+
+  const providerRequest: ChatProviderRequest = {
+    mode: body.mode === 'batch' ? 'batch' : 'direct',
+    activeChatters: Number.isFinite(body.activeChatters) ? Number(body.activeChatters) : 1,
+    disableState: body.disableState === true,
+    messages,
+    sourceMessages: [],
+    maxTokens: body.maxTokens,
+    responseFormat: normalizeResponseFormat(body.responseFormat),
+    stateKey: targetStateKey,
+    stateScope: normalizeStateScope(body.stateScope),
+    temperature: body.temperature,
+    transportMode: appOwnedState ? 'http-stream' : normalizeAiTransportMode(body.transportMode),
+    openAiStateMode: appOwnedState
+      ? 'stateless'
+      : normalizeOpenAiStateMode(body.openAiStateMode),
+  };
+
+  if (body.stream === true && streamEvent) {
+    const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
+    const bridgeConfig = bridgeRequest
+      ? getRuntimeTtsConfig(config, 'fish-speech', request, allowServerProviderProxy)
+      : null;
+    if (bridgeRequest && !bridgeConfig) {
+      await streamEvent({
+        type: 'tts-error',
+        ok: false,
+        error: 'Fish Speech live bridge provider key is not configured.',
+      });
+    }
+    const bridge = bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge(bridgeRequest) : null;
+    const bridgeDone = bridge
+      ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
+          onAudioChunk: (chunk) => {
+            void streamEvent({
+              type: 'audio',
+              audio: chunk.audio.toString('base64'),
+              mimeType: chunk.mimeType,
+              sampleRate: chunk.sampleRate,
+            });
+          },
+        }).catch((error) => {
+          void streamEvent({
+            type: 'tts-error',
+            ok: false,
+            error: error instanceof Error ? error.message : 'Live TTS bridge failed.',
+          });
+        })
+      : null;
+
+    try {
+      const providerResponse =
+        (await runtimeProvider.completeStream?.(providerRequest, {
+          onTextDelta: (delta) => {
+            void streamEvent({ type: 'delta', delta });
+            bridge?.push(delta);
+          },
+        })) ?? (await runtimeProvider.complete(providerRequest));
+      bridge?.close();
+      if (bridgeDone) {
+        const bridgeFinished = await waitForLiveTtsBridge(bridgeDone, () => {
+          bridge?.fail(new Error('Live TTS bridge finalization timed out.'));
+        });
+        if (!bridgeFinished) {
+          await streamEvent({
+            type: 'tts-error',
+            ok: false,
+            error: 'Live TTS bridge finalization timed out.',
+          });
+        }
+      }
+      return {
+        meta: providerResponse.meta ?? runtimeProvider.getState?.() ?? null,
+        text: providerResponse.text,
+      };
+    } catch (error) {
+      bridge?.fail(error instanceof Error ? error : new Error(String(error)));
+      if (bridgeDone) {
+        await waitForLiveTtsBridge(bridgeDone, () => {});
+      }
+      throw error;
+    }
+  }
+
+  const providerResponse = await runtimeProvider.complete(providerRequest);
+  return {
+    meta: providerResponse.meta ?? runtimeProvider.getState?.() ?? null,
+    text: providerResponse.text,
+  };
+}
+
 function normalizeEmbeddingInput(value: unknown) {
   return typeof value === 'string' ? value.trim().slice(0, 4000) : '';
 }
@@ -1408,150 +1617,23 @@ const httpServer = createServer(async (request, response) => {
 
   if (request.method === 'POST' && runtimePath === '/ai/chat') {
     try {
-      const body = await readRequestJson<{
-        mode?: 'direct' | 'batch';
-        activeChatters?: number;
-        disableState?: boolean;
-        model?: string;
-        messages?: unknown;
-        maxTokens?: number;
-        responseFormat?: unknown;
-        stateKey?: string;
-        stateScope?: 'chat' | 'memory';
-        stream?: boolean;
-        temperature?: number;
-        transportMode?: unknown;
-        openAiStateMode?: unknown;
-        ttsBridge?: unknown;
-        llmProvider?: unknown;
-      }>(request);
-      const messages = normalizeProviderMessages(body.messages);
-      if (messages.length === 0) {
-        writeJson(response, 200, { ok: false, error: 'messages[] is required.' });
-        return;
-      }
-
-      const targetStateKey = normalizeStateKey(
-        body.stateKey,
-        `twitch:${config.twitchChannel}:persona:riko`,
-      );
-      const providerName = normalizeRuntimeLlmProvider(body.llmProvider);
-      const appOwnedState = providerUsesAppOwnedState(providerName);
-      const requestedModel = typeof body.model === 'string' ? body.model : '';
-      const modelDecision = resolveServerProviderProxyModel({
-        allowlistEnvNames: getAllowlistEnvNamesForProvider(providerName),
-        browserProviderKeyPresent: Boolean(
-          getHeaderSecret(request, 'x-yourwifey-llm-provider-key'),
-        ),
-        configuredModel: getConfiguredModelForProvider(providerName, config),
-        defaultModel: getDefaultModelForProvider(providerName),
-        requestedModel,
-      });
-      if (!modelDecision.allowed) {
-        writeJson(response, 403, { ok: false, error: modelDecision.error });
-        return;
-      }
-
-      const runtimeProvider = getRuntimeChatProvider(
-        config,
-        request,
-        body.llmProvider,
-        modelDecision.model,
-        allowServerProviderProxy,
-      );
-      if (!runtimeProvider) {
-        writeJson(response, 200, {
-          ok: false,
-          error: 'AI provider key is not configured.',
-        });
-        return;
-      }
-      runtimeProvider.setModel?.(modelDecision.model);
-
-      const providerRequest: ChatProviderRequest = {
-        mode: body.mode === 'batch' ? 'batch' : 'direct',
-        activeChatters: Number.isFinite(body.activeChatters) ? Number(body.activeChatters) : 1,
-        disableState: body.disableState === true,
-        messages,
-        sourceMessages: [],
-        maxTokens: body.maxTokens,
-        responseFormat: normalizeResponseFormat(body.responseFormat),
-        stateKey: targetStateKey,
-        stateScope: normalizeStateScope(body.stateScope),
-        temperature: body.temperature,
-        transportMode: appOwnedState ? 'http-stream' : normalizeAiTransportMode(body.transportMode),
-        openAiStateMode: appOwnedState
-          ? 'stateless'
-          : normalizeOpenAiStateMode(body.openAiStateMode),
-      };
+      const body = await readRequestJson<AiChatRequestBody>(request);
 
       if (body.stream === true) {
         writeSseHead(response);
         const sse = createSseWriter(response);
-        const bridgeRequest = normalizeLiveTtsBridge(body.ttsBridge);
-        const bridgeConfig = bridgeRequest
-          ? getRuntimeTtsConfig(config, 'fish-speech', request, allowServerProviderProxy)
-          : null;
-        if (bridgeRequest && !bridgeConfig) {
-          await sse.write({
-            type: 'tts-error',
-            ok: false,
-            error: 'Fish Speech live bridge provider key is not configured.',
-          });
-        }
-        const bridge =
-          bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge(bridgeRequest) : null;
         let sseOpen = true;
-        const bridgeDone = bridge
-          ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
-              onAudioChunk: (chunk) => {
-                if (!sseOpen || response.writableEnded) {
-                  return;
-                }
-                void sse.write({
-                  type: 'audio',
-                  audio: chunk.audio.toString('base64'),
-                  mimeType: chunk.mimeType,
-                  sampleRate: chunk.sampleRate,
-                });
-              },
-            }).catch((error) => {
-              void sse.write({
-                type: 'tts-error',
-                ok: false,
-                error: error instanceof Error ? error.message : 'Live TTS bridge failed.',
-              });
-            })
-          : null;
-        let providerResponse: ChatProviderResponse;
-        try {
-          providerResponse =
-            (await runtimeProvider.completeStream?.(providerRequest, {
-              onTextDelta: (delta) => {
-                void sse.write({ type: 'delta', delta });
-                bridge?.push(delta);
-              },
-            })) ?? (await runtimeProvider.complete(providerRequest));
-          bridge?.close();
-          if (bridgeDone) {
-            const bridgeFinished = await waitForLiveTtsBridge(bridgeDone, () => {
-              bridge?.fail(new Error('Live TTS bridge finalization timed out.'));
-            });
-            if (!bridgeFinished && !response.writableEnded) {
-              await sse.write({
-                type: 'tts-error',
-                ok: false,
-                error: 'Live TTS bridge finalization timed out.',
-              });
+        const providerResponse = await runAiChatRequest({
+          allowServerProviderProxy,
+          body,
+          request,
+          streamEvent: (event) => {
+            if (!sseOpen || response.writableEnded) {
+              return;
             }
-          }
-        } catch (error) {
-          bridge?.fail(error instanceof Error ? error : new Error(String(error)));
-          if (bridgeDone) {
-            await waitForLiveTtsBridge(bridgeDone, () => {});
-          }
-          throw error;
-        }
+            void sse.write(event);
+          },
+        });
 
         sseOpen = false;
         await sse.flush();
@@ -1559,18 +1641,22 @@ const httpServer = createServer(async (request, response) => {
           type: 'done',
           ok: true,
           text: providerResponse.text,
-          meta: providerResponse.meta ?? runtimeProvider.getState?.() ?? null,
+          meta: providerResponse.meta ?? null,
         });
         response.end();
         return;
       }
 
-      const providerResponse = await runtimeProvider.complete(providerRequest);
+      const providerResponse = await runAiChatRequest({
+        allowServerProviderProxy,
+        body,
+        request,
+      });
 
       writeJson(response, 200, {
         ok: true,
         text: providerResponse.text,
-        meta: providerResponse.meta ?? runtimeProvider.getState?.() ?? null,
+        meta: providerResponse.meta ?? null,
       });
     } catch (error) {
       if (response.headersSent) {
@@ -1620,6 +1706,132 @@ const httpServer = createServer(async (request, response) => {
   }
 
   writeJson(response, 404, { ok: false, error: 'Not found.' });
+});
+
+function rawDataToUtf8(raw: RawData) {
+  if (Array.isArray(raw)) {
+    return Buffer.concat(raw).toString('utf8');
+  }
+  if (raw instanceof ArrayBuffer) {
+    return Buffer.from(raw).toString('utf8');
+  }
+  return raw.toString('utf8');
+}
+
+function sendAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
+  if (socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  if (socket.bufferedAmount > AI_LIVE_MAX_BUFFERED_BYTES) {
+    socket.close(1013, 'AI live socket backpressure limit exceeded.');
+    return false;
+  }
+  socket.send(JSON.stringify(event), (error) => {
+    if (error && socket.readyState === WebSocket.OPEN) {
+      socket.close(1011, 'AI live socket send failed.');
+    }
+  });
+  return true;
+}
+
+async function handleAiLiveMessage(
+  socket: WebSocket,
+  request: IncomingMessage,
+  raw: RawData,
+) {
+  let message: AiLiveClientMessage;
+  try {
+    message = JSON.parse(rawDataToUtf8(raw)) as AiLiveClientMessage;
+  } catch {
+    sendAiLiveEvent(socket, {
+      type: 'error',
+      ok: false,
+      requestId: 'unknown',
+      error: 'Invalid AI live websocket JSON.',
+    });
+    return;
+  }
+
+  const requestId =
+    typeof message.requestId === 'string' && message.requestId.trim()
+      ? message.requestId.trim().slice(0, 120)
+      : `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  if (message.type === 'ping') {
+    sendAiLiveEvent(socket, { type: 'done', ok: true, requestId, text: '', meta: null });
+    return;
+  }
+
+  if (message.type !== 'chat.create' || !message.body || typeof message.body !== 'object') {
+    sendAiLiveEvent(socket, {
+      type: 'error',
+      ok: false,
+      requestId,
+      error: 'Expected chat.create with a body.',
+    });
+    return;
+  }
+
+  try {
+    const runtimeRequest = createAiLiveRuntimeRequest(request, message.headers);
+    const providerResponse = await runAiChatRequest({
+      allowServerProviderProxy: config.providerProxyEnabled,
+      body: { ...message.body, stream: true },
+      request: runtimeRequest,
+      streamEvent: async (event) => {
+        sendAiLiveEvent(socket, { ...event, requestId });
+      },
+    });
+    sendAiLiveEvent(socket, {
+      type: 'done',
+      ok: true,
+      requestId,
+      text: providerResponse.text,
+      meta: providerResponse.meta ?? null,
+    });
+  } catch (error) {
+    sendAiLiveEvent(socket, {
+      type: 'error',
+      ok: false,
+      requestId,
+      error: error instanceof Error ? error.message : 'AI live websocket request failed.',
+    });
+  }
+}
+
+const aiLiveSocket = new WebSocketServer({
+  noServer: true,
+  perMessageDeflate: false,
+});
+
+httpServer.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
+  if (getRuntimeApiPath(url.pathname) !== AI_LIVE_SOCKET_PATH) {
+    return;
+  }
+  aiLiveSocket.handleUpgrade(request, socket, head, (webSocket) => {
+    aiLiveSocket.emit('connection', webSocket, request);
+  });
+});
+
+aiLiveSocket.on('connection', (socket, request) => {
+  let queue = Promise.resolve();
+  const onMessage = (raw: RawData) => {
+    queue = queue.then(
+      () => handleAiLiveMessage(socket, request, raw),
+      () => handleAiLiveMessage(socket, request, raw),
+    );
+    void queue.catch(() => {});
+  };
+  const cleanup = () => {
+    socket.off('message', onMessage);
+    socket.off('close', cleanup);
+    socket.off('error', cleanup);
+  };
+
+  socket.on('message', onMessage);
+  socket.once('close', cleanup);
+  socket.once('error', cleanup);
 });
 
 const overlaySocket = new OverlaySocket(httpServer, (event: OverlayClientEvent) => {
@@ -1703,6 +1915,7 @@ function shutdown() {
   disposeRuntimeChatProviderCache();
   disposeChatProvider(provider);
   chatSource.stop();
+  aiLiveSocket.close();
   overlaySocket.close();
   httpServer.close();
 }
@@ -1712,6 +1925,7 @@ process.on('SIGTERM', shutdown);
 
 httpServer.listen(config.botPort, () => {
   console.log(`Web Waifu 4 stream bot listening on http://127.0.0.1:${config.botPort}`);
+  console.log(`AI Live WebSocket path: ws://127.0.0.1:${config.botPort}${AI_LIVE_SOCKET_PATH}`);
   console.log(`Overlay WebSocket path: ws://127.0.0.1:${config.botPort}/ws`);
   console.log(`Twitch chat mode: ${serverTwitchMode} (#${chatSource.channel})`);
   chatSource.start();

@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 const localApiProxy = {
   changeOrigin: true,
   target: `http://127.0.0.1:${process.env.BOT_PORT || '8797'}`,
+  ws: true,
 };
 
 export default defineConfig({
