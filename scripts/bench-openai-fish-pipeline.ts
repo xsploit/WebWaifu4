@@ -35,6 +35,10 @@ type BenchOptions = {
   progress: boolean;
   prompt: string;
   repeat: number;
+  routeBridgeChunkingStrategy: 'app' | 'python-safe' | 'eager';
+  routeBridgeMaxChars: number;
+  routeBridgeMinChars: number;
+  routeBridgeSoftChars: number;
   routeServerUrl: string;
   routeStateKey: string;
   routeStateMode: 'conversation' | 'previous-response' | 'stateless';
@@ -139,6 +143,13 @@ function parseStateMode(value: string): BenchOptions['routeStateMode'] {
   return 'stateless';
 }
 
+function parseBridgeChunkingStrategy(value: string): BenchOptions['routeBridgeChunkingStrategy'] {
+  if (value === 'python-safe' || value === 'eager' || value === 'app') {
+    return value;
+  }
+  return 'app';
+}
+
 function printHelp() {
   console.log(`OpenAI Responses + Fish Speech latency benchmark
 
@@ -171,6 +182,10 @@ Options:
   --server-url http://127.0.0.1:8797  Runtime server for route-* modes
   --state-mode stateless       route-* OpenAI state mode
   --state-key bench:local      route-* state key
+  --bridge-chunking app        route-* live bridge chunking: app, eager, python-safe
+  --bridge-min-chars 28        route-* min text before Fish gets a chunk
+  --bridge-max-chars 180       route-* hard text chunk cap
+  --bridge-soft-chars 160      route-* soft boundary target for python-safe
   --progress                   Print live delta/audio events
   --json                       Print JSON results
 `);
@@ -206,6 +221,10 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
     progress: process.argv.includes('--progress'),
     prompt: readArg('--prompt') || DEFAULT_PROMPT,
     repeat: parseNumber(readArg('--repeat'), 1, 1, 20),
+    routeBridgeChunkingStrategy: parseBridgeChunkingStrategy(readArg('--bridge-chunking')),
+    routeBridgeMaxChars: parseNumber(readArg('--bridge-max-chars'), 180, 16, 1000),
+    routeBridgeMinChars: parseNumber(readArg('--bridge-min-chars'), 28, 1, 500),
+    routeBridgeSoftChars: parseNumber(readArg('--bridge-soft-chars'), 160, 8, 1000),
     routeServerUrl:
       readArg('--server-url') ||
       `http://127.0.0.1:${config.botPort || Number(process.env.BOT_PORT) || 8797}`,
@@ -665,11 +684,15 @@ function createRouteTtsBridge(options: BenchOptions): RemoteTtsRequest {
     provider: 'fish-speech',
     text: '',
     streamingMode: 'live-bridge',
+    chunkingStrategy: options.routeBridgeChunkingStrategy,
     voiceId: options.fishVoiceId,
     modelId: options.fishModel,
     latency: options.fishLatency,
     conditionOnPreviousChunks: options.conditionOnPreviousChunks,
     chunkLength: options.fishChunkLength,
+    minBufferChars: options.routeBridgeMinChars,
+    maxBufferChars: options.routeBridgeMaxChars,
+    softBufferChars: options.routeBridgeSoftChars,
   };
 }
 
@@ -888,6 +911,11 @@ function printResults(options: BenchOptions, results: ResultRow[]) {
   console.log(`fish_latency=${options.fishLatency}`);
   console.log(`chunk_length=${options.fishChunkLength}`);
   console.log(`condition_on_previous_chunks=${options.conditionOnPreviousChunks}`);
+  if (options.mode === 'route-http' || options.mode === 'route-ws' || options.mode === 'all') {
+    console.log(
+      `bridge_chunking=${options.routeBridgeChunkingStrategy} min=${options.routeBridgeMinChars} max=${options.routeBridgeMaxChars} soft=${options.routeBridgeSoftChars}`,
+    );
+  }
   console.log('');
   console.table(
     results.map((result) => ({

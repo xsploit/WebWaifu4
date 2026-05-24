@@ -24,6 +24,10 @@ export type RemoteTtsRequest = {
   latency?: FishSpeechLatency;
   conditionOnPreviousChunks?: boolean;
   chunkLength?: number;
+  minBufferChars?: number;
+  maxBufferChars?: number;
+  softBufferChars?: number;
+  chunkingStrategy?: 'app' | 'python-safe' | 'eager' | string;
   deliveryMode?: InworldDeliveryMode | string;
   bufferCharThreshold?: number;
 };

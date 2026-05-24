@@ -125,7 +125,9 @@ function createProvider(
     if (!config.aiApiKey) {
       throw new Error(
         `${config.aiProvider} requires ${
-          config.aiProvider === 'openrouter-responses' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY or AI_API_KEY'
+          config.aiProvider === 'openrouter-responses'
+            ? 'OPENROUTER_API_KEY'
+            : 'OPENAI_API_KEY or AI_API_KEY'
         }.`,
       );
     }
@@ -594,6 +596,17 @@ function normalizeTtsLatency(value: unknown) {
   return value === 'balanced' || value === 'normal' ? value : undefined;
 }
 
+function normalizeBridgeNumber(value: unknown, min: number, max: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function normalizeBridgeChunkingStrategy(value: unknown) {
+  return value === 'python-safe' || value === 'eager' || value === 'app' ? value : undefined;
+}
+
 function normalizeLiveTtsBridge(
   value: unknown,
 ): Omit<RemoteTtsRequest, 'provider' | 'text'> | null {
@@ -614,6 +627,10 @@ function normalizeLiveTtsBridge(
         ? source.conditionOnPreviousChunks
         : undefined,
     chunkLength: typeof source.chunkLength === 'number' ? source.chunkLength : undefined,
+    minBufferChars: normalizeBridgeNumber(source.minBufferChars, 1, 500),
+    maxBufferChars: normalizeBridgeNumber(source.maxBufferChars, 16, 1000),
+    softBufferChars: normalizeBridgeNumber(source.softBufferChars, 8, 1000),
+    chunkingStrategy: normalizeBridgeChunkingStrategy(source.chunkingStrategy),
   };
 }
 
@@ -727,24 +744,92 @@ function createMetadataSpeechFilter() {
   };
 }
 
-function createLiveSpeechTextBridge() {
+const LIVE_BRIDGE_ABBREVIATIONS = new Set([
+  'dr.',
+  'mr.',
+  'mrs.',
+  'ms.',
+  'prof.',
+  'sr.',
+  'jr.',
+  'vs.',
+  'etc.',
+]);
+
+function getLastWordFragment(text: string) {
+  return (text.match(/[A-Za-z]+\\.$/)?.[0] ?? '').toLowerCase();
+}
+
+function isDecimalPoint(text: string, index: number) {
+  return /\\d/.test(text[index - 1] ?? '') && /\\d/.test(text[index + 1] ?? '');
+}
+
+function findSentenceBoundary(text: string) {
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (!char || !'.?!'.includes(char)) {
+      continue;
+    }
+    if (
+      char === '.' &&
+      (isDecimalPoint(text, index) ||
+        LIVE_BRIDGE_ABBREVIATIONS.has(getLastWordFragment(text.slice(0, index + 1))))
+    ) {
+      continue;
+    }
+    const next = text[index + 1] ?? '';
+    if (!next || (!/\\s/.test(next) && !`"')]} `.includes(next))) {
+      continue;
+    }
+    return index + 1;
+  }
+  return -1;
+}
+
+function findSoftBoundary(text: string, softLength: number, maxLength: number) {
+  if (text.length < maxLength) {
+    return -1;
+  }
+  const region = text.slice(0, maxLength);
+  for (const delimiter of [', ', '; ', ': ', ' - ', ' ']) {
+    const index = region.lastIndexOf(delimiter);
+    if (index >= softLength) {
+      return index + delimiter.length;
+    }
+  }
+  return maxLength;
+}
+
+function createLiveSpeechTextBridge(
+  options: Omit<RemoteTtsRequest, 'provider' | 'text'> | null = null,
+) {
   const queue = createAsyncTextQueue();
   const filter = createMetadataSpeechFilter();
   let pending = '';
+  const strategy = options?.chunkingStrategy ?? 'app';
+  const minLength = options?.minBufferChars ?? (strategy === 'python-safe' ? 160 : 28);
+  const maxLength = options?.maxBufferChars ?? (strategy === 'python-safe' ? 240 : 180);
+  const softLength = options?.softBufferChars ?? (strategy === 'python-safe' ? 160 : minLength);
 
   const flush = (force = false) => {
     while (pending.trim()) {
-      const maxLength = 180;
-      const minLength = 28;
       if (!force && pending.length < minLength) {
         return;
       }
-      const windowText = pending.slice(0, maxLength);
-      const matches = Array.from(windowText.matchAll(/[.!?]["')\]]?\s+|[,;:]\s+|\n+/g));
-      const boundary = [...matches].reverse().find((match) => (match.index ?? 0) >= minLength);
-      let splitAt = boundary ? (boundary.index ?? 0) + boundary[0].length : -1;
-      if (splitAt === -1 && pending.length >= maxLength) {
-        splitAt = Math.max(windowText.lastIndexOf(' '), minLength);
+      let splitAt = -1;
+      if (strategy === 'python-safe') {
+        splitAt = findSentenceBoundary(pending);
+        if (splitAt < minLength) {
+          splitAt = findSoftBoundary(pending, softLength, maxLength);
+        }
+      } else {
+        const windowText = pending.slice(0, maxLength);
+        const matches = Array.from(windowText.matchAll(/[.!?]["')\]]?\s+|[,;:]\s+|\n+/g));
+        const boundary = [...matches].reverse().find((match) => (match.index ?? 0) >= minLength);
+        splitAt = boundary ? (boundary.index ?? 0) + boundary[0].length : -1;
+        if (splitAt === -1 && pending.length >= maxLength) {
+          splitAt = Math.max(windowText.lastIndexOf(' '), minLength);
+        }
       }
       if (splitAt === -1) {
         if (!force) {
@@ -1316,7 +1401,8 @@ const httpServer = createServer(async (request, response) => {
             error: 'Fish Speech live bridge provider key is not configured.',
           });
         }
-        const bridge = bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge() : null;
+        const bridge =
+          bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge(bridgeRequest) : null;
         let sseOpen = true;
         const bridgeDone = bridge
           ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
