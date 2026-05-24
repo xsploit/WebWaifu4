@@ -1,12 +1,13 @@
 import { app, BrowserWindow, Menu, ipcMain, shell, screen } from 'electron';
 import http from 'node:http';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(__dirname, '..');
-const backendPort = String(process.env.ELECTRON_BOT_PORT || process.env.BOT_PORT || '8797');
+let backendPort = normalizePort(process.env.ELECTRON_BOT_PORT || process.env.BOT_PORT || '8797');
 const devServerUrl = (process.env.ELECTRON_DEV_SERVER_URL || '').trim();
 const externalBackend = process.env.ELECTRON_BACKEND_EXTERNAL === 'true';
 const allowedWindowModes = new Set(['editor', 'desktop', 'overlay']);
@@ -63,9 +64,79 @@ function getWindowOptions(mode) {
   };
 }
 
+function normalizePort(value) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  return String(Number.isFinite(parsed) && parsed > 0 && parsed < 65536 ? parsed : 8797);
+}
+
+function isBackendHealthy(port) {
+  return new Promise((resolve) => {
+    const request = http.get(
+      {
+        host: '127.0.0.1',
+        path: '/health',
+        port,
+        timeout: 1200,
+      },
+      (response) => {
+        response.resume();
+        resolve(response.statusCode === 200);
+      },
+    );
+    request.on('error', () => resolve(false));
+    request.on('timeout', () => {
+      request.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function canListenOnPort(port) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(false));
+    probe.once('listening', () => {
+      probe.close(() => resolve(true));
+    });
+    probe.listen(Number(port), '127.0.0.1');
+  });
+}
+
+async function findAvailablePort(startPort) {
+  for (let port = startPort; port < startPort + 50 && port < 65536; port += 1) {
+    if (await canListenOnPort(String(port))) {
+      return String(port);
+    }
+  }
+  throw new Error(`No available backend port near ${startPort}.`);
+}
+
+async function waitForBackendHealth(port) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (await isBackendHealthy(port)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error(`Local backend did not become healthy on port ${port}.`);
+}
+
 async function startBackendIfNeeded() {
   if (externalBackend) {
     return;
+  }
+
+  if (await isBackendHealthy(backendPort)) {
+    console.log(`[desktop] reusing healthy local backend on port ${backendPort}`);
+    return;
+  }
+
+  if (!(await canListenOnPort(backendPort))) {
+    const requestedPort = backendPort;
+    backendPort = await findAvailablePort(Number.parseInt(requestedPort, 10) + 1);
+    console.warn(
+      `[desktop] port ${requestedPort} is busy but not healthy; starting backend on ${backendPort}`,
+    );
   }
 
   process.env.BOT_PORT = backendPort;
@@ -78,6 +149,7 @@ async function startBackendIfNeeded() {
   }
 
   await import(pathToFileURL(serverEntry).href);
+  await waitForBackendHealth(backendPort);
 }
 
 function startStaticServer() {

@@ -20,6 +20,7 @@ def main() -> int:
 
     for name in [
         "README.md",
+        "GOAL.md",
         "ROADMAP.md",
         "PROGRESS.md",
         "electron/main.mjs",
@@ -34,6 +35,7 @@ def main() -> int:
     desktop_scripts = [
         '"desktop:dev"',
         '"desktop:start"',
+        '"desktop:clean"',
         '"desktop:pack"',
     ]
     package_text = (ROOT / "package.json").read_text(encoding="utf-8")
@@ -57,13 +59,13 @@ def main() -> int:
     ok = ok and tests_passed
     checks.append(f"vitest: {'passed' if tests_passed else test_output[:300]}")
 
-    build_code, build_output = run(["npm", "run", "build"])
-    build_passed = build_code == 0
-    ok = ok and build_passed
-    checks.append(f"build: {'passed' if build_passed else build_output[:300]}")
+    pack_code, pack_output = run(["npm", "run", "desktop:pack"])
+    desktop_pack_passed = pack_code == 0
+    ok = ok and desktop_pack_passed
+    checks.append(f"desktop:pack: {'passed' if desktop_pack_passed else pack_output[:300]}")
 
     payload = {
-        "build_passed": build_passed,
+        "desktop_pack_passed": desktop_pack_passed,
         "ralph_eval_passed": ok,
         "tests_passed": tests_passed,
         "notes": " | ".join(checks),

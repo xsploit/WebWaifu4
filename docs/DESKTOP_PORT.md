@@ -13,6 +13,8 @@ Electron is the first desktop target because WebWaifu 4 depends heavily on Chrom
 - In built mode, Electron imports `server/dist/index.js` and serves `dist/` through a tiny local static server.
 - The React app still talks to the local backend at `http://127.0.0.1:8797`.
 - Provider keys remain in the renderer's existing browser-local storage path and are sent to the local backend only for the current provider request.
+- If the requested backend port already has a healthy WebWaifu `/health` endpoint, Electron reuses that backend instead of starting a second listener.
+- If the requested backend port is busy but does not expose healthy WebWaifu `/health`, Electron picks the next available local port and passes that port to the renderer.
 
 ## Window Modes
 
