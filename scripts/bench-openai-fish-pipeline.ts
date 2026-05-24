@@ -6,9 +6,18 @@ import {
   streamFishSpeechTextStream,
   type FishSpeechLatency,
   type RemoteTextStream,
+  type RemoteTtsRequest,
 } from '../server/src/tts/RemoteTtsProvider.js';
 
-type Mode = 'fish' | 'llm-http' | 'llm-ws' | 'pipeline-http' | 'pipeline-ws' | 'all';
+type Mode =
+  | 'fish'
+  | 'llm-http'
+  | 'llm-ws'
+  | 'pipeline-http'
+  | 'pipeline-ws'
+  | 'route-http'
+  | 'route-ws'
+  | 'all';
 
 type BenchOptions = {
   backupPath: string;
@@ -26,6 +35,9 @@ type BenchOptions = {
   progress: boolean;
   prompt: string;
   repeat: number;
+  routeServerUrl: string;
+  routeStateKey: string;
+  routeStateMode: 'conversation' | 'previous-response' | 'stateless';
   textChunkChars: number;
   textChunkDelayMs: number;
 };
@@ -91,6 +103,8 @@ function parseMode(value: string): Mode {
     value === 'llm-ws' ||
     value === 'pipeline-http' ||
     value === 'pipeline-ws' ||
+    value === 'route-http' ||
+    value === 'route-ws' ||
     value === 'all'
   ) {
     return value;
@@ -118,6 +132,13 @@ function parseFormat(value: string, fallback: StreamBotConfig['fishSpeechFormat'
   throw new Error(`Invalid Fish format: ${value}`);
 }
 
+function parseStateMode(value: string): BenchOptions['routeStateMode'] {
+  if (value === 'conversation' || value === 'previous-response' || value === 'stateless') {
+    return value;
+  }
+  return 'stateless';
+}
+
 function printHelp() {
   console.log(`OpenAI Responses + Fish Speech latency benchmark
 
@@ -130,6 +151,8 @@ Modes:
   llm-ws         OpenAI Responses WebSocket only
   pipeline-http  OpenAI HTTP deltas into Fish live bridge
   pipeline-ws    OpenAI WebSocket deltas into Fish live bridge
+  route-http     Exact /ai/chat SSE route with HTTP-stream transport + Fish bridge
+  route-ws       Exact /ai/chat SSE route with WebSocket transport + Fish bridge
   all            Run every mode above
 
 Options:
@@ -145,6 +168,9 @@ Options:
   --text-chunk-chars 999       Fish-only streamed text chunk size
   --chunk-delay-ms 0           Fish-only delay between text chunks
   --hard-timeout-ms 45000      Exit with partial logs if a provider stalls
+  --server-url http://127.0.0.1:8797  Runtime server for route-* modes
+  --state-mode stateless       route-* OpenAI state mode
+  --state-key bench:local      route-* state key
   --progress                   Print live delta/audio events
   --json                       Print JSON results
 `);
@@ -180,6 +206,11 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
     progress: process.argv.includes('--progress'),
     prompt: readArg('--prompt') || DEFAULT_PROMPT,
     repeat: parseNumber(readArg('--repeat'), 1, 1, 20),
+    routeServerUrl:
+      readArg('--server-url') ||
+      `http://127.0.0.1:${config.botPort || Number(process.env.BOT_PORT) || 8797}`,
+    routeStateKey: readArg('--state-key') || 'bench:local',
+    routeStateMode: parseStateMode(readArg('--state-mode')),
     textChunkChars: parseNumber(readArg('--text-chunk-chars'), 999, 1, 2000),
     textChunkDelayMs: parseNumber(readArg('--chunk-delay-ms'), 0, 0, 10000),
   };
@@ -629,9 +660,219 @@ async function runPipeline(
   };
 }
 
+function createRouteTtsBridge(options: BenchOptions): RemoteTtsRequest {
+  return {
+    provider: 'fish-speech',
+    text: '',
+    streamingMode: 'live-bridge',
+    voiceId: options.fishVoiceId,
+    modelId: options.fishModel,
+    latency: options.fishLatency,
+    conditionOnPreviousChunks: options.conditionOnPreviousChunks,
+    chunkLength: options.fishChunkLength,
+  };
+}
+
+function createRouteHeaders(config: StreamBotConfig) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-yourwifey-llm-provider': 'openai-responses',
+  };
+  if (config.aiApiKey) {
+    headers['x-yourwifey-llm-provider-key'] = config.aiApiKey;
+  }
+  if (config.fishSpeechApiKey) {
+    headers['x-yourwifey-tts-provider-key'] = config.fishSpeechApiKey;
+  }
+  return headers;
+}
+
+function createRouteBody(options: BenchOptions, useWebSocket: boolean) {
+  return {
+    activeChatters: 1,
+    disableState: options.routeStateMode === 'stateless',
+    llmProvider: 'openai-responses',
+    maxTokens: options.llmMaxOutputTokens,
+    messages: [
+      {
+        content:
+          'You are a live VTuber assistant. Reply briefly and naturally. Do not include hidden reasoning.',
+        role: 'system',
+      },
+      { content: options.prompt, role: 'user' },
+    ],
+    mode: 'direct',
+    model: options.llmModel,
+    openAiStateMode: options.routeStateMode,
+    stateKey: `${options.routeStateKey}:${useWebSocket ? 'ws' : 'http'}`,
+    stateScope: 'chat',
+    stream: true,
+    temperature: 0.4,
+    transportMode: useWebSocket ? 'websocket' : 'http-stream',
+    ttsBridge: createRouteTtsBridge(options),
+  };
+}
+
+async function readRouteSse(
+  response: Response,
+  options: BenchOptions,
+  mode: ResultRow['mode'],
+  run: number,
+  startedAt: number,
+  stats: {
+    audioBytes: number;
+    audioChunks: number;
+    deltaChars: number;
+    deltaCount: number;
+    firstAudioAt: number | null;
+    firstDeltaAt: number | null;
+    firstTextAt: number | null;
+    lastAudioAt: number | null;
+    textChunks: number;
+  },
+) {
+  if (!response.body) {
+    throw new Error('/ai/chat did not return a readable stream.');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const handleBlock = (block: string) => {
+    const dataText = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim();
+    if (!dataText) {
+      return;
+    }
+    const event = JSON.parse(dataText) as {
+      audio?: string;
+      delta?: string;
+      error?: string;
+      mimeType?: string;
+      ok?: boolean;
+      sampleRate?: number;
+      text?: string;
+      type?: string;
+    };
+    if (event.type === 'delta' && event.delta) {
+      const now = performance.now();
+      stats.firstDeltaAt ??= now;
+      stats.deltaCount += 1;
+      stats.deltaChars += event.delta.length;
+      if (options.progress) {
+        console.log(
+          `[${mode} run ${run}] delta ${stats.deltaCount} ${Math.round(now - startedAt)}ms chars=${event.delta.length}`,
+        );
+      }
+      return;
+    }
+    if (event.type === 'audio' && event.audio) {
+      const now = performance.now();
+      stats.firstAudioAt ??= now;
+      stats.lastAudioAt = now;
+      stats.audioChunks += 1;
+      stats.audioBytes += Buffer.from(event.audio, 'base64').length;
+      if (options.progress) {
+        console.log(
+          `[${mode} run ${run}] audio ${stats.audioChunks} ${Math.round(now - startedAt)}ms`,
+        );
+      }
+      return;
+    }
+    if (event.type === 'tts-error') {
+      throw new Error(event.error || 'Route live TTS bridge failed.');
+    }
+    if (event.type === 'error' || event.ok === false) {
+      throw new Error(event.error || 'Route AI request failed.');
+    }
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop() ?? '';
+      for (const block of blocks) {
+        handleBlock(block);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      handleBlock(buffer);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function runRoutePipeline(
+  config: StreamBotConfig,
+  options: BenchOptions,
+  run: number,
+  useWebSocket: boolean,
+): Promise<ResultRow> {
+  const startedAt = performance.now();
+  const mode: ResultRow['mode'] = useWebSocket ? 'route-ws' : 'route-http';
+  const controller = new AbortController();
+  const stats = {
+    audioBytes: 0,
+    audioChunks: 0,
+    deltaChars: 0,
+    deltaCount: 0,
+    firstAudioAt: null as number | null,
+    firstDeltaAt: null as number | null,
+    firstTextAt: null as number | null,
+    lastAudioAt: null as number | null,
+    textChunks: 0,
+  };
+
+  await withHardTimeout(
+    options,
+    mode,
+    async () => {
+      const response = await fetch(`${options.routeServerUrl.replace(/\/$/, '')}/ai/chat`, {
+        body: JSON.stringify(createRouteBody(options, useWebSocket)),
+        headers: createRouteHeaders(config),
+        method: 'POST',
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`/ai/chat failed with HTTP ${response.status}: ${await response.text()}`);
+      }
+      await readRouteSse(response, options, mode, run, startedAt, stats);
+    },
+    () => controller.abort(),
+  );
+
+  return {
+    audioBytes: stats.audioBytes,
+    audioChunks: stats.audioChunks,
+    deltaChars: stats.deltaChars,
+    deltaCount: stats.deltaCount,
+    firstAudioMs: stats.firstAudioAt === null ? null : stats.firstAudioAt - startedAt,
+    firstDeltaMs: stats.firstDeltaAt === null ? null : stats.firstDeltaAt - startedAt,
+    firstTextToAudioMs:
+      stats.firstAudioAt === null || stats.firstDeltaAt === null
+        ? null
+        : stats.firstAudioAt - stats.firstDeltaAt,
+    lastAudioMs: stats.lastAudioAt === null ? null : stats.lastAudioAt - startedAt,
+    mode,
+    run,
+    textChunks: stats.deltaCount > 0 ? 1 : 0,
+    totalMs: performance.now() - startedAt,
+  };
+}
+
 function modesToRun(mode: Mode): Array<Exclude<Mode, 'all'>> {
   if (mode === 'all') {
-    return ['fish', 'llm-http', 'llm-ws', 'pipeline-http', 'pipeline-ws'];
+    return ['fish', 'llm-http', 'llm-ws', 'pipeline-http', 'pipeline-ws', 'route-http', 'route-ws'];
   }
   return [mode];
 }
@@ -683,8 +924,12 @@ async function main() {
   const options = parseOptions(config);
   hydrateFromBackup(config, options);
   const modes = modesToRun(options.mode);
-  const needsFish = modes.some((mode) => mode === 'fish' || mode.startsWith('pipeline-'));
-  const needsOpenAi = modes.some((mode) => mode.startsWith('llm-') || mode.startsWith('pipeline-'));
+  const needsFish = modes.some(
+    (mode) => mode === 'fish' || mode.startsWith('pipeline-') || mode.startsWith('route-'),
+  );
+  const needsOpenAi = modes.some(
+    (mode) => mode.startsWith('llm-') || mode.startsWith('pipeline-') || mode.startsWith('route-'),
+  );
   if (needsFish && !config.fishSpeechApiKey) {
     throw new Error('Missing Fish key. Set FISH_AUDIO_API_KEY or pass --backup.');
   }
@@ -707,8 +952,12 @@ async function main() {
           results.push(await runLlmOnly(config, options, run, true));
         } else if (mode === 'pipeline-http') {
           results.push(await runPipeline(config, options, run, false));
-        } else {
+        } else if (mode === 'pipeline-ws') {
           results.push(await runPipeline(config, options, run, true));
+        } else if (mode === 'route-http') {
+          results.push(await runRoutePipeline(config, options, run, false));
+        } else {
+          results.push(await runRoutePipeline(config, options, run, true));
         }
       } catch (error) {
         results.push({
