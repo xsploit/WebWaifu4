@@ -23,6 +23,7 @@ type Mode =
   | 'direct-http'
   | 'direct-ws'
   | 'gemini-live'
+  | 'gemini-stream'
   | 'route-http'
   | 'route-ws'
   | 'all';
@@ -124,6 +125,7 @@ function parseMode(value: string): Mode {
     value === 'direct-http' ||
     value === 'direct-ws' ||
     value === 'gemini-live' ||
+    value === 'gemini-stream' ||
     value === 'route-http' ||
     value === 'route-ws' ||
     value === 'all'
@@ -206,6 +208,7 @@ Modes:
   direct-http    Raw OpenAI HTTP stream into one Fish realtime stream, no app backend route
   direct-ws      Raw persistent OpenAI WS into one Fish realtime stream, no app backend route
   gemini-live    Gemini Live API direct session, default native audio output
+  gemini-stream  Gemini Flash LLM text stream into one Fish realtime stream
   route-http     Exact /ai/chat SSE route with HTTP-stream transport + Fish bridge
   route-ws       Exact /ai/chat SSE route with WebSocket transport + Fish bridge
   all            Run every mode above
@@ -220,7 +223,7 @@ Options:
   --openai-warmup true         Warm direct-ws with one tiny generated turn before timing
   --fish-warmup true           Warm Fish with one tiny realtime request before timing
   --fish-model s2              Fish backend/model, default env/backup/config
-  --gemini-model gemini-2.5-flash-native-audio-preview-12-2025
+  --gemini-model gemini-2.5-flash
   --gemini-modality audio      Gemini Live response modality: audio or text
   --voice <reference-id>       Fish reference id, default backup/config
   --chunk-length 160           Fish chunk_length
@@ -244,6 +247,7 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
   const modelArg = readArg('--model');
   const fishModelArg = readArg('--fish-model');
   const llmModelArg = readArg('--llm-model');
+  const mode = parseMode(readArg('--mode'));
   const fishModel =
     fishModelArg ||
     (modelArg && !modelArg.startsWith('gpt-') ? modelArg : '') ||
@@ -264,13 +268,15 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
     format: parseFormat(readArg('--format'), config.fishSpeechFormat || 'pcm'),
     geminiApiKey:
       readArg('--gemini-api-key') || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-    geminiModel: readArg('--gemini-model') || 'gemini-2.5-flash-native-audio-preview-12-2025',
+    geminiModel:
+      readArg('--gemini-model') ||
+      (mode === 'gemini-live' ? 'gemini-2.5-flash-native-audio-latest' : 'gemini-2.5-flash'),
     geminiModality: parseGeminiModality(readArg('--gemini-modality')),
     hardTimeoutMs: parseNumber(readArg('--hard-timeout-ms'), 45000, 0, 300000),
     json: process.argv.includes('--json'),
     llmMaxOutputTokens: parseNumber(readArg('--max-output-tokens'), 200, 16, 4096),
     llmModel,
-    mode: parseMode(readArg('--mode')),
+    mode,
     openAiReasoningEffort: parseReasoningEffort(readArg('--reasoning'), 'minimal'),
     openAiWarmup: parseBoolean(readArg('--openai-warmup'), false),
     fishWarmup: parseBoolean(readArg('--fish-warmup'), false),
@@ -1273,6 +1279,117 @@ async function runGeminiLive(options: BenchOptions, run: number): Promise<Result
   };
 }
 
+async function runGeminiStreamPipeline(
+  config: StreamBotConfig,
+  options: BenchOptions,
+  run: number,
+): Promise<ResultRow> {
+  const startedAt = performance.now();
+  let firstDeltaAt: number | null = null;
+  let firstTextAt: number | null = null;
+  let firstAudioAt: number | null = null;
+  let lastAudioAt: number | null = null;
+  let deltaCount = 0;
+  let deltaChars = 0;
+  let textChunks = 0;
+  let audioChunks = 0;
+  let audioBytes = 0;
+  const mode: ResultRow['mode'] = 'gemini-stream';
+  const bridge = createLiveSpeechTextBridge((chunk) => {
+    firstTextAt ??= performance.now();
+    textChunks += 1;
+    if (options.progress) {
+      console.log(`[${mode} run ${run}] fish text ${textChunks} chars=${chunk.length}`);
+    }
+  });
+
+  let fishDone: Promise<void> | null = null;
+  await withHardTimeout(
+    options,
+    mode,
+    async () => {
+      fishDone = streamFishSpeechTextStream(
+        createFishConfig(config, options),
+        {
+          chunkLength: options.fishChunkLength,
+          conditionOnPreviousChunks: options.conditionOnPreviousChunks,
+          latency: options.fishLatency,
+          modelId: options.fishModel,
+          voiceId: options.fishVoiceId,
+        },
+        bridge.stream,
+        {
+          onAudioChunk(chunk) {
+            const now = performance.now();
+            firstAudioAt ??= now;
+            lastAudioAt = now;
+            audioChunks += 1;
+            audioBytes += chunk.audio.length;
+            if (options.progress) {
+              console.log(
+                `[${mode} run ${run}] audio ${audioChunks} ${Math.round(now - startedAt)}ms`,
+              );
+            }
+          },
+        },
+      );
+      try {
+        const ai = new GoogleGenAI({ apiKey: options.geminiApiKey });
+        const stream = await ai.models.generateContentStream({
+          model: options.geminiModel,
+          contents: options.prompt,
+          config: {
+            maxOutputTokens: options.llmMaxOutputTokens,
+            systemInstruction:
+              'You are a live VTuber assistant. Reply briefly and naturally. Do not include hidden reasoning.',
+          },
+        });
+        for await (const chunk of stream) {
+          const delta = chunk.text;
+          if (!delta) {
+            continue;
+          }
+          const now = performance.now();
+          firstDeltaAt ??= now;
+          deltaCount += 1;
+          deltaChars += delta.length;
+          bridge.push(delta);
+          if (options.progress) {
+            console.log(
+              `[${mode} run ${run}] delta ${deltaCount} ${Math.round(now - startedAt)}ms chars=${delta.length}`,
+            );
+          }
+        }
+        bridge.close();
+        await fishDone;
+      } catch (error) {
+        bridge.fail(error instanceof Error ? error : new Error(String(error)));
+        await fishDone.catch(() => undefined);
+        throw error;
+      }
+    },
+    () => {
+      bridge.fail(new Error(`${mode} timed out`));
+    },
+  );
+
+  return {
+    audioBytes,
+    audioChunks,
+    deltaChars,
+    deltaCount,
+    firstAudioMs: firstAudioAt === null ? null : firstAudioAt - startedAt,
+    firstDeltaMs: firstDeltaAt === null ? null : firstDeltaAt - startedAt,
+    firstTextToAudioMs:
+      firstAudioAt === null || firstTextAt === null ? null : firstAudioAt - firstTextAt,
+    lastAudioMs: lastAudioAt === null ? null : lastAudioAt - startedAt,
+    mode,
+    run,
+    textChunks,
+    totalMs: performance.now() - startedAt,
+  };
+}
+
 function createRouteTtsBridge(options: BenchOptions): RemoteTtsRequest {
   return {
     provider: 'fish-speech',
@@ -1498,6 +1615,7 @@ function modesToRun(mode: Mode): Array<Exclude<Mode, 'all'>> {
       'direct-http',
       'direct-ws',
       'gemini-live',
+      'gemini-stream',
       'route-http',
       'route-ws',
     ];
@@ -1614,7 +1732,7 @@ async function main() {
       mode.startsWith('direct-') ||
       mode.startsWith('route-'),
   );
-  const needsGemini = modes.some((mode) => mode === 'gemini-live');
+  const needsGemini = modes.some((mode) => mode === 'gemini-live' || mode === 'gemini-stream');
   if (needsFish && !config.fishSpeechApiKey) {
     throw new Error('Missing Fish key. Set FISH_AUDIO_API_KEY or pass --backup.');
   }
@@ -1638,7 +1756,10 @@ async function main() {
       if (directWsSession && options.openAiWarmup) {
         await directWsSession.warmup();
       }
-      if ((mode === 'direct-http' || mode === 'direct-ws') && options.fishWarmup) {
+      if (
+        (mode === 'direct-http' || mode === 'direct-ws' || mode === 'gemini-stream') &&
+        options.fishWarmup
+      ) {
         await warmFish(config, options);
       }
       for (let run = 1; run <= options.repeat; run += 1) {
@@ -1661,6 +1782,8 @@ async function main() {
             );
           } else if (mode === 'gemini-live') {
             results.push(await runGeminiLive(options, run));
+          } else if (mode === 'gemini-stream') {
+            results.push(await runGeminiStreamPipeline(config, options, run));
           } else if (mode === 'route-http') {
             results.push(await runRoutePipeline(config, options, run, false));
           } else {
