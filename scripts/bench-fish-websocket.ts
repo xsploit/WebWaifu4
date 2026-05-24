@@ -17,7 +17,9 @@ type BenchOptions = {
   modelId: string;
   voiceId: string;
   format: StreamBotConfig['fishSpeechFormat'];
+  hardTimeoutMs: number;
   json: boolean;
+  progress: boolean;
 };
 
 type AudioStats = {
@@ -55,6 +57,8 @@ Options:
   --model s2                       Fish backend/model, default env/current config
   --voice <reference-id>           Fish reference/voice id, default env/current config
   --format pcm|mp3|wav|opus        Audio format, default pcm/env
+  --progress                       Print text/audio events as they arrive
+  --hard-timeout-ms 30000          Print partial stats and exit if Fish never closes
   --json                           Print JSON instead of readable summary
   --help                           Show this help
 `);
@@ -133,7 +137,9 @@ function parseOptions(config: StreamBotConfig): BenchOptions {
     modelId: readArg('--model') || config.fishSpeechModel || 's2',
     voiceId: readArg('--voice') || config.fishSpeechVoiceId,
     format: parseFormat(readArg('--format'), config.fishSpeechFormat || 'pcm'),
+    hardTimeoutMs: parseNumber(readArg('--hard-timeout-ms'), 0, 0, 300000),
     json: process.argv.includes('--json'),
+    progress: process.argv.includes('--progress'),
   };
 }
 
@@ -180,6 +186,7 @@ async function runOnce(
   let textChars = 0;
   let audioChunks = 0;
   let audioBytes = 0;
+  let hardTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const config: StreamBotConfig = {
     ...baseConfig,
@@ -190,6 +197,9 @@ async function runOnce(
     fishSpeechChunkLength: options.chunkLength,
     fishSpeechConditionOnPreviousChunks: options.conditionOnPreviousChunks,
   };
+  if (options.progress) {
+    console.log(`[run ${runNumber}] starting Fish realtime request`);
+  }
 
   const textStream = createMeasuredTextStream(
     options.text,
@@ -200,29 +210,73 @@ async function runOnce(
       firstTextChunkAt ??= now;
       textChunks += 1;
       textChars += chunk.length;
+      if (options.progress) {
+        console.log(
+          `[run ${runNumber}] text chunk ${textChunks} at ${Math.round(now - startedAt)}ms chars=${chunk.length}`,
+        );
+      }
     },
   );
 
-  await streamFishSpeechTextStream(
-    config,
-    {
-      chunkLength: options.chunkLength,
-      conditionOnPreviousChunks: options.conditionOnPreviousChunks,
-      latency: options.latency,
-      modelId: options.modelId,
-      voiceId: options.voiceId,
-    },
-    textStream,
-    {
-      onAudioChunk(chunk) {
-        const now = performance.now();
-        firstAudioAt ??= now;
-        lastAudioAt = now;
-        audioChunks += 1;
-        audioBytes += chunk.audio.length;
+  const getPartialStats = () => ({
+    run: runNumber,
+    audioBytes,
+    audioChunks,
+    firstAudioMs: firstAudioAt === null ? null : firstAudioAt - startedAt,
+    firstTextToAudioMs:
+      firstAudioAt === null || firstTextChunkAt === null ? null : firstAudioAt - firstTextChunkAt,
+    lastAudioMs: lastAudioAt === null ? null : lastAudioAt - startedAt,
+    textChunks,
+    textChars,
+    totalMs: performance.now() - startedAt,
+  });
+
+  if (options.hardTimeoutMs > 0) {
+    hardTimeout = setTimeout(() => {
+      const partial = getPartialStats();
+      if (options.json) {
+        console.log(JSON.stringify({ partial, timedOut: true }, null, 2));
+      } else {
+        console.error(
+          `[run ${runNumber}] hard timeout after ${options.hardTimeoutMs}ms; partial stats follow`,
+        );
+        printSummary(options, [partial]);
+      }
+      process.exit(2);
+    }, options.hardTimeoutMs);
+  }
+
+  try {
+    await streamFishSpeechTextStream(
+      config,
+      {
+        chunkLength: options.chunkLength,
+        conditionOnPreviousChunks: options.conditionOnPreviousChunks,
+        latency: options.latency,
+        modelId: options.modelId,
+        voiceId: options.voiceId,
       },
-    },
-  );
+      textStream,
+      {
+        onAudioChunk(chunk) {
+          const now = performance.now();
+          firstAudioAt ??= now;
+          lastAudioAt = now;
+          audioChunks += 1;
+          audioBytes += chunk.audio.length;
+          if (options.progress) {
+            console.log(
+              `[run ${runNumber}] audio chunk ${audioChunks} at ${Math.round(now - startedAt)}ms bytes=${chunk.audio.length}`,
+            );
+          }
+        },
+      },
+    );
+  } finally {
+    if (hardTimeout) {
+      clearTimeout(hardTimeout);
+    }
+  }
 
   const totalMs = performance.now() - startedAt;
   return {
