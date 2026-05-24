@@ -110,7 +110,7 @@ export function AccountTab({
         <div className="control-label">Local Mode</div>
         <div className="status-grid">
           <div className="status-copy">
-            Storage: <strong>IndexedDB + local browser vault</strong>
+            Storage: <strong>IndexedDB + browser-local key storage</strong>
           </div>
           <div className="status-copy">
             Cloud sync: <strong>disabled</strong>
@@ -131,7 +131,7 @@ export function AccountTab({
       <div className="control-group">
         <div className="control-label">Browser Provider Keys</div>
         <div className="field-hint">
-          Keys are read from this browser vault and sent only to the local backend for the current
+          Keys are stored locally in this browser and sent only to the local backend for the current
           request. They are included in local transfer exports so another streaming PC can be cloned
           1:1.
         </div>

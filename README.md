@@ -5,7 +5,7 @@
 ### *Your own VTuber co-host. Running on your machine.*
 
 Local-first OBS/Twitch assistant with a VRM avatar, realtime TTS, Twitch/local
-chat intake, memory, tools, and provider keys kept in your own browser vault.
+chat intake, memory, tools, and provider keys stored in local browser storage.
 
 <br/>
 
@@ -203,12 +203,13 @@ unless you run the real IRC command below.
   </tr>
 </table>
 
-Keys are stored in the browser vault and sent only to the local backend for the
-current request. The backend performs provider-specific work such as WebSockets,
-TTS streaming, CORS handling, SDK calls, and request shaping.
+Keys are stored locally in this browser, not in a hosted Web Waifu account or
+cloud secret manager. When a provider call needs one, the key is sent to the
+local backend for that request so the backend can handle WebSockets, TTS
+streaming, CORS, SDK calls, and provider-specific request shaping.
 
 <details>
-<summary><b>Prefer ENV-based keys on a private local machine?</b></summary>
+<summary><b>Prefer ENV-based fallback keys on a private local machine?</b></summary>
 
 ```env
 SERVER_PROVIDER_PROXY_ENABLED=true
@@ -219,8 +220,8 @@ INWORLD_API_KEY=
 TAVILY_API_KEY=
 ```
 
-If `SERVER_PROVIDER_PROXY_ENABLED=false`, the backend will not fall back to ENV
-provider keys.
+If `SERVER_PROVIDER_PROXY_ENABLED=false`, the backend will not use ENV provider
+keys as fallbacks.
 </details>
 
 ---
@@ -286,8 +287,8 @@ proxy behavior as Vite.
     <td>Browser-local saved asset library</td>
   </tr>
   <tr>
-    <td>Provider key vault</td>
-    <td>Browser-local secret vault</td>
+    <td>Provider keys</td>
+    <td>Browser-local key storage</td>
   </tr>
 </table>
 
@@ -393,8 +394,8 @@ scripts/             Benchmarks and utility scripts
     <td>External when enabled and configured</td>
   </tr>
   <tr>
-    <td>Browser-provider keys</td>
-    <td>Stored locally; sent to local backend per request</td>
+    <td>Browser provider keys</td>
+    <td>Stored in local browser storage; sent to local backend per request</td>
   </tr>
   <tr>
     <td>Local mic chat</td>

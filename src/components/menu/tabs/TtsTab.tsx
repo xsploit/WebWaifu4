@@ -169,7 +169,8 @@ export function TtsTab({
           <option value="inworld">Inworld Stream</option>
         </select>
         <div className="field-hint">
-          Remote engines stream through the bot server so provider keys stay server-side.
+          Remote engines stream through the bot server so browser-local provider keys stay out of
+          the browser audio playback path.
         </div>
       </div>
 

@@ -381,7 +381,7 @@ export function TwitchTab({
           value={twitchSettings.streamTranscriptionContextLimit}
         />
         <div className="field-hint">
-          Uses the browser-vault OpenAI key through the backend. The server also needs ffmpeg plus
+          Uses the browser-local OpenAI key through the backend. The server also needs ffmpeg plus
           yt-dlp or streamlink. Transcript snippets are ambient stream context, not chat messages.
         </div>
         <div className="status-copy">{streamTranscriptionStatus}</div>
