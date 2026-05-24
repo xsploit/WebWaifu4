@@ -49,8 +49,9 @@ import {
 import { buildChatCompletionMessages, trimChatHistory } from './lib/chat/prompt';
 import { getTurnReplyLengthInstruction } from './lib/chat/reply-length';
 import {
+  ASSISTANT_REPLY_JSON_FORMAT,
   buildAnimationCatalogInstruction,
-  createAssistantMetadataStreamFilter,
+  createAssistantReplyStreamFilter,
   resolveAnimationIndexForReplyMetadata,
   resolveFacialExpressionDurationMsForReplyMetadata,
   resolveFacialExpressionForReplyMetadata,
@@ -1024,13 +1025,11 @@ async function requestChatCompletionLiveWs({
 function shouldUseAiLiveWs({
   llmProvider,
   onTextDelta,
-  responseFormat,
   transportMode,
   ttsBridge,
 }: {
   llmProvider: AiSettings['llmProvider'];
   onTextDelta?: (delta: string) => void;
-  responseFormat?: AppCompletionResponseFormat;
   transportMode?: AiSettings['aiTransportMode'];
   ttsBridge?: RemoteTtsRequest;
 }) {
@@ -1039,8 +1038,7 @@ function shouldUseAiLiveWs({
     llmProvider === 'openai-responses' &&
     transportMode === 'websocket' &&
     ttsBridge?.provider === 'fish-speech' &&
-    ttsBridge.streamingMode === 'live-bridge' &&
-    !responseFormat
+    ttsBridge.streamingMode === 'live-bridge'
   );
 }
 
@@ -1113,7 +1111,6 @@ async function requestChatCompletion({
     shouldUseAiLiveWs({
       llmProvider,
       onTextDelta,
-      responseFormat,
       transportMode,
       ttsBridge,
     })
@@ -2546,7 +2543,7 @@ function App() {
         canSpeak &&
         ttsProvider === 'fish-speech' &&
         ttsRuntimeSettings.remoteTtsMode === 'live-bridge';
-      const metadataFilter = createAssistantMetadataStreamFilter();
+      const metadataFilter = createAssistantReplyStreamFilter();
       let fullText = '';
       let displayText = '';
       let queuedDisplayText = '';
@@ -2913,7 +2910,7 @@ function App() {
       const ttsProvider = ttsRuntimeSettings.ttsProvider;
       const chunkTtsRequests = shouldChunkTtsRequests(ttsRuntimeSettings);
       const canSpeak = shouldSpeak && (ttsProvider !== 'piper' || Boolean(voice));
-      const metadataFilter = createAssistantMetadataStreamFilter();
+      const metadataFilter = createAssistantReplyStreamFilter();
       let fullText = '';
       let pendingText = '';
       let sawDelta = false;
@@ -5017,6 +5014,7 @@ function App() {
           stateScope: 'chat',
           onAudioChunk: speechPlayer.pushAudioChunk,
           onTextDelta: speechPlayer.pushDelta,
+          responseFormat: ASSISTANT_REPLY_JSON_FORMAT,
           temperature: settings.temperature,
           transportMode: settings.aiTransportMode,
           ttsBridge,

@@ -49,6 +49,51 @@ export type AssistantReplyParseResult = {
   text: string;
 };
 
+export const ASSISTANT_REPLY_JSON_FORMAT = {
+  name: 'yourwifey_assistant_reply',
+  schema: {
+    type: 'object',
+    properties: {
+      message: {
+        type: 'string',
+        description: 'Natural spoken dialogue to show and speak. TTS tags like [pause] are allowed.',
+      },
+      emotion: {
+        type: 'string',
+        enum: [
+          'neutral',
+          'amused',
+          'happy',
+          'excited',
+          'curious',
+          'confused',
+          'thinking',
+          'surprised',
+          'angry',
+          'annoyed',
+          'embarrassed',
+          'grateful',
+          'optimistic',
+          'proud',
+          'nervous',
+          'sad',
+          'caring',
+        ],
+        description: 'The single emotion felt toward the current message. This is not an animation name.',
+      },
+    },
+    required: ['message', 'emotion'],
+    additionalProperties: false,
+  },
+  strict: true,
+  type: 'json_schema',
+} satisfies {
+  name: string;
+  schema: Record<string, unknown>;
+  strict?: boolean;
+  type: 'json_schema';
+};
+
 const EMOTIONS = new Set<AssistantEmotion>([
   'neutral',
   'amused',
@@ -111,7 +156,8 @@ const EMOTION_ANIMATION_KEYWORDS: Record<AssistantEmotion, string[]> = {
 
 export function buildReplyMetadataInstruction() {
   return [
-    'At the very end of every assistant reply, append exactly one metadata block using this exact tag shape:',
+    'When the reply format is JSON, return only a JSON object with message and emotion. Put the spoken dialogue in message.',
+    'When the reply format is normal text, append exactly one metadata block at the very end using this exact tag shape:',
     `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral"}${ASSISTANT_REPLY_META_CLOSE}`,
     'The block must be valid compact JSON and must not be explained. Do not use any other wrapper name such as hidden block.',
     `emotion must be one of: ${Array.from(EMOTIONS).join(', ')}.`,
@@ -207,6 +253,64 @@ export function createAssistantMetadataStreamFilter() {
         hiddenTextLength,
         metadataBufferLength: metadataBuffer.length,
         suppressing,
+      };
+    },
+  };
+}
+
+export function createAssistantReplyStreamFilter() {
+  const metadataFilter = createAssistantMetadataStreamFilter();
+  const jsonMessageFilter = createJsonMessageStreamFilter();
+  let mode: 'unknown' | 'metadata' | 'json' = 'unknown';
+  let probe = '';
+
+  return {
+    push(delta: string) {
+      if (!delta) {
+        return '';
+      }
+
+      if (mode === 'metadata') {
+        return metadataFilter.push(delta);
+      }
+
+      if (mode === 'json') {
+        return jsonMessageFilter.push(delta);
+      }
+
+      probe += delta;
+      const trimmedStart = probe.trimStart();
+      if (!trimmedStart) {
+        return '';
+      }
+
+      if (trimmedStart.startsWith('{')) {
+        mode = 'json';
+        const leadingWhitespaceLength = probe.length - trimmedStart.length;
+        const payload = probe.slice(leadingWhitespaceLength);
+        probe = '';
+        return jsonMessageFilter.push(payload);
+      }
+
+      mode = 'metadata';
+      const payload = probe;
+      probe = '';
+      return metadataFilter.push(payload);
+    },
+    finish(finalText?: string): AssistantReplyParseResult {
+      if (mode === 'json') {
+        return stripAssistantReplyMetadata(finalText ?? jsonMessageFilter.rawText());
+      }
+      if (mode === 'unknown' && finalText?.trimStart().startsWith('{')) {
+        return stripAssistantReplyMetadata(finalText);
+      }
+      return metadataFilter.finish(finalText);
+    },
+    debug() {
+      return {
+        mode,
+        probeLength: probe.length,
+        ...metadataFilter.debug(),
       };
     },
   };
@@ -435,6 +539,200 @@ function cleanupReplyText(text: string) {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]+\n/g, '\n')
     .trim();
+}
+
+function createJsonMessageStreamFilter() {
+  let raw = '';
+  let state:
+    | 'start'
+    | 'keyStart'
+    | 'key'
+    | 'colon'
+    | 'valueStart'
+    | 'valueString'
+    | 'skipValue'
+    | 'afterValue' = 'start';
+  let key = '';
+  let activeKey = '';
+  let keyEscape = false;
+  let valueEscape = false;
+  let unicodeEscape = '';
+  let skipString = false;
+  let skipEscape = false;
+  let skipDepth = 0;
+
+  const emitEscaped = (value: string) => {
+    switch (value) {
+      case '"':
+      case '\\':
+      case '/':
+        return value;
+      case 'b':
+        return '\b';
+      case 'f':
+        return '\f';
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      default:
+        return value;
+    }
+  };
+
+  const push = (delta: string) => {
+    raw += delta;
+    let visible = '';
+
+    for (const char of delta) {
+      if (state === 'start') {
+        if (/\s/.test(char)) continue;
+        if (char === '{') state = 'keyStart';
+        continue;
+      }
+
+      if (state === 'keyStart') {
+        if (/\s|,/.test(char)) continue;
+        if (char === '}') {
+          state = 'afterValue';
+          continue;
+        }
+        if (char === '"') {
+          key = '';
+          keyEscape = false;
+          state = 'key';
+        }
+        continue;
+      }
+
+      if (state === 'key') {
+        if (keyEscape) {
+          key += emitEscaped(char);
+          keyEscape = false;
+          continue;
+        }
+        if (char === '\\') {
+          keyEscape = true;
+          continue;
+        }
+        if (char === '"') {
+          activeKey = key;
+          state = 'colon';
+          continue;
+        }
+        key += char;
+        continue;
+      }
+
+      if (state === 'colon') {
+        if (/\s/.test(char)) continue;
+        if (char === ':') state = 'valueStart';
+        continue;
+      }
+
+      if (state === 'valueStart') {
+        if (/\s/.test(char)) continue;
+        if (char === '"') {
+          valueEscape = false;
+          unicodeEscape = '';
+          state = 'valueString';
+          continue;
+        }
+        skipString = false;
+        skipEscape = false;
+        skipDepth = char === '{' || char === '[' ? 1 : 0;
+        state = 'skipValue';
+        continue;
+      }
+
+      if (state === 'valueString') {
+        if (unicodeEscape) {
+          unicodeEscape += char;
+          if (unicodeEscape.length === 4) {
+            if (activeKey === 'message') {
+              visible += String.fromCharCode(Number.parseInt(unicodeEscape, 16));
+            }
+            unicodeEscape = '';
+            valueEscape = false;
+          }
+          continue;
+        }
+        if (valueEscape) {
+          if (char === 'u') {
+            unicodeEscape = '';
+            continue;
+          }
+          if (activeKey === 'message') {
+            visible += emitEscaped(char);
+          }
+          valueEscape = false;
+          continue;
+        }
+        if (char === '\\') {
+          valueEscape = true;
+          continue;
+        }
+        if (char === '"') {
+          state = 'afterValue';
+          continue;
+        }
+        if (activeKey === 'message') {
+          visible += char;
+        }
+        continue;
+      }
+
+      if (state === 'skipValue') {
+        if (skipString) {
+          if (skipEscape) {
+            skipEscape = false;
+          } else if (char === '\\') {
+            skipEscape = true;
+          } else if (char === '"') {
+            skipString = false;
+          }
+          continue;
+        }
+        if (char === '"') {
+          skipString = true;
+          continue;
+        }
+        if (char === '{' || char === '[') {
+          skipDepth += 1;
+          continue;
+        }
+        if (char === '}' || char === ']') {
+          skipDepth -= 1;
+          if (skipDepth <= 0) {
+            state = 'afterValue';
+          }
+          continue;
+        }
+        if (skipDepth === 0 && (char === ',' || char === '}')) {
+          state = char === ',' ? 'keyStart' : 'afterValue';
+        }
+        continue;
+      }
+
+      if (state === 'afterValue') {
+        if (/\s/.test(char)) continue;
+        if (char === ',') {
+          state = 'keyStart';
+        }
+      }
+    }
+
+    return visible;
+  };
+
+  return {
+    push,
+    rawText() {
+      return raw;
+    },
+  };
 }
 
 function getSafeVisibleLength(value: string) {

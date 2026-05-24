@@ -4,9 +4,11 @@ import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
 import {
   ASSISTANT_REPLY_META_CLOSE,
   ASSISTANT_REPLY_META_OPEN,
+  ASSISTANT_REPLY_JSON_FORMAT,
   buildAnimationCatalogInstruction,
   buildReplyMetadataInstruction,
   createAssistantMetadataStreamFilter,
+  createAssistantReplyStreamFilter,
   resolveAnimationIndexForReplyMetadata,
   resolveFacialExpressionForReplyMetadata,
   resolveFacialExpressionIntensityForReplyMetadata,
@@ -73,6 +75,46 @@ describe('assistant reply metadata', () => {
 
     expect(parsed.text).toBe('Yeah, I heard you that time.');
     expect(parsed.metadata).toEqual({ emotion: 'happy' });
+  });
+
+  it('defines the strict structured reply schema used by chat providers', () => {
+    expect(ASSISTANT_REPLY_JSON_FORMAT).toMatchObject({
+      name: 'yourwifey_assistant_reply',
+      strict: true,
+      type: 'json_schema',
+    });
+    expect(ASSISTANT_REPLY_JSON_FORMAT.schema).toMatchObject({
+      additionalProperties: false,
+      required: ['message', 'emotion'],
+      type: 'object',
+    });
+  });
+
+  it('streams only the message field from structured JSON reply chunks', () => {
+    const filter = createAssistantReplyStreamFilter();
+    const visible = [
+      filter.push('{"mess'),
+      filter.push('age":"Hey subby, [pause] I\\nheard you.'),
+      filter.push('","emotion":"happy"}'),
+    ].join('');
+    const parsed = filter.finish('{"message":"Hey subby, [pause] I\\nheard you.","emotion":"happy"}');
+
+    expect(visible).toBe('Hey subby, [pause] I\nheard you.');
+    expect(parsed.text).toBe('Hey subby, [pause] I\nheard you.');
+    expect(parsed.metadata).toEqual({ emotion: 'happy' });
+  });
+
+  it('keeps legacy streamed metadata fallback working through the combined filter', () => {
+    const filter = createAssistantReplyStreamFilter();
+    const visible = [
+      filter.push('Legacy text. <yw'),
+      filter.push('-meta>{"emotion":"sad"}</yw-meta>'),
+    ].join('');
+    const parsed = filter.finish('Legacy text. <yw-meta>{"emotion":"sad"}</yw-meta>');
+
+    expect(visible).toBe('Legacy text. ');
+    expect(parsed.text).toBe('Legacy text.');
+    expect(parsed.metadata).toEqual({ emotion: 'sad' });
   });
 
   it('does not trigger reactions for neutral metadata', () => {
