@@ -5,6 +5,7 @@ This repo is a standalone Twitch-first stream overlay with a local/server AI bac
 ## Grounding Rules
 
 - Authoritative repo path: `C:\Users\SUBSECT\Documents\GitHub\WebWaifu4`.
+- Read `docs\AGENT_GROUNDING.md` before continuing long-running work.
 - Before edits, run `git rev-parse --show-toplevel` and confirm it prints the path above.
 - Never implement Web Waifu 4 work in `C:\Users\SUBSECT\Documents\New project 3`, `C:\Users\SUBSECT\Documents\New project 3\YourWifey-Local-src`, or any copied source folder.
 - If the shell or tool reports a different Git root, stop immediately. Do not inspect, edit, test, commit, or "continue from memory" until the cwd is corrected.
