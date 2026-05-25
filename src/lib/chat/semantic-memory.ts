@@ -132,10 +132,25 @@ export async function saveSemanticMemory(scopeKey: string, records: SemanticMemo
 export async function clearSemanticMemory(scopeKey: string) {
   const cacheKey = normalizeScopeKey(scopeKey);
   setSemanticMemoryRecordCache(cacheKey, []);
-  if (await deleteLadybugSemanticMemory(scopeKey)) {
-    return;
+  await deleteLadybugSemanticMemory(scopeKey).catch((error) => {
+    warnSemanticMemoryFailure('Ladybug semantic memory delete failed; clearing local fallback stores.', error);
+  });
+
+  const db = await openSemanticMemoryDb();
+  if (db) {
+    try {
+      await saveSemanticMemoryToIndexedDb(db, scopeKey, []);
+      deleteLegacySemanticMemory(scopeKey);
+      return;
+    } catch (error) {
+      warnSemanticMemoryFailure(
+        'IndexedDB semantic memory clear failed; clearing fallback store.',
+        error,
+      );
+    }
   }
-  await saveSemanticMemory(scopeKey, []);
+
+  deleteLegacySemanticMemory(scopeKey);
 }
 
 export async function addSemanticMemoryTurn({
@@ -531,6 +546,15 @@ function saveLegacySemanticMemory(scopeKey: string, records: SemanticMemoryRecor
     getLegacyStorageKey(scopeKey),
     JSON.stringify(normalizeSemanticMemoryRecords(records, LEGACY_MAX_RECORDS_PER_SCOPE)),
   );
+}
+
+function deleteLegacySemanticMemory(scopeKey: string) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  storage.removeItem(getLegacyStorageKey(scopeKey));
 }
 
 function normalizeSemanticMemoryRecords(records: unknown[], limit: number) {
