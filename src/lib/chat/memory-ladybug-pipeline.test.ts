@@ -4,11 +4,17 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderYourWifeyPomlMessages } from '../../../server/src/ai/PomlRenderer';
 import { LadybugMemoryService } from '../../../server/src/memory/LadybugMemoryService';
+import { createLocalChatTurn, createTwitchChatTurn } from './chat-turn';
 import { createDefaultRelationshipMemory, DEFAULT_PERSONA } from './defaults';
-import { buildGrilloMemoryPromptAdditionsAsync } from './grillo-memory';
+import { buildGrilloMemoryPromptAdditionsAsync, recordGrilloMemoryTurnAsync } from './grillo-memory';
 import { loadLadybugRelationshipMemories } from './ladybug-memory-client';
 import { runGrilloMemoryWorkerLoop } from './grillo-memory-loop';
-import { buildSemanticMemoryContext, findSemanticMemoryMatches } from './semantic-memory';
+import { addMemoryAgentPendingChatTurns, getMemoryAgentCadenceDecision } from './memory-agent';
+import {
+  addSemanticMemoryTurn,
+  buildSemanticMemoryContext,
+  findSemanticMemoryMatches,
+} from './semantic-memory';
 import { buildChatCompletionMessages } from './prompt';
 
 function createStorage() {
@@ -66,11 +72,61 @@ describe('Ladybug memory pipeline', () => {
             scopeKey: String(body.scopeKey ?? ''),
           });
         }
+        if (url.pathname === '/memory/semantic' && (init?.method ?? 'GET') === 'GET') {
+          return Response.json({
+            ok: true,
+            backend: 'ladybug',
+            records: await service.loadSemanticRecords(url.searchParams.get('scopeKey') ?? ''),
+            scopeKey: url.searchParams.get('scopeKey'),
+          });
+        }
+        if (url.pathname === '/memory/semantic' && init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body ?? '{}')) as {
+            records?: unknown;
+            scopeKey?: unknown;
+          };
+          await service.saveSemanticRecords(
+            String(body.scopeKey ?? ''),
+            Array.isArray(body.records) ? body.records : [],
+          );
+          return Response.json({
+            ok: true,
+            backend: 'ladybug',
+            scopeKey: String(body.scopeKey ?? ''),
+          });
+        }
         if (url.pathname === '/memory/relationships' && (init?.method ?? 'GET') === 'GET') {
           return Response.json({
             ok: true,
             backend: 'ladybug',
             profiles: await service.loadRelationshipProfiles(),
+          });
+        }
+        if (url.pathname === '/memory/relationships' && init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body ?? '{}')) as {
+            profiles?: unknown;
+          };
+          await service.saveRelationshipProfiles(
+            body.profiles && typeof body.profiles === 'object' && !Array.isArray(body.profiles)
+              ? (body.profiles as Record<string, unknown>)
+              : {},
+          );
+          return Response.json({
+            ok: true,
+            backend: 'ladybug',
+          });
+        }
+        if (url.pathname === '/memory/status' && (init?.method ?? 'GET') === 'GET') {
+          return Response.json({
+            ok: true,
+            ...(await service.getStatus()),
+          });
+        }
+        if (url.pathname === '/memory/graph' && (init?.method ?? 'GET') === 'GET') {
+          return Response.json({
+            ok: true,
+            backend: 'ladybug',
+            graph: await service.getGraphSummary(),
           });
         }
         if (url.pathname === '/memory/semantic/search' && init?.method === 'POST') {
@@ -559,5 +615,174 @@ describe('Ladybug memory pipeline', () => {
         }),
       ]),
     );
+  });
+
+  it('proves the local and Twitch chat memory path reaches Ladybug graph, vectors, cadence, and prompt injection', async () => {
+    const localScope = 'local:persona:hikari-full-audit';
+    const twitchScope = 'twitch:subsect:persona:hikari-full-audit';
+    const persona = { ...DEFAULT_PERSONA, id: 'hikari-full-audit', name: 'Hikari' };
+    const localTurn = createLocalChatTurn({
+      displayName: 'Subby',
+      id: 'local-audit-turn',
+      persona,
+      text: 'remember I prefer Ladybug memory first and I need to prove the local memory path.',
+      timestamp: Date.parse('2026-05-25T12:00:00.000Z'),
+      trustedController: true,
+    });
+    const twitchTurn = createTwitchChatTurn(
+      {
+        badges: ['subscriber'],
+        displayName: 'Rayen',
+        id: 'twitch-audit-turn',
+        isBroadcaster: false,
+        isMod: false,
+        text: 'remember Twitch chat likes semantic vector recall for stream context.',
+        timestamp: Date.parse('2026-05-25T12:00:01.000Z'),
+        user: 'rayen',
+      },
+      'subsect',
+      true,
+    );
+    const pendingCounts: Record<string, number> = {};
+
+    addMemoryAgentPendingChatTurns(pendingCounts, localScope, 1);
+    addMemoryAgentPendingChatTurns(pendingCounts, twitchScope, 1);
+    await recordGrilloMemoryTurnAsync({
+      assistantText: '',
+      persona,
+      scopeKey: localScope,
+      turns: [localTurn],
+    });
+    await recordGrilloMemoryTurnAsync({
+      assistantText: '',
+      persona,
+      scopeKey: twitchScope,
+      turns: [twitchTurn],
+    });
+    await addSemanticMemoryTurn({
+      assistantText: 'Local Ladybug vector memory acknowledged.',
+      embedding: [1, 0, 0],
+      persona,
+      scopeKey: localScope,
+      userText: localTurn.text,
+    });
+    await addSemanticMemoryTurn({
+      assistantText: 'Twitch Ladybug vector memory acknowledged.',
+      embedding: [0, 1, 0],
+      persona,
+      scopeKey: twitchScope,
+      userText: twitchTurn.text,
+    });
+    await service?.saveRelationshipProfiles({
+      [localScope]: {
+        ...createDefaultRelationshipMemory(),
+        facts: ['Subby prefers Ladybug memory first.'],
+        lastDiaryTurnCount: 0,
+        mood: 'focused',
+        relationshipStage: 'familiar',
+        summary: 'Local chat is auditing Ladybug-first memory.',
+        trust: 8,
+        turnCount: 1,
+      },
+      [twitchScope]: {
+        ...createDefaultRelationshipMemory(),
+        facts: ['Rayen likes semantic vector recall for stream context.'],
+        lastDiaryTurnCount: 0,
+        mood: 'curious',
+        relationshipStage: 'familiar',
+        summary: 'Twitch chat is auditing Ladybug stream memory.',
+        trust: 6,
+        turnCount: 1,
+      },
+    });
+
+    const localCadence = getMemoryAgentCadenceDecision(pendingCounts, localScope, 1);
+    const twitchCadence = getMemoryAgentCadenceDecision(pendingCounts, twitchScope, 1);
+    const status = await service?.getStatus();
+    const graph = await service?.getGraphSummary();
+    const relationshipMemories = await loadLadybugRelationshipMemories();
+    const localGrilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
+      participantKeys: ['local:local:subby'],
+      query: 'Ladybug memory local path',
+      scopeKey: localScope,
+    });
+    const twitchGrilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
+      participantKeys: ['twitch:subsect:rayen'],
+      query: 'Twitch semantic vector recall stream context',
+      scopeKey: twitchScope,
+    });
+    const localSemanticMemoryContext = buildSemanticMemoryContext(
+      await findSemanticMemoryMatches(localScope, 'Ladybug memory local path', [1, 0, 0]),
+    );
+    const twitchSemanticMemoryContext = buildSemanticMemoryContext(
+      await findSemanticMemoryMatches(twitchScope, 'Twitch semantic vector stream context', [0, 1, 0]),
+    );
+
+    const localPrompt = (
+      await buildChatCompletionMessages({
+        grilloMemory: localGrilloMemory,
+        history: [],
+        persona,
+        relationshipMemory: relationshipMemories?.[localScope] ?? createDefaultRelationshipMemory(),
+        semanticMemoryContext: localSemanticMemoryContext,
+        turnContext: {
+          conversationScope: 'local-chat',
+          currentTurnText: 'Use the local Ladybug audit memory.',
+          displayName: 'Subby',
+          source: 'local',
+          stateKey: localScope,
+        },
+      })
+    )[0]?.content ?? '';
+    const twitchPrompt = (
+      await buildChatCompletionMessages({
+        grilloMemory: twitchGrilloMemory,
+        history: [],
+        persona,
+        relationshipMemory: relationshipMemories?.[twitchScope] ?? createDefaultRelationshipMemory(),
+        semanticMemoryContext: twitchSemanticMemoryContext,
+        turnContext: {
+          channel: 'subsect',
+          conversationScope: 'twitch-chat',
+          currentTurnText: 'Use the Twitch Ladybug audit memory.',
+          displayName: 'Rayen',
+          firstTimeChatter: true,
+          login: 'rayen',
+          source: 'twitch',
+          stateKey: twitchScope,
+        },
+      })
+    )[0]?.content ?? '';
+    const graphText = JSON.stringify(graph);
+
+    expect(localCadence).toMatchObject({ pendingCount: 1, shouldQueue: true });
+    expect(twitchCadence).toMatchObject({ pendingCount: 1, shouldQueue: true });
+    expect(status).toMatchObject({
+      backend: 'ladybug',
+      participants: 2,
+      relationshipProfiles: 2,
+      semanticRecords: 2,
+      semanticVectors: 2,
+    });
+    expect(status?.candidates).toBeGreaterThanOrEqual(2);
+    expect(graphText).toContain(localScope);
+    expect(graphText).toContain(twitchScope);
+    expect(graphText).toContain('Subby asked me to remember');
+    expect(graphText).toContain('Rayen asked me to remember');
+    expect(graphText).toContain('Subby prefers Ladybug memory first.');
+    expect(graphText).toContain('Rayen likes semantic vector recall for stream context.');
+    expect(localPrompt).toContain('Local chat is auditing Ladybug-first memory.');
+    expect(localPrompt).toContain('Subby prefers Ladybug memory first.');
+    expect(localPrompt).toContain('Ladybug vector memory acknowledged.');
+    expect(localPrompt).toContain('"source":"local"');
+    expect(localPrompt).not.toContain('Twitch chat is auditing Ladybug stream memory.');
+    expect(localPrompt).not.toContain('Rayen likes semantic vector recall for stream context.');
+    expect(twitchPrompt).toContain('Twitch chat is auditing Ladybug stream memory.');
+    expect(twitchPrompt).toContain('Rayen likes semantic vector recall for stream context.');
+    expect(twitchPrompt).toContain('Twitch Ladybug vector memory acknowledged.');
+    expect(twitchPrompt).toContain('"source":"twitch"');
+    expect(twitchPrompt).toContain('"firstTimeChatter":true');
+    expect(twitchPrompt).not.toContain('Local chat is auditing Ladybug-first memory.');
+    expect(twitchPrompt).not.toContain('Subby prefers Ladybug memory first.');
   });
 });
