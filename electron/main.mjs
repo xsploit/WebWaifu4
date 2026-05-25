@@ -129,6 +129,42 @@ function isBackendHealthy(port) {
   });
 }
 
+function requestBackendJson(port, requestPath, timeout = 1500) {
+  return new Promise((resolve, reject) => {
+    const request = http.get(
+      {
+        host: '127.0.0.1',
+        path: requestPath,
+        port,
+        timeout,
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    request.on('error', reject);
+    request.on('timeout', () => {
+      request.destroy(new Error(`Timed out warming backend route ${requestPath}`));
+    });
+  });
+}
+
+async function warmUpBackendRuntime(port) {
+  await requestBackendJson(port, '/memory/status');
+  await requestBackendJson(port, '/memory/relationships');
+}
+
 function canListenOnPort(port) {
   return new Promise((resolve) => {
     const probe = nodeNet.createServer();
@@ -162,7 +198,7 @@ async function waitForBackendHealth(port) {
   throw new Error(`Local backend did not become healthy on port ${port}.`);
 }
 
-async function startBackendIfNeeded() {
+async function startBackendIfNeeded(recoveredFromStartupCrash = false) {
   if (externalBackend) {
     logDesktop('backend external mode enabled; not starting bundled backend');
     return;
@@ -225,7 +261,23 @@ async function startBackendIfNeeded() {
     backendProcess = null;
     scheduleBackendRestartIfNeeded();
   });
-  await waitForBackendHealth(backendPort);
+  try {
+    await waitForBackendHealth(backendPort);
+    await warmUpBackendRuntime(backendPort);
+  } catch (error) {
+    logDesktop(`backend startup warmup failed: ${formatError(error)}`);
+    await stopBackendIfNeeded().catch(() => {});
+    if (!recoveredFromStartupCrash && memoryDbRecoveryCount < 1) {
+      memoryDbRecoveryCount += 1;
+      try {
+        rotateMemoryDbForRecovery();
+      } catch (rotateError) {
+        logDesktop(`failed to rotate Ladybug memory DB: ${formatError(rotateError)}`);
+      }
+      return startBackendIfNeeded(true);
+    }
+    throw error;
+  }
   logDesktop(`backend healthy on port ${backendPort}`);
 }
 

@@ -12,6 +12,7 @@ const args = new Set(process.argv.slice(2));
 const modeArg = process.argv.find((arg) => arg.startsWith('--window-mode='));
 const requestedMode = (modeArg?.split('=').slice(1).join('=') || 'editor').trim();
 const shouldExerciseDesktopControls = args.has('--exercise-desktop-controls');
+let observedBackendPort = null;
 
 function getJson(url) {
   return new Promise((resolve, reject) => {
@@ -53,6 +54,52 @@ async function waitForDebugPage() {
   throw new Error(`No Electron renderer debug page appeared on ${debugPort}.`);
 }
 
+function waitForChildExit(child, timeout = 5000) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeout);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+async function waitForBackendClosed(port, timeout = 8000) {
+  if (!port) {
+    return;
+  }
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try {
+      await getJson(`http://127.0.0.1:${port}/health`);
+    } catch {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Packaged backend port ${port} stayed open after Electron quit.`);
+}
+
+async function closeElectronGracefully(cdp, child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  if (cdp) {
+    try {
+      cdp.sendNoWait('Browser.close');
+      await waitForChildExit(child);
+      return;
+    } catch {
+      // Fall back to process termination below.
+    }
+  }
+  child.kill();
+  await waitForChildExit(child);
+}
+
 function connectCdp(webSocketDebuggerUrl) {
   const socket = new WebSocket(webSocketDebuggerUrl);
   let nextId = 1;
@@ -85,6 +132,9 @@ function connectCdp(webSocketDebuggerUrl) {
     close: () => socket.close(),
     events,
     send,
+    sendNoWait: (method, params = {}) => {
+      socket.send(JSON.stringify({ id: nextId++, method, params }));
+    },
     waitOpen: () =>
       new Promise((resolve, reject) => {
         socket.once('open', resolve);
@@ -213,6 +263,7 @@ try {
       canvasBg: getComputedStyle(document.querySelector('canvas')).backgroundColor
     })`,
   ).then(JSON.parse);
+  observedBackendPort = snapshot.backendPort;
 
   const health = await evaluateJson(
     cdp,
@@ -271,6 +322,7 @@ try {
   }
   process.exitCode = 1;
 } finally {
+  await closeElectronGracefully(cdp, child);
   cdp?.close();
-  child.kill();
+  await waitForBackendClosed(observedBackendPort);
 }
