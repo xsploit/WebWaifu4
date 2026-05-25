@@ -33,6 +33,13 @@ function createRecord(overrides: Partial<SemanticMemoryRecord> = {}): SemanticMe
   };
 }
 
+let scopeCounter = 0;
+
+function createTestScope(label: string) {
+  scopeCounter += 1;
+  return `test:${label}:${Date.now()}:${scopeCounter}`;
+}
+
 describe('semantic memory', () => {
   beforeEach(() => {
     vi.stubGlobal('window', {
@@ -45,7 +52,7 @@ describe('semantic memory', () => {
   });
 
   it('stores embedded memories through the fallback browser store', async () => {
-    const scopeKey = 'twitch:subsect:persona:neuro-sama';
+    const scopeKey = createTestScope('embedded');
 
     const write = await addSemanticMemoryTurn({
       assistantText: 'Fine, I will remember your excellent taste.',
@@ -69,7 +76,7 @@ describe('semantic memory', () => {
   });
 
   it('clears semantic memories for a scope when saved empty', async () => {
-    const scopeKey = 'local:persona:hikari-chan';
+    const scopeKey = createTestScope('clear');
 
     await addSemanticMemoryTurn({
       assistantText: 'Saved.',

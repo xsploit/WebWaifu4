@@ -30,6 +30,7 @@
     "bench:fish": "tsx scripts/bench-fish-websocket.ts",
     "bench:pipeline": "tsx scripts/bench-openai-fish-pipeline.ts",
     "smoke:packaged-ai": "tsx scripts/smoke-packaged-ai.ts",
+    "smoke:desktop-port-fallback": "node scripts/smoke-desktop-port-fallback.mjs",
     "probe:ladybug-memory": "tsx scripts/probe-ladybug-memory.ts",
     "test:structured-ws": "tsx scripts/test-openai-ws-structured-reply.ts",
     "sync:silly-tavern": "node scripts/sync-silly-tavern.mjs",
