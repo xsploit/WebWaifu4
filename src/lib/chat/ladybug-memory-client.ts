@@ -1,4 +1,4 @@
-import { getDesktopBackendUrl, isDesktopRuntime } from '../desktop/runtime';
+import { getDesktopBackendUrl } from '../desktop/runtime';
 import type { GrilloMemoryState } from './grillo-memory';
 import type { SemanticMemoryRecord } from './semantic-memory';
 import type { RelationshipMemory } from './types';
@@ -75,7 +75,7 @@ type LadybugResponse<T> = T & {
 };
 
 export function canUseLadybugMemoryBackend() {
-  return isDesktopRuntime();
+  return Boolean(getLadybugMemoryBackendUrl('/memory/status'));
 }
 
 export async function loadLadybugGrilloState(scopeKey: string) {
@@ -203,10 +203,7 @@ async function requestLadybugMemory<T>(
   path: string,
   init?: RequestInit,
 ): Promise<LadybugResponse<T> | null> {
-  if (!canUseLadybugMemoryBackend()) {
-    return null;
-  }
-  const url = getDesktopBackendUrl(path);
+  const url = getLadybugMemoryBackendUrl(path);
   if (!url) {
     return null;
   }
@@ -216,4 +213,23 @@ async function requestLadybugMemory<T>(
   } catch {
     return null;
   }
+}
+
+function getLadybugMemoryBackendUrl(path: string) {
+  const desktopUrl = getDesktopBackendUrl(path);
+  if (desktopUrl) {
+    return desktopUrl;
+  }
+
+  const explicitUrl = (import.meta.env['VITE_MEMORY_BACKEND_URL'] || '').trim();
+  if (explicitUrl) {
+    return new URL(path, explicitUrl).toString();
+  }
+
+  if (typeof window !== 'undefined' && window.location) {
+    return new URL(`/api${path}`, window.location.href).toString();
+  }
+
+  const port = (import.meta.env['VITE_BOT_PORT'] || '8797').trim() || '8797';
+  return `http://127.0.0.1:${port}${path}`;
 }
