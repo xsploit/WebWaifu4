@@ -398,6 +398,79 @@ async function runLiveWsStructuredTtsSmoke({
   };
 }
 
+async function runLiveWsToolTtsSmoke({
+  baseUrl,
+  backup,
+  headers,
+  model,
+}: {
+  baseUrl: string;
+  backup: LocalBackup;
+  headers: Record<string, string>;
+  model: string;
+}): Promise<SmokeResult> {
+  const voiceBinding = backup.state?.personaVoiceBindings?.['hikari-chan'] ?? {};
+  const events = await runAiLiveChat(baseUrl, headers, {
+    activeChatters: 1,
+    llmProvider: 'openai-responses',
+    maxTokens: 180,
+    messages: [
+      {
+        content:
+          'You are a test assistant. When asked to search, use the web_search tool. Return one short spoken sentence.',
+        role: 'system',
+      },
+      {
+        content: 'Search the web for the current OpenAI homepage title and answer briefly.',
+        role: 'user',
+      },
+    ],
+    mode: 'direct',
+    model,
+    openAiStateMode: 'stateless',
+    stateKey: 'local:smoke:ai-live-tools-tts',
+    stateScope: 'chat',
+    stream: true,
+    transportMode: 'websocket',
+    ttsBridge: {
+      chunkLength: 160,
+      chunkingStrategy: 'sentence',
+      conditionOnPreviousChunks: true,
+      latency: 'balanced',
+      maxBufferChars: 180,
+      minBufferChars: 30,
+      modelId: voiceBinding.modelId || 's2',
+      provider: 'fish-speech',
+      softBufferChars: 80,
+      streamingMode: 'live-bridge',
+      text: '',
+      voiceId: voiceBinding.voiceId,
+    },
+  });
+  const done = events.find((event) => event['type'] === 'done') ?? null;
+  const meta = done && typeof done['meta'] === 'object' && done['meta'] ? done['meta'] : null;
+  const errors = events
+    .filter(
+      (event) =>
+        event['type'] === 'error' || event['type'] === 'tts-error' || event['ok'] === false,
+    )
+    .map((event) => String(event['error'] ?? event['type']));
+  const audioChunks = events.filter((event) => event['type'] === 'audio').length;
+  const toolsUsed = getStringArray(meta && (meta as Record<string, unknown>)['toolsUsed']);
+  return {
+    audioChunks,
+    deltaChars: events
+      .filter((event) => event['type'] === 'delta')
+      .reduce((sum, event) => sum + String(event['delta'] ?? '').length, 0),
+    error: errors[0] ?? null,
+    eventCount: events.length,
+    name: 'ai-live-tools-tts',
+    ok: errors.length === 0 && audioChunks > 0 && toolsUsed.includes('web_search'),
+    status: 101,
+    toolsUsed,
+  };
+}
+
 async function main() {
   const backupPath =
     getArg('--backup') || 'C:/Users/SUBSECT/Downloads/web-waifu-4-local-backup-2026-05-24T22-18-26.json';
@@ -456,6 +529,14 @@ async function main() {
       );
       results.push(
         await runLiveWsStructuredTtsSmoke({
+          backup,
+          baseUrl,
+          headers: ttsHeaders,
+          model: openAiModel,
+        }),
+      );
+      results.push(
+        await runLiveWsToolTtsSmoke({
           backup,
           baseUrl,
           headers: ttsHeaders,
