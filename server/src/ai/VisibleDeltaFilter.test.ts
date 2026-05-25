@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import { createAiVisibleDeltaFilter, getSafeFinalVisibleText } from './VisibleDeltaFilter.js';
+
+const structuredReplyFormat = {
+  name: 'yourwifey_assistant_reply',
+  schema: {
+    type: 'object',
+    properties: {
+      message: { type: 'string' },
+      emotion: { type: 'string' },
+    },
+    required: ['message', 'emotion'],
+    additionalProperties: false,
+  },
+  strict: true,
+  type: 'json_schema',
+} as const;
+
+describe('server visible delta filter', () => {
+  it('streams only the message field from structured JSON before the JSON object completes', () => {
+    const filter = createAiVisibleDeltaFilter(structuredReplyFormat);
+
+    expect(filter.push('{"message":"I')).toBe('I');
+    expect(filter.push("'m live [pause]")).toBe("'m live [pause]");
+    expect(filter.push(' now","emotion":"excited"}')).toBe(' now');
+    expect(filter.flush()).toBe('');
+  });
+
+  it('auto-detects structured JSON even if responseFormat was lost before live TTS bridge', () => {
+    const filter = createAiVisibleDeltaFilter(undefined);
+    const chunks = ['{"mes', 'sage":"Do not say metadata.",', '"emotion":"annoyed"}'];
+    const visible = chunks.map((chunk) => filter.push(chunk)).join('') + filter.flush();
+
+    expect(visible).toBe('Do not say metadata.');
+    expect(visible).not.toContain('message');
+    expect(visible).not.toContain('emotion');
+    expect(visible).not.toContain('{');
+  });
+
+  it('strips legacy hidden metadata wrappers from plain text streams', () => {
+    const filter = createAiVisibleDeltaFilter(undefined);
+    const visible =
+      filter.push('Visible <hidden block>{"emotion":"happy"}') +
+      filter.push('</hidden block> text') +
+      filter.flush();
+
+    expect(visible).toBe('Visible  text');
+  });
+
+  it('extracts final JSON message for non-stream fallback paths', () => {
+    expect(
+      getSafeFinalVisibleText(
+        '{"message":"Final fallback only.","emotion":"happy"}',
+        undefined,
+      ),
+    ).toBe('Final fallback only.');
+  });
+});

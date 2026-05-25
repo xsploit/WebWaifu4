@@ -155,16 +155,11 @@ async function startBackendIfNeeded() {
     return;
   }
 
-  if (await isBackendHealthy(backendPort)) {
-    console.log(`[desktop] reusing healthy local backend on port ${backendPort}`);
-    return;
-  }
-
   if (!(await canListenOnPort(backendPort))) {
     const requestedPort = backendPort;
     backendPort = await findAvailablePort(Number.parseInt(requestedPort, 10) + 1);
     console.warn(
-      `[desktop] port ${requestedPort} is busy but not healthy; starting backend on ${backendPort}`,
+      `[desktop] port ${requestedPort} is busy; starting this app backend on ${backendPort}`,
     );
   }
 
