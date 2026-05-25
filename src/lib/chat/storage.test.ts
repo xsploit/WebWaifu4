@@ -353,6 +353,23 @@ describe('chat settings persistence', () => {
     expect(loaded.twitchSettings.streamTranscriptionModel).toBe('whisper-1');
   });
 
+  it('normalizes malformed save input before writing persistence entries', async () => {
+    await expect(
+      savePersistedChatState({
+        activePersonaId: DEFAULT_PERSONA.id,
+        personas: createDefaultPersonas(),
+        relationshipMemory: createDefaultRelationshipMemory(),
+      } as PersistedChatState),
+    ).resolves.toBeUndefined();
+
+    const loaded = await loadPersistedChatState();
+
+    expect(loaded.personaVoiceBindings[DEFAULT_PERSONA.id]).toBeDefined();
+    expect(loaded.twitchSettings.directChatterLimit).toBe(
+      createDefaultTwitchSettings().directChatterLimit,
+    );
+  });
+
   it('keeps edited built-in personas instead of replacing them with defaults', async () => {
     const personas = createDefaultPersonas();
     const editedPersonas = personas.map((persona) =>

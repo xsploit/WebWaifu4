@@ -1266,37 +1266,43 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
 }
 
 export async function savePersistedChatState(state: PersistedChatState) {
-  const fallbackActivePersonaId = state.personas[0]?.id ?? createDefaultPersonas()[0]?.id ?? '';
+  const normalizedState = normalizePersistedChatStateSnapshot(state);
+  const fallbackActivePersonaId =
+    normalizedState.personas[0]?.id ?? createDefaultPersonas()[0]?.id ?? '';
   const activePersonaId =
-    typeof state.activePersonaId === 'string' && state.activePersonaId.trim().length > 0
-      ? state.activePersonaId
+    typeof normalizedState.activePersonaId === 'string' &&
+    normalizedState.activePersonaId.trim().length > 0
+      ? normalizedState.activePersonaId
       : fallbackActivePersonaId;
 
   const entries = [
-    [STORAGE_KEYS.personas, JSON.stringify(state.personas)],
+    [STORAGE_KEYS.personas, JSON.stringify(normalizedState.personas)],
     [STORAGE_KEYS.activePersonaId, activePersonaId],
-    [STORAGE_KEYS.aiSettings, JSON.stringify(state.aiSettings)],
-    [STORAGE_KEYS.chatHistory, JSON.stringify(state.chatHistory)],
-    [STORAGE_KEYS.relationshipMemory, JSON.stringify(state.relationshipMemory)],
-    [STORAGE_KEYS.relationshipMemories, JSON.stringify(state.relationshipMemories)],
-    [STORAGE_KEYS.personaVoiceBindings, JSON.stringify(state.personaVoiceBindings)],
-    [STORAGE_KEYS.voiceLabVoices, JSON.stringify(state.voiceLabVoices)],
-    [STORAGE_KEYS.uiState, JSON.stringify(state.uiState)],
-    [STORAGE_KEYS.activeTab, state.activeTab],
-    [STORAGE_KEYS.currentBundledModelId, state.currentBundledModelId],
-    [STORAGE_KEYS.currentCustomVrmModelId, state.currentCustomVrmModelId],
-    [STORAGE_KEYS.twitchChannel, normalizeTwitchChannel(state.twitchChannel)],
-    [STORAGE_KEYS.twitchSettings, JSON.stringify(normalizeTwitchSettings(state.twitchSettings))],
+    [STORAGE_KEYS.aiSettings, JSON.stringify(normalizedState.aiSettings)],
+    [STORAGE_KEYS.chatHistory, JSON.stringify(normalizedState.chatHistory)],
+    [STORAGE_KEYS.relationshipMemory, JSON.stringify(normalizedState.relationshipMemory)],
+    [STORAGE_KEYS.relationshipMemories, JSON.stringify(normalizedState.relationshipMemories)],
+    [STORAGE_KEYS.personaVoiceBindings, JSON.stringify(normalizedState.personaVoiceBindings)],
+    [STORAGE_KEYS.voiceLabVoices, JSON.stringify(normalizedState.voiceLabVoices)],
+    [STORAGE_KEYS.uiState, JSON.stringify(normalizedState.uiState)],
+    [STORAGE_KEYS.activeTab, normalizedState.activeTab],
+    [STORAGE_KEYS.currentBundledModelId, normalizedState.currentBundledModelId],
+    [STORAGE_KEYS.currentCustomVrmModelId, normalizedState.currentCustomVrmModelId],
+    [STORAGE_KEYS.twitchChannel, normalizeTwitchChannel(normalizedState.twitchChannel)],
+    [
+      STORAGE_KEYS.twitchSettings,
+      JSON.stringify(normalizeTwitchSettings(normalizedState.twitchSettings)),
+    ],
     [
       STORAGE_KEYS.sequencerSettings,
       JSON.stringify({
-        ...state.sequencerSettings,
-        playlist: state.sequencerSettings.playlist.filter(
+        ...normalizedState.sequencerSettings,
+        playlist: normalizedState.sequencerSettings.playlist.filter(
           (entry) => !entry.url.startsWith('blob:'),
         ),
       }),
     ],
-    [STORAGE_KEYS.visualSettings, JSON.stringify(state.visualSettings)],
+    [STORAGE_KEYS.visualSettings, JSON.stringify(normalizedState.visualSettings)],
   ] as const;
 
   await Promise.all(
