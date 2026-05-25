@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultRelationshipMemory } from './defaults';
 import {
+  clearScopedRelationshipMemoryState,
   commitScopedRelationshipMemoryState,
   shouldExposeScopedRelationshipMemory,
 } from './scoped-relationship-memory';
@@ -28,5 +29,29 @@ describe('scoped relationship memory', () => {
     expect(next[twitchStateKey]?.summary).toBe('twitch channel memory');
     expect(shouldExposeScopedRelationshipMemory(twitchStateKey, activeStateKey)).toBe(false);
     expect(shouldExposeScopedRelationshipMemory(activeStateKey, activeStateKey)).toBe(true);
+  });
+
+  it('removes only the cleared scope from relationship memory state', () => {
+    const localMemory = {
+      ...createDefaultRelationshipMemory(),
+      summary: 'local persona memory',
+    };
+    const twitchMemory = {
+      ...createDefaultRelationshipMemory(),
+      summary: 'twitch channel memory',
+    };
+    const localStateKey = 'local:persona:riko';
+    const twitchStateKey = 'twitch:subsect:persona:riko';
+
+    const next = clearScopedRelationshipMemoryState(
+      {
+        [localStateKey]: localMemory,
+        [twitchStateKey]: twitchMemory,
+      },
+      localStateKey,
+    );
+
+    expect(next[localStateKey]).toBeUndefined();
+    expect(next[twitchStateKey]?.summary).toBe('twitch channel memory');
   });
 });

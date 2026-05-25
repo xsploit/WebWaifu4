@@ -162,6 +162,14 @@ export async function saveLadybugRelationshipMemories(
   return response?.ok === true;
 }
 
+export async function deleteLadybugRelationshipMemory(scopeKey: string) {
+  const response = await requestLadybugMemory(
+    `/memory/relationships?scopeKey=${encodeURIComponent(scopeKey)}`,
+    { method: 'DELETE' },
+  );
+  return response?.ok === true;
+}
+
 export async function loadLadybugMemoryStatus() {
   return requestLadybugMemory<LadybugMemoryStatus>('/memory/status');
 }

@@ -268,6 +268,17 @@ export class LadybugMemoryService {
     await this.replaceRelationshipGraph(normalizedProfiles);
   }
 
+  async deleteRelationshipProfile(scopeKey: string) {
+    const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    const profiles = await this.loadRelationshipProfiles();
+    const nextProfiles =
+      profiles && typeof profiles === 'object' && !Array.isArray(profiles)
+        ? { ...(profiles as Record<string, unknown>) }
+        : {};
+    delete nextProfiles[normalizedScopeKey];
+    await this.saveRelationshipProfiles(nextProfiles);
+  }
+
   async getGraphSummary(): Promise<LadybugMemoryGraphSummary> {
     await this.open();
     const [

@@ -171,4 +171,70 @@ describe('LadybugMemoryService', () => {
       await service.close();
     }
   });
+
+  it('deletes one relationship profile scope without clearing other scopes', async () => {
+    const service = createService();
+    try {
+      await service.saveRelationshipProfiles({
+        'local:persona:hikari-chan': {
+          attraction: 1,
+          diaryEntry: 'Local profile diary.',
+          facts: ['Subby likes low latency.'],
+          guard: 8,
+          irritation: 0,
+          jealousy: 0,
+          lastActionTag: 'none',
+          lastDiaryTurnCount: 2,
+          lastSeenAt: 7,
+          mood: 'curious',
+          relationshipStage: 'familiar',
+          respect: 5,
+          summary: 'Local profile should be deleted.',
+          trust: 6,
+          turnCount: 2,
+          version: 2,
+        },
+        'twitch:subsect:persona:hikari-chan': {
+          attraction: 1,
+          diaryEntry: 'Twitch profile diary.',
+          facts: ['Twitch chat uses shared queue.'],
+          guard: 7,
+          irritation: 0,
+          jealousy: 0,
+          lastActionTag: 'none',
+          lastDiaryTurnCount: 3,
+          lastSeenAt: 8,
+          mood: 'focused',
+          relationshipStage: 'familiar',
+          respect: 5,
+          summary: 'Twitch profile should remain.',
+          trust: 6,
+          turnCount: 3,
+          version: 2,
+        },
+      });
+
+      await service.deleteRelationshipProfile('local:persona:hikari-chan');
+
+      const profiles = (await service.loadRelationshipProfiles()) as Record<
+        string,
+        { summary?: string }
+      >;
+      const status = await service.getStatus();
+      const graph = await service.getGraphSummary();
+
+      expect(profiles['local:persona:hikari-chan']).toBeUndefined();
+      expect(profiles['twitch:subsect:persona:hikari-chan']?.summary).toBe(
+        'Twitch profile should remain.',
+      );
+      expect(status.relationshipProfiles).toBe(1);
+      expect(status.relationshipFacts).toBe(1);
+      expect(graph.recent.relationships.map((profile) => profile.scopeKey)).toEqual([
+        'twitch:subsect:persona:hikari-chan',
+      ]);
+      expect(graph.recent.relationships[0]?.summary).toBe('Twitch profile should remain.');
+    } finally {
+      await service.close();
+    }
+  });
 });

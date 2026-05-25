@@ -1610,6 +1610,28 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'DELETE' && runtimePath === '/memory/relationships') {
+    try {
+      const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
+      await getLadybugMemoryService().deleteRelationshipProfile(scopeKey);
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        scopeKey,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Ladybug relationship profile delete failed.',
+      });
+    }
+    return;
+  }
+
   if (request.method === 'GET' && runtimePath === '/tts/voices') {
     const providerName = normalizeRemoteTtsProvider(url.searchParams.get('provider'));
     const ttsConfig = getRuntimeTtsConfig(config, providerName, request, allowServerProviderProxy);
