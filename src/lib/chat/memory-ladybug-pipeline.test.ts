@@ -230,6 +230,208 @@ describe('Ladybug memory pipeline', () => {
     expect(systemPrompt).toContain('semanticMemory":"present');
   });
 
+  it('injects scoped Ladybug memory for local and Twitch prompts without cross-scope bleed', async () => {
+    const localScope = 'local:persona:hikari-scope-test';
+    const twitchScope = 'twitch:subsect:persona:hikari-scope-test';
+
+    await service?.saveGrilloState(localScope, {
+      blocks: [
+        {
+          blockId: 'local-block',
+          blockName: 'preferences',
+          createdAt: 2,
+          items: ['Local Subby only wants desktop memory context.'],
+          participantKey: 'local:local:subby',
+          scopeKey: localScope,
+          sourceCandidateIds: [],
+          updatedAt: 3,
+        },
+      ],
+      candidates: [],
+      diaryEntries: [
+        {
+          beatType: 'relationship',
+          createdAt: 4,
+          diaryId: 'local-diary',
+          emotions: [{ intensity: 4, name: 'focused' }],
+          participantKey: 'local:local:subby',
+          personalThought: 'I remembered the local-only memory preference.',
+          scopeKey: localScope,
+          sourceTurnIds: [],
+          summary: 'Local Subby asked for desktop memory proof.',
+          tags: ['local'],
+        },
+      ],
+      emotionState: {
+        intensities: { focused: 4 },
+        lastSignalAt: 4,
+        lastSignalSource: 'local-diary',
+        updatedAt: 4,
+      },
+      promotedCandidateIds: [],
+      scopeKey: localScope,
+      updatedAt: 4,
+      version: 1,
+    });
+    await service?.saveGrilloState(twitchScope, {
+      blocks: [
+        {
+          blockId: 'twitch-block',
+          blockName: 'viewer_context',
+          createdAt: 2,
+          items: ['Twitch viewer Rayen only wants stream-aware memory context.'],
+          participantKey: 'twitch:subsect:rayen',
+          scopeKey: twitchScope,
+          sourceCandidateIds: [],
+          updatedAt: 3,
+        },
+      ],
+      candidates: [],
+      diaryEntries: [
+        {
+          beatType: 'relationship',
+          createdAt: 4,
+          diaryId: 'twitch-diary',
+          emotions: [{ intensity: 5, name: 'curious' }],
+          participantKey: 'twitch:subsect:rayen',
+          personalThought: 'I remembered the Twitch stream context preference.',
+          scopeKey: twitchScope,
+          sourceTurnIds: [],
+          summary: 'Rayen asked for Twitch memory proof.',
+          tags: ['twitch'],
+        },
+      ],
+      emotionState: {
+        intensities: { curious: 5 },
+        lastSignalAt: 4,
+        lastSignalSource: 'twitch-diary',
+        updatedAt: 4,
+      },
+      promotedCandidateIds: [],
+      scopeKey: twitchScope,
+      updatedAt: 4,
+      version: 1,
+    });
+    await service?.saveRelationshipProfiles({
+      [localScope]: {
+        ...createDefaultRelationshipMemory(),
+        facts: ['Local Subby prefers desktop memory.'],
+        mood: 'focused',
+        relationshipStage: 'familiar',
+        summary: 'Local scope memory belongs to desktop chat.',
+        trust: 8,
+      },
+      [twitchScope]: {
+        ...createDefaultRelationshipMemory(),
+        facts: ['Rayen prefers Twitch stream memory.'],
+        mood: 'curious',
+        relationshipStage: 'familiar',
+        summary: 'Twitch scope memory belongs to stream chat.',
+        trust: 6,
+      },
+    });
+    await service?.saveSemanticRecords(localScope, [
+      {
+        assistantText: 'Local vector acknowledged.',
+        createdAt: 6,
+        embedding: [1, 0, 0],
+        id: 'local-semantic',
+        personaId: 'hikari-scope-test',
+        scopeKey: localScope,
+        text: 'User: local desktop semantic recall\nHikari: Local vector acknowledged.',
+        userText: 'local desktop semantic recall',
+      },
+    ]);
+    await service?.saveSemanticRecords(twitchScope, [
+      {
+        assistantText: 'Twitch vector acknowledged.',
+        createdAt: 6,
+        embedding: [0, 1, 0],
+        id: 'twitch-semantic',
+        personaId: 'hikari-scope-test',
+        scopeKey: twitchScope,
+        text: 'User: Twitch stream semantic recall\nHikari: Twitch vector acknowledged.',
+        userText: 'Twitch stream semantic recall',
+      },
+    ]);
+
+    const relationshipMemories = await loadLadybugRelationshipMemories();
+    const localGrilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
+      participantKeys: ['local:local:subby'],
+      query: 'local desktop memory',
+      scopeKey: localScope,
+    });
+    const twitchGrilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
+      participantKeys: ['twitch:subsect:rayen'],
+      query: 'Twitch stream memory',
+      scopeKey: twitchScope,
+    });
+    const localSemanticMemoryContext = buildSemanticMemoryContext(
+      await findSemanticMemoryMatches(localScope, 'local desktop semantic recall', [1, 0, 0]),
+    );
+    const twitchSemanticMemoryContext = buildSemanticMemoryContext(
+      await findSemanticMemoryMatches(twitchScope, 'Twitch stream semantic recall', [0, 1, 0]),
+    );
+
+    const localPrompt = (
+      await buildChatCompletionMessages({
+        grilloMemory: localGrilloMemory,
+        history: [],
+        persona: { ...DEFAULT_PERSONA, id: 'hikari-scope-test', name: 'Hikari' },
+        relationshipMemory: relationshipMemories?.[localScope] ?? createDefaultRelationshipMemory(),
+        semanticMemoryContext: localSemanticMemoryContext,
+        turnContext: {
+          conversationScope: 'local-chat',
+          currentTurnText: 'Use my local memory.',
+          displayName: 'Subby',
+          source: 'local',
+          stateKey: localScope,
+        },
+      })
+    )[0]?.content ?? '';
+    const twitchPrompt = (
+      await buildChatCompletionMessages({
+        grilloMemory: twitchGrilloMemory,
+        history: [],
+        persona: { ...DEFAULT_PERSONA, id: 'hikari-scope-test', name: 'Hikari' },
+        relationshipMemory: relationshipMemories?.[twitchScope] ?? createDefaultRelationshipMemory(),
+        semanticMemoryContext: twitchSemanticMemoryContext,
+        turnContext: {
+          channel: 'subsect',
+          conversationScope: 'twitch-chat',
+          currentTurnText: 'Use Rayen Twitch memory.',
+          displayName: 'Rayen',
+          login: 'rayen',
+          source: 'twitch',
+          stateKey: twitchScope,
+        },
+      })
+    )[0]?.content ?? '';
+
+    expect(localPrompt).toContain('Local scope memory belongs to desktop chat.');
+    expect(localPrompt).toContain('Local Subby prefers desktop memory.');
+    expect(localPrompt).toContain('Local Subby only wants desktop memory context.');
+    expect(localPrompt).toContain('Local Subby asked for desktop memory proof.');
+    expect(localPrompt).toContain('local desktop semantic recall');
+    expect(localPrompt).toContain('"source":"local"');
+    expect(localPrompt).not.toContain('Twitch scope memory belongs to stream chat.');
+    expect(localPrompt).not.toContain('Rayen prefers Twitch stream memory.');
+    expect(localPrompt).not.toContain('Twitch viewer Rayen only wants stream-aware memory context.');
+    expect(localPrompt).not.toContain('Twitch stream semantic recall');
+
+    expect(twitchPrompt).toContain('Twitch scope memory belongs to stream chat.');
+    expect(twitchPrompt).toContain('Rayen prefers Twitch stream memory.');
+    expect(twitchPrompt).toContain('Twitch viewer Rayen only wants stream-aware memory context.');
+    expect(twitchPrompt).toContain('Rayen asked for Twitch memory proof.');
+    expect(twitchPrompt).toContain('Twitch stream semantic recall');
+    expect(twitchPrompt).toContain('"source":"twitch"');
+    expect(twitchPrompt).toContain('"channel":"subsect"');
+    expect(twitchPrompt).not.toContain('Local scope memory belongs to desktop chat.');
+    expect(twitchPrompt).not.toContain('Local Subby prefers desktop memory.');
+    expect(twitchPrompt).not.toContain('Local Subby only wants desktop memory context.');
+    expect(twitchPrompt).not.toContain('local desktop semantic recall');
+  });
+
   it('persists memory worker tool writes into Ladybug before the worker pass completes', async () => {
     const scopeKey = 'local:persona:hikari-worker';
     const result = await runGrilloMemoryWorkerLoop({
