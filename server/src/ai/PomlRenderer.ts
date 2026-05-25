@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { read, write } from 'pomljs';
 import type { Message, RichContent } from 'pomljs';
 
@@ -23,6 +24,7 @@ export type PomlRenderResponse =
 
 let cachedTemplate: string | null = null;
 let cachedTemplatePromise: Promise<string> | null = null;
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 export function normalizePomlRenderVariables(value: unknown): PomlRenderVariables {
   if (!value || typeof value !== 'object') {
@@ -61,14 +63,29 @@ export async function renderYourWifeyPomlResponse(variables: unknown): Promise<P
 }
 
 async function loadYourWifeyPomlTemplate() {
-  cachedTemplatePromise ??= readFile(
-    path.resolve(process.cwd(), 'src/lib/chat/templates/yourwifey-responses.poml'),
-    'utf8',
-  ).then((template) => {
+  cachedTemplatePromise ??= readFirstExistingTemplate().then((template) => {
     cachedTemplate = template;
     return template;
   });
   return cachedTemplate ?? cachedTemplatePromise;
+}
+
+async function readFirstExistingTemplate() {
+  const relativeTemplatePath = 'src/lib/chat/templates/yourwifey-responses.poml';
+  const candidates = [
+    path.resolve(process.cwd(), relativeTemplatePath),
+    path.resolve(moduleDir, '../../..', relativeTemplatePath),
+  ];
+  const errors: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate, 'utf8');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${candidate}: ${message}`);
+    }
+  }
+  throw new Error(`Unable to load WebWaifu POML template. Tried ${errors.join('; ')}`);
 }
 
 function toPromptMessage(message: Message): PomlPromptMessage {

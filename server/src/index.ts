@@ -1958,19 +1958,34 @@ commandRouter = new CommandRouter({
 const batchTimer = setInterval(() => {
   void scheduler.flushTimedBatch();
 }, 1000);
+let shuttingDown = false;
 
-function shutdown() {
+export async function shutdownStreamBot() {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
   clearInterval(batchTimer);
   disposeRuntimeChatProviderCache();
   disposeChatProvider(provider);
   chatSource.stop();
   aiLiveSocket.close();
   overlaySocket.close();
-  httpServer.close();
+  await new Promise<void>((resolve) => {
+    if (!httpServer.listening) {
+      resolve();
+      return;
+    }
+    httpServer.close(() => resolve());
+  });
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+function shutdownAndExit() {
+  void shutdownStreamBot().finally(() => process.exit(0));
+}
+
+process.once('SIGINT', shutdownAndExit);
+process.once('SIGTERM', shutdownAndExit);
 
 httpServer.listen(config.botPort, () => {
   console.log(`Web Waifu 4 stream bot listening on http://127.0.0.1:${config.botPort}`);

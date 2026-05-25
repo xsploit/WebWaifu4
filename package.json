@@ -56,6 +56,7 @@
       "dist/**",
       "electron/**",
       "server/dist/**",
+      "src/lib/chat/templates/**",
       "vendor/**",
       "package.json"
     ],

@@ -25,6 +25,9 @@ let mainWindow = null;
 let windowMode = readInitialWindowMode();
 let clickThrough = false;
 let appProtocolRegistered = false;
+let backendModule = null;
+let backendStopping = null;
+let quitAfterBackendStop = false;
 
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -172,8 +175,19 @@ async function startBackendIfNeeded() {
     throw new Error(`Missing compiled backend: ${serverEntry}. Run npm run build first.`);
   }
 
-  await import(pathToFileURL(serverEntry).href);
+  backendModule = await import(pathToFileURL(serverEntry).href);
   await waitForBackendHealth(backendPort);
+}
+
+async function stopBackendIfNeeded() {
+  if (externalBackend || !backendModule?.shutdownStreamBot) {
+    return;
+  }
+  backendStopping ??= Promise.resolve(backendModule.shutdownStreamBot()).finally(() => {
+    backendModule = null;
+    backendStopping = null;
+  });
+  await backendStopping;
 }
 
 function resolveRendererFile(requestUrl) {
@@ -254,6 +268,8 @@ function applyLiveWindowOptions() {
   mainWindow.setAlwaysOnTop(transparent, transparent ? 'floating' : 'normal');
   mainWindow.setSkipTaskbar(windowMode === 'overlay');
   mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+  mainWindow.setAutoHideMenuBar(transparent);
+  mainWindow.setMenuBarVisibility(!transparent);
   mainWindow.webContents.send('desktop-window-mode-changed', {
     backendPort,
     clickThrough,
@@ -292,6 +308,16 @@ function installMenu() {
         { role: 'reload' },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
+        { type: 'separator' },
+        {
+          label: 'Show Menu Bar',
+          type: 'checkbox',
+          checked: windowMode === 'editor',
+          click: (item) => {
+            mainWindow?.setAutoHideMenuBar(!item.checked);
+            mainWindow?.setMenuBarVisibility(item.checked);
+          },
+        },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -399,6 +425,15 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', (event) => {
+  if (externalBackend || !backendModule || quitAfterBackendStop) {
+    return;
+  }
+  event.preventDefault();
+  quitAfterBackendStop = true;
+  void stopBackendIfNeeded().finally(() => app.quit());
 });
 
 app
