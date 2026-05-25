@@ -4,7 +4,10 @@ import type {
   LadybugMemoryGraphSummary,
   LadybugMemoryStatus,
 } from '../../../lib/chat/ladybug-memory-client';
-import type { MemoryPromptDebugSnapshot } from '../../../lib/chat/memory-debug';
+import type {
+  MemoryPromptDebugSnapshot,
+  MemoryWorkerDebugSnapshot,
+} from '../../../lib/chat/memory-debug';
 import type { AiSettings, RelationshipMemory } from '../../../lib/chat/types';
 
 type ContextTabProps = {
@@ -26,6 +29,7 @@ type ContextTabProps = {
   memoryBackendStatus: LadybugMemoryStatus | null;
   memoryGraphSummary: LadybugMemoryGraphSummary | null;
   memoryPromptDebug: MemoryPromptDebugSnapshot | null;
+  memoryWorkerDebug: MemoryWorkerDebugSnapshot | null;
   modelsError: string | null;
   modelsLoading: boolean;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
@@ -50,6 +54,7 @@ export function ContextTab({
   memoryBackendStatus,
   memoryGraphSummary,
   memoryPromptDebug,
+  memoryWorkerDebug,
   modelsError,
   modelsLoading,
   setAiSettings,
@@ -75,6 +80,10 @@ export function ContextTab({
     (sum, count) => sum + count,
     0,
   );
+  const lastWorkerDebugAt =
+    memoryWorkerDebug && memoryWorkerDebug.updatedAt > 0
+      ? new Date(memoryWorkerDebug.updatedAt).toLocaleTimeString()
+      : '';
 
   return (
     <>
@@ -146,6 +155,27 @@ export function ContextTab({
             Pending all scopes: <strong>{totalPendingWorkerTurns}</strong>
           </div>
         </div>
+        {memoryWorkerDebug ? (
+          <div className="memory-entry">
+            <div className="memory-entry-header">
+              <strong>Last worker run</strong>
+              <span>{lastWorkerDebugAt}</span>
+            </div>
+            <p>
+              {memoryWorkerDebug.status} / {memoryWorkerDebug.reason} / turns{' '}
+              {memoryWorkerDebug.processedChatTurnCount}
+              {memoryWorkerDebug.model ? ` / ${memoryWorkerDebug.model}` : ''}
+              {typeof memoryWorkerDebug.toolCalls === 'number'
+                ? ` / tools ${memoryWorkerDebug.toolCalls}`
+                : ''}
+              {typeof memoryWorkerDebug.rounds === 'number'
+                ? ` / rounds ${memoryWorkerDebug.rounds}`
+                : ''}
+            </p>
+            <p>{memoryWorkerDebug.stateKey}</p>
+            {memoryWorkerDebug.error ? <p>{memoryWorkerDebug.error}</p> : null}
+          </div>
+        ) : null}
         {modelsError ? <div className="status-copy">{modelsError}</div> : null}
       </div>
 

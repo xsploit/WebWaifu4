@@ -31,7 +31,7 @@ import {
   normalizeMemoryAgentIntervalMessages,
   shouldRunMemoryAgent,
 } from './lib/chat/memory-agent';
-import type { MemoryPromptDebugSnapshot } from './lib/chat/memory-debug';
+import type { MemoryPromptDebugSnapshot, MemoryWorkerDebugSnapshot } from './lib/chat/memory-debug';
 import { updateRelationshipMemory } from './lib/chat/memory';
 import {
   buildGrilloMemoryPromptAdditionsAsync,
@@ -1886,6 +1886,8 @@ function App() {
     useState<LadybugMemoryGraphSummary | null>(null);
   const [memoryPromptDebug, setMemoryPromptDebug] =
     useState<MemoryPromptDebugSnapshot | null>(null);
+  const [memoryWorkerDebug, setMemoryWorkerDebug] =
+    useState<MemoryWorkerDebugSnapshot | null>(null);
   const [memoryAgentPendingCounts, setMemoryAgentPendingCounts] = useState<
     Record<string, number>
   >({});
@@ -4058,6 +4060,13 @@ function App() {
       }
 
       setMemoryAgentBusy(true);
+      setMemoryWorkerDebug({
+        processedChatTurnCount,
+        reason,
+        stateKey,
+        status: 'running',
+        updatedAt: Date.now(),
+      });
       setMemoryAgentStatus(
         reason === 'manual'
           ? 'Running memory worker...'
@@ -4140,6 +4149,16 @@ function App() {
             rawContent = extractGrilloWorkerRelationshipJson(result.finalJsonText);
             if (rawContent) {
               refreshGrilloMemoryState(stateKey);
+              setMemoryWorkerDebug({
+                model,
+                processedChatTurnCount,
+                reason,
+                rounds: result.rounds,
+                stateKey,
+                status: 'updated',
+                toolCalls: result.toolCalls.length,
+                updatedAt: Date.now(),
+              });
               setMemoryAgentStatus(
                 `Grillo worker: ${model}; tools=${result.toolCalls.length}; rounds=${result.rounds}.`,
               );
@@ -4178,6 +4197,15 @@ function App() {
 
               rawContent = response.choices[0]?.message.content?.trim() ?? '';
               if (rawContent) {
+                setMemoryWorkerDebug({
+                  model,
+                  processedChatTurnCount,
+                  reason,
+                  stateKey,
+                  status: 'updated',
+                  toolCalls: 0,
+                  updatedAt: Date.now(),
+                });
                 setMemoryAgentStatus(`Legacy diary model: ${model}`);
                 break;
               }
@@ -4196,6 +4224,13 @@ function App() {
           if (lastError) {
             throw lastError;
           }
+          setMemoryWorkerDebug({
+            processedChatTurnCount,
+            reason,
+            stateKey,
+            status: 'no-json',
+            updatedAt: Date.now(),
+          });
           setMemoryAgentStatus('Memory worker returned no JSON.');
           return;
         }
@@ -4228,6 +4263,14 @@ function App() {
         }
         setMemoryAgentStatus('Memory worker updated.');
       } catch (error) {
+        setMemoryWorkerDebug({
+          error: error instanceof Error ? error.message : String(error),
+          processedChatTurnCount,
+          reason,
+          stateKey,
+          status: 'failed',
+          updatedAt: Date.now(),
+        });
         setMemoryAgentStatus('Memory worker failed.');
       } finally {
         if (memoryAgentRunRef.current === scheduledRun) {
@@ -6181,6 +6224,7 @@ function App() {
               memoryBackendStatus={memoryBackendStatus}
               memoryGraphSummary={memoryGraphSummary}
               memoryPromptDebug={memoryPromptDebug}
+              memoryWorkerDebug={memoryWorkerDebug}
               memoryAgentPendingCounts={memoryAgentPendingCounts}
               sequencerSettings={sequencerSettings}
               setAiSettings={setAiSettings}

@@ -10,7 +10,10 @@ import type {
   TwitchSettings,
   VoiceLabVoice,
 } from '../../lib/chat/types';
-import type { MemoryPromptDebugSnapshot } from '../../lib/chat/memory-debug';
+import type {
+  MemoryPromptDebugSnapshot,
+  MemoryWorkerDebugSnapshot,
+} from '../../lib/chat/memory-debug';
 import type {
   BundledVrmOption,
   ManualPlayRequest,
@@ -112,6 +115,7 @@ type SettingsPanelProps = {
   memoryBackendStatus: LadybugMemoryStatus | null;
   memoryGraphSummary: LadybugMemoryGraphSummary | null;
   memoryPromptDebug: MemoryPromptDebugSnapshot | null;
+  memoryWorkerDebug: MemoryWorkerDebugSnapshot | null;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
   setSequencerSettings: Dispatch<SetStateAction<SequencerSettings>>;
   setTwitchSettings: Dispatch<SetStateAction<TwitchSettings>>;
@@ -222,6 +226,7 @@ export function SettingsPanel({
   memoryBackendStatus,
   memoryGraphSummary,
   memoryPromptDebug,
+  memoryWorkerDebug,
   setAiSettings,
   setSequencerSettings,
   setTwitchSettings,
@@ -349,6 +354,7 @@ export function SettingsPanel({
         memoryBackendStatus={memoryBackendStatus}
         memoryGraphSummary={memoryGraphSummary}
         memoryPromptDebug={memoryPromptDebug}
+        memoryWorkerDebug={memoryWorkerDebug}
         modelsError={modelsError}
         modelsLoading={modelsLoading}
         setAiSettings={setAiSettings}
