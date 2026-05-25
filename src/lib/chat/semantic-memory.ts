@@ -2,6 +2,7 @@ import type { PersonaProfile } from './types';
 import {
   loadLadybugSemanticMemory,
   saveLadybugSemanticMemory,
+  searchLadybugSemanticMemory,
 } from './ladybug-memory-client';
 
 export type SemanticMemoryRecord = {
@@ -168,6 +169,11 @@ export async function findSemanticMemoryMatches(
   queryEmbedding: number[] | null,
   limit = 4,
 ): Promise<SemanticMemoryMatch[]> {
+  const remoteMatches = await searchLadybugSemanticMemory(scopeKey, queryEmbedding, limit);
+  if (remoteMatches?.length) {
+    return remoteMatches.slice(0, limit);
+  }
+
   const records = await loadSemanticMemory(scopeKey);
   const signature = createSemanticSearchSignature(records, query, queryEmbedding, limit);
   const cacheKey = `${normalizeScopeKey(scopeKey)}:${hashText(signature).toString(36)}`;

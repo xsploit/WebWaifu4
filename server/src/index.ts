@@ -83,6 +83,12 @@ type MemorySemanticBody = {
   scopeKey?: unknown;
 };
 
+type MemorySemanticSearchBody = {
+  embedding?: unknown;
+  limit?: unknown;
+  scopeKey?: unknown;
+};
+
 type MemoryRelationshipsBody = {
   profiles?: unknown;
 };
@@ -1511,6 +1517,30 @@ const httpServer = createServer(async (request, response) => {
         ok: false,
         backend: 'ladybug',
         error: error instanceof Error ? error.message : 'Ladybug semantic memory save failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/memory/semantic/search') {
+    try {
+      const body = await readRequestJson<MemorySemanticSearchBody>(request, 1024 * 1024);
+      const scopeKey = normalizeMemoryScopeKey(body.scopeKey);
+      const embedding = Array.isArray(body.embedding)
+        ? body.embedding.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+        : [];
+      const limit = Math.max(1, Math.min(20, Math.trunc(Number(body.limit) || 4)));
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        matches: await getLadybugMemoryService().querySemanticVectors(scopeKey, embedding, limit),
+        scopeKey,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug semantic vector search failed.',
       });
     }
     return;

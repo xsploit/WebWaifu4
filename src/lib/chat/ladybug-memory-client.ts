@@ -20,6 +20,7 @@ export type LadybugMemoryStatus = {
   ok?: boolean;
   semanticRecords?: number;
   semanticScopes?: number;
+  semanticVectors?: number;
   snapshots?: number;
 };
 
@@ -44,6 +45,7 @@ export type LadybugMemoryGraphSummary = {
       summary: string;
     }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
+    vectors: Array<{ id: string; personaId: string; text: string }>;
   };
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
 };
@@ -107,6 +109,28 @@ export async function saveLadybugSemanticMemory(
     method: 'PUT',
   });
   return response?.ok === true;
+}
+
+export async function searchLadybugSemanticMemory(
+  scopeKey: string,
+  embedding: number[] | null,
+  limit: number,
+) {
+  if (!embedding?.length) {
+    return undefined;
+  }
+  const response = await requestLadybugMemory<{
+    matches: unknown;
+    scopeKey: string;
+  }>('/memory/semantic/search', {
+    body: JSON.stringify({ scopeKey, embedding, limit }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
+  if (!response || response.ok !== true || !Array.isArray(response.matches)) {
+    return undefined;
+  }
+  return response.matches as Array<SemanticMemoryRecord & { distance: number; score: number }>;
 }
 
 export async function loadLadybugRelationshipMemories() {

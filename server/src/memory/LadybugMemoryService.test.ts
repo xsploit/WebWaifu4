@@ -112,12 +112,18 @@ describe('LadybugMemoryService', () => {
 
       const grilloState = await service.loadGrilloState('local:persona:hikari-chan');
       const semanticRecords = await service.loadSemanticRecords('local:persona:hikari-chan');
+      const semanticMatches = await service.querySemanticVectors(
+        'local:persona:hikari-chan',
+        [0.1, 0.2, 0.3],
+        2,
+      );
       const relationshipProfiles = await service.loadRelationshipProfiles();
       const status = await service.getStatus();
       const graph = await service.getGraphSummary();
 
       expect((grilloState as { candidates: unknown[] }).candidates).toHaveLength(1);
       expect(semanticRecords?.[0]?.embedding).toEqual([0.1, 0.2, 0.3]);
+      expect(semanticMatches[0]?.id).toBe('semantic-1');
       expect(
         (relationshipProfiles as Record<string, { summary?: string }>)['local:persona:hikari-chan']
           ?.summary,
@@ -130,9 +136,10 @@ describe('LadybugMemoryService', () => {
       expect(status.emotionStates).toBe(1);
       expect(status.emotionIntensities).toBe(1);
       expect(status.semanticRecords).toBe(1);
+      expect(status.semanticVectors).toBe(1);
       expect(status.relationshipProfiles).toBe(1);
       expect(status.relationshipFacts).toBe(1);
-      expect(status.relationshipEdges).toBe(9);
+      expect(status.relationshipEdges).toBe(11);
       expect(graph.scopes[0]?.id).toBe('local:persona:hikari-chan');
       expect(graph.participants[0]?.id).toBe('local:local:subby');
       expect(graph.personas[0]?.id).toBe('hikari-chan');
@@ -144,14 +151,17 @@ describe('LadybugMemoryService', () => {
           'HAS_EMOTION',
           'HAS_EMOTION_INTENSITY',
           'HAS_SEMANTIC',
+          'HAS_VECTOR',
           'HAS_RELATIONSHIP',
           'HAS_RELATIONSHIP_FACT',
+          'VECTOR_FOR_PERSONA',
         ]),
       );
       expect(graph.recent.candidates[0]?.summary).toBe('Subby likes fast TTS.');
       expect(graph.recent.emotions[0]?.lastSignalSource).toBe('worker');
       expect(graph.recent.relationships[0]?.summary).toContain('low-latency');
       expect(graph.recent.semantic[0]?.text).toContain('remember fast TTS');
+      expect(graph.recent.vectors[0]?.text).toContain('remember fast TTS');
     } finally {
       await service.close();
     }

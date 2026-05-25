@@ -16,6 +16,7 @@ vi.mock('./ladybug-memory-client', () => ({
   loadLadybugSemanticMemory: vi.fn(async () => mockedLadybug.semanticRecords),
   saveLadybugGrilloState: vi.fn(async () => true),
   saveLadybugSemanticMemory: vi.fn(async () => true),
+  searchLadybugSemanticMemory: vi.fn(async () => undefined),
 }));
 
 import { buildGrilloMemoryPromptAdditionsAsync } from './grillo-memory';

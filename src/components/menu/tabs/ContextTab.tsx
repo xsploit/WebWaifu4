@@ -228,6 +228,9 @@ export function ContextTab({
             Semantic records: <strong>{memoryBackendStatus?.semanticRecords ?? 0}</strong>
           </div>
           <div className="status-copy">
+            Vector records: <strong>{memoryBackendStatus?.semanticVectors ?? 0}</strong>
+          </div>
+          <div className="status-copy">
             Relationship profiles: <strong>{memoryBackendStatus?.relationshipProfiles ?? 0}</strong>
           </div>
           <div className="status-copy">

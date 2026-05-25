@@ -13,6 +13,11 @@ export type LadybugSemanticMemoryRecord = {
   embedding: number[] | null;
 };
 
+export type LadybugSemanticMemoryMatch = LadybugSemanticMemoryRecord & {
+  distance: number;
+  score: number;
+};
+
 export type LadybugMemoryGraphSummary = {
   edges: Array<{ count: number; relation: string }>;
   participants: Array<{ channel: string; displayName: string; id: string; source: string }>;
@@ -34,6 +39,7 @@ export type LadybugMemoryGraphSummary = {
       summary: string;
     }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
+    vectors: Array<{ id: string; personaId: string; text: string }>;
   };
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
 };
@@ -90,6 +96,7 @@ export class LadybugMemoryService {
       emotionStates,
       emotionIntensities,
       semanticRecords,
+      semanticVectors,
       relationshipProfiles,
       relationshipFacts,
       hasCandidateEdges,
@@ -98,6 +105,8 @@ export class LadybugMemoryService {
       hasEmotionEdges,
       hasEmotionIntensityEdges,
       hasSemanticEdges,
+      hasVectorEdges,
+      hasVectorPersonaEdges,
       hasRelationshipEdges,
       hasRelationshipPersonaEdges,
       hasRelationshipFactEdges,
@@ -115,6 +124,7 @@ export class LadybugMemoryService {
         this.scalarCount('MATCH (m:EmotionState) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:EmotionIntensity) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:SemanticRecord) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:SemanticVector) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipProfile) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipFact) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count'),
@@ -123,6 +133,8 @@ export class LadybugMemoryService {
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_EMOTION]->(m:EmotionState) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:EmotionState)-[:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) RETURN count(i) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_VECTOR]->(m:SemanticVector) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:SemanticVector)-[:VECTOR_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count'),
@@ -134,6 +146,8 @@ export class LadybugMemoryService {
       hasEmotionEdges +
       hasEmotionIntensityEdges +
       hasSemanticEdges +
+      hasVectorEdges +
+      hasVectorPersonaEdges +
       hasRelationshipEdges +
       hasRelationshipPersonaEdges +
       hasRelationshipFactEdges;
@@ -152,6 +166,7 @@ export class LadybugMemoryService {
       emotionStates,
       emotionIntensities,
       semanticRecords,
+      semanticVectors,
       relationshipProfiles,
       relationshipFacts,
       relationshipEdges,
@@ -195,10 +210,47 @@ export class LadybugMemoryService {
     await this.replaceSemanticGraph(scopeKey, normalized);
   }
 
+  async querySemanticVectors(
+    scopeKey: string,
+    embedding: number[],
+    limit = 4,
+  ): Promise<LadybugSemanticMemoryMatch[]> {
+    const normalizedEmbedding = normalizeEmbeddingArray(embedding);
+    if (normalizedEmbedding.length === 0) {
+      return [];
+    }
+    const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    await this.open();
+    await this.ensureSemanticVectorIndex(normalizedEmbedding.length).catch(() => undefined);
+    const vectorTable = semanticVectorTableName(normalizedEmbedding.length);
+    const vectorIndex = semanticVectorIndexName(normalizedEmbedding.length);
+    const rows = await this.all(
+      `CALL QUERY_VECTOR_INDEX('${vectorTable}', '${vectorIndex}', ${vectorLiteral(normalizedEmbedding)}, ${Math.max(limit * 8, limit)}) WITH node AS n, distance WHERE n.scopeKey = ${q(normalizedScopeKey)} RETURN n.id AS id, n.scopeKey AS scopeKey, n.personaId AS personaId, n.text AS text, n.userText AS userText, n.assistantText AS assistantText, n.embedding AS embedding, n.createdAt AS createdAt, distance ORDER BY distance LIMIT ${Math.max(1, Math.min(20, Math.trunc(limit)))}`,
+    ).catch(() => []);
+    return rows.map((row) => {
+      const distance = numberValue(row['distance'], 1);
+      const embeddingValue = Array.isArray(row['embedding'])
+        ? normalizeEmbeddingArray(row['embedding'])
+        : [];
+      return {
+        assistantText: stringValue(row['assistantText']).slice(0, 1200),
+        createdAt: intValue(row['createdAt']),
+        distance,
+        embedding: embeddingValue.length ? embeddingValue : null,
+        id: stringValue(row['id']),
+        personaId: stringValue(row['personaId']) || 'unknown',
+        scopeKey: stringValue(row['scopeKey']) || normalizedScopeKey,
+        score: Math.max(0, 1 - distance),
+        text: stringValue(row['text']),
+        userText: stringValue(row['userText']).slice(0, 1200),
+      };
+    });
+  }
+
   async deleteSemanticRecords(scopeKey: string) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     await this.deleteSnapshot('semantic', normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord']);
+    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector']);
   }
 
   async loadRelationshipProfiles() {
@@ -229,6 +281,8 @@ export class LadybugMemoryService {
       emotionScopeEdges,
       emotionIntensityEdges,
       semanticForPersonaEdges,
+      vectorScopeEdges,
+      vectorPersonaEdges,
       relationshipScopeEdges,
       relationshipPersonaEdges,
       relationshipFactEdges,
@@ -240,6 +294,7 @@ export class LadybugMemoryService {
       emotions,
       relationships,
       semantic,
+      vectors,
     ] = await Promise.all([
       this.scalarCount(
         'MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count',
@@ -259,6 +314,8 @@ export class LadybugMemoryService {
       this.scalarCount(
         'MATCH (m:SemanticRecord)-[:SEMANTIC_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
       ),
+      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_VECTOR]->(m:SemanticVector) RETURN count(m) AS count'),
+      this.scalarCount('MATCH (m:SemanticVector)-[:VECTOR_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count'),
       this.scalarCount(
         'MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count',
       ),
@@ -290,6 +347,9 @@ export class LadybugMemoryService {
       this.all(
         'MATCH (m:SemanticRecord) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
       ),
+      this.all(
+        'MATCH (m:SemanticVector) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
+      ),
     ]);
 
     return {
@@ -304,6 +364,8 @@ export class LadybugMemoryService {
         { relation: 'HAS_EMOTION', count: emotionScopeEdges },
         { relation: 'HAS_EMOTION_INTENSITY', count: emotionIntensityEdges },
         { relation: 'SEMANTIC_FOR_PERSONA', count: semanticForPersonaEdges },
+        { relation: 'HAS_VECTOR', count: vectorScopeEdges },
+        { relation: 'VECTOR_FOR_PERSONA', count: vectorPersonaEdges },
         { relation: 'HAS_RELATIONSHIP', count: relationshipScopeEdges },
         { relation: 'RELATIONSHIP_AS_PERSONA', count: relationshipPersonaEdges },
         { relation: 'HAS_RELATIONSHIP_FACT', count: relationshipFactEdges },
@@ -345,6 +407,11 @@ export class LadybugMemoryService {
           summary: stringValue(row['summary']),
         })),
         semantic: semantic.map((row) => ({
+          id: stringValue(row['id']),
+          personaId: stringValue(row['personaId']),
+          text: stringValue(row['text']),
+        })),
+        vectors: vectors.map((row) => ({
           id: stringValue(row['id']),
           personaId: stringValue(row['personaId']),
           text: stringValue(row['text']),
@@ -436,6 +503,11 @@ export class LadybugMemoryService {
     );
     await this.ensureNodeTable(
       connection,
+      'SemanticVector',
+      'id STRING, scopeKey STRING, personaId STRING, text STRING, userText STRING, assistantText STRING, dimension INT64, vectorTable STRING, createdAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
       'RelationshipProfile',
       'id STRING, scopeKey STRING, personaId STRING, relationshipStage STRING, mood STRING, trust INT64, attraction INT64, respect INT64, irritation INT64, jealousy INT64, guard INT64, turnCount INT64, lastDiaryTurnCount INT64, lastSeenAt INT64, lastActionTag STRING, summary STRING, diaryEntry STRING, updatedAt INT64, PRIMARY KEY(id)',
     );
@@ -454,6 +526,7 @@ export class LadybugMemoryService {
       'FROM EmotionState TO EmotionIntensity',
     );
     await this.ensureRelTable(connection, 'HAS_SEMANTIC', 'FROM MemoryScope TO SemanticRecord');
+    await this.ensureRelTable(connection, 'HAS_VECTOR', 'FROM MemoryScope TO SemanticVector');
     await this.ensureRelTable(connection, 'HAS_RELATIONSHIP', 'FROM MemoryScope TO RelationshipProfile');
     await this.ensureRelTable(
       connection,
@@ -463,6 +536,7 @@ export class LadybugMemoryService {
     await this.ensureRelTable(connection, 'BLOCK_ABOUT', 'FROM MemoryBlock TO Participant');
     await this.ensureRelTable(connection, 'DIARY_ABOUT', 'FROM DiaryEntry TO Participant');
     await this.ensureRelTable(connection, 'SEMANTIC_FOR_PERSONA', 'FROM SemanticRecord TO Persona');
+    await this.ensureRelTable(connection, 'VECTOR_FOR_PERSONA', 'FROM SemanticVector TO Persona');
     await this.ensureRelTable(
       connection,
       'RELATIONSHIP_AS_PERSONA',
@@ -626,7 +700,7 @@ export class LadybugMemoryService {
   ) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     await this.ensureScopeNode(normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord']);
+    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector']);
     for (const record of records.slice(0, 160)) {
       await this.ensurePersonaNode(record.personaId);
       await this.exec(
@@ -634,7 +708,21 @@ export class LadybugMemoryService {
       );
       await this.createScopeRelation('HAS_SEMANTIC', 'SemanticRecord', normalizedScopeKey, record.id);
       await this.createSemanticPersonaRelation(record.id, record.personaId);
+      const embedding = normalizeEmbeddingArray(record.embedding);
+      if (embedding.length > 0) {
+        await this.ensureSemanticVectorTable(embedding.length);
+        const vectorTable = semanticVectorTableName(embedding.length);
+        await this.exec(
+          `CREATE (:SemanticVector {id: ${q(record.id)}, scopeKey: ${q(normalizedScopeKey)}, personaId: ${q(record.personaId)}, text: ${q(record.text)}, userText: ${q(record.userText)}, assistantText: ${q(record.assistantText)}, dimension: ${embedding.length}, vectorTable: ${q(vectorTable)}, createdAt: ${intValue(record.createdAt)}})`,
+        );
+        await this.exec(
+          `CREATE (:${vectorTable} {id: ${q(record.id)}, scopeKey: ${q(normalizedScopeKey)}, personaId: ${q(record.personaId)}, text: ${q(record.text)}, userText: ${q(record.userText)}, assistantText: ${q(record.assistantText)}, embedding: ${vectorLiteral(embedding)}, createdAt: ${intValue(record.createdAt)}})`,
+        );
+        await this.createScopeRelation('HAS_VECTOR', 'SemanticVector', normalizedScopeKey, record.id);
+        await this.createVectorPersonaRelation(record.id, record.personaId);
+      }
     }
+    await this.rebuildSemanticVectorIndexes(records).catch(() => undefined);
   }
 
   private async replaceRelationshipGraph(profiles: Record<string, Record<string, unknown>>) {
@@ -679,9 +767,30 @@ export class LadybugMemoryService {
   }
 
   private async deleteGraphRowsForScope(scopeKey: string, labels: string[]) {
+    if (labels.includes('SemanticVector')) {
+      await this.deleteSemanticVectorRowsForScope(scopeKey);
+    }
     await this.deleteGraphRelationsForScope(scopeKey, labels);
     for (const label of labels) {
       await this.exec(`MATCH (m:${label}) WHERE m.scopeKey = ${q(scopeKey)} DELETE m`);
+    }
+  }
+
+  private async deleteSemanticVectorRowsForScope(scopeKey: string) {
+    const rows = await this
+      .all(
+        `MATCH (m:SemanticVector) WHERE m.scopeKey = ${q(scopeKey)} RETURN m.id AS id, m.vectorTable AS vectorTable`,
+      )
+      .catch(() => []);
+    for (const row of rows) {
+      const id = stringValue(row['id']);
+      const vectorTable = stringValue(row['vectorTable']);
+      if (!id || !/^SemanticVectorDim\d+$/.test(vectorTable)) {
+        continue;
+      }
+      await this.exec(`MATCH (m:${vectorTable}) WHERE m.id = ${q(id)} DELETE m`).catch(
+        () => undefined,
+      );
     }
   }
 
@@ -726,6 +835,14 @@ export class LadybugMemoryService {
         `MATCH (m:SemanticRecord)-[r:SEMANTIC_FOR_PERSONA]->(p:Persona) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
       ).catch(() => undefined);
     }
+    if (labels.includes('SemanticVector')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_VECTOR]->(m:SemanticVector) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:SemanticVector)-[r:VECTOR_FOR_PERSONA]->(p:Persona) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
   }
 
   private async ensureScopeNode(scopeKey: string) {
@@ -750,8 +867,18 @@ export class LadybugMemoryService {
   }
 
   private async createScopeRelation(
-    relation: 'HAS_CANDIDATE' | 'HAS_BLOCK' | 'HAS_DIARY' | 'HAS_SEMANTIC',
-    label: 'MemoryCandidate' | 'MemoryBlock' | 'DiaryEntry' | 'SemanticRecord',
+    relation:
+      | 'HAS_CANDIDATE'
+      | 'HAS_BLOCK'
+      | 'HAS_DIARY'
+      | 'HAS_SEMANTIC'
+      | 'HAS_VECTOR',
+    label:
+      | 'MemoryCandidate'
+      | 'MemoryBlock'
+      | 'DiaryEntry'
+      | 'SemanticRecord'
+      | 'SemanticVector',
     scopeKey: string,
     memoryId: string,
   ) {
@@ -775,6 +902,57 @@ export class LadybugMemoryService {
     await this.exec(
       `MATCH (m:SemanticRecord), (p:Persona) WHERE m.id = ${q(memoryId)} AND p.id = ${q(personaId || 'unknown')} CREATE (m)-[:SEMANTIC_FOR_PERSONA]->(p)`,
     );
+  }
+
+  private async createVectorPersonaRelation(memoryId: string, personaId: string) {
+    await this.exec(
+      `MATCH (m:SemanticVector), (p:Persona) WHERE m.id = ${q(memoryId)} AND p.id = ${q(personaId || 'unknown')} CREATE (m)-[:VECTOR_FOR_PERSONA]->(p)`,
+    );
+  }
+
+  private async ensureSemanticVectorTable(dimension: number) {
+    const vectorTable = semanticVectorTableName(dimension);
+    const state = await this.open();
+    await this.ensureNodeTable(
+      state.connection,
+      vectorTable,
+      `id STRING PRIMARY KEY, scopeKey STRING, personaId STRING, text STRING, userText STRING, assistantText STRING, embedding FLOAT[${dimension}], createdAt INT64`,
+    );
+  }
+
+  private async rebuildSemanticVectorIndexes(records: LadybugSemanticMemoryRecord[]) {
+    const dimensions = new Set(
+      records
+        .map((record) => normalizeEmbeddingArray(record.embedding).length)
+        .filter((dimension) => dimension > 0),
+    );
+    for (const dimension of dimensions) {
+      await this.ensureSemanticVectorIndex(dimension, { rebuild: true });
+    }
+  }
+
+  private async ensureSemanticVectorIndex(
+    dimension: number,
+    options: { rebuild?: boolean } = {},
+  ) {
+    await this.ensureSemanticVectorTable(dimension);
+    const vectorTable = semanticVectorTableName(dimension);
+    const vectorIndex = semanticVectorIndexName(dimension);
+    await this.exec('INSTALL VECTOR').catch(() => undefined);
+    await this.exec('LOAD VECTOR');
+    if (options.rebuild) {
+      await this.exec(`CALL DROP_VECTOR_INDEX('${vectorTable}', '${vectorIndex}')`).catch(
+        () => undefined,
+      );
+    }
+    await this.exec(
+      `CALL CREATE_VECTOR_INDEX('${vectorTable}', '${vectorIndex}', 'embedding', metric := 'cosine')`,
+    ).catch((error) => {
+      const message = String(error instanceof Error ? error.message : error).toLowerCase();
+      if (!message.includes('exist') && !message.includes('already')) {
+        throw error;
+      }
+    });
   }
 
   private async createNodeIfMissing(query: string) {
@@ -927,6 +1105,27 @@ function normalizeSemanticRecords(values: unknown[]) {
     .filter((record): record is LadybugSemanticMemoryRecord => Boolean(record))
     .sort((left, right) => right.createdAt - left.createdAt)
     .slice(0, 160);
+}
+
+function normalizeEmbeddingArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => (typeof item === 'number' && Number.isFinite(item) ? item : null))
+    .filter((item): item is number => item !== null);
+}
+
+function vectorLiteral(values: number[]) {
+  return `[${values.map((value) => (Number.isFinite(value) ? value : 0)).join(', ')}]`;
+}
+
+function semanticVectorTableName(dimension: number) {
+  return `SemanticVectorDim${Math.max(1, Math.min(10000, Math.trunc(dimension)))}`;
+}
+
+function semanticVectorIndexName(dimension: number) {
+  return `semantic_vector_idx_${Math.max(1, Math.min(10000, Math.trunc(dimension)))}`;
 }
 
 function normalizeRelationshipProfiles(value: Record<string, unknown>) {
