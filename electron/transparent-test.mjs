@@ -3,6 +3,8 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 const transparentSoftware =
   process.argv.includes('--transparent-software') ||
   process.env.ELECTRON_TRANSPARENT_SOFTWARE === 'true';
+const bareStart =
+  process.argv.includes('--bare') || process.env.ELECTRON_TRANSPARENT_TEST_BARE === 'true';
 
 if (transparentSoftware) {
   app.disableHardwareAcceleration();
@@ -92,6 +94,20 @@ function buildTestPage() {
         backdrop-filter: blur(14px);
       }
 
+      .panel.bare {
+        width: auto;
+        padding: 8px;
+        border-color: rgba(255, 255, 255, 0.28);
+        background: transparent !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+      }
+
+      .panel.bare h1,
+      .panel.bare p {
+        display: none;
+      }
+
       h1 {
         margin: 0 0 8px;
         font-size: 22px;
@@ -137,6 +153,11 @@ function buildTestPage() {
           transparent;
       }
 
+      .swatch.bare-alpha {
+        border-color: transparent;
+        background: transparent !important;
+      }
+
       .swatch.green {
         background: #00ff00;
       }
@@ -166,8 +187,8 @@ function buildTestPage() {
     <div id="root">
       <div class="drag"></div>
       <canvas id="gl" class="hidden"></canvas>
-      <div id="swatch" class="swatch transparent"></div>
-      <section class="panel">
+      <div id="swatch" class="${bareStart ? 'swatch bare-alpha' : 'swatch transparent'}"></div>
+      <section id="panel" class="${bareStart ? 'panel bare' : 'panel'}">
         <h1>Transparency Test</h1>
         <p>
           If Transparent shows the desktop through the window, Electron alpha works. If only WebGL
@@ -176,9 +197,11 @@ function buildTestPage() {
         </p>
         <div class="row">
           <button data-mode="transparent">Transparent</button>
+          <button data-mode="bare-alpha">Bare Alpha</button>
           <button data-mode="green">Green</button>
           <button data-mode="magenta">Magenta</button>
           <button data-mode="blue">Blue</button>
+          <button id="panel-toggle">Panel</button>
           <button id="webgl">WebGL alpha</button>
           <button id="close">Close</button>
         </div>
@@ -189,6 +212,7 @@ function buildTestPage() {
       const swatch = document.getElementById('swatch');
       const canvas = document.getElementById('gl');
       const status = document.getElementById('status');
+      const panel = document.getElementById('panel');
       let raf = 0;
 
       function stopWebgl() {
@@ -236,11 +260,15 @@ function buildTestPage() {
         frame(0);
       });
 
+      document.getElementById('panel-toggle').addEventListener('click', () => {
+        panel.classList.toggle('bare');
+      });
+
       document.getElementById('close').addEventListener('click', () => {
         window.transparentTest?.close?.();
       });
 
-      status.textContent = 'Mode: transparent';
+      status.textContent = 'Mode: ${bareStart ? 'bare alpha' : 'transparent'}';
     </script>
   </body>
 </html>`;

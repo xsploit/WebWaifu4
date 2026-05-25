@@ -48,11 +48,13 @@ There is also a standalone transparency harness:
 
 ```powershell
 npm run desktop:test:transparent
+npm run desktop:test:transparent:bare
 npm run desktop:test:transparent:software
 ```
 
-Use it before blaming the main app. The harness has Transparent, Green, Magenta, Blue, and WebGL
-alpha modes. If standalone Transparent is still blue, the issue is Electron/Windows/GPU
+Use it before blaming the main app. The harness has Bare Alpha, Transparent, Green, Magenta, Blue,
+and WebGL alpha modes. Bare Alpha is the strict pass-through test: no shaded panel, no swatch, no
+canvas paint. If standalone Bare Alpha is still blue, the issue is Electron/Windows/GPU
 composition. If standalone works but WebWaifu does not, the issue is an app layer.
 
 ## Commands
@@ -63,6 +65,7 @@ npm run desktop:dev:irc
 npm run desktop:start
 npm run desktop:pack
 npm run desktop:test:transparent
+npm run desktop:test:transparent:bare
 ```
 
 ## Follow-Up Work
