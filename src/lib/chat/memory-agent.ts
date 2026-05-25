@@ -53,6 +53,51 @@ export function shouldRunMemoryAgent(
   return memory.turnCount > 0 && memory.turnCount - memory.lastDiaryTurnCount >= interval;
 }
 
+export function addMemoryAgentPendingChatTurns(
+  pendingCounts: Record<string, number>,
+  stateKey: string,
+  turnCount: number,
+) {
+  const key = stateKey.trim() || 'default';
+  const nextCount = Math.max(0, Math.trunc(turnCount));
+  pendingCounts[key] = (pendingCounts[key] ?? 0) + nextCount;
+  return pendingCounts[key] ?? 0;
+}
+
+export function clearMemoryAgentPendingChatTurns(
+  pendingCounts: Record<string, number>,
+  stateKey: string,
+) {
+  pendingCounts[stateKey.trim() || 'default'] = 0;
+}
+
+export function consumeMemoryAgentPendingChatTurns(
+  pendingCounts: Record<string, number>,
+  stateKey: string,
+  processedCount: number,
+) {
+  const key = stateKey.trim() || 'default';
+  const current = pendingCounts[key] ?? 0;
+  pendingCounts[key] = Math.max(0, current - Math.max(0, Math.trunc(processedCount)));
+  return pendingCounts[key] ?? 0;
+}
+
+export function getMemoryAgentCadenceDecision(
+  pendingCounts: Record<string, number>,
+  stateKey: string,
+  intervalMessages: number | undefined,
+) {
+  const interval = normalizeMemoryAgentIntervalMessages(intervalMessages);
+  const pendingCount = pendingCounts[stateKey.trim() || 'default'] ?? 0;
+  const remaining = Math.max(0, interval - pendingCount);
+  return {
+    interval,
+    pendingCount,
+    remaining,
+    shouldQueue: pendingCount >= interval,
+  };
+}
+
 export function chooseMemoryAgentModel(availableModels: string[], fallbackModel: string) {
   return getMemoryAgentModelCandidates(availableModels, fallbackModel)[0] ?? fallbackModel;
 }

@@ -27,6 +27,10 @@ import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking
 import {
   buildMemoryAgentMessages,
   MEMORY_AGENT_JSON_FORMAT,
+  addMemoryAgentPendingChatTurns,
+  clearMemoryAgentPendingChatTurns,
+  consumeMemoryAgentPendingChatTurns,
+  getMemoryAgentCadenceDecision,
   getMemoryAgentModelCandidates,
   normalizeMemoryAgentIntervalMessages,
   shouldRunMemoryAgent,
@@ -2179,8 +2183,7 @@ function App() {
       ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
       ...turns,
     ].slice(-24);
-    memoryAgentPendingChatTurnCountsRef.current[stateKey] =
-      (memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0) + turns.length;
+    addMemoryAgentPendingChatTurns(memoryAgentPendingChatTurnCountsRef.current, stateKey, turns.length);
     syncMemoryAgentPendingCounts();
     void recordGrilloMemoryTurnAsync({
       assistantText: '',
@@ -4108,7 +4111,10 @@ function App() {
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
     void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
     void clearSemanticMemory(activeRelationshipStateKey);
-    memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
+    clearMemoryAgentPendingChatTurns(
+      memoryAgentPendingChatTurnCountsRef.current,
+      activeRelationshipStateKey,
+    );
     syncMemoryAgentPendingCounts();
     setMemoryAgentStatus('Memory cleared for current scope, including semantic recall.');
   }, [activeRelationshipStateKey, clearScopedRelationshipMemory, syncMemoryAgentPendingCounts]);
@@ -4122,7 +4128,10 @@ function App() {
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
     void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
     void clearSemanticMemory(activeRelationshipStateKey);
-    memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
+    clearMemoryAgentPendingChatTurns(
+      memoryAgentPendingChatTurnCountsRef.current,
+      activeRelationshipStateKey,
+    );
     syncMemoryAgentPendingCounts();
     setMemoryAgentStatus('Context and memory cleared for current scope, including semantic recall.');
   }, [
@@ -4351,9 +4360,10 @@ function App() {
 
         commitScopedRelationshipMemory(stateKey, mergedMemory);
         if (processedChatTurnCount > 0) {
-          memoryAgentPendingChatTurnCountsRef.current[stateKey] = Math.max(
-            0,
-            (memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0) - processedChatTurnCount,
+          consumeMemoryAgentPendingChatTurns(
+            memoryAgentPendingChatTurnCountsRef.current,
+            stateKey,
+            processedChatTurnCount,
           );
           syncMemoryAgentPendingCounts();
         }
@@ -4421,25 +4431,26 @@ function App() {
 
   const scheduleMemoryAgentAfterChatTurns = useCallback(
     (stateKey: string) => {
-      const interval = normalizeMemoryAgentIntervalMessages(
+      const cadence = getMemoryAgentCadenceDecision(
+        memoryAgentPendingChatTurnCountsRef.current,
+        stateKey,
         aiSettingsRef.current.memoryAgentIntervalMessages,
       );
-      const pendingCount = memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0;
-      const remaining = Math.max(0, interval - pendingCount);
       if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
         setMemoryAgentStatus(
-          remaining > 0
-            ? `Memory pass in ${remaining} chat message${remaining === 1 ? '' : 's'}.`
+          cadence.remaining > 0
+            ? `Memory pass in ${cadence.remaining} chat message${cadence.remaining === 1 ? '' : 's'}.`
             : 'Memory worker queued for chat message cadence.',
         );
       }
-      if (pendingCount < interval || memoryAgentTimeoutRef.current !== null) {
+      if (!cadence.shouldQueue || memoryAgentTimeoutRef.current !== null) {
         return;
       }
 
       const historySnapshot = [...chatHistoryRef.current];
       const memorySnapshot = getScopedRelationshipMemory(stateKey);
       const scheduledRun = ++memoryAgentRunRef.current;
+      const pendingCount = cadence.pendingCount;
       memoryAgentTimeoutRef.current = window.setTimeout(() => {
         memoryAgentTimeoutRef.current = null;
         void runRelationshipMemoryRefresh(
