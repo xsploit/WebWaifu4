@@ -53,17 +53,39 @@ export class LadybugMemoryService {
 
   async getStatus() {
     const state = await this.open();
-    const [snapshots, grilloScopes, semanticScopes, candidates, diaryEntries, semanticRecords] =
-      await Promise.all([
+    const [
+      snapshots,
+      grilloScopes,
+      semanticScopes,
+      scopes,
+      participants,
+      personas,
+      candidates,
+      diaryEntries,
+      semanticRecords,
+      hasCandidateEdges,
+      hasBlockEdges,
+      hasDiaryEdges,
+      hasSemanticEdges,
+    ] = await Promise.all([
         this.scalarCount('MATCH (m:MemoryState) RETURN count(m) AS count'),
         this.scalarCount("MATCH (m:MemoryState) WHERE m.kind = 'grillo' RETURN count(m) AS count"),
         this.scalarCount(
           "MATCH (m:MemoryState) WHERE m.kind = 'semantic' RETURN count(m) AS count",
         ),
+        this.scalarCount('MATCH (m:MemoryScope) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:Participant) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:Persona) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:MemoryCandidate) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:DiaryEntry) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:SemanticRecord) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count'),
       ]);
+    const relationshipEdges =
+      hasCandidateEdges + hasBlockEdges + hasDiaryEdges + hasSemanticEdges;
     return {
       backend: 'ladybug',
       dbDir: this.dbDir,
@@ -71,9 +93,13 @@ export class LadybugMemoryService {
       snapshots,
       grilloScopes,
       semanticScopes,
+      scopes,
+      participants,
+      personas,
       candidates,
       diaryEntries,
       semanticRecords,
+      relationshipEdges,
     };
   }
 
@@ -150,6 +176,21 @@ export class LadybugMemoryService {
     );
     await this.ensureNodeTable(
       connection,
+      'MemoryScope',
+      'id STRING, source STRING, channel STRING, personaId STRING, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'Participant',
+      'id STRING, source STRING, channel STRING, login STRING, displayName STRING, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'Persona',
+      'id STRING, name STRING, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
       'MemoryCandidate',
       'id STRING, scopeKey STRING, participantKey STRING, type STRING, summary STRING, content STRING, confidence DOUBLE, source STRING, sourceTurnIdsJson STRING, createdAt INT64, PRIMARY KEY(id)',
     );
@@ -168,6 +209,18 @@ export class LadybugMemoryService {
       'SemanticRecord',
       'id STRING, scopeKey STRING, personaId STRING, text STRING, userText STRING, assistantText STRING, embeddingJson STRING, createdAt INT64, PRIMARY KEY(id)',
     );
+    await this.ensureRelTable(connection, 'HAS_CANDIDATE', 'FROM MemoryScope TO MemoryCandidate');
+    await this.ensureRelTable(connection, 'HAS_BLOCK', 'FROM MemoryScope TO MemoryBlock');
+    await this.ensureRelTable(connection, 'HAS_DIARY', 'FROM MemoryScope TO DiaryEntry');
+    await this.ensureRelTable(connection, 'HAS_SEMANTIC', 'FROM MemoryScope TO SemanticRecord');
+    await this.ensureRelTable(
+      connection,
+      'CANDIDATE_ABOUT',
+      'FROM MemoryCandidate TO Participant',
+    );
+    await this.ensureRelTable(connection, 'BLOCK_ABOUT', 'FROM MemoryBlock TO Participant');
+    await this.ensureRelTable(connection, 'DIARY_ABOUT', 'FROM DiaryEntry TO Participant');
+    await this.ensureRelTable(connection, 'SEMANTIC_FOR_PERSONA', 'FROM SemanticRecord TO Persona');
 
     state.initialized = true;
     return state;
@@ -175,6 +228,14 @@ export class LadybugMemoryService {
 
   private async ensureNodeTable(connection: Connection, name: string, columns: string) {
     await connection.query(`CREATE NODE TABLE ${name}(${columns})`).catch((error) => {
+      if (!String(error instanceof Error ? error.message : error).toLowerCase().includes('exist')) {
+        throw error;
+      }
+    });
+  }
+
+  private async ensureRelTable(connection: Connection, name: string, definition: string) {
+    await connection.query(`CREATE REL TABLE ${name}(${definition})`).catch((error) => {
       if (!String(error instanceof Error ? error.message : error).toLowerCase().includes('exist')) {
         throw error;
       }
@@ -214,6 +275,7 @@ export class LadybugMemoryService {
 
   private async replaceGrilloGraph(scopeKey: string, value: unknown) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    await this.ensureScopeNode(normalizedScopeKey);
     await this.deleteGraphRowsForScope(normalizedScopeKey, [
       'MemoryCandidate',
       'MemoryBlock',
@@ -230,25 +292,40 @@ export class LadybugMemoryService {
     for (const candidate of candidates.slice(-120)) {
       if (!candidate || typeof candidate !== 'object') continue;
       const item = candidate as Record<string, unknown>;
+      const id = stringValue(item['candidateId']);
+      const participantKey = stringValue(item['participantKey']);
+      await this.ensureParticipantNode(participantKey);
       await this.exec(
-        `CREATE (:MemoryCandidate {id: ${q(stringValue(item['candidateId']))}, scopeKey: ${q(normalizedScopeKey)}, participantKey: ${q(stringValue(item['participantKey']))}, type: ${q(stringValue(item['type']))}, summary: ${q(stringValue(item['summary']))}, content: ${q(stringValue(item['content']))}, confidence: ${numberValue(item['confidence'], 0)}, source: ${q(stringValue(item['source']))}, sourceTurnIdsJson: ${q(JSON.stringify(arrayValue(item['sourceTurnIds'])))}, createdAt: ${intValue(item['createdAt'])}})`,
+        `CREATE (:MemoryCandidate {id: ${q(id)}, scopeKey: ${q(normalizedScopeKey)}, participantKey: ${q(participantKey)}, type: ${q(stringValue(item['type']))}, summary: ${q(stringValue(item['summary']))}, content: ${q(stringValue(item['content']))}, confidence: ${numberValue(item['confidence'], 0)}, source: ${q(stringValue(item['source']))}, sourceTurnIdsJson: ${q(JSON.stringify(arrayValue(item['sourceTurnIds'])))}, createdAt: ${intValue(item['createdAt'])}})`,
       );
+      await this.createScopeRelation('HAS_CANDIDATE', 'MemoryCandidate', normalizedScopeKey, id);
+      await this.createAboutRelation('CANDIDATE_ABOUT', 'MemoryCandidate', id, participantKey);
     }
 
     for (const block of blocks.slice(-80)) {
       if (!block || typeof block !== 'object') continue;
       const item = block as Record<string, unknown>;
+      const id = stringValue(item['blockId']);
+      const participantKey = stringValue(item['participantKey']);
+      await this.ensureParticipantNode(participantKey);
       await this.exec(
-        `CREATE (:MemoryBlock {id: ${q(stringValue(item['blockId']))}, scopeKey: ${q(normalizedScopeKey)}, participantKey: ${q(stringValue(item['participantKey']))}, blockName: ${q(stringValue(item['blockName']))}, itemsJson: ${q(JSON.stringify(arrayValue(item['items'])))}, sourceCandidateIdsJson: ${q(JSON.stringify(arrayValue(item['sourceCandidateIds'])))}, createdAt: ${intValue(item['createdAt'])}, updatedAt: ${intValue(item['updatedAt'])}})`,
+        `CREATE (:MemoryBlock {id: ${q(id)}, scopeKey: ${q(normalizedScopeKey)}, participantKey: ${q(participantKey)}, blockName: ${q(stringValue(item['blockName']))}, itemsJson: ${q(JSON.stringify(arrayValue(item['items'])))}, sourceCandidateIdsJson: ${q(JSON.stringify(arrayValue(item['sourceCandidateIds'])))}, createdAt: ${intValue(item['createdAt'])}, updatedAt: ${intValue(item['updatedAt'])}})`,
       );
+      await this.createScopeRelation('HAS_BLOCK', 'MemoryBlock', normalizedScopeKey, id);
+      await this.createAboutRelation('BLOCK_ABOUT', 'MemoryBlock', id, participantKey);
     }
 
     for (const diaryEntry of diaryEntries.slice(-40)) {
       if (!diaryEntry || typeof diaryEntry !== 'object') continue;
       const item = diaryEntry as Record<string, unknown>;
+      const id = stringValue(item['diaryId']);
+      const participantKey = stringValue(item['participantKey']);
+      await this.ensureParticipantNode(participantKey);
       await this.exec(
-        `CREATE (:DiaryEntry {id: ${q(stringValue(item['diaryId']))}, scopeKey: ${q(normalizedScopeKey)}, participantKey: ${q(stringValue(item['participantKey']))}, beatType: ${q(stringValue(item['beatType']))}, summary: ${q(stringValue(item['summary']))}, personalThought: ${q(stringValue(item['personalThought']))}, interactionSummary: ${q(stringValue(item['interactionSummary']))}, userMessage: ${q(stringValue(item['userMessage']))}, emotionsJson: ${q(JSON.stringify(arrayValue(item['emotions'])))}, tagsJson: ${q(JSON.stringify(arrayValue(item['tags'])))}, sourceTurnIdsJson: ${q(JSON.stringify(arrayValue(item['sourceTurnIds'])))}, createdAt: ${intValue(item['createdAt'])}})`,
+        `CREATE (:DiaryEntry {id: ${q(id)}, scopeKey: ${q(normalizedScopeKey)}, participantKey: ${q(participantKey)}, beatType: ${q(stringValue(item['beatType']))}, summary: ${q(stringValue(item['summary']))}, personalThought: ${q(stringValue(item['personalThought']))}, interactionSummary: ${q(stringValue(item['interactionSummary']))}, userMessage: ${q(stringValue(item['userMessage']))}, emotionsJson: ${q(JSON.stringify(arrayValue(item['emotions'])))}, tagsJson: ${q(JSON.stringify(arrayValue(item['tags'])))}, sourceTurnIdsJson: ${q(JSON.stringify(arrayValue(item['sourceTurnIds'])))}, createdAt: ${intValue(item['createdAt'])}})`,
       );
+      await this.createScopeRelation('HAS_DIARY', 'DiaryEntry', normalizedScopeKey, id);
+      await this.createAboutRelation('DIARY_ABOUT', 'DiaryEntry', id, participantKey);
     }
   }
 
@@ -257,18 +334,116 @@ export class LadybugMemoryService {
     records: LadybugSemanticMemoryRecord[],
   ) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    await this.ensureScopeNode(normalizedScopeKey);
     await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord']);
     for (const record of records.slice(0, 160)) {
+      await this.ensurePersonaNode(record.personaId);
       await this.exec(
         `CREATE (:SemanticRecord {id: ${q(record.id)}, scopeKey: ${q(normalizedScopeKey)}, personaId: ${q(record.personaId)}, text: ${q(record.text)}, userText: ${q(record.userText)}, assistantText: ${q(record.assistantText)}, embeddingJson: ${q(JSON.stringify(record.embedding ?? []))}, createdAt: ${intValue(record.createdAt)}})`,
       );
+      await this.createScopeRelation('HAS_SEMANTIC', 'SemanticRecord', normalizedScopeKey, record.id);
+      await this.createSemanticPersonaRelation(record.id, record.personaId);
     }
   }
 
   private async deleteGraphRowsForScope(scopeKey: string, labels: string[]) {
+    await this.deleteGraphRelationsForScope(scopeKey, labels);
     for (const label of labels) {
       await this.exec(`MATCH (m:${label}) WHERE m.scopeKey = ${q(scopeKey)} DELETE m`);
     }
+  }
+
+  private async deleteGraphRelationsForScope(scopeKey: string, labels: string[]) {
+    if (labels.includes('MemoryCandidate')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_CANDIDATE]->(m:MemoryCandidate) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:MemoryCandidate)-[r:CANDIDATE_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+    if (labels.includes('MemoryBlock')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_BLOCK]->(m:MemoryBlock) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:MemoryBlock)-[r:BLOCK_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+    if (labels.includes('DiaryEntry')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_DIARY]->(m:DiaryEntry) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:DiaryEntry)-[r:DIARY_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+    if (labels.includes('SemanticRecord')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_SEMANTIC]->(m:SemanticRecord) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:SemanticRecord)-[r:SEMANTIC_FOR_PERSONA]->(p:Persona) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+  }
+
+  private async ensureScopeNode(scopeKey: string) {
+    const parsed = parseScopeKey(scopeKey);
+    await this.createNodeIfMissing(
+      `CREATE (:MemoryScope {id: ${q(scopeKey)}, source: ${q(parsed.source)}, channel: ${q(parsed.channel)}, personaId: ${q(parsed.personaId)}, updatedAt: ${Date.now()}})`,
+    );
+  }
+
+  private async ensureParticipantNode(participantKey: string) {
+    const parsed = parseParticipantKey(participantKey);
+    await this.createNodeIfMissing(
+      `CREATE (:Participant {id: ${q(participantKey)}, source: ${q(parsed.source)}, channel: ${q(parsed.channel)}, login: ${q(parsed.login)}, displayName: ${q(parsed.login)}, updatedAt: ${Date.now()}})`,
+    );
+  }
+
+  private async ensurePersonaNode(personaId: string) {
+    const id = personaId || 'unknown';
+    await this.createNodeIfMissing(
+      `CREATE (:Persona {id: ${q(id)}, name: ${q(id)}, updatedAt: ${Date.now()}})`,
+    );
+  }
+
+  private async createScopeRelation(
+    relation: 'HAS_CANDIDATE' | 'HAS_BLOCK' | 'HAS_DIARY' | 'HAS_SEMANTIC',
+    label: 'MemoryCandidate' | 'MemoryBlock' | 'DiaryEntry' | 'SemanticRecord',
+    scopeKey: string,
+    memoryId: string,
+  ) {
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:${label}) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(memoryId)} CREATE (s)-[:${relation}]->(m)`,
+    );
+  }
+
+  private async createAboutRelation(
+    relation: 'CANDIDATE_ABOUT' | 'BLOCK_ABOUT' | 'DIARY_ABOUT',
+    label: 'MemoryCandidate' | 'MemoryBlock' | 'DiaryEntry',
+    memoryId: string,
+    participantKey: string,
+  ) {
+    await this.exec(
+      `MATCH (m:${label}), (p:Participant) WHERE m.id = ${q(memoryId)} AND p.id = ${q(participantKey)} CREATE (m)-[:${relation}]->(p)`,
+    );
+  }
+
+  private async createSemanticPersonaRelation(memoryId: string, personaId: string) {
+    await this.exec(
+      `MATCH (m:SemanticRecord), (p:Persona) WHERE m.id = ${q(memoryId)} AND p.id = ${q(personaId || 'unknown')} CREATE (m)-[:SEMANTIC_FOR_PERSONA]->(p)`,
+    );
+  }
+
+  private async createNodeIfMissing(query: string) {
+    await this.exec(query).catch((error) => {
+      const message = String(error instanceof Error ? error.message : error).toLowerCase();
+      if (!message.includes('duplicate') && !message.includes('primary') && !message.includes('exist')) {
+        throw error;
+      }
+    });
   }
 
   private async scalarCount(query: string) {
@@ -324,6 +499,25 @@ function normalizeScopeKey(scopeKey: string) {
       .replace(/[^a-z0-9:_-]+/gi, '-')
       .slice(0, MAX_SCOPE_KEY_LENGTH) || 'default'
   );
+}
+
+function parseScopeKey(scopeKey: string) {
+  const parts = scopeKey.split(':');
+  const personaIndex = parts.indexOf('persona');
+  return {
+    source: parts[0] || 'local',
+    channel: personaIndex > 1 ? parts.slice(1, personaIndex).join(':') : 'local',
+    personaId: personaIndex >= 0 ? parts.slice(personaIndex + 1).join(':') || 'unknown' : 'unknown',
+  };
+}
+
+function parseParticipantKey(participantKey: string) {
+  const parts = participantKey.split(':');
+  return {
+    source: parts[0] || 'local',
+    channel: parts[1] || 'local',
+    login: parts.slice(2).join(':') || 'unknown',
+  };
 }
 
 function q(value: unknown) {

@@ -9,6 +9,7 @@ api-dist/
 .idea/
 coverage/
 release/
+desktop-runtime/
 .ralph-loop/
 .rundot-docs
 .tmp/

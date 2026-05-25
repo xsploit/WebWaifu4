@@ -141,10 +141,23 @@ export function ContextTab({
           <div className="status-copy">
             Semantic records: <strong>{memoryBackendStatus?.semanticRecords ?? 0}</strong>
           </div>
+          <div className="status-copy">
+            Scopes: <strong>{memoryBackendStatus?.scopes ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Participants: <strong>{memoryBackendStatus?.participants ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Personas: <strong>{memoryBackendStatus?.personas ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Graph edges: <strong>{memoryBackendStatus?.relationshipEdges ?? 0}</strong>
+          </div>
         </div>
         <div className="field-hint">
-          Desktop mode uses the local LadybugDB backend for memory snapshots and graph rows, then
-          falls back to browser IndexedDB if the backend is unavailable.
+          Desktop mode uses the local LadybugDB backend for memory snapshots, vector records,
+          participants, personas, scopes, and graph edges, then falls back to browser IndexedDB if
+          the backend is unavailable.
         </div>
       </div>
 

@@ -8,6 +8,10 @@ export type LadybugMemoryStatus = {
   dbDir?: string;
   diaryEntries?: number;
   grilloScopes?: number;
+  participants?: number;
+  personas?: number;
+  relationshipEdges?: number;
+  scopes?: number;
   ok?: boolean;
   semanticRecords?: number;
   semanticScopes?: number;

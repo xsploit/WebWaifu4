@@ -87,14 +87,14 @@ LadybugDB is now wired into the local backend route surface:
 The renderer uses those endpoints in desktop mode through `src/lib/chat/ladybug-memory-client.ts`.
 If the backend reports unavailable or the request fails, the existing IndexedDB/localStorage path remains the fallback.
 
-The backend stores full Grillo and semantic snapshots in LadybugDB and also mirrors queryable graph rows for candidates, memory blocks, diary entries, and semantic records.
+The backend stores full Grillo and semantic snapshots in LadybugDB and also mirrors queryable graph rows for memory scopes, participants, personas, candidates, memory blocks, diary entries, semantic records, and the edges between them.
 
-Packaged Electron status: the app starts safely, but `@ladybugdb/core@0.16.1` currently fails to load inside Electron's main process on Windows with `lbugjs.node is not a valid Win32 application`. The route reports that as unavailable instead of crashing. Normal Node backend runs can save/load Ladybug memory successfully.
+Packaged Electron status: the app starts a bundled Node sidecar from `release/win-unpacked/resources/desktop-runtime/node.exe`, and that sidecar owns the LadybugDB process. This avoids loading the Ladybug native module inside Electron's main process. Packaged Grillo and semantic save/load has been smoke-tested through the EXE.
 
 ## Known Weak Spots
 
 - The architecture is functionally wired, but split across relationship state, Grillo IndexedDB, semantic IndexedDB, and chat history. Debugging it is harder than it should be.
-- Packaged Electron still needs a real sidecar/ABI solution before Ladybug can be the default packaged DB instead of a safe optional backend path.
+- The packaged sidecar uses a copied Node runtime. The installer/release process should keep verifying that the runtime is present and code-signed.
 - Semantic memory is stored only after a completed assistant reply. If a provider fails before completion, that turn may still exist in Grillo raw-turn memory but not in semantic memory.
 - The memory worker can insert semantic memories, but the main assistant does not currently receive direct write tools. That is intentional for now; direct main-agent memory tools would need strict permissions and UX so a normal reply cannot silently rewrite durable state in surprising ways.
 - Twitch is still treated as a runtime mode instead of a fully explicit top-level product mode. The code supports Twitch off by default through environment flags, but the UX should make "Local", "OBS character", and "Twitch co-host" modes clearer.
@@ -110,19 +110,18 @@ LadybugDB was tested as a Node/Electron-side graph memory candidate.
 
 Current recommendation:
 
-- Keep the new backend route as the only writable Ladybug owner.
-- Keep IndexedDB fallback active until packaged Electron can load Ladybug through a compatible sidecar or native build.
+- Keep the backend route/sidecar as the only writable Ladybug owner.
+- Keep IndexedDB fallback active for browser-only/dev modes and as a resilience path if the backend is unavailable.
 - Keep provider keys out of Ladybug. It should store memory graph data, participant relationships, diary, facts, and recall metadata only.
 
 ## Recommended Next Migration
 
-1. Decide the packaged runtime strategy: compatible Electron rebuild, separate Node sidecar, or keep IndexedDB for packaged releases.
-2. Write adapter tests that prove local and Twitch scopes return identical prompt context across IndexedDB and Ladybug.
-3. Add a Memory Debug page that shows:
+1. Write adapter tests that prove local and Twitch scopes return identical prompt context across IndexedDB and Ladybug.
+2. Add a Memory Debug page that shows:
    - current scope
    - pending worker turns
    - last worker run
    - injected Grillo lanes
    - injected semantic matches
    - failed embedding/provider status
-4. Only after that, make Ladybug the packaged desktop default if it is stable.
+3. Add direct graph recall endpoints for participant/persona relationship inspection once the UI needs them.

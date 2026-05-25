@@ -12,6 +12,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import nodeNet from 'node:net';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,7 +26,7 @@ let mainWindow = null;
 let windowMode = readInitialWindowMode();
 let clickThrough = false;
 let appProtocolRegistered = false;
-let backendModule = null;
+let backendProcess = null;
 let backendStopping = null;
 let quitAfterBackendStop = false;
 let desktopControlsVisible = true;
@@ -172,24 +173,91 @@ async function startBackendIfNeeded() {
   process.env.VITE_BOT_PORT ??= backendPort;
   process.env.WEBWAIFU_MEMORY_DB_DIR ??= path.join(app.getPath('userData'), 'ladybug-memory.db');
 
-  const serverEntry = path.join(appRoot, 'server', 'dist', 'index.js');
+  const serverEntry = resolveBackendServerEntry();
   if (!fs.existsSync(serverEntry)) {
     throw new Error(`Missing compiled backend: ${serverEntry}. Run npm run build first.`);
   }
 
-  backendModule = await import(pathToFileURL(serverEntry).href);
+  const nodeBinary = resolveNodeRuntimeBinary();
+  backendProcess = spawn(nodeBinary, [serverEntry], {
+    cwd: app.isPackaged ? process.resourcesPath : appRoot,
+    env: {
+      ...process.env,
+      BOT_PORT: backendPort,
+      TWITCH_MOCK: process.env.TWITCH_MOCK ?? 'true',
+      VITE_BOT_PORT: process.env.VITE_BOT_PORT ?? backendPort,
+      WEBWAIFU_MEMORY_DB_DIR:
+        process.env.WEBWAIFU_MEMORY_DB_DIR ??
+        path.join(app.getPath('userData'), 'ladybug-memory.db'),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  backendProcess.once('error', (error) => {
+    console.error('[desktop] backend process failed to start', error);
+  });
+  backendProcess.stdout?.on('data', (chunk) => {
+    process.stdout.write(`[backend] ${chunk}`);
+  });
+  backendProcess.stderr?.on('data', (chunk) => {
+    process.stderr.write(`[backend] ${chunk}`);
+  });
+  backendProcess.once('exit', (code, signal) => {
+    if (backendProcess) {
+      console.warn(`[desktop] backend exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
+    }
+    backendProcess = null;
+  });
   await waitForBackendHealth(backendPort);
 }
 
 async function stopBackendIfNeeded() {
-  if (externalBackend || !backendModule?.shutdownStreamBot) {
+  if (externalBackend || !backendProcess) {
     return;
   }
-  backendStopping ??= Promise.resolve(backendModule.shutdownStreamBot()).finally(() => {
-    backendModule = null;
+  const child = backendProcess;
+  backendStopping ??= new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      resolve();
+    }, 3000);
+    child.once('exit', () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    child.kill('SIGTERM');
+  }).finally(() => {
+    if (backendProcess === child) {
+      backendProcess = null;
+    }
     backendStopping = null;
   });
   await backendStopping;
+}
+
+function resolveNodeRuntimeBinary() {
+  const configured = (process.env.WEBWAIFU_NODE_BINARY || '').trim();
+  if (configured) {
+    return configured;
+  }
+  if (app.isPackaged) {
+    const packagedNode = path.join(
+      process.resourcesPath,
+      'desktop-runtime',
+      process.platform === 'win32' ? 'node.exe' : 'node',
+    );
+    if (fs.existsSync(packagedNode)) {
+      return packagedNode;
+    }
+  }
+  return process.platform === 'win32' ? 'node.exe' : 'node';
+}
+
+function resolveBackendServerEntry() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'server', 'dist', 'index.js');
+  }
+  return path.join(appRoot, 'server', 'dist', 'index.js');
 }
 
 function resolveRendererFile(requestUrl) {
@@ -439,7 +507,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', (event) => {
-  if (externalBackend || !backendModule || quitAfterBackendStop) {
+  if (externalBackend || !backendProcess || quitAfterBackendStop) {
     return;
   }
   event.preventDefault();

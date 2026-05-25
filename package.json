@@ -24,8 +24,9 @@
     "desktop:test:transparent:bare": "electron electron/transparent-test.mjs --bare",
     "desktop:test:transparent:software": "cross-env ELECTRON_TRANSPARENT_SOFTWARE=true electron electron/transparent-test.mjs",
     "desktop:clean": "node scripts/clean-desktop-release.mjs",
-    "desktop:pack": "npm run build && npm run desktop:clean && electron-builder --dir",
-    "desktop:dist": "npm run build && npm run desktop:clean && electron-builder",
+    "desktop:runtime": "node scripts/prepare-desktop-runtime.mjs",
+    "desktop:pack": "npm run build && npm run desktop:runtime && npm run desktop:clean && electron-builder --dir",
+    "desktop:dist": "npm run build && npm run desktop:runtime && npm run desktop:clean && electron-builder",
     "bench:fish": "tsx scripts/bench-fish-websocket.ts",
     "bench:pipeline": "tsx scripts/bench-openai-fish-pipeline.ts",
     "probe:ladybug-memory": "node scripts/probe-ladybug-memory.mjs",
@@ -59,6 +60,15 @@
       "src/lib/chat/templates/**",
       "vendor/**",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop-runtime",
+        "to": "desktop-runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "asarUnpack": [
       "server/dist/**"

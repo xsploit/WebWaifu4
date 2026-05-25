@@ -24,7 +24,7 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - The worker loop now requests a `json_schema` structured output contract named `grillo_worker_loop`, and the runtime accepts both `{toolCalls:[...]}` JSON and OpenAI-style `tool_calls` / function-call shaped JSON with stringified arguments.
 - Grillo memory is scoped by conversation state key and participant key. In desktop mode it tries the local backend LadybugDB routes first, then falls back to browser IndexedDB with legacy localStorage fallback.
 - Semantic vector memory uses the same desktop-backend-first path, then falls back to browser IndexedDB/localStorage, calls `/ai/embeddings` for query/save vectors, and does local cosine/lexical/recency scoring before injection into the Grillo/POML context.
-- LadybugDB now has runtime backend routes for Grillo snapshots, semantic snapshots, graph candidate rows, graph diary rows, graph block rows, and graph semantic rows. Normal Node backend smoke passes. Packaged Electron currently reports Ladybug unavailable because `@ladybugdb/core`'s native module does not load inside Electron on Windows, so packaged builds safely fall back to IndexedDB instead of crashing.
+- LadybugDB now has runtime backend routes for Grillo snapshots, semantic snapshots, memory scopes, participant/persona rows, graph candidate rows, graph diary rows, graph block rows, graph semantic rows, and graph relationship edges. Packaged Electron starts a bundled Node sidecar so `@ladybugdb/core` loads under Node instead of Electron.
 
 ## Verification Log
 
@@ -48,12 +48,14 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-25 00:10: `npx vitest run src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 23 tests.
 - 2026-05-25 00:12: local Node backend `/memory/status`, `/memory/grillo`, and `/memory/semantic` smoke -> passed save/load for one Grillo candidate and one semantic record.
 - 2026-05-25 00:14: `npm run desktop:pack` -> passed. Packaged smoke: app opens, `/health` returns 200, backend closes after app exit; `/memory/status` reports Ladybug unavailable in packaged Electron because the native module does not load under Electron.
+- 2026-05-25 00:45: `npm run desktop:pack` -> passed with bundled Node sidecar. Packaged EXE smoke: app opens, `/health` returns 200, `/memory/status` returns `ok:true` with `backend: ladybug`, and backend closes after app exit.
+- 2026-05-25 00:52: packaged EXE `/memory/grillo` and `/memory/semantic` smoke -> passed save/load through the Ladybug sidecar.
+- 2026-05-25 00:58: `npx vitest run server/src/memory/LadybugMemoryService.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 24 tests.
 
 ## Next Patch
 
-Resolve the packaged Ladybug runtime boundary:
+Continue the Ladybug migration:
 
-- Choose either a separate Node sidecar backend for packaged desktop, a working Electron-compatible Ladybug native build, or IndexedDB as the packaged default.
 - Add adapter tests that prove identical prompt lanes across IndexedDB fallback and Ladybug Node backend storage.
 - Expand the visible Memory tab into a full debug panel for injected lanes, semantic matches, worker side effects, and provider/embedding failures.
 
