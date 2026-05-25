@@ -43,7 +43,6 @@ import type {
 import { updateRelationshipMemory } from './lib/chat/memory';
 import {
   buildGrilloMemoryPromptAdditionsAsync,
-  clearGrilloMemoryState,
   clearGrilloMemoryStateAsync,
   createDefaultGrilloMemoryState,
   getGrilloParticipantKey,
@@ -2112,15 +2111,23 @@ function App() {
   }, []);
 
   const refreshMemoryBackendStatus = useCallback(() => {
-    void Promise.all([loadLadybugMemoryStatus(), loadLadybugMemoryGraph()]).then(([status, graph]) => {
-      setMemoryBackendStatus(status?.ok ? status : null);
-      setMemoryGraphSummary(graph);
-    });
+    return Promise.all([loadLadybugMemoryStatus(), loadLadybugMemoryGraph()])
+      .then(([status, graph]) => {
+        setMemoryBackendStatus(status?.ok ? status : null);
+        setMemoryGraphSummary(graph);
+      })
+      .catch((error) => {
+        console.warn('[App] Failed to refresh Ladybug memory backend status', error);
+        setMemoryBackendStatus(null);
+        setMemoryGraphSummary(null);
+      });
   }, []);
 
   useEffect(() => {
-    refreshMemoryBackendStatus();
-    const timer = window.setInterval(refreshMemoryBackendStatus, 15000);
+    void refreshMemoryBackendStatus();
+    const timer = window.setInterval(() => {
+      void refreshMemoryBackendStatus();
+    }, 15000);
     return () => window.clearInterval(timer);
   }, [refreshMemoryBackendStatus]);
 
@@ -2154,7 +2161,7 @@ function App() {
       setRelationshipMemory(defaultMemory);
       relationshipMemoryRef.current = defaultMemory;
     }
-    void deleteLadybugRelationshipMemory(stateKey).catch((error) => {
+    return deleteLadybugRelationshipMemory(stateKey).catch((error) => {
       console.warn('[App] Failed to delete Ladybug relationship profile', error);
     });
   }, []);
@@ -4107,37 +4114,49 @@ function App() {
   }, []);
 
   const handleClearMemory = useCallback(() => {
-    clearScopedRelationshipMemory(activeRelationshipStateKey);
-    setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
-    void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
-    void clearSemanticMemory(activeRelationshipStateKey);
+    const relationshipClear = clearScopedRelationshipMemory(activeRelationshipStateKey);
+    const grilloClear = clearGrilloMemoryStateAsync(activeRelationshipStateKey);
+    const semanticClear = clearSemanticMemory(activeRelationshipStateKey);
+    setGrilloMemoryState(createDefaultGrilloMemoryState(activeRelationshipStateKey));
     clearMemoryAgentPendingChatTurns(
       memoryAgentPendingChatTurnCountsRef.current,
       activeRelationshipStateKey,
     );
     syncMemoryAgentPendingCounts();
     setMemoryAgentStatus('Memory cleared for current scope, including semantic recall.');
-  }, [activeRelationshipStateKey, clearScopedRelationshipMemory, syncMemoryAgentPendingCounts]);
+    void Promise.allSettled([relationshipClear, grilloClear, semanticClear]).then(() => {
+      void refreshMemoryBackendStatus();
+    });
+  }, [
+    activeRelationshipStateKey,
+    clearScopedRelationshipMemory,
+    refreshMemoryBackendStatus,
+    syncMemoryAgentPendingCounts,
+  ]);
 
   const handleResetContext = useCallback(() => {
     cancelAssistantPresentation(true);
     setChatGenerating(false);
     setChatInput('');
     setChatHistory([]);
-    clearScopedRelationshipMemory(activeRelationshipStateKey);
-    setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
-    void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
-    void clearSemanticMemory(activeRelationshipStateKey);
+    const relationshipClear = clearScopedRelationshipMemory(activeRelationshipStateKey);
+    const grilloClear = clearGrilloMemoryStateAsync(activeRelationshipStateKey);
+    const semanticClear = clearSemanticMemory(activeRelationshipStateKey);
+    setGrilloMemoryState(createDefaultGrilloMemoryState(activeRelationshipStateKey));
     clearMemoryAgentPendingChatTurns(
       memoryAgentPendingChatTurnCountsRef.current,
       activeRelationshipStateKey,
     );
     syncMemoryAgentPendingCounts();
     setMemoryAgentStatus('Context and memory cleared for current scope, including semantic recall.');
+    void Promise.allSettled([relationshipClear, grilloClear, semanticClear]).then(() => {
+      void refreshMemoryBackendStatus();
+    });
   }, [
     activeRelationshipStateKey,
     cancelAssistantPresentation,
     clearScopedRelationshipMemory,
+    refreshMemoryBackendStatus,
     syncMemoryAgentPendingCounts,
   ]);
 
@@ -4254,6 +4273,7 @@ function App() {
             rawContent = extractGrilloWorkerRelationshipJson(result.finalJsonText);
             if (rawContent) {
               refreshGrilloMemoryState(stateKey);
+              void refreshMemoryBackendStatus();
               setMemoryWorkerDebug({
                 model,
                 processedChatTurnCount,
@@ -4359,6 +4379,7 @@ function App() {
         }
 
         commitScopedRelationshipMemory(stateKey, mergedMemory);
+        void refreshMemoryBackendStatus();
         if (processedChatTurnCount > 0) {
           consumeMemoryAgentPendingChatTurns(
             memoryAgentPendingChatTurnCountsRef.current,
@@ -4395,6 +4416,7 @@ function App() {
       getScopedRelationshipMemory,
       providerKeyVaultWorkspaceId,
       refreshGrilloMemoryState,
+      refreshMemoryBackendStatus,
       syncMemoryAgentPendingCounts,
       twitchChannel,
     ],
