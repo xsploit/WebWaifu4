@@ -163,6 +163,7 @@ describe('LadybugMemoryService', () => {
         blockName: 'preferences',
         id: 'block-1',
         itemCount: 1,
+        items: ['Subby likes fast TTS.'],
         participantKey: 'local:local:subby',
         scopeKey: 'local:persona:hikari-chan',
       });
@@ -245,6 +246,167 @@ describe('LadybugMemoryService', () => {
         'twitch:subsect:persona:hikari-chan',
       ]);
       expect(graph.recent.relationships[0]?.summary).toBe('Twitch profile should remain.');
+    } finally {
+      await service.close();
+    }
+  });
+
+  it('clears every memory data class for one scope while preserving a sibling scope', async () => {
+    const service = createService();
+    const clearedScope = 'local:persona:hikari-clear';
+    const keptScope = 'twitch:subsect:persona:hikari-clear';
+    try {
+      for (const [scopeKey, participantKey, semanticId, label] of [
+        [clearedScope, 'local:local:subby', 'semantic-clear', 'cleared'],
+        [keptScope, 'twitch:subsect:rayen', 'semantic-keep', 'kept'],
+      ] as const) {
+        await service.saveGrilloState(scopeKey, {
+          blocks: [
+            {
+              blockId: `${label}-block`,
+              blockName: 'preferences',
+              createdAt: 2,
+              items: [`${label} block memory`],
+              participantKey,
+              scopeKey,
+              sourceCandidateIds: [`${label}-candidate`],
+              updatedAt: 3,
+            },
+          ],
+          candidates: [
+            {
+              candidateId: `${label}-candidate`,
+              confidence: 0.94,
+              content: `${label} candidate memory`,
+              createdAt: 1,
+              participantKey,
+              scopeKey,
+              source: label,
+              sourceTurnIds: [`${label}-turn`],
+              summary: `${label} candidate memory`,
+              type: 'preference',
+            },
+          ],
+          diaryEntries: [
+            {
+              beatType: 'relationship',
+              createdAt: 4,
+              diaryId: `${label}-diary`,
+              emotions: [{ intensity: 5, name: 'focused' }],
+              participantKey,
+              personalThought: `I remembered ${label} diary memory.`,
+              scopeKey,
+              sourceTurnIds: [`${label}-turn`],
+              summary: `${label} diary memory`,
+              tags: [label],
+            },
+          ],
+          emotionState: {
+            intensities: { focused: 5 },
+            lastSignalAt: 5,
+            lastSignalSource: `${label}-diary`,
+            updatedAt: 5,
+          },
+          promotedCandidateIds: [`${label}-candidate`],
+          scopeKey,
+          updatedAt: 5,
+          version: 1,
+        });
+        await service.saveSemanticRecords(scopeKey, [
+          {
+            assistantText: `${label} semantic answer`,
+            createdAt: 6,
+            embedding: label === 'cleared' ? [1, 0, 0] : [0, 1, 0],
+            id: semanticId,
+            personaId: 'hikari-clear',
+            scopeKey,
+            text: `User: ${label} semantic memory\nHikari: ${label} semantic answer`,
+            userText: `${label} semantic memory`,
+          },
+        ]);
+      }
+      await service.saveRelationshipProfiles({
+        [clearedScope]: {
+          attraction: 1,
+          diaryEntry: 'Cleared profile diary.',
+          facts: ['Cleared relationship fact.'],
+          guard: 8,
+          irritation: 0,
+          jealousy: 0,
+          lastActionTag: 'none',
+          lastDiaryTurnCount: 2,
+          lastSeenAt: 7,
+          mood: 'focused',
+          relationshipStage: 'familiar',
+          respect: 5,
+          summary: 'Cleared relationship summary.',
+          trust: 6,
+          turnCount: 2,
+          version: 2,
+        },
+        [keptScope]: {
+          attraction: 1,
+          diaryEntry: 'Kept profile diary.',
+          facts: ['Kept relationship fact.'],
+          guard: 7,
+          irritation: 0,
+          jealousy: 0,
+          lastActionTag: 'none',
+          lastDiaryTurnCount: 3,
+          lastSeenAt: 8,
+          mood: 'curious',
+          relationshipStage: 'familiar',
+          respect: 5,
+          summary: 'Kept relationship summary.',
+          trust: 6,
+          turnCount: 3,
+          version: 2,
+        },
+      });
+
+      await service.deleteGrilloState(clearedScope);
+      await service.deleteSemanticRecords(clearedScope);
+      await service.deleteRelationshipProfile(clearedScope);
+
+      expect(await service.loadGrilloState(clearedScope)).toBeNull();
+      expect(await service.loadSemanticRecords(clearedScope)).toBeNull();
+      expect(await service.querySemanticVectors(clearedScope, [1, 0, 0], 2)).toEqual([]);
+      expect((await service.loadGrilloState(keptScope)) as object).toMatchObject({
+        scopeKey: keptScope,
+      });
+      expect(await service.querySemanticVectors(keptScope, [0, 1, 0], 2)).toEqual([
+        expect.objectContaining({ id: 'semantic-keep', scopeKey: keptScope }),
+      ]);
+
+      const profiles = (await service.loadRelationshipProfiles()) as Record<
+        string,
+        { summary?: string }
+      >;
+      const graph = await service.getGraphSummary();
+      const status = await service.getStatus();
+      const graphText = JSON.stringify(graph);
+
+      expect(profiles[clearedScope]).toBeUndefined();
+      expect(profiles[keptScope]?.summary).toBe('Kept relationship summary.');
+      expect(status.candidates).toBe(1);
+      expect(status.memoryBlocks).toBe(1);
+      expect(status.diaryEntries).toBe(1);
+      expect(status.emotionStates).toBe(1);
+      expect(status.emotionIntensities).toBe(1);
+      expect(status.semanticRecords).toBe(1);
+      expect(status.semanticVectors).toBe(1);
+      expect(status.relationshipProfiles).toBe(1);
+      expect(status.relationshipFacts).toBe(1);
+      expect(graphText).toContain(keptScope);
+      expect(graphText).toContain('kept block memory');
+      expect(graphText).toContain('kept diary memory');
+      expect(graphText).toContain('kept semantic memory');
+      expect(graphText).toContain('Kept relationship fact.');
+      expect(graphText).not.toContain(clearedScope);
+      expect(graphText).not.toContain('cleared block memory');
+      expect(graphText).not.toContain('cleared diary memory');
+      expect(graphText).not.toContain('cleared semantic memory');
+      expect(graphText).not.toContain('Cleared relationship fact.');
     } finally {
       await service.close();
     }

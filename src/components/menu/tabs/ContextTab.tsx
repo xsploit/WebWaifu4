@@ -307,6 +307,9 @@ export function ContextTab({
                   <span>{block.itemCount} items</span>
                 </div>
                 <p>{block.participantKey || 'unknown participant'}</p>
+                {block.items.length > 0 ? (
+                  <div className="status-copy">{block.items.join(' / ')}</div>
+                ) : null}
                 <div className="status-copy">{block.scopeKey || 'unknown scope'}</div>
               </div>
             ))}

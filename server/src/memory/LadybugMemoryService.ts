@@ -27,6 +27,7 @@ export type LadybugMemoryGraphSummary = {
       blockName: string;
       id: string;
       itemCount: number;
+      items: string[];
       participantKey: string;
       scopeKey: string;
     }>;
@@ -203,7 +204,7 @@ export class LadybugMemoryService {
       'DiaryEntry',
       'EmotionState',
       'EmotionIntensity',
-    ]);
+    ], true);
   }
 
   async loadSemanticRecords(scopeKey: string): Promise<LadybugSemanticMemoryRecord[] | null> {
@@ -261,7 +262,7 @@ export class LadybugMemoryService {
   async deleteSemanticRecords(scopeKey: string) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     await this.deleteSnapshot('semantic', normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector']);
+    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector'], true);
   }
 
   async loadRelationshipProfiles() {
@@ -288,6 +289,7 @@ export class LadybugMemoryService {
         : {};
     delete nextProfiles[normalizedScopeKey];
     await this.saveRelationshipProfiles(nextProfiles);
+    await this.deleteScopeNodeIfUnused(normalizedScopeKey);
   }
 
   async getGraphSummary(): Promise<LadybugMemoryGraphSummary> {
@@ -415,6 +417,10 @@ export class LadybugMemoryService {
           blockName: stringValue(row['blockName']),
           id: stringValue(row['id']),
           itemCount: arrayValue(safeJsonParse(stringValue(row['itemsJson']))).length,
+          items: arrayValue(safeJsonParse(stringValue(row['itemsJson'])))
+            .map((item) => stringValue(item))
+            .filter(Boolean)
+            .slice(0, 4),
           participantKey: stringValue(row['participantKey']),
           scopeKey: stringValue(row['scopeKey']),
         })),
@@ -650,7 +656,7 @@ export class LadybugMemoryService {
       'DiaryEntry',
       'EmotionState',
       'EmotionIntensity',
-    ]);
+    ], false);
     if (!value || typeof value !== 'object') {
       return;
     }
@@ -742,7 +748,7 @@ export class LadybugMemoryService {
   ) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     await this.ensureScopeNode(normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector']);
+    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector'], false);
     for (const record of records.slice(0, 160)) {
       await this.ensurePersonaNode(record.personaId);
       await this.exec(
@@ -808,7 +814,7 @@ export class LadybugMemoryService {
     await this.exec('MATCH (m:RelationshipProfile) DELETE m').catch(() => undefined);
   }
 
-  private async deleteGraphRowsForScope(scopeKey: string, labels: string[]) {
+  private async deleteGraphRowsForScope(scopeKey: string, labels: string[], deleteScopeWhenUnused = false) {
     if (labels.includes('SemanticVector')) {
       await this.deleteSemanticVectorRowsForScope(scopeKey);
     }
@@ -816,6 +822,21 @@ export class LadybugMemoryService {
     for (const label of labels) {
       await this.exec(`MATCH (m:${label}) WHERE m.scopeKey = ${q(scopeKey)} DELETE m`);
     }
+    if (deleteScopeWhenUnused) {
+      await this.deleteScopeNodeIfUnused(scopeKey);
+    }
+  }
+
+  private async deleteScopeNodeIfUnused(scopeKey: string) {
+    const relationCount = await this.scalarCount(
+      `MATCH (s:MemoryScope)-[r]->(m) WHERE s.id = ${q(scopeKey)} RETURN count(r) AS count`,
+    ).catch(() => 1);
+    if (relationCount > 0) {
+      return;
+    }
+    await this.exec(`MATCH (s:MemoryScope) WHERE s.id = ${q(scopeKey)} DELETE s`).catch(
+      () => undefined,
+    );
   }
 
   private async deleteSemanticVectorRowsForScope(scopeKey: string) {

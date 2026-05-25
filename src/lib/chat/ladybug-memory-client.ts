@@ -34,6 +34,7 @@ export type LadybugMemoryGraphSummary = {
       blockName: string;
       id: string;
       itemCount: number;
+      items: string[];
       participantKey: string;
       scopeKey: string;
     }>;
