@@ -222,6 +222,12 @@ export function ContextTab({
             Semantic records: <strong>{memoryBackendStatus?.semanticRecords ?? 0}</strong>
           </div>
           <div className="status-copy">
+            Relationship profiles: <strong>{memoryBackendStatus?.relationshipProfiles ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Relationship facts: <strong>{memoryBackendStatus?.relationshipFacts ?? 0}</strong>
+          </div>
+          <div className="status-copy">
             Scopes: <strong>{memoryBackendStatus?.scopes ?? 0}</strong>
           </div>
           <div className="status-copy">
@@ -263,6 +269,16 @@ export function ContextTab({
                 </p>
               </div>
             ) : null}
+            {memoryGraphSummary.recent.relationships.slice(0, 4).map((profile) => (
+              <div className="memory-entry" key={profile.id}>
+                <div className="memory-entry-header">
+                  <strong>{profile.relationshipStage || 'relationship'}</strong>
+                  <span>{profile.mood || 'mood unknown'}</span>
+                </div>
+                <p>{profile.scopeKey}</p>
+                <div className="status-copy">{profile.summary || 'No relationship summary yet.'}</div>
+              </div>
+            ))}
           </div>
         ) : null}
       </div>

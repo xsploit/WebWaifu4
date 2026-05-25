@@ -1,6 +1,7 @@
 import { getDesktopBackendUrl, isDesktopRuntime } from '../desktop/runtime';
 import type { GrilloMemoryState } from './grillo-memory';
 import type { SemanticMemoryRecord } from './semantic-memory';
+import type { RelationshipMemory } from './types';
 
 export type LadybugMemoryStatus = {
   backend: string;
@@ -10,6 +11,8 @@ export type LadybugMemoryStatus = {
   grilloScopes?: number;
   participants?: number;
   personas?: number;
+  relationshipFacts?: number;
+  relationshipProfiles?: number;
   relationshipEdges?: number;
   scopes?: number;
   ok?: boolean;
@@ -25,6 +28,13 @@ export type LadybugMemoryGraphSummary = {
   recent: {
     candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
     diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
+    relationships: Array<{
+      id: string;
+      mood: string;
+      relationshipStage: string;
+      scopeKey: string;
+      summary: string;
+    }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
   };
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
@@ -85,6 +95,27 @@ export async function saveLadybugSemanticMemory(
 ) {
   const response = await requestLadybugMemory('/memory/semantic', {
     body: JSON.stringify({ scopeKey, records }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'PUT',
+  });
+  return response?.ok === true;
+}
+
+export async function loadLadybugRelationshipMemories() {
+  const response = await requestLadybugMemory<{
+    profiles: unknown;
+  }>('/memory/relationships');
+  if (!response || response.ok !== true || !response.profiles || typeof response.profiles !== 'object') {
+    return undefined;
+  }
+  return response.profiles as Record<string, RelationshipMemory>;
+}
+
+export async function saveLadybugRelationshipMemories(
+  profiles: Record<string, RelationshipMemory>,
+) {
+  const response = await requestLadybugMemory('/memory/relationships', {
+    body: JSON.stringify({ profiles }),
     headers: { 'Content-Type': 'application/json' },
     method: 'PUT',
   });

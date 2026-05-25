@@ -20,12 +20,19 @@ export type LadybugMemoryGraphSummary = {
   recent: {
     candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
     diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
+    relationships: Array<{
+      id: string;
+      mood: string;
+      relationshipStage: string;
+      scopeKey: string;
+      summary: string;
+    }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
   };
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
 };
 
-type LadybugSnapshotKind = 'grillo' | 'semantic';
+type LadybugSnapshotKind = 'grillo' | 'relationships' | 'semantic';
 
 type LadybugSnapshot = {
   id: string;
@@ -75,10 +82,15 @@ export class LadybugMemoryService {
       candidates,
       diaryEntries,
       semanticRecords,
+      relationshipProfiles,
+      relationshipFacts,
       hasCandidateEdges,
       hasBlockEdges,
       hasDiaryEdges,
       hasSemanticEdges,
+      hasRelationshipEdges,
+      hasRelationshipPersonaEdges,
+      hasRelationshipFactEdges,
     ] = await Promise.all([
         this.scalarCount('MATCH (m:MemoryState) RETURN count(m) AS count'),
         this.scalarCount("MATCH (m:MemoryState) WHERE m.kind = 'grillo' RETURN count(m) AS count"),
@@ -91,13 +103,24 @@ export class LadybugMemoryService {
         this.scalarCount('MATCH (m:MemoryCandidate) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:DiaryEntry) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:SemanticRecord) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:RelationshipProfile) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:RelationshipFact) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count'),
       ]);
     const relationshipEdges =
-      hasCandidateEdges + hasBlockEdges + hasDiaryEdges + hasSemanticEdges;
+      hasCandidateEdges +
+      hasBlockEdges +
+      hasDiaryEdges +
+      hasSemanticEdges +
+      hasRelationshipEdges +
+      hasRelationshipPersonaEdges +
+      hasRelationshipFactEdges;
     return {
       backend: 'ladybug',
       dbDir: this.dbDir,
@@ -111,6 +134,8 @@ export class LadybugMemoryService {
       candidates,
       diaryEntries,
       semanticRecords,
+      relationshipProfiles,
+      relationshipFacts,
       relationshipEdges,
     };
   }
@@ -156,6 +181,21 @@ export class LadybugMemoryService {
     await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord']);
   }
 
+  async loadRelationshipProfiles() {
+    const snapshot = await this.loadSnapshot('relationships', 'all');
+    if (!snapshot) {
+      return null;
+    }
+    const parsed = safeJsonParse(snapshot.json);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  }
+
+  async saveRelationshipProfiles(profiles: Record<string, unknown>) {
+    const normalizedProfiles = normalizeRelationshipProfiles(profiles);
+    await this.saveSnapshot('relationships', 'all', normalizedProfiles);
+    await this.replaceRelationshipGraph(normalizedProfiles);
+  }
+
   async getGraphSummary(): Promise<LadybugMemoryGraphSummary> {
     await this.open();
     const [
@@ -167,11 +207,15 @@ export class LadybugMemoryService {
       blockAboutEdges,
       diaryAboutEdges,
       semanticForPersonaEdges,
+      relationshipScopeEdges,
+      relationshipPersonaEdges,
+      relationshipFactEdges,
       scopes,
       participants,
       personas,
       candidates,
       diary,
+      relationships,
       semantic,
     ] = await Promise.all([
       this.scalarCount(
@@ -190,6 +234,15 @@ export class LadybugMemoryService {
       this.scalarCount(
         'MATCH (m:SemanticRecord)-[:SEMANTIC_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
       ),
+      this.scalarCount(
+        'MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count',
+      ),
+      this.scalarCount(
+        'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count',
+      ),
+      this.scalarCount(
+        'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count',
+      ),
       this.all(
         'MATCH (s:MemoryScope) RETURN s.id AS id, s.source AS source, s.channel AS channel, s.personaId AS personaId LIMIT 12',
       ),
@@ -202,6 +255,9 @@ export class LadybugMemoryService {
       ),
       this.all(
         'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
+      ),
+      this.all(
+        'MATCH (m:RelationshipProfile) RETURN m.id AS id, m.scopeKey AS scopeKey, m.relationshipStage AS relationshipStage, m.mood AS mood, m.summary AS summary LIMIT 8',
       ),
       this.all(
         'MATCH (m:SemanticRecord) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
@@ -218,6 +274,9 @@ export class LadybugMemoryService {
         { relation: 'BLOCK_ABOUT', count: blockAboutEdges },
         { relation: 'DIARY_ABOUT', count: diaryAboutEdges },
         { relation: 'SEMANTIC_FOR_PERSONA', count: semanticForPersonaEdges },
+        { relation: 'HAS_RELATIONSHIP', count: relationshipScopeEdges },
+        { relation: 'RELATIONSHIP_AS_PERSONA', count: relationshipPersonaEdges },
+        { relation: 'HAS_RELATIONSHIP_FACT', count: relationshipFactEdges },
       ].filter((edge) => edge.count > 0),
       participants: participants.map((row) => ({
         channel: stringValue(row['channel']),
@@ -240,6 +299,13 @@ export class LadybugMemoryService {
           beatType: stringValue(row['beatType']),
           id: stringValue(row['id']),
           participantKey: stringValue(row['participantKey']),
+          summary: stringValue(row['summary']),
+        })),
+        relationships: relationships.map((row) => ({
+          id: stringValue(row['id']),
+          mood: stringValue(row['mood']),
+          relationshipStage: stringValue(row['relationshipStage']),
+          scopeKey: stringValue(row['scopeKey']),
           summary: stringValue(row['summary']),
         })),
         semantic: semantic.map((row) => ({
@@ -322,10 +388,21 @@ export class LadybugMemoryService {
       'SemanticRecord',
       'id STRING, scopeKey STRING, personaId STRING, text STRING, userText STRING, assistantText STRING, embeddingJson STRING, createdAt INT64, PRIMARY KEY(id)',
     );
+    await this.ensureNodeTable(
+      connection,
+      'RelationshipProfile',
+      'id STRING, scopeKey STRING, personaId STRING, relationshipStage STRING, mood STRING, trust INT64, attraction INT64, respect INT64, irritation INT64, jealousy INT64, guard INT64, turnCount INT64, lastDiaryTurnCount INT64, lastSeenAt INT64, lastActionTag STRING, summary STRING, diaryEntry STRING, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'RelationshipFact',
+      'id STRING, profileId STRING, scopeKey STRING, text STRING, updatedAt INT64, PRIMARY KEY(id)',
+    );
     await this.ensureRelTable(connection, 'HAS_CANDIDATE', 'FROM MemoryScope TO MemoryCandidate');
     await this.ensureRelTable(connection, 'HAS_BLOCK', 'FROM MemoryScope TO MemoryBlock');
     await this.ensureRelTable(connection, 'HAS_DIARY', 'FROM MemoryScope TO DiaryEntry');
     await this.ensureRelTable(connection, 'HAS_SEMANTIC', 'FROM MemoryScope TO SemanticRecord');
+    await this.ensureRelTable(connection, 'HAS_RELATIONSHIP', 'FROM MemoryScope TO RelationshipProfile');
     await this.ensureRelTable(
       connection,
       'CANDIDATE_ABOUT',
@@ -334,6 +411,16 @@ export class LadybugMemoryService {
     await this.ensureRelTable(connection, 'BLOCK_ABOUT', 'FROM MemoryBlock TO Participant');
     await this.ensureRelTable(connection, 'DIARY_ABOUT', 'FROM DiaryEntry TO Participant');
     await this.ensureRelTable(connection, 'SEMANTIC_FOR_PERSONA', 'FROM SemanticRecord TO Persona');
+    await this.ensureRelTable(
+      connection,
+      'RELATIONSHIP_AS_PERSONA',
+      'FROM RelationshipProfile TO Persona',
+    );
+    await this.ensureRelTable(
+      connection,
+      'HAS_RELATIONSHIP_FACT',
+      'FROM RelationshipProfile TO RelationshipFact',
+    );
 
     state.initialized = true;
     return state;
@@ -457,6 +544,47 @@ export class LadybugMemoryService {
       await this.createScopeRelation('HAS_SEMANTIC', 'SemanticRecord', normalizedScopeKey, record.id);
       await this.createSemanticPersonaRelation(record.id, record.personaId);
     }
+  }
+
+  private async replaceRelationshipGraph(profiles: Record<string, Record<string, unknown>>) {
+    await this.deleteAllRelationshipGraphRows();
+    for (const [scopeKey, profile] of Object.entries(profiles)) {
+      const normalizedScopeKey = normalizeScopeKey(scopeKey);
+      const parsedScope = parseScopeKey(normalizedScopeKey);
+      const profileId = relationshipProfileId(normalizedScopeKey);
+      await this.ensureScopeNode(normalizedScopeKey);
+      await this.ensurePersonaNode(parsedScope.personaId);
+      await this.exec(
+        `CREATE (:RelationshipProfile {id: ${q(profileId)}, scopeKey: ${q(normalizedScopeKey)}, personaId: ${q(parsedScope.personaId)}, relationshipStage: ${q(stringValue(profile['relationshipStage']))}, mood: ${q(stringValue(profile['mood']))}, trust: ${intValue(profile['trust'])}, attraction: ${intValue(profile['attraction'])}, respect: ${intValue(profile['respect'])}, irritation: ${intValue(profile['irritation'])}, jealousy: ${intValue(profile['jealousy'])}, guard: ${intValue(profile['guard'])}, turnCount: ${intValue(profile['turnCount'])}, lastDiaryTurnCount: ${intValue(profile['lastDiaryTurnCount'])}, lastSeenAt: ${profile['lastSeenAt'] === null ? 0 : intValue(profile['lastSeenAt'])}, lastActionTag: ${q(stringValue(profile['lastActionTag']))}, summary: ${q(stringValue(profile['summary']))}, diaryEntry: ${q(stringValue(profile['diaryEntry']))}, updatedAt: ${Date.now()}})`,
+      );
+      await this.exec(
+        `MATCH (s:MemoryScope), (m:RelationshipProfile) WHERE s.id = ${q(normalizedScopeKey)} AND m.id = ${q(profileId)} CREATE (s)-[:HAS_RELATIONSHIP]->(m)`,
+      );
+      await this.exec(
+        `MATCH (m:RelationshipProfile), (p:Persona) WHERE m.id = ${q(profileId)} AND p.id = ${q(parsedScope.personaId)} CREATE (m)-[:RELATIONSHIP_AS_PERSONA]->(p)`,
+      );
+      const facts = arrayValue(profile['facts'])
+        .map((value) => stringValue(value))
+        .filter(Boolean)
+        .slice(0, 60);
+      for (let index = 0; index < facts.length; index += 1) {
+        const factId = `${profileId}:fact:${index}`;
+        await this.exec(
+          `CREATE (:RelationshipFact {id: ${q(factId)}, profileId: ${q(profileId)}, scopeKey: ${q(normalizedScopeKey)}, text: ${q(facts[index])}, updatedAt: ${Date.now()}})`,
+        );
+        await this.exec(
+          `MATCH (m:RelationshipProfile), (f:RelationshipFact) WHERE m.id = ${q(profileId)} AND f.id = ${q(factId)} CREATE (m)-[:HAS_RELATIONSHIP_FACT]->(f)`,
+        );
+      }
+    }
+  }
+
+  private async deleteAllRelationshipGraphRows() {
+    await this.exec('MATCH (m:RelationshipProfile)-[r:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) DELETE r').catch(() => undefined);
+    await this.exec('MATCH (m:RelationshipProfile)-[r:RELATIONSHIP_AS_PERSONA]->(p:Persona) DELETE r').catch(() => undefined);
+    await this.exec('MATCH (s:MemoryScope)-[r:HAS_RELATIONSHIP]->(m:RelationshipProfile) DELETE r').catch(() => undefined);
+    await this.exec('MATCH (m:RelationshipFact) DELETE m').catch(() => undefined);
+    await this.exec('MATCH (m:RelationshipProfile) DELETE m').catch(() => undefined);
   }
 
   private async deleteGraphRowsForScope(scopeKey: string, labels: string[]) {
@@ -605,6 +733,10 @@ function snapshotId(kind: LadybugSnapshotKind, scopeKey: string) {
   return `${kind}:${scopeKey}`;
 }
 
+function relationshipProfileId(scopeKey: string) {
+  return `relationship:${scopeKey}`;
+}
+
 function normalizeScopeKey(scopeKey: string) {
   return (
     String(scopeKey || 'default')
@@ -696,4 +828,17 @@ function normalizeSemanticRecords(values: unknown[]) {
     .filter((record): record is LadybugSemanticMemoryRecord => Boolean(record))
     .sort((left, right) => right.createdAt - left.createdAt)
     .slice(0, 160);
+}
+
+function normalizeRelationshipProfiles(value: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([scopeKey, profile]) => [
+        normalizeScopeKey(scopeKey),
+        profile && typeof profile === 'object' && !Array.isArray(profile)
+          ? (profile as Record<string, unknown>)
+          : null,
+      ])
+      .filter((entry): entry is [string, Record<string, unknown>] => Boolean(entry[0] && entry[1])),
+  );
 }

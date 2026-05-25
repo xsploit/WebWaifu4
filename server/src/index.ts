@@ -83,6 +83,10 @@ type MemorySemanticBody = {
   scopeKey?: unknown;
 };
 
+type MemoryRelationshipsBody = {
+  profiles?: unknown;
+};
+
 type AiChatRequestBody = {
   mode?: 'direct' | 'batch';
   activeChatters?: number;
@@ -1507,6 +1511,51 @@ const httpServer = createServer(async (request, response) => {
         ok: false,
         backend: 'ladybug',
         error: error instanceof Error ? error.message : 'Ladybug semantic memory save failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && runtimePath === '/memory/relationships') {
+    try {
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        profiles: await getLadybugMemoryService().loadRelationshipProfiles(),
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Ladybug relationship profile load failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'PUT' && runtimePath === '/memory/relationships') {
+    try {
+      const body = await readRequestJson<MemoryRelationshipsBody>(request, 8 * 1024 * 1024);
+      const profiles =
+        body.profiles && typeof body.profiles === 'object' && !Array.isArray(body.profiles)
+          ? (body.profiles as Record<string, unknown>)
+          : {};
+      await getLadybugMemoryService().saveRelationshipProfiles(profiles);
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Ladybug relationship profile save failed.',
       });
     }
     return;

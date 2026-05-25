@@ -50,6 +50,8 @@ import {
 import {
   loadLadybugMemoryGraph,
   loadLadybugMemoryStatus,
+  loadLadybugRelationshipMemories,
+  saveLadybugRelationshipMemories,
   type LadybugMemoryGraphSummary,
   type LadybugMemoryStatus,
 } from './lib/chat/ladybug-memory-client';
@@ -3475,6 +3477,11 @@ function App() {
           : {
               [hydratedLocalStateKey]: persistedState.relationshipMemory,
             };
+      const ladybugRelationshipMemories = await loadLadybugRelationshipMemories();
+      const nextRelationshipMemories =
+        ladybugRelationshipMemories && Object.keys(ladybugRelationshipMemories).length > 0
+          ? ladybugRelationshipMemories
+          : hydratedRelationshipMemories;
       const hydratedTwitchChannel = persistedState.twitchChannel || DIRECT_TWITCH_CHANNEL;
 
       setPersonas(persistedState.personas);
@@ -3484,9 +3491,9 @@ function App() {
       setAiSettings(persistedState.aiSettings);
       setChatHistory(trimChatHistory(persistedState.chatHistory));
       setRelationshipMemory(
-        hydratedRelationshipMemories[hydratedLocalStateKey] ?? persistedState.relationshipMemory,
+        nextRelationshipMemories[hydratedLocalStateKey] ?? persistedState.relationshipMemory,
       );
-      setRelationshipMemories(hydratedRelationshipMemories);
+      setRelationshipMemories(nextRelationshipMemories);
       setMenuOpen(false);
       setChatLogOpen(true);
       setChatInput(persistedState.uiState.chatDraft);
@@ -3553,7 +3560,7 @@ function App() {
           return;
         }
 
-        void savePersistedChatState({
+        const nextPersistedState = {
           personas,
           activePersonaId: activePersona?.id ?? DEFAULT_PERSONA.id,
           aiSettings,
@@ -3574,9 +3581,16 @@ function App() {
           twitchSettings,
           sequencerSettings,
           visualSettings,
-        }).catch((error) => {
+        };
+
+        void savePersistedChatState(nextPersistedState).catch((error) => {
           console.warn('[App] Failed to persist chat state', error);
         });
+        void saveLadybugRelationshipMemories(nextPersistedState.relationshipMemories).catch(
+          (error) => {
+            console.warn('[App] Failed to persist Ladybug relationship graph', error);
+          },
+        );
       };
 
       if ('requestIdleCallback' in window) {
