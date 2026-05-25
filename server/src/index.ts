@@ -139,6 +139,7 @@ const CORS_REQUEST_HEADERS =
   'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
 const AI_LIVE_SOCKET_PATH = '/ai/live';
 const AI_LIVE_MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
+const AI_LIVE_MAX_QUEUED_MESSAGES = 3;
 const AI_LIVE_ALLOWED_HEADERS = new Set([
   'x-yourwifey-llm-provider',
   'x-yourwifey-llm-provider-key',
@@ -2067,6 +2068,12 @@ function sendAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
   return true;
 }
 
+function sendRequiredAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
+  if (!sendAiLiveEvent(socket, event)) {
+    throw new Error('AI live websocket client disconnected.');
+  }
+}
+
 async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, raw: RawData) {
   let message: AiLiveClientMessage;
   try {
@@ -2107,8 +2114,8 @@ async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, 
       allowServerProviderProxy: config.providerProxyEnabled,
       body: { ...message.body, stream: true },
       request: runtimeRequest,
-      streamEvent: async (event) => {
-        sendAiLiveEvent(socket, { ...event, requestId });
+      streamEvent: (event) => {
+        sendRequiredAiLiveEvent(socket, { ...event, requestId });
       },
     });
     sendAiLiveEvent(socket, {
@@ -2145,10 +2152,23 @@ httpServer.on('upgrade', (request, socket, head) => {
 
 aiLiveSocket.on('connection', (socket, request) => {
   let queue = Promise.resolve();
+  let queuedMessages = 0;
   const onMessage = (raw: RawData) => {
+    if (socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    if (queuedMessages >= AI_LIVE_MAX_QUEUED_MESSAGES) {
+      socket.close(1013, 'AI live websocket queue limit exceeded.');
+      return;
+    }
+    queuedMessages += 1;
     queue = queue.then(
-      () => handleAiLiveMessage(socket, request, raw),
-      () => handleAiLiveMessage(socket, request, raw),
+      () => handleAiLiveMessage(socket, request, raw).finally(() => {
+        queuedMessages = Math.max(0, queuedMessages - 1);
+      }),
+      () => handleAiLiveMessage(socket, request, raw).finally(() => {
+        queuedMessages = Math.max(0, queuedMessages - 1);
+      }),
     );
     void queue.catch(() => {});
   };
