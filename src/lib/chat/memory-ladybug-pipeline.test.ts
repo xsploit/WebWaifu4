@@ -299,7 +299,7 @@ describe('Ladybug memory pipeline', () => {
               userText: text,
             },
           ]);
-          return { id, ok: true, totalIndexed: currentRecords.length + 1 };
+          return { id, ok: true, totalIndexed: currentRecords.length + 1, vectorDims: 3 };
         },
       },
       turns: [
@@ -329,6 +329,11 @@ describe('Ladybug memory pipeline', () => {
     expect(result.sideEffects.diaryIds).toHaveLength(1);
     expect(result.sideEffects.archivalWrites).toBe(1);
     expect(result.sideEffects.slotWrites).toBe(1);
+    expect(result.toolCalls.find((call) => call.name === 'core.worker_memory_insert_archival')?.result)
+      .toMatchObject({
+        ok: true,
+        semantic: { id: 'worker-archival-1', ok: true, totalIndexed: 1, vectorDims: 3 },
+      });
     expect(persisted.candidates?.[0]?.summary).toBe('Subby wants Ladybug-first worker writes');
     expect(persisted.diaryEntries?.[0]?.summary).toBe(
       'Subby asked for memory worker persistence proof.',

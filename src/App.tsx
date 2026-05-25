@@ -1436,7 +1436,7 @@ async function rememberSemanticTurn(
     operation,
     onEmbeddingDebug,
   );
-  await addSemanticMemoryTurn({
+  return addSemanticMemoryTurn({
     assistantText,
     embedding,
     persona,
@@ -4201,7 +4201,7 @@ function App() {
               relationshipMemory: memorySnapshot,
               semanticMemory: {
                 insert: async (text) => {
-                  await rememberSemanticTurn(
+                  const write = await rememberSemanticTurn(
                     stateKey,
                     text,
                     '',
@@ -4211,7 +4211,12 @@ function App() {
                     setMemoryEmbeddingDebug,
                     'worker-insert',
                   );
-                  return { ok: true };
+                  return {
+                    id: write?.record.id,
+                    ok: Boolean(write),
+                    totalIndexed: write?.totalIndexed,
+                    vectorDims: write?.vectorDims,
+                  };
                 },
                 search: async (query, limit) => {
                   const embedding = await requestTextEmbedding(

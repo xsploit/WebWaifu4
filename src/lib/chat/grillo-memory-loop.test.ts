@@ -323,7 +323,7 @@ describe('Grillo memory worker loop', () => {
       semanticMemory: {
         insert: async (text) => {
           inserted.push(text);
-          return { id: 'semantic-1', ok: true, totalIndexed: 1 };
+          return { id: 'semantic-1', ok: true, totalIndexed: 1, vectorDims: 3 };
         },
         search: async () => [{ score: 0.91, text: 'semantic memory match' }],
       },
@@ -338,7 +338,7 @@ describe('Grillo memory worker loop', () => {
     });
     expect(result.toolCalls[1]?.result).toMatchObject({
       ok: true,
-      semantic: { id: 'semantic-1', ok: true, totalIndexed: 1 },
+      semantic: { id: 'semantic-1', ok: true, totalIndexed: 1, vectorDims: 3 },
     });
   });
 });

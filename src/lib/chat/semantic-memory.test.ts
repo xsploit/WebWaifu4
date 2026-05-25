@@ -47,7 +47,7 @@ describe('semantic memory', () => {
   it('stores embedded memories through the fallback browser store', async () => {
     const scopeKey = 'twitch:subsect:persona:neuro-sama';
 
-    await addSemanticMemoryTurn({
+    const write = await addSemanticMemoryTurn({
       assistantText: 'Fine, I will remember your excellent taste.',
       embedding: [1, 0, 0],
       persona: DEFAULT_PERSONA,
@@ -57,6 +57,11 @@ describe('semantic memory', () => {
 
     const records = await loadSemanticMemory(scopeKey);
 
+    expect(write).toMatchObject({
+      totalIndexed: 1,
+      vectorDims: 3,
+    });
+    expect(write?.record.embedding).toEqual([1, 0, 0]);
     expect(records).toHaveLength(1);
     expect(records[0]?.scopeKey).toBe(scopeKey);
     expect(records[0]?.embedding).toEqual([1, 0, 0]);

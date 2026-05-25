@@ -93,7 +93,12 @@ type RunGrilloMemoryWorkerLoopOptions = {
 };
 
 type GrilloSemanticMemoryBridge = {
-  insert?: (text: string) => Promise<{ id?: string; ok: boolean; totalIndexed?: number }>;
+  insert?: (text: string) => Promise<{
+    id?: string;
+    ok: boolean;
+    totalIndexed?: number;
+    vectorDims?: number;
+  }>;
   search?: (query: string, limit: number) => Promise<GrilloScoredItem[]>;
 };
 

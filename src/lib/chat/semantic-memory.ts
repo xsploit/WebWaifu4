@@ -21,6 +21,12 @@ export type SemanticMemoryMatch = SemanticMemoryRecord & {
   score: number;
 };
 
+export type SemanticMemoryWriteResult = {
+  record: SemanticMemoryRecord;
+  totalIndexed: number;
+  vectorDims: number;
+};
+
 const LEGACY_MEMORY_KEY_PREFIX = 'yourwifey:semantic-memory:v1:';
 const DB_NAME = 'yourwifey-memory';
 // v2 replays the schema guard so older/broken IndexedDB stores get the scope index before vector recall is used.
@@ -168,10 +174,10 @@ export async function addSemanticMemoryTurn({
 }) {
   const text = buildSemanticMemoryTurnText(userText, assistantText, persona);
   if (text.length < 24) {
-    return;
+    return null;
   }
 
-  await enqueueSemanticMemoryWrite(scopeKey, async () => {
+  return enqueueSemanticMemoryWrite(scopeKey, async () => {
     const records = await loadSemanticMemory(scopeKey);
     const record: SemanticMemoryRecord = {
       id: `${Date.now()}-${hashText(text).toString(36)}`,
@@ -184,7 +190,13 @@ export async function addSemanticMemoryTurn({
       embedding: normalizeEmbedding(embedding),
     };
 
-    await saveSemanticMemory(scopeKey, [record, ...records]);
+    const nextRecords = [record, ...records];
+    await saveSemanticMemory(scopeKey, nextRecords);
+    return {
+      record,
+      totalIndexed: Math.min(nextRecords.length, MAX_RECORDS_PER_SCOPE),
+      vectorDims: record.embedding?.length ?? 0,
+    };
   });
 }
 
@@ -256,16 +268,22 @@ function scoreSemanticMemory(
   return vectorScore * 0.78 + lexicalScore * 0.18 + recencyScore * 0.04;
 }
 
-function enqueueSemanticMemoryWrite(scopeKey: string, task: () => Promise<void>) {
+function enqueueSemanticMemoryWrite<T>(scopeKey: string, task: () => Promise<T>) {
   const key = scopeKey.trim() || 'default';
   const previous = semanticMemoryWriteQueues.get(key) ?? Promise.resolve();
   const queued = previous.catch(() => undefined).then(task);
-  semanticMemoryWriteQueues.set(key, queued);
-  void queued.finally(() => {
-    if (semanticMemoryWriteQueues.get(key) === queued) {
-      semanticMemoryWriteQueues.delete(key);
-    }
-  });
+  const queueTail = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  semanticMemoryWriteQueues.set(key, queueTail);
+  void queued
+    .finally(() => {
+      if (semanticMemoryWriteQueues.get(key) === queueTail) {
+        semanticMemoryWriteQueues.delete(key);
+      }
+    })
+    .catch(() => undefined);
   return queued;
 }
 
