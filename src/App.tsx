@@ -1022,12 +1022,18 @@ async function requestChatCompletionLiveWs({
 
   const requestId = `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return new Promise<AppCompletionResponse>((resolve, reject) => {
+    const closeSocketForAbort = () => {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close(1000, 'AI live websocket request aborted.');
+      }
+    };
     const cleanup = () => {
       aiLivePendingRequests.delete(requestId);
       signal?.removeEventListener('abort', onAbort);
     };
     const onAbort = () => {
       cleanup();
+      closeSocketForAbort();
       reject(new DOMException('AI live websocket request aborted.', 'AbortError'));
     };
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -2392,11 +2398,26 @@ function App() {
     };
   }, []);
 
+  const desktopWindowMode =
+    desktopRuntime?.mode ??
+    (typeof window !== 'undefined' && window.webWaifuDesktop?.isDesktop
+      ? window.webWaifuDesktop.mode
+      : 'editor');
+  const desktopForcesTransparentScene =
+    desktopWindowMode !== 'editor' && visualSettings.sceneBackgroundMode !== 'chroma';
+  const renderedVisualSettings = useMemo(
+    () =>
+      desktopForcesTransparentScene && visualSettings.sceneBackgroundMode !== 'transparent'
+        ? { ...visualSettings, sceneBackgroundMode: 'transparent' as const }
+        : visualSettings,
+    [desktopForcesTransparentScene, visualSettings],
+  );
+
   const shellStyle = useMemo(() => {
-    const backgroundMode = visualSettings.sceneBackgroundMode;
-    const customImage = visualSettings.sceneBackgroundImage.trim();
-    const customOverlay = visualSettings.sceneBackgroundOverlay.trim();
-    const customFilter = visualSettings.sceneBackgroundFilter.trim();
+    const backgroundMode = renderedVisualSettings.sceneBackgroundMode;
+    const customImage = renderedVisualSettings.sceneBackgroundImage.trim();
+    const customOverlay = renderedVisualSettings.sceneBackgroundOverlay.trim();
+    const customFilter = renderedVisualSettings.sceneBackgroundFilter.trim();
     const transparentBackground = backgroundMode === 'transparent';
     const backgroundImage =
       backgroundMode === 'custom' && customImage
@@ -2426,17 +2447,17 @@ function App() {
       '--stream-bg-color': transparentBackground
         ? 'transparent'
         : backgroundMode === 'chroma'
-          ? visualSettings.sceneChromaColor
+          ? renderedVisualSettings.sceneChromaColor
           : '#02040a',
       '--stream-bg-overlay': backgroundOverlay,
       '--stream-bg-filter': backgroundFilter,
-      '--stream-chroma-color': visualSettings.sceneChromaColor,
+      '--stream-chroma-color': renderedVisualSettings.sceneChromaColor,
       '--c-text-accent': activePersonaScenePreset.accent,
       '--c-border': activePersonaScenePreset.border,
       '--c-panel': activePersonaScenePreset.panel,
       '--text-muted': activePersonaScenePreset.textMuted,
     } as CSSProperties;
-  }, [activePersonaScenePreset, safeArea, visualSettings]);
+  }, [activePersonaScenePreset, renderedVisualSettings, safeArea]);
 
   const loadAvailableModels = useCallback(async () => {
     setModelsLoading(true);
@@ -3542,6 +3563,13 @@ function App() {
           ? ladybugRelationshipMemories
           : hydratedRelationshipMemories;
       const hydratedTwitchChannel = persistedState.twitchChannel || DIRECT_TWITCH_CHANNEL;
+      const hydratedDesktopMode =
+        window.webWaifuDesktop?.isDesktop === true ? window.webWaifuDesktop.mode : 'editor';
+      const hydratedVisualSettings =
+        hydratedDesktopMode !== 'editor' &&
+        persistedState.visualSettings.sceneBackgroundMode !== 'transparent'
+          ? { ...persistedState.visualSettings, sceneBackgroundMode: 'transparent' as const }
+          : persistedState.visualSettings;
 
       setPersonas(persistedState.personas);
       setActivePersonaId(persistedState.activePersonaId);
@@ -3562,7 +3590,7 @@ function App() {
       setCurrentBundledModelId(persistedState.currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID);
       setCurrentCustomVrmModelId(persistedState.currentCustomVrmModelId);
       setSequencerSettings(persistedState.sequencerSettings);
-      setVisualSettings(persistedState.visualSettings);
+      setVisualSettings(hydratedVisualSettings);
 
       setHydrated(true);
       void loadAvailableModels();
@@ -4732,7 +4760,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!desktopRuntime || desktopRuntime.mode === 'editor') {
+    if (!hydrated || !desktopRuntime || desktopRuntime.mode === 'editor') {
       return;
     }
     setVisualSettings((current) => {
@@ -4744,7 +4772,7 @@ function App() {
         sceneBackgroundMode: 'transparent',
       };
     });
-  }, [desktopRuntime]);
+  }, [desktopRuntime, hydrated]);
 
   useEffect(() => {
     if (!hydrated || startupStatusSentRef.current) {
@@ -6084,7 +6112,7 @@ function App() {
     <div
       className={`shell ${productShellActive ? 'product-shell-mode' : ''} ${
         overlayPageActive ? 'overlay-shell-mode' : ''
-      } ${visualSettings.sceneBackgroundMode === 'transparent' ? 'scene-background-transparent' : ''}`}
+      } ${renderedVisualSettings.sceneBackgroundMode === 'transparent' ? 'scene-background-transparent' : ''}`}
       onClick={(event) => {
         if (!menuOpen) {
           return;
@@ -6112,7 +6140,7 @@ function App() {
         sequencerSettings={sequencerSettings}
         setSequencerSettings={setSequencerSettings}
         setVisualSettings={setVisualSettings}
-        visualSettings={visualSettings}
+        visualSettings={renderedVisualSettings}
       />
 
       {!productShellActive && (!overlayPageActive || overlayControlsActive) ? (
