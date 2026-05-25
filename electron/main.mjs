@@ -28,6 +28,12 @@ let appProtocolRegistered = false;
 
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+if (
+  process.argv.includes('--transparent-software') ||
+  process.env.ELECTRON_TRANSPARENT_SOFTWARE === 'true'
+) {
+  app.disableHardwareAcceleration();
+}
 protocol.registerSchemesAsPrivileged([
   {
     privileges: {
@@ -67,11 +73,12 @@ function getWindowOptions(mode) {
     y: overlay ? workArea.y + 24 : undefined,
     title: 'WebWaifu 4',
     backgroundColor: transparent ? '#00000000' : '#02040a',
+    backgroundMaterial: 'none',
     frame: !transparent,
     transparent,
     hasShadow: !transparent,
-    resizable: true,
-    fullscreenable: true,
+    resizable: !transparent,
+    fullscreenable: !transparent,
     skipTaskbar: overlay,
     alwaysOnTop: transparent,
     useContentSize: false,
@@ -219,6 +226,7 @@ async function createWindow() {
   const rendererBaseUrl = await registerRendererProtocol();
 
   mainWindow = new BrowserWindow(getWindowOptions(windowMode));
+  mainWindow.setBackgroundColor(windowMode === 'editor' ? '#02040a' : '#00000000');
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
@@ -371,7 +379,9 @@ function installMenu() {
       ],
     },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  mainWindow?.setMenu(menu);
 }
 
 ipcMain.handle('desktop:get-runtime', () => ({

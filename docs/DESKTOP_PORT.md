@@ -24,6 +24,37 @@ Electron is the first desktop target because WebWaifu 4 depends heavily on Chrom
 
 Switch modes from the Electron menu. Mode switching relaunches the app because window frame/transparent behavior is safest when selected at window creation time.
 
+The renderer also shows a compact desktop control strip when running in Electron. It can relaunch
+Editor/Desktop/Overlay, switch the scene between Transparent/Chroma/Painted, toggle click-through,
+and open Background settings. This is intentional because frameless transparent windows do not show
+normal native chrome, and Electron menus can be hard to discover in overlay-style windows.
+
+Transparent mode requires both layers to agree:
+
+- Electron must create the window with `transparent: true`, `frame: false`, transparent
+  `backgroundColor`, and non-resizable transparent options.
+- React/Three.js must render with transparent CSS and a transparent WebGL clear color.
+
+Electron documents two important limitations: transparent windows are not safely resizable on some
+platforms, and opening DevTools can make transparency stop rendering. If a GPU/compositor issue still
+paints the window, launch with:
+
+```powershell
+$env:ELECTRON_TRANSPARENT_SOFTWARE='true'
+npm run desktop:start -- --window-mode=desktop
+```
+
+There is also a standalone transparency harness:
+
+```powershell
+npm run desktop:test:transparent
+npm run desktop:test:transparent:software
+```
+
+Use it before blaming the main app. The harness has Transparent, Green, Magenta, Blue, and WebGL
+alpha modes. If standalone Transparent is still blue, the issue is Electron/Windows/GPU
+composition. If standalone works but WebWaifu does not, the issue is an app layer.
+
 ## Commands
 
 ```powershell
@@ -31,12 +62,12 @@ npm run desktop:dev
 npm run desktop:dev:irc
 npm run desktop:start
 npm run desktop:pack
+npm run desktop:test:transparent
 ```
 
 ## Follow-Up Work
 
 - Add persisted desktop window bounds per mode.
-- Add in-app buttons for desktop mode and click-through instead of menu-only controls.
 - Add an installer icon and signed release config.
 - Smoke test packaged builds on a 4K/HiDPI display.
 - Consider an Electrobun spike only after Electron behavior is verified.

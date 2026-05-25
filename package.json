@@ -20,6 +20,8 @@
     "desktop:dev": "concurrently -k -n overlay,ai,electron -c cyan,magenta,yellow \"cross-env BOT_PORT=8797 VITE_BOT_PORT=8797 VITE_DIRECT_TWITCH_CHAT=true VITE_STREAM_BOT_WS_ENABLED=false VITE_AI_PROXY_ENABLED=true vite --host 127.0.0.1\" \"cross-env BOT_PORT=8797 TWITCH_MOCK=true npm run dev:ai\" \"wait-on http://127.0.0.1:5173/ http://127.0.0.1:8797/health && cross-env ELECTRON_DEV_SERVER_URL=http://127.0.0.1:5173 ELECTRON_BACKEND_EXTERNAL=true ELECTRON_BOT_PORT=8797 electron electron/main.mjs\"",
     "desktop:dev:irc": "concurrently -k -n overlay,ai,electron -c cyan,magenta,yellow \"cross-env BOT_PORT=8797 VITE_BOT_PORT=8797 VITE_DIRECT_TWITCH_CHAT=true VITE_STREAM_BOT_WS_ENABLED=false VITE_AI_PROXY_ENABLED=true vite --host 127.0.0.1\" \"cross-env BOT_PORT=8797 TWITCH_MOCK=false npm run dev:ai\" \"wait-on http://127.0.0.1:5173/ http://127.0.0.1:8797/health && cross-env ELECTRON_DEV_SERVER_URL=http://127.0.0.1:5173 ELECTRON_BACKEND_EXTERNAL=true ELECTRON_BOT_PORT=8797 electron electron/main.mjs\"",
     "desktop:start": "npm run build && cross-env ELECTRON_BOT_PORT=8797 electron electron/main.mjs",
+    "desktop:test:transparent": "electron electron/transparent-test.mjs",
+    "desktop:test:transparent:software": "cross-env ELECTRON_TRANSPARENT_SOFTWARE=true electron electron/transparent-test.mjs",
     "desktop:clean": "node scripts/clean-desktop-release.mjs",
     "desktop:pack": "npm run build && npm run desktop:clean && electron-builder --dir",
     "desktop:dist": "npm run build && npm run desktop:clean && electron-builder",

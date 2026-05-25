@@ -103,6 +103,7 @@ import type {
   FacialExpressionRequest,
   ManualPlayRequest,
   SavedVrmModelSummary,
+  SceneBackgroundMode,
   SettingsTabId,
 } from './lib/menu/types';
 import { fetchGameAssetBlob } from './lib/cdn/assets';
@@ -153,7 +154,7 @@ import {
 } from './lib/twitch/stream-transcription';
 import type { ProviderKind } from './lib/product/byok';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
-import { getDesktopBackendUrl } from './lib/desktop/runtime';
+import { getDesktopBackendUrl, type DesktopWindowMode } from './lib/desktop/runtime';
 import {
   base64ToBlob,
   blobToBase64,
@@ -1796,11 +1797,28 @@ function mergeRelationshipMemoryInWorker(
   });
 }
 
+type DesktopRuntimeStatus = {
+  backendPort: string;
+  clickThrough: boolean;
+  mode: DesktopWindowMode;
+};
+
 function App() {
   const safeArea = DEFAULT_SAFE_AREA;
   const sceneActive = true;
   const providerKeyVaultWorkspaceId = 'local-browser';
   const [menuOpen, setMenuOpen] = useState(() => createDefaultUiState().menuOpen);
+  const [desktopRuntime, setDesktopRuntime] = useState<DesktopRuntimeStatus | null>(() => {
+    const desktopBridge = typeof window !== 'undefined' ? window.webWaifuDesktop : undefined;
+    if (!desktopBridge?.isDesktop) {
+      return null;
+    }
+    return {
+      backendPort: desktopBridge.backendPort ?? '8797',
+      clickThrough: false,
+      mode: desktopBridge.mode ?? 'editor',
+    };
+  });
   const [chatBarOpen, setChatBarOpen] = useState(false);
   const [chatLogOpen, setChatLogOpen] = useState(() => createDefaultUiState().chatLogOpen);
   const [activeTab, setActiveTab] = useState<SettingsTabId>('vrm');
@@ -4411,6 +4429,75 @@ function App() {
   }, [appendSystemMessage]);
 
   useEffect(() => {
+    const desktopBridge = window.webWaifuDesktop;
+    if (!desktopBridge?.isDesktop) {
+      setDesktopRuntime(null);
+      return undefined;
+    }
+
+    desktopBridge
+      .getRuntime?.()
+      .then((runtime) => setDesktopRuntime(runtime))
+      .catch(() => {
+        setDesktopRuntime({
+          backendPort: desktopBridge.backendPort ?? '8797',
+          clickThrough: false,
+          mode: desktopBridge.mode ?? 'editor',
+        });
+      });
+
+    return desktopBridge.onRuntimeChanged?.((runtime) => setDesktopRuntime(runtime));
+  }, []);
+
+  const handleDesktopWindowMode = useCallback((mode: DesktopWindowMode) => {
+    void window.webWaifuDesktop?.relaunchWindowMode?.(mode);
+  }, []);
+
+  const handleDesktopSceneMode = useCallback(
+    (mode: SceneBackgroundMode) => {
+      setVisualSettings((current) => ({
+        ...current,
+        sceneBackgroundMode: mode,
+        sceneChromaColor: mode === 'chroma' ? '#00ff00' : current.sceneChromaColor,
+      }));
+      if (mode === 'transparent' || mode === 'chroma') {
+        setActiveTab('background');
+      }
+    },
+    [],
+  );
+
+  const handleDesktopClickThrough = useCallback(() => {
+    if (!desktopRuntime) {
+      return;
+    }
+    void window.webWaifuDesktop
+      ?.setClickThrough?.(!desktopRuntime.clickThrough)
+      .then((runtime) => setDesktopRuntime(runtime))
+      .catch(() => undefined);
+  }, [desktopRuntime]);
+
+  const handleOpenDesktopBackgroundSettings = useCallback(() => {
+    setActiveTab('background');
+    setMenuOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!desktopRuntime || desktopRuntime.mode === 'editor') {
+      return;
+    }
+    setVisualSettings((current) => {
+      if (current.sceneBackgroundMode !== 'persona') {
+        return current;
+      }
+      return {
+        ...current,
+        sceneBackgroundMode: 'transparent',
+      };
+    });
+  }, [desktopRuntime]);
+
+  useEffect(() => {
     if (!hydrated || startupStatusSentRef.current) {
       return;
     }
@@ -5757,6 +5844,76 @@ function App() {
 
       {!productShellActive && (!overlayPageActive || overlayControlsActive) ? (
         <div className="ui-layer">
+          {desktopRuntime ? (
+            <div className="desktop-control-strip" onClick={(event) => event.stopPropagation()}>
+              <div className="desktop-control-strip__status">
+                <span>Desktop</span>
+                <strong>{desktopRuntime.mode}</strong>
+                <span>BG</span>
+                <strong>{visualSettings.sceneBackgroundMode}</strong>
+              </div>
+              <button
+                className="desktop-control-strip__button"
+                disabled={desktopRuntime.mode === 'editor'}
+                onClick={() => handleDesktopWindowMode('editor')}
+                type="button"
+              >
+                Editor
+              </button>
+              <button
+                className="desktop-control-strip__button"
+                disabled={desktopRuntime.mode === 'desktop'}
+                onClick={() => handleDesktopWindowMode('desktop')}
+                type="button"
+              >
+                Desktop
+              </button>
+              <button
+                className="desktop-control-strip__button"
+                disabled={desktopRuntime.mode === 'overlay'}
+                onClick={() => handleDesktopWindowMode('overlay')}
+                type="button"
+              >
+                Overlay
+              </button>
+              <button
+                className="desktop-control-strip__button"
+                onClick={() => handleDesktopSceneMode('transparent')}
+                type="button"
+              >
+                Transparent
+              </button>
+              <button
+                className="desktop-control-strip__button"
+                onClick={() => handleDesktopSceneMode('chroma')}
+                type="button"
+              >
+                Chroma
+              </button>
+              <button
+                className="desktop-control-strip__button"
+                onClick={() => handleDesktopSceneMode('persona')}
+                type="button"
+              >
+                Painted
+              </button>
+              <button
+                className="desktop-control-strip__button"
+                disabled={desktopRuntime.mode === 'editor'}
+                onClick={handleDesktopClickThrough}
+                type="button"
+              >
+                Click {desktopRuntime.clickThrough ? 'On' : 'Off'}
+              </button>
+              <button
+                className="desktop-control-strip__button desktop-control-strip__button--primary"
+                onClick={handleOpenDesktopBackgroundSettings}
+                type="button"
+              >
+                Background
+              </button>
+            </div>
+          ) : null}
           <ChatLog
             activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
             botMentionTag={activePersonaMentionTag}
