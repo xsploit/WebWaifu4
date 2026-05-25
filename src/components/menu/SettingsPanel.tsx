@@ -107,6 +107,7 @@ type SettingsPanelProps = {
   grilloMemoryState: GrilloMemoryState;
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
+  memoryAgentPendingCounts: Record<string, number>;
   memoryAgentStatus: string;
   memoryBackendStatus: LadybugMemoryStatus | null;
   memoryGraphSummary: LadybugMemoryGraphSummary | null;
@@ -216,6 +217,7 @@ export function SettingsPanel({
   grilloMemoryState,
   relationshipMemory,
   memoryAgentBusy,
+  memoryAgentPendingCounts,
   memoryAgentStatus,
   memoryBackendStatus,
   memoryGraphSummary,
@@ -342,6 +344,7 @@ export function SettingsPanel({
         grilloMemoryState={grilloMemoryState}
         relationshipMemory={relationshipMemory}
         memoryAgentBusy={memoryAgentBusy}
+        memoryAgentPendingCounts={memoryAgentPendingCounts}
         memoryAgentStatus={memoryAgentStatus}
         memoryBackendStatus={memoryBackendStatus}
         memoryGraphSummary={memoryGraphSummary}

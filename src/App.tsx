@@ -1886,6 +1886,9 @@ function App() {
     useState<LadybugMemoryGraphSummary | null>(null);
   const [memoryPromptDebug, setMemoryPromptDebug] =
     useState<MemoryPromptDebugSnapshot | null>(null);
+  const [memoryAgentPendingCounts, setMemoryAgentPendingCounts] = useState<
+    Record<string, number>
+  >({});
   const [grilloMemoryState, setGrilloMemoryState] = useState<GrilloMemoryState>(() =>
     createDefaultGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
   );
@@ -2029,6 +2032,10 @@ function App() {
   );
   const activeRelationshipStateKeyRef = useRef(activeRelationshipStateKey);
 
+  const syncMemoryAgentPendingCounts = useCallback(() => {
+    setMemoryAgentPendingCounts({ ...memoryAgentPendingChatTurnCountsRef.current });
+  }, []);
+
   const refreshGrilloMemoryState = useCallback((stateKey: string) => {
     const run = (grilloMemoryHydrationRunRef.current += 1);
     void hydrateGrilloMemoryState(stateKey).then((state) => {
@@ -2099,6 +2106,7 @@ function App() {
     ].slice(-24);
     memoryAgentPendingChatTurnCountsRef.current[stateKey] =
       (memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0) + turns.length;
+    syncMemoryAgentPendingCounts();
     void recordGrilloMemoryTurnAsync({
       assistantText: '',
       persona: activePersonaRef.current ?? DEFAULT_PERSONA,
@@ -2110,7 +2118,7 @@ function App() {
       }
     });
     scheduleMemoryAgentAfterChatTurnsRef.current(stateKey);
-  }, []);
+  }, [syncMemoryAgentPendingCounts]);
 
   const captureTwitchStreamTranscript = useCallback(async () => {
     const currentTwitchSettings = twitchSettingsRef.current;
@@ -4013,8 +4021,9 @@ function App() {
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
     void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
     memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
+    syncMemoryAgentPendingCounts();
     setMemoryAgentStatus('Memory cleared for current scope.');
-  }, [activeRelationshipStateKey, commitScopedRelationshipMemory]);
+  }, [activeRelationshipStateKey, commitScopedRelationshipMemory, syncMemoryAgentPendingCounts]);
 
   const handleResetContext = useCallback(() => {
     cancelAssistantPresentation(true);
@@ -4025,8 +4034,14 @@ function App() {
     setGrilloMemoryState(clearGrilloMemoryState(activeRelationshipStateKey));
     void clearGrilloMemoryStateAsync(activeRelationshipStateKey);
     memoryAgentPendingChatTurnCountsRef.current[activeRelationshipStateKey] = 0;
+    syncMemoryAgentPendingCounts();
     setMemoryAgentStatus('Context and memory cleared for current scope.');
-  }, [activeRelationshipStateKey, cancelAssistantPresentation, commitScopedRelationshipMemory]);
+  }, [
+    activeRelationshipStateKey,
+    cancelAssistantPresentation,
+    commitScopedRelationshipMemory,
+    syncMemoryAgentPendingCounts,
+  ]);
 
   const runRelationshipMemoryRefresh = useCallback(
     async (
@@ -4209,6 +4224,7 @@ function App() {
             0,
             (memoryAgentPendingChatTurnCountsRef.current[stateKey] ?? 0) - processedChatTurnCount,
           );
+          syncMemoryAgentPendingCounts();
         }
         setMemoryAgentStatus('Memory worker updated.');
       } catch (error) {
@@ -4230,6 +4246,7 @@ function App() {
       getScopedRelationshipMemory,
       providerKeyVaultWorkspaceId,
       refreshGrilloMemoryState,
+      syncMemoryAgentPendingCounts,
       twitchChannel,
     ],
   );
@@ -6164,6 +6181,7 @@ function App() {
               memoryBackendStatus={memoryBackendStatus}
               memoryGraphSummary={memoryGraphSummary}
               memoryPromptDebug={memoryPromptDebug}
+              memoryAgentPendingCounts={memoryAgentPendingCounts}
               sequencerSettings={sequencerSettings}
               setAiSettings={setAiSettings}
               setSequencerSettings={setSequencerSettings}

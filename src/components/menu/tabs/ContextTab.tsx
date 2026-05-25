@@ -21,6 +21,7 @@ type ContextTabProps = {
   grilloMemoryState: GrilloMemoryState;
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
+  memoryAgentPendingCounts: Record<string, number>;
   memoryAgentStatus: string;
   memoryBackendStatus: LadybugMemoryStatus | null;
   memoryGraphSummary: LadybugMemoryGraphSummary | null;
@@ -44,6 +45,7 @@ export function ContextTab({
   grilloMemoryState,
   relationshipMemory,
   memoryAgentBusy,
+  memoryAgentPendingCounts,
   memoryAgentStatus,
   memoryBackendStatus,
   memoryGraphSummary,
@@ -68,6 +70,11 @@ export function ContextTab({
     memoryPromptDebug && memoryPromptDebug.updatedAt > 0
       ? new Date(memoryPromptDebug.updatedAt).toLocaleTimeString()
       : '';
+  const currentPendingWorkerTurns = memoryAgentPendingCounts[grilloMemoryState.scopeKey] ?? 0;
+  const totalPendingWorkerTurns = Object.values(memoryAgentPendingCounts).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
 
   return (
     <>
@@ -131,6 +138,14 @@ export function ContextTab({
           </button>
         </div>
         <div className="status-copy">{memoryAgentStatus}</div>
+        <div className="memory-kv-grid">
+          <div className="status-copy">
+            Pending current scope: <strong>{currentPendingWorkerTurns}</strong>
+          </div>
+          <div className="status-copy">
+            Pending all scopes: <strong>{totalPendingWorkerTurns}</strong>
+          </div>
+        </div>
         {modelsError ? <div className="status-copy">{modelsError}</div> : null}
       </div>
 
