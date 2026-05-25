@@ -699,11 +699,41 @@ function createJsonMessageDeltaFilter() {
   };
 }
 
+const ASSISTANT_METADATA_DELIMITERS = [
+  { open: '<yw-meta>', close: '</yw-meta>' },
+  { open: '<hidden block>', close: '</hidden block>' },
+  { open: '<hidden-block>', close: '</hidden-block>' },
+] as const;
+
 function createMetadataDeltaFilter() {
-  const openTag = '<yw-meta>';
-  const closeTag = '</yw-meta>';
   let buffer = '';
   let suppressing = false;
+  let activeCloseTag: string = ASSISTANT_METADATA_DELIMITERS[0].close;
+
+  const safeLength = (value: string) => {
+    const maxTail = Math.max(
+      ...ASSISTANT_METADATA_DELIMITERS.map((delimiter) => delimiter.open.length - 1),
+    );
+    for (let tail = Math.min(maxTail, value.length); tail > 0; tail -= 1) {
+      const suffix = value.slice(value.length - tail);
+      if (ASSISTANT_METADATA_DELIMITERS.some((delimiter) => delimiter.open.startsWith(suffix))) {
+        return value.length - tail;
+      }
+    }
+    return value.length;
+  };
+
+  const findNextOpen = (value: string) => {
+    let match: { close: string; index: number; open: string } | null = null;
+    for (const delimiter of ASSISTANT_METADATA_DELIMITERS) {
+      const index = value.indexOf(delimiter.open);
+      if (index === -1 || (match && index >= match.index)) {
+        continue;
+      }
+      match = { close: delimiter.close, index, open: delimiter.open };
+    }
+    return match;
+  };
 
   return {
     push(delta: string) {
@@ -711,30 +741,32 @@ function createMetadataDeltaFilter() {
       let visible = '';
       while (buffer) {
         if (suppressing) {
-          const closeIndex = buffer.indexOf(closeTag);
+          const closeIndex = buffer.indexOf(activeCloseTag);
           if (closeIndex === -1) {
             buffer = '';
             break;
           }
-          buffer = buffer.slice(closeIndex + closeTag.length);
+          buffer = buffer.slice(closeIndex + activeCloseTag.length);
           suppressing = false;
+          activeCloseTag = ASSISTANT_METADATA_DELIMITERS[0].close;
           continue;
         }
 
-        const openIndex = buffer.indexOf(openTag);
-        if (openIndex !== -1) {
-          visible += buffer.slice(0, openIndex);
-          buffer = buffer.slice(openIndex + openTag.length);
+        const openMatch = findNextOpen(buffer);
+        if (openMatch) {
+          visible += buffer.slice(0, openMatch.index);
+          buffer = buffer.slice(openMatch.index + openMatch.open.length);
           suppressing = true;
+          activeCloseTag = openMatch.close;
           continue;
         }
 
-        const safeLength = Math.max(0, buffer.length - (openTag.length - 1));
-        if (safeLength === 0) {
+        const length = safeLength(buffer);
+        if (length === 0) {
           break;
         }
-        visible += buffer.slice(0, safeLength);
-        buffer = buffer.slice(safeLength);
+        visible += buffer.slice(0, length);
+        buffer = buffer.slice(length);
       }
       return visible;
     },
@@ -752,9 +784,57 @@ function createMetadataDeltaFilter() {
 }
 
 function createAiVisibleDeltaFilter(responseFormat: ChatProviderRequest['responseFormat']) {
-  return responseFormatHasMessageField(responseFormat)
-    ? createJsonMessageDeltaFilter()
-    : createMetadataDeltaFilter();
+  const metadataFilter = createMetadataDeltaFilter();
+  const jsonMessageFilter = createJsonMessageDeltaFilter();
+  let mode: 'unknown' | 'metadata' | 'json' = responseFormatHasMessageField(responseFormat)
+    ? 'json'
+    : 'unknown';
+  let probe = '';
+
+  return {
+    push(delta: string) {
+      if (!delta) {
+        return '';
+      }
+      if (mode === 'json') {
+        return jsonMessageFilter.push(delta);
+      }
+      if (mode === 'metadata') {
+        return metadataFilter.push(delta);
+      }
+
+      probe += delta;
+      const trimmedStart = probe.trimStart();
+      if (!trimmedStart) {
+        return '';
+      }
+      if (trimmedStart.startsWith('{')) {
+        mode = 'json';
+        const leadingWhitespaceLength = probe.length - trimmedStart.length;
+        const payload = probe.slice(leadingWhitespaceLength);
+        probe = '';
+        return jsonMessageFilter.push(payload);
+      }
+
+      mode = 'metadata';
+      const payload = probe;
+      probe = '';
+      return metadataFilter.push(payload);
+    },
+    flush() {
+      if (mode === 'json') {
+        return jsonMessageFilter.flush();
+      }
+      if (mode === 'metadata') {
+        return metadataFilter.flush();
+      }
+      const payload = probe;
+      probe = '';
+      return payload.trimStart().startsWith('{')
+        ? jsonMessageFilter.push(payload) + jsonMessageFilter.flush()
+        : metadataFilter.push(payload) + metadataFilter.flush();
+    },
+  };
 }
 
 function getSafeFinalVisibleText(
@@ -765,7 +845,7 @@ function getSafeFinalVisibleText(
   if (!trimmed) {
     return '';
   }
-  if (!responseFormatHasMessageField(responseFormat) || !trimmed.startsWith('{')) {
+  if (!trimmed.startsWith('{')) {
     return trimmed;
   }
   const filter = createJsonMessageDeltaFilter();
