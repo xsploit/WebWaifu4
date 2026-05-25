@@ -21,6 +21,7 @@ type DesktopRuntimeBridge = {
     callback: (mode: 'persona' | 'custom' | 'chroma' | 'transparent') => void,
   ) => () => void;
   onOpenAboutRequested?: (callback: () => void) => () => void;
+  onDesktopControlsVisibilityRequested?: (callback: (visible: boolean) => void) => () => void;
   setClickThrough?: (enabled: boolean) => Promise<{
     backendPort: string;
     clickThrough: boolean;

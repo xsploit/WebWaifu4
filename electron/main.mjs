@@ -28,6 +28,7 @@ let appProtocolRegistered = false;
 let backendModule = null;
 let backendStopping = null;
 let quitAfterBackendStop = false;
+let desktopControlsVisible = true;
 
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -316,6 +317,15 @@ function installMenu() {
           click: (item) => {
             mainWindow?.setAutoHideMenuBar(!item.checked);
             mainWindow?.setMenuBarVisibility(item.checked);
+          },
+        },
+        {
+          label: 'Show Desktop Controls',
+          type: 'checkbox',
+          checked: desktopControlsVisible,
+          click: (item) => {
+            desktopControlsVisible = item.checked;
+            mainWindow?.webContents.send('desktop-controls-visibility', desktopControlsVisible);
           },
         },
         { type: 'separator' },

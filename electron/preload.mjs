@@ -45,4 +45,9 @@ contextBridge.exposeInMainWorld('webWaifuDesktop', {
     ipcRenderer.on('desktop-open-about', listener);
     return () => ipcRenderer.off('desktop-open-about', listener);
   },
+  onDesktopControlsVisibilityRequested: (callback) => {
+    const listener = (_event, visible) => callback(Boolean(visible));
+    ipcRenderer.on('desktop-controls-visibility', listener);
+    return () => ipcRenderer.off('desktop-controls-visibility', listener);
+  },
 });

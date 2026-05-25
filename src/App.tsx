@@ -1819,6 +1819,7 @@ function App() {
       mode: desktopBridge.mode ?? 'editor',
     };
   });
+  const [desktopControlsVisible, setDesktopControlsVisible] = useState(true);
   const [chatBarOpen, setChatBarOpen] = useState(false);
   const [chatLogOpen, setChatLogOpen] = useState(() => createDefaultUiState().chatLogOpen);
   const [activeTab, setActiveTab] = useState<SettingsTabId>('vrm');
@@ -4421,10 +4422,14 @@ function App() {
         '[Desktop] WebWaifu 4 local-first desktop/OBS VTuber assistant. Provider keys stay local; use Background for transparent/chroma scene controls.',
       );
     });
+    const offControls = desktopBridge.onDesktopControlsVisibilityRequested?.((visible) => {
+      setDesktopControlsVisible(visible);
+    });
 
     return () => {
       offBackground?.();
       offAbout?.();
+      offControls?.();
     };
   }, [appendSystemMessage]);
 
@@ -5852,7 +5857,7 @@ function App() {
 
       {!productShellActive && (!overlayPageActive || overlayControlsActive) ? (
         <div className="ui-layer">
-          {desktopRuntime ? (
+          {desktopRuntime && desktopControlsVisible ? (
             <div
               className="desktop-control-strip"
               onClick={(event) => event.stopPropagation()}
@@ -5924,7 +5929,27 @@ function App() {
               >
                 Background
               </button>
+              <button
+                className="desktop-control-strip__button"
+                onClick={() => setDesktopControlsVisible(false)}
+                type="button"
+              >
+                Hide
+              </button>
             </div>
+          ) : null}
+          {desktopRuntime && !desktopControlsVisible ? (
+            <button
+              className="desktop-controls-reveal"
+              onClick={(event) => {
+                event.stopPropagation();
+                setDesktopControlsVisible(true);
+              }}
+              title="Show desktop controls"
+              type="button"
+            >
+              Controls
+            </button>
           ) : null}
           <ChatLog
             activePersonaName={activePersona?.name ?? DEFAULT_PERSONA.name}
