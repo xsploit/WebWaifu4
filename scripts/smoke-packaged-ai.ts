@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import process from 'node:process';
+import WebSocket from 'ws';
 
 type ProviderSecretRecord = {
   provider?: string;
@@ -80,6 +81,13 @@ function parseSseEvents(text: string) {
 
 function getStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function getAiLiveUrl(baseUrl: string) {
+  const url = new URL(baseUrl.replace(/\/$/, ''));
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.pathname = `${url.pathname.replace(/\/$/, '')}/ai/live`;
+  return url.toString();
 }
 
 async function postAiChat(
@@ -243,6 +251,153 @@ async function runStructuredTtsSmoke({
   };
 }
 
+function runAiLiveChat(
+  baseUrl: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+): Promise<Array<Record<string, unknown>>> {
+  return new Promise((resolve, reject) => {
+    const requestId = `smoke-live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const events: Array<Record<string, unknown>> = [];
+    const socket = new WebSocket(getAiLiveUrl(baseUrl));
+    const timeout = setTimeout(() => {
+      socket.close();
+      reject(new Error('AI live websocket smoke timed out.'));
+    }, 45000);
+
+    const finish = (error?: Error) => {
+      clearTimeout(timeout);
+      socket.close();
+      if (error) {
+        reject(error);
+      } else {
+        resolve(events);
+      }
+    };
+
+    socket.once('error', (error) => finish(error instanceof Error ? error : new Error(String(error))));
+    socket.on('message', (raw) => {
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(raw.toString()) as Record<string, unknown>;
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error('Malformed AI live websocket event.'));
+        return;
+      }
+      if (event['requestId'] !== requestId) {
+        return;
+      }
+      events.push(event);
+      if (event['type'] === 'error' || event['ok'] === false) {
+        finish(new Error(String(event['error'] ?? 'AI live websocket smoke failed.')));
+      }
+      if (event['type'] === 'done') {
+        finish();
+      }
+    });
+    socket.once('open', () => {
+      socket.send(
+        JSON.stringify({
+          body,
+          headers,
+          requestId,
+          type: 'chat.create',
+        }),
+      );
+    });
+  });
+}
+
+async function runLiveWsStructuredTtsSmoke({
+  baseUrl,
+  backup,
+  headers,
+  model,
+}: {
+  baseUrl: string;
+  backup: LocalBackup;
+  headers: Record<string, string>;
+  model: string;
+}): Promise<SmokeResult> {
+  const voiceBinding = backup.state?.personaVoiceBindings?.['hikari-chan'] ?? {};
+  const events = await runAiLiveChat(baseUrl, headers, {
+    activeChatters: 1,
+    llmProvider: 'openai-responses',
+    maxTokens: 120,
+    messages: [
+      {
+        content:
+          'Return strict JSON only. message is spoken dialogue only. emotion is metadata only.',
+        role: 'system',
+      },
+      { content: 'Give one short playful sentence with a pause tag.', role: 'user' },
+    ],
+    mode: 'direct',
+    model,
+    openAiStateMode: 'stateless',
+    responseFormat: {
+      name: 'assistant_reply',
+      schema: {
+        additionalProperties: false,
+        properties: {
+          emotion: {
+            enum: ['neutral', 'happy', 'excited', 'sad', 'angry', 'embarrassed', 'amused'],
+            type: 'string',
+          },
+          message: { type: 'string' },
+        },
+        required: ['message', 'emotion'],
+        type: 'object',
+      },
+      strict: true,
+      type: 'json_schema',
+    },
+    stateKey: 'local:smoke:ai-live-structured-tts',
+    stateScope: 'chat',
+    stream: true,
+    transportMode: 'websocket',
+    ttsBridge: {
+      chunkLength: 160,
+      chunkingStrategy: 'sentence',
+      conditionOnPreviousChunks: true,
+      latency: 'balanced',
+      maxBufferChars: 180,
+      minBufferChars: 30,
+      modelId: voiceBinding.modelId || 's2',
+      provider: 'fish-speech',
+      softBufferChars: 80,
+      streamingMode: 'live-bridge',
+      text: '',
+      voiceId: voiceBinding.voiceId,
+    },
+  });
+  const done = events.find((event) => event['type'] === 'done') ?? null;
+  const deltas = events
+    .filter((event) => event['type'] === 'delta')
+    .map((event) => String(event['delta'] ?? ''))
+    .join('');
+  const errors = events
+    .filter(
+      (event) =>
+        event['type'] === 'error' || event['type'] === 'tts-error' || event['ok'] === false,
+    )
+    .map((event) => String(event['error'] ?? event['type']));
+  const audioChunks = events.filter((event) => event['type'] === 'audio').length;
+  const leakedJsonInDeltas = /[{}]|"emotion"|"message"/.test(deltas);
+  return {
+    audioChunks,
+    deltaChars: deltas.length,
+    doneTextLooksJson: /^\s*\{/.test(String(done?.['text'] ?? '')),
+    error: errors[0] ?? null,
+    eventCount: events.length,
+    leakedJsonInDeltas,
+    name: 'ai-live-structured-tts',
+    ok: errors.length === 0 && audioChunks > 0 && !leakedJsonInDeltas,
+    status: 101,
+    toolsUsed: [],
+  };
+}
+
 async function main() {
   const backupPath =
     getArg('--backup') || 'C:/Users/SUBSECT/Downloads/web-waifu-4-local-backup-2026-05-24T22-18-26.json';
@@ -287,14 +442,23 @@ async function main() {
       }),
     );
     if (fishKey && !hasFlag('--skip-tts')) {
+      const ttsHeaders = {
+        ...openAiHeaders,
+        'x-yourwifey-tts-provider-key': fishKey,
+      };
       results.push(
         await runStructuredTtsSmoke({
           backup,
           baseUrl,
-          headers: {
-            ...openAiHeaders,
-            'x-yourwifey-tts-provider-key': fishKey,
-          },
+          headers: ttsHeaders,
+          model: openAiModel,
+        }),
+      );
+      results.push(
+        await runLiveWsStructuredTtsSmoke({
+          backup,
+          baseUrl,
+          headers: ttsHeaders,
           model: openAiModel,
         }),
       );
