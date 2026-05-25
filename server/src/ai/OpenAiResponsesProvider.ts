@@ -374,6 +374,14 @@ function isFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
   return record['type'] === 'function_call' && typeof record['call_id'] === 'string';
 }
 
+function isFunctionCallLikeItem(value: unknown): value is Record<string, unknown> {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      (value as Record<string, unknown>)['type'] === 'function_call',
+  );
+}
+
 function isStreamingFunctionCallItem(value: unknown): value is OpenAiFunctionCall {
   // Stream deltas can arrive before the final item supplies call_id.
   return Boolean(
@@ -387,7 +395,7 @@ function getFunctionCalls(payload: OpenAiResponsePayload) {
   return (payload.output ?? []).filter(isFunctionCallItem);
 }
 
-function sanitizeFunctionCallForInput(call: OpenAiFunctionCall): OpenAiFunctionCall {
+function sanitizeFunctionCallForInput<T extends Record<string, unknown>>(call: T): Omit<T, 'id'> {
   const { id: _persistedItemId, ...portableCall } = call;
   return portableCall;
 }
@@ -1101,9 +1109,9 @@ export class OpenAiResponsesProvider implements ChatProvider {
       return nextPayload;
     }
 
-    const responseOutput = (Array.isArray(response.output) ? response.output : functionCalls).map(
-      (item) => (isFunctionCallItem(item) ? sanitizeFunctionCallForInput(item) : item),
-    );
+    const responseOutput = (Array.isArray(response.output) ? response.output : functionCalls)
+      .filter(isFunctionCallLikeItem)
+      .map((item) => sanitizeFunctionCallForInput(item));
     nextPayload.input = [
       ...(usesConversation ? [] : Array.isArray(payload['input']) ? payload['input'] : []),
       ...responseOutput,

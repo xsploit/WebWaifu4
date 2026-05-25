@@ -209,6 +209,11 @@ function createToolCallingFetcher(calls: FetchCall[]) {
       id: 'resp_tool',
       output: [
         {
+          type: 'reasoning',
+          id: 'rs_internal_reasoning_item',
+          summary: [],
+        },
+        {
           type: 'function_call',
           id: 'rs_persisted_item_id',
           call_id: 'call_search',
@@ -958,6 +963,8 @@ describe('OpenAiResponsesProvider', () => {
       ]),
     );
     expect(JSON.stringify(calls[1]?.body['input'])).not.toContain('rs_persisted_item_id');
+    expect(JSON.stringify(calls[1]?.body['input'])).not.toContain('rs_internal_reasoning_item');
+    expect(JSON.stringify(calls[1]?.body['input'])).not.toContain('"type":"reasoning"');
     expect(tavilyCalls).toHaveLength(1);
     expect(tavilyCalls[0]?.url).toBe('https://api.tavily.com/search');
     expect(tavilyCalls[0]?.body).toMatchObject({
