@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MouseEvent } from 'react';
 import { ChatBar } from './components/chat/ChatBar';
 import { ChatLog } from './components/chat/ChatLog';
 import { VrmStage } from './components/VrmStage';
@@ -515,6 +515,15 @@ function createChatMessage(role: ChatMessage['role'], content: string): ChatMess
     content,
     createdAt: Date.now(),
   };
+}
+
+function isSettingsMenuInteraction(event: MouseEvent<HTMLElement>) {
+  const path = event.nativeEvent.composedPath?.() ?? [];
+  return path.some(
+    (entry) =>
+      entry instanceof Element &&
+      (entry.closest('.settings-panel') !== null || entry.closest('.menu-fab') !== null),
+  );
 }
 
 function getAiProxyUrl() {
@@ -6065,11 +6074,7 @@ function App() {
         if (!menuOpen) {
           return;
         }
-        const target = event.target;
-        if (
-          target instanceof Element &&
-          (target.closest('.settings-panel') || target.closest('.menu-fab'))
-        ) {
+        if (isSettingsMenuInteraction(event)) {
           return;
         }
         setMenuOpen(false);
