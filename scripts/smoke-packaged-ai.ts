@@ -308,6 +308,111 @@ function runAiLiveChat(
   });
 }
 
+function runAiLiveCancelSmoke({
+  baseUrl,
+  headers,
+  model,
+}: {
+  baseUrl: string;
+  headers: Record<string, string>;
+  model: string;
+}): Promise<SmokeResult> {
+  return new Promise((resolve, reject) => {
+    const canceledRequestId = `smoke-cancel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const pingRequestId = `smoke-ping-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const events: Array<Record<string, unknown>> = [];
+    const socket = new WebSocket(getAiLiveUrl(baseUrl));
+    const timeout = setTimeout(() => {
+      socket.close();
+      reject(new Error('AI live cancel smoke timed out.'));
+    }, 15000);
+
+    const finish = (result: SmokeResult) => {
+      clearTimeout(timeout);
+      socket.close();
+      resolve(result);
+    };
+
+    socket.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    });
+    socket.on('message', (raw) => {
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(raw.toString()) as Record<string, unknown>;
+      } catch (error) {
+        clearTimeout(timeout);
+        reject(error instanceof Error ? error : new Error('Malformed AI live websocket event.'));
+        return;
+      }
+      if (event['requestId'] !== canceledRequestId && event['requestId'] !== pingRequestId) {
+        return;
+      }
+      events.push(event);
+      if (event['requestId'] === pingRequestId && event['type'] === 'done') {
+        const canceledEvents = events.filter((item) => item['requestId'] === canceledRequestId);
+        finish({
+          deltaChars: canceledEvents
+            .filter((item) => item['type'] === 'delta')
+            .reduce((sum, item) => sum + String(item['delta'] ?? '').length, 0),
+          error: null,
+          eventCount: events.length,
+          name: 'ai-live-cancel',
+          ok:
+            events.some((item) => item['requestId'] === pingRequestId && item['type'] === 'done') &&
+            !canceledEvents.some((item) => item['type'] === 'done'),
+          status: 101,
+          toolsUsed: [],
+        });
+      }
+      if (event['requestId'] === pingRequestId && (event['type'] === 'error' || event['ok'] === false)) {
+        clearTimeout(timeout);
+        socket.close();
+        reject(new Error(String(event['error'] ?? 'AI live ping after cancel failed.')));
+      }
+    });
+    socket.once('open', () => {
+      socket.send(
+        JSON.stringify({
+          body: {
+            activeChatters: 1,
+            llmProvider: 'openai-responses',
+            maxTokens: 600,
+            messages: [
+              {
+                content: 'You are a test assistant. This request should be cancelled immediately.',
+                role: 'system',
+              },
+              {
+                content:
+                  'Write a long paragraph about why cancellation should stop background AI work.',
+                role: 'user',
+              },
+            ],
+            mode: 'direct',
+            model,
+            openAiStateMode: 'stateless',
+            stateKey: 'local:smoke:ai-live-cancel',
+            stateScope: 'chat',
+            stream: true,
+            transportMode: 'websocket',
+          },
+          headers,
+          requestId: canceledRequestId,
+          type: 'chat.create',
+        }),
+      );
+      socket.send(JSON.stringify({ requestId: canceledRequestId, type: 'cancel' }));
+      setTimeout(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ requestId: pingRequestId, type: 'ping' }));
+        }
+      }, 250);
+    });
+  });
+}
+
 async function runLiveWsStructuredTtsSmoke({
   baseUrl,
   backup,
@@ -512,6 +617,13 @@ async function main() {
         model: openAiModel,
         name: 'openai-http-tools',
         transportMode: 'http-stream',
+      }),
+    );
+    results.push(
+      await runAiLiveCancelSmoke({
+        baseUrl,
+        headers: openAiHeaders,
+        model: openAiModel,
       }),
     );
     if (fishKey && !hasFlag('--skip-tts')) {
