@@ -1029,6 +1029,14 @@ async function requestChatCompletionLiveWs({
       signal?.removeEventListener('abort', onAbort);
     };
     const onAbort = () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify({
+            type: 'cancel',
+            requestId,
+          }),
+        );
+      }
       cleanup();
       reject(new DOMException('AI live websocket request aborted.', 'AbortError'));
     };

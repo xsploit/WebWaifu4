@@ -118,7 +118,7 @@ type AiChatStreamEvent =
   | { type: 'tts-error'; ok: false; error: string };
 
 type AiLiveClientMessage = {
-  type?: string;
+  type?: 'cancel' | 'chat.create' | 'ping' | string;
   requestId?: string;
   body?: AiChatRequestBody;
   headers?: Record<string, unknown>;
@@ -2183,37 +2183,51 @@ httpServer.on('upgrade', (request, socket, head) => {
 aiLiveSocket.on('connection', (socket, request) => {
   let queue = Promise.resolve();
   let queuedMessages = 0;
-  const activeControllers = new Set<AbortController>();
+  const activeControllers = new Map<string, AbortController>();
   const onMessage = (raw: RawData) => {
     if (socket.readyState !== WebSocket.OPEN) {
       return;
     }
+    let message: AiLiveClientMessage | null = null;
+    try {
+      message = JSON.parse(rawDataToUtf8(raw)) as AiLiveClientMessage;
+    } catch {
+      // Let the queued request handler emit the normal protocol error.
+    }
+    const requestId =
+      typeof message?.requestId === 'string' && message.requestId.trim()
+        ? message.requestId.trim().slice(0, 120)
+        : `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (message?.type === 'cancel') {
+      activeControllers.get(requestId)?.abort();
+      return;
+    }
     if (queuedMessages >= AI_LIVE_MAX_QUEUED_MESSAGES) {
-      for (const controller of activeControllers) {
+      for (const controller of activeControllers.values()) {
         controller.abort();
       }
       socket.close(1013, 'AI live websocket queue limit exceeded.');
       return;
     }
     const controller = new AbortController();
-    activeControllers.add(controller);
+    activeControllers.set(requestId, controller);
     queuedMessages += 1;
     queue = queue.then(
       () =>
         handleAiLiveMessage(socket, request, raw, controller.signal).finally(() => {
-          activeControllers.delete(controller);
+          activeControllers.delete(requestId);
           queuedMessages = Math.max(0, queuedMessages - 1);
         }),
       () =>
         handleAiLiveMessage(socket, request, raw, controller.signal).finally(() => {
-          activeControllers.delete(controller);
+          activeControllers.delete(requestId);
           queuedMessages = Math.max(0, queuedMessages - 1);
         }),
     );
     void queue.catch(() => {});
   };
   const cleanup = () => {
-    for (const controller of activeControllers) {
+    for (const controller of activeControllers.values()) {
       controller.abort();
     }
     activeControllers.clear();
