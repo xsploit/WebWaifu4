@@ -1143,8 +1143,10 @@ function SceneRuntime({
 
   useEffect(() => {
     scene.background = null;
-    gl.setClearColor(0x000000, transparentScene ? 0 : 0);
+    gl.setClearColor(0x000000, 0);
+    gl.setClearAlpha(0);
     gl.domElement.style.background = 'transparent';
+    gl.domElement.style.backgroundColor = 'transparent';
   }, [gl, scene, transparentScene]);
 
   useEffect(() => {
@@ -1234,6 +1236,10 @@ function SceneRuntime({
     }
 
     if (transparentScene) {
+      scene.background = null;
+      gl.setClearColor(0x000000, 0);
+      gl.setClearAlpha(0);
+      gl.clear(true, true, true);
       gl.render(scene, camera);
     } else if (visualSettings.outline && postProcessing.outlineEffect) {
       postProcessing.outlineEffect.render(scene, camera);
@@ -1931,8 +1937,17 @@ export const VrmStage = memo(function VrmStage({
           premultipliedAlpha: false,
           powerPreference: 'high-performance',
           precision: 'highp',
+          preserveDrawingBuffer: false,
           stencil: false,
         }}
+        onCreated={({ gl, scene }) => {
+          scene.background = null;
+          gl.setClearColor(0x000000, 0);
+          gl.setClearAlpha(0);
+          gl.domElement.style.background = 'transparent';
+          gl.domElement.style.backgroundColor = 'transparent';
+        }}
+        style={{ background: 'transparent' }}
       >
         <SceneRuntime
           active={active}

@@ -25,7 +25,9 @@ export function initPostProcessing(
   });
 
   const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+  const renderPass = new RenderPass(scene, camera);
+  renderPass.clearAlpha = 0;
+  composer.addPass(renderPass);
 
   const colorCorrectionPass = new ShaderPass(ColorCorrectionShader);
   const powRgbUniform = colorCorrectionPass.uniforms['powRGB'];
