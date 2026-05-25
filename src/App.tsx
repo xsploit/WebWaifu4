@@ -910,7 +910,13 @@ function handleAiLiveSocketMessage(message: MessageEvent) {
     return;
   }
 
-  const event = JSON.parse(message.data) as AiProxyStreamEvent & { requestId?: string };
+  let event: AiProxyStreamEvent & { requestId?: string };
+  try {
+    event = JSON.parse(message.data) as AiProxyStreamEvent & { requestId?: string };
+  } catch (error) {
+    console.warn('[AI] Ignoring malformed live websocket event.', error);
+    return;
+  }
   const requestId = event.requestId;
   if (!requestId) {
     return;
@@ -929,6 +935,8 @@ function handleAiLiveSocketMessage(message: MessageEvent) {
   }
   if (event.type === 'tts-error') {
     console.warn('[TTS] Live bridge failed:', event.error);
+    aiLivePendingRequests.delete(requestId);
+    pending.reject(new Error(event.error ?? 'Live TTS bridge failed.'));
     return;
   }
   if (event.type === 'audio') {
