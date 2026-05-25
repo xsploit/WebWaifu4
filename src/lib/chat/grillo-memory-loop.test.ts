@@ -102,7 +102,7 @@ describe('Grillo memory worker loop', () => {
   });
 
   it('recovers candidate and diary objects into write tools', async () => {
-    const scopeKey = 'twitch:subsect:persona:hikari';
+    const scopeKey = 'twitch:subsect:persona:hikari-recovery-test';
     const result = await runGrilloMemoryWorkerLoop({
       complete: async () =>
         JSON.stringify({
@@ -137,8 +137,16 @@ describe('Grillo memory worker loop', () => {
     const state = loadGrilloMemoryState(scopeKey);
     expect(result.sideEffects.candidateIds).toHaveLength(1);
     expect(result.sideEffects.diaryIds).toHaveLength(1);
-    expect(state.candidates[0]?.summary).toContain('full Grillo memory');
-    expect(state.diaryEntries[0]?.personalThought).toContain('actually act');
+    const candidateId = result.sideEffects.candidateIds[0];
+    const candidate = state.candidates.find((entry) => entry.candidateId === candidateId);
+    const promotedBlock = state.blocks.find((entry) =>
+      entry.sourceCandidateIds.includes(candidateId ?? ''),
+    );
+    const diaryEntry = state.diaryEntries.find(
+      (entry) => entry.diaryId === result.sideEffects.diaryIds[0],
+    );
+    expect(candidate?.summary ?? promotedBlock?.items.join(' ')).toContain('full Grillo memory');
+    expect(diaryEntry?.personalThought).toContain('actually act');
   });
 
   it('persists enriched diary fields from the original Grillo worker contract', async () => {
