@@ -6,7 +6,7 @@ import {
   getGrilloParticipantKey,
   loadGrilloMemoryState,
   promoteGrilloCandidates,
-  saveGrilloMemoryState,
+  saveGrilloMemoryStateAsync,
   type GrilloBlockName,
   type GrilloCandidateType,
   type GrilloDiaryEntry,
@@ -431,21 +431,21 @@ async function executeGrilloWorkerTool({
       return toolCandidateList(scopeKey, participantKeys, call.args);
     }
     if (call.name === 'core.worker_candidate_write') {
-      const result = toolCandidateWrite(scopeKey, participantKeys, turns, call.args);
+      const result = await toolCandidateWrite(scopeKey, participantKeys, turns, call.args);
       if (result.ok && result.candidate_id) {
         sideEffects.candidateIds.push(result.candidate_id);
       }
       return result;
     }
     if (call.name === 'core.worker_diary_write') {
-      const result = toolDiaryWrite(scopeKey, participantKeys, turns, call.args);
+      const result = await toolDiaryWrite(scopeKey, participantKeys, turns, call.args);
       if (result.ok && result.diary_id) {
         sideEffects.diaryIds.push(result.diary_id);
       }
       return result;
     }
     if (call.name === 'core.worker_memory_write') {
-      const result = toolMemoryWrite(scopeKey, participantKeys, call.args);
+      const result = await toolMemoryWrite(scopeKey, participantKeys, call.args);
       if (result.ok) {
         sideEffects.slotWrites += 1;
       }
@@ -549,7 +549,7 @@ function toolCandidateList(
   };
 }
 
-function toolCandidateWrite(
+async function toolCandidateWrite(
   scopeKey: string,
   participantKeys: string[],
   turns: ChatTurn[],
@@ -590,7 +590,7 @@ function toolCandidateWrite(
     candidates: [...state.candidates, candidate],
     updatedAt: now,
   });
-  saveGrilloMemoryState(promoted);
+  await saveGrilloMemoryStateAsync(promoted);
   return {
     ok: true,
     candidate_id: candidate.candidateId,
@@ -600,7 +600,7 @@ function toolCandidateWrite(
   };
 }
 
-function toolDiaryWrite(
+async function toolDiaryWrite(
   scopeKey: string,
   participantKeys: string[],
   turns: ChatTurn[],
@@ -653,7 +653,7 @@ function toolDiaryWrite(
     diaryEntries: [...state.diaryEntries, entry].slice(-40),
     updatedAt: now,
   };
-  saveGrilloMemoryState(
+  await saveGrilloMemoryStateAsync(
     applyGrilloEmotionSignals(withDiary, emotions, `diary:${entry.diaryId}`, now),
   );
   return {
@@ -662,7 +662,7 @@ function toolDiaryWrite(
   };
 }
 
-function toolMemoryWrite(
+async function toolMemoryWrite(
   scopeKey: string,
   participantKeys: string[],
   args: Record<string, unknown>,
@@ -702,7 +702,7 @@ function toolMemoryWrite(
     };
   }
 
-  saveGrilloMemoryState({
+  await saveGrilloMemoryStateAsync({
     ...state,
     blocks: [...state.blocks.filter((item) => item.blockId !== block.blockId), block].slice(-80),
     updatedAt: now,
@@ -714,7 +714,7 @@ function toolMemoryWrite(
   };
 }
 
-function toolArchivalWrite(
+async function toolArchivalWrite(
   scopeKey: string,
   participantKeys: string[],
   turns: ChatTurn[],
@@ -728,21 +728,20 @@ function toolArchivalWrite(
     return { ok: false, error: 'text is required' };
   }
 
-  const candidate = toolCandidateWrite(scopeKey, participantKeys, turns, {
+  const candidate = await toolCandidateWrite(scopeKey, participantKeys, turns, {
     confidence: 0.62,
     content: text,
     summary: text.slice(0, 220),
     type: 'thread',
   });
-  return Promise.resolve(semanticMemory?.insert?.(text))
-    .catch((error) => ({
+  const semantic = await Promise.resolve(semanticMemory?.insert?.(text)).catch((error) => ({
       error: error instanceof Error ? error.message : 'semantic insert failed',
       ok: false,
-    }))
-    .then((semantic) => ({
-      ...candidate,
-      semantic,
     }));
+  return {
+    ...candidate,
+    semantic,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
