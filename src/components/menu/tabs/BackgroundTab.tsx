@@ -1,5 +1,13 @@
+import { useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { VisualSettings } from '../../../lib/menu/types';
+import type { DesktopWindowMode } from '../../../lib/desktop/runtime';
+
+type DesktopRuntimeStatus = {
+  backendPort: string;
+  clickThrough: boolean;
+  mode: DesktopWindowMode;
+};
 
 type BackgroundTabProps = {
   activePersonaName: string;
@@ -12,6 +20,8 @@ export function BackgroundTab({
   setVisualSettings,
   visualSettings,
 }: BackgroundTabProps) {
+  const [desktopRuntime, setDesktopRuntime] = useState<DesktopRuntimeStatus | null>(null);
+
   const customControlFallbackMode =
     visualSettings.sceneBackgroundMode === 'chroma' ||
     visualSettings.sceneBackgroundMode === 'transparent'
@@ -23,6 +33,40 @@ export function BackgroundTab({
       ...current,
       ...patch,
     }));
+  };
+
+  useEffect(() => {
+    const desktopBridge = window.webWaifuDesktop;
+    if (!desktopBridge?.isDesktop) {
+      setDesktopRuntime(null);
+      return undefined;
+    }
+
+    desktopBridge
+      .getRuntime?.()
+      .then((runtime) => setDesktopRuntime(runtime))
+      .catch(() => {
+        setDesktopRuntime({
+          backendPort: desktopBridge.backendPort ?? '8797',
+          clickThrough: false,
+          mode: desktopBridge.mode ?? 'editor',
+        });
+      });
+
+    return desktopBridge.onRuntimeChanged?.((runtime) => setDesktopRuntime(runtime));
+  }, []);
+
+  const transparentWindowActive =
+    desktopRuntime?.mode === 'desktop' || desktopRuntime?.mode === 'overlay';
+  const transparentSceneActive = visualSettings.sceneBackgroundMode === 'transparent';
+
+  const setTransparentScene = () => {
+    updateVisualSettings({ sceneBackgroundMode: 'transparent' });
+  };
+
+  const relaunchTransparentWindow = () => {
+    setTransparentScene();
+    void window.webWaifuDesktop?.relaunchWindowMode?.('desktop');
   };
 
   return (
@@ -55,6 +99,42 @@ export function BackgroundTab({
           Persona mode follows the selected character. Custom mode overrides the background. Chroma
           mode fills the overlay with a solid key color for OBS. Transparent removes the scene
           background entirely.
+        </div>
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">Transparency Test</div>
+        <div className="status-grid">
+          <div className="status-copy">
+            Scene alpha <strong>{transparentSceneActive ? 'transparent' : 'painted'}</strong>
+          </div>
+          <div className="status-copy">
+            Electron window{' '}
+            <strong>
+              {desktopRuntime
+                ? transparentWindowActive
+                  ? desktopRuntime.mode
+                  : 'solid editor'
+                : 'browser'}
+            </strong>
+          </div>
+        </div>
+        <div className="btn-row">
+          <button className="btn-tech secondary" onClick={setTransparentScene} type="button">
+            Transparent Scene
+          </button>
+          <button
+            className="btn-tech"
+            disabled={!desktopRuntime || transparentWindowActive}
+            onClick={relaunchTransparentWindow}
+            type="button"
+          >
+            Relaunch Transparent Window
+          </button>
+        </div>
+        <div className="field-hint">
+          Real desktop alpha needs both: scene background set to Transparent, and Electron launched
+          as Desktop Transparent or Overlay. Editor mode keeps a solid normal app window.
         </div>
       </div>
 

@@ -1,7 +1,16 @@
-import { app, BrowserWindow, Menu, ipcMain, shell, screen } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  ipcMain,
+  net as electronNet,
+  protocol,
+  shell,
+  screen,
+} from 'electron';
 import http from 'node:http';
 import fs from 'node:fs';
-import net from 'node:net';
+import nodeNet from 'node:net';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -13,12 +22,25 @@ const externalBackend = process.env.ELECTRON_BACKEND_EXTERNAL === 'true';
 const allowedWindowModes = new Set(['editor', 'desktop', 'overlay']);
 
 let mainWindow = null;
-let staticServer = null;
 let windowMode = readInitialWindowMode();
 let clickThrough = false;
+let appProtocolRegistered = false;
 
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+protocol.registerSchemesAsPrivileged([
+  {
+    privileges: {
+      bypassCSP: false,
+      corsEnabled: true,
+      secure: true,
+      standard: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+    scheme: 'webwaifu',
+  },
+]);
 
 function readInitialWindowMode() {
   const argMode = process.argv
@@ -93,7 +115,7 @@ function isBackendHealthy(port) {
 
 function canListenOnPort(port) {
   return new Promise((resolve) => {
-    const probe = net.createServer();
+    const probe = nodeNet.createServer();
     probe.once('error', () => resolve(false));
     probe.once('listening', () => {
       probe.close(() => resolve(true));
@@ -152,7 +174,16 @@ async function startBackendIfNeeded() {
   await waitForBackendHealth(backendPort);
 }
 
-function startStaticServer() {
+function resolveRendererFile(requestUrl) {
+  const distDir = path.join(appRoot, 'dist');
+  const url = new URL(requestUrl);
+  const safePath = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
+  const candidate = path.resolve(distDir, safePath);
+  const insideDist = candidate === distDir || candidate.startsWith(`${distDir}${path.sep}`);
+  return insideDist && fs.existsSync(candidate) ? candidate : path.join(distDir, 'index.html');
+}
+
+function registerRendererProtocol() {
   if (devServerUrl) {
     return Promise.resolve(devServerUrl);
   }
@@ -164,51 +195,15 @@ function startStaticServer() {
     );
   }
 
-  staticServer = http.createServer((request, response) => {
-    const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
-    const safePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '') || 'index.html';
-    const candidate = path.resolve(distDir, safePath);
-    const insideDist = candidate === distDir || candidate.startsWith(`${distDir}${path.sep}`);
-    const filePath =
-      insideDist && fs.existsSync(candidate) ? candidate : path.join(distDir, 'index.html');
-    const stream = fs.createReadStream(filePath);
-    response.setHeader('Cache-Control', 'no-store');
-    response.setHeader('Content-Type', getContentType(filePath));
-    stream.on('error', () => {
-      response.writeHead(404);
-      response.end('Not found');
+  if (!appProtocolRegistered) {
+    protocol.handle('webwaifu', (request) => {
+      const filePath = resolveRendererFile(request.url);
+      return electronNet.fetch(pathToFileURL(filePath).toString());
     });
-    stream.pipe(response);
-  });
+    appProtocolRegistered = true;
+  }
 
-  return new Promise((resolve, reject) => {
-    staticServer?.once('error', reject);
-    staticServer?.listen(0, '127.0.0.1', () => {
-      const address = staticServer?.address();
-      if (!address || typeof address === 'string') {
-        reject(new Error('Desktop static server did not expose a TCP address.'));
-        return;
-      }
-      resolve(`http://127.0.0.1:${address.port}`);
-    });
-  });
-}
-
-function getContentType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return (
-    {
-      '.css': 'text/css; charset=utf-8',
-      '.html': 'text/html; charset=utf-8',
-      '.js': 'text/javascript; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.png': 'image/png',
-      '.svg': 'image/svg+xml',
-      '.vrm': 'model/gltf-binary',
-      '.vrma': 'model/gltf-binary',
-      '.wasm': 'application/wasm',
-    }[ext] || 'application/octet-stream'
-  );
+  return Promise.resolve('webwaifu://app/index.html');
 }
 
 function buildRendererUrl(baseUrl) {
@@ -221,7 +216,7 @@ function buildRendererUrl(baseUrl) {
 
 async function createWindow() {
   await startBackendIfNeeded();
-  const rendererBaseUrl = await startStaticServer();
+  const rendererBaseUrl = await registerRendererProtocol();
 
   mainWindow = new BrowserWindow(getWindowOptions(windowMode));
   mainWindow.once('ready-to-show', () => {
@@ -324,10 +319,6 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
-});
-
-app.on('before-quit', () => {
-  staticServer?.close();
 });
 
 app
