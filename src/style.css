@@ -124,6 +124,47 @@ select {
   z-index: 10;
 }
 
+.desktop-drag-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.desktop-drag-frame__zone {
+  position: absolute;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+}
+
+.desktop-drag-frame__zone--top {
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 34px;
+}
+
+.desktop-drag-frame__zone--left {
+  top: 34px;
+  bottom: 34px;
+  left: 0;
+  width: 18px;
+}
+
+.desktop-drag-frame__zone--right {
+  top: 34px;
+  right: 0;
+  bottom: 34px;
+  width: 18px;
+}
+
+.desktop-drag-frame__zone--bottom {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 18px;
+}
+
 .desktop-control-strip {
   position: fixed;
   top: 12px;
@@ -141,6 +182,28 @@ select {
   pointer-events: auto;
   transform: translateX(-50%);
   backdrop-filter: blur(16px);
+  -webkit-app-region: no-drag;
+}
+
+.shell.scene-background-transparent .desktop-control-strip {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.shell.scene-background-transparent .desktop-control-strip__status {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 0 10px rgba(0, 0, 0, 0.8);
+}
+
+.shell.scene-background-transparent .desktop-control-strip__button {
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 0 10px rgba(0, 0, 0, 0.8);
 }
 
 .desktop-control-strip__status {
@@ -160,6 +223,7 @@ select {
 }
 
 .desktop-control-strip__button {
+  -webkit-app-region: no-drag;
   min-height: 32px;
   padding: 0.35rem 0.58rem;
   border: 1px solid rgba(255, 179, 143, 0.28);

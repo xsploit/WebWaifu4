@@ -5831,6 +5831,14 @@ function App() {
       }}
       style={shellStyle}
     >
+      {desktopRuntime && desktopRuntime.mode !== 'editor' ? (
+        <div aria-hidden="true" className="desktop-drag-frame">
+          <div className="desktop-drag-frame__zone desktop-drag-frame__zone--top" />
+          <div className="desktop-drag-frame__zone desktop-drag-frame__zone--left" />
+          <div className="desktop-drag-frame__zone desktop-drag-frame__zone--right" />
+          <div className="desktop-drag-frame__zone desktop-drag-frame__zone--bottom" />
+        </div>
+      ) : null}
       <VrmStage
         active={sceneActive}
         facialExpressionRequest={facialExpressionRequest}
@@ -5845,7 +5853,11 @@ function App() {
       {!productShellActive && (!overlayPageActive || overlayControlsActive) ? (
         <div className="ui-layer">
           {desktopRuntime ? (
-            <div className="desktop-control-strip" onClick={(event) => event.stopPropagation()}>
+            <div
+              className="desktop-control-strip"
+              onClick={(event) => event.stopPropagation()}
+              title="Use empty top/edge areas to drag the frameless transparent window."
+            >
               <div className="desktop-control-strip__status">
                 <span>Desktop</span>
                 <strong>{desktopRuntime.mode}</strong>
