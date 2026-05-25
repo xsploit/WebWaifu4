@@ -38,6 +38,7 @@ export type LadybugMemoryGraphSummary = {
       scopeKey: string;
       summary: string;
     }>;
+    relationshipFacts: Array<{ id: string; scopeKey: string; text: string }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
     vectors: Array<{ id: string; personaId: string; text: string }>;
   };
@@ -304,6 +305,7 @@ export class LadybugMemoryService {
       diary,
       emotions,
       relationships,
+      relationshipFacts,
       semantic,
       vectors,
     ] = await Promise.all([
@@ -354,6 +356,9 @@ export class LadybugMemoryService {
       ),
       this.all(
         'MATCH (m:RelationshipProfile) RETURN m.id AS id, m.scopeKey AS scopeKey, m.relationshipStage AS relationshipStage, m.mood AS mood, m.summary AS summary LIMIT 8',
+      ),
+      this.all(
+        'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN f.id AS id, m.scopeKey AS scopeKey, f.text AS text LIMIT 8',
       ),
       this.all(
         'MATCH (m:SemanticRecord) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
@@ -416,6 +421,11 @@ export class LadybugMemoryService {
           relationshipStage: stringValue(row['relationshipStage']),
           scopeKey: stringValue(row['scopeKey']),
           summary: stringValue(row['summary']),
+        })),
+        relationshipFacts: relationshipFacts.map((row) => ({
+          id: stringValue(row['id']),
+          scopeKey: stringValue(row['scopeKey']),
+          text: stringValue(row['text']),
         })),
         semantic: semantic.map((row) => ({
           id: stringValue(row['id']),

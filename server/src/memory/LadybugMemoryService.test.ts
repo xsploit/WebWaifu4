@@ -160,6 +160,10 @@ describe('LadybugMemoryService', () => {
       expect(graph.recent.candidates[0]?.summary).toBe('Subby likes fast TTS.');
       expect(graph.recent.emotions[0]?.lastSignalSource).toBe('worker');
       expect(graph.recent.relationships[0]?.summary).toContain('low-latency');
+      expect(graph.recent.relationshipFacts[0]).toMatchObject({
+        scopeKey: 'local:persona:hikari-chan',
+        text: 'Subby likes fast TTS.',
+      });
       expect(graph.recent.semantic[0]?.text).toContain('remember fast TTS');
       expect(graph.recent.vectors[0]?.text).toContain('remember fast TTS');
       await service.deleteSemanticRecords('local:persona:hikari-chan');

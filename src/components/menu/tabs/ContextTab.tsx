@@ -288,6 +288,15 @@ export function ContextTab({
                 <div className="status-copy">{profile.summary || 'No relationship summary yet.'}</div>
               </div>
             ))}
+            {memoryGraphSummary.recent.relationshipFacts.slice(0, 4).map((fact) => (
+              <div className="memory-entry" key={fact.id}>
+                <div className="memory-entry-header">
+                  <strong>Relationship fact</strong>
+                  <span>{fact.scopeKey || 'unknown scope'}</span>
+                </div>
+                <p>{fact.text || 'No relationship fact captured.'}</p>
+              </div>
+            ))}
             {memoryGraphSummary.recent.emotions.slice(0, 4).map((emotion) => (
               <div className="memory-entry" key={emotion.id}>
                 <div className="memory-entry-header">

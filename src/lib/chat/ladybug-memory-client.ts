@@ -44,6 +44,7 @@ export type LadybugMemoryGraphSummary = {
       scopeKey: string;
       summary: string;
     }>;
+    relationshipFacts: Array<{ id: string; scopeKey: string; text: string }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
     vectors: Array<{ id: string; personaId: string; text: string }>;
   };
