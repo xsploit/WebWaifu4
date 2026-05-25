@@ -29,4 +29,14 @@ contextBridge.exposeInMainWorld('webWaifuDesktop', {
     ipcRenderer.on('desktop-window-mode-changed', listener);
     return () => ipcRenderer.off('desktop-window-mode-changed', listener);
   },
+  onSceneBackgroundModeRequested: (callback) => {
+    const listener = (_event, mode) => callback(mode);
+    ipcRenderer.on('desktop-scene-background-mode', listener);
+    return () => ipcRenderer.off('desktop-scene-background-mode', listener);
+  },
+  onOpenAboutRequested: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('desktop-open-about', listener);
+    return () => ipcRenderer.off('desktop-open-about', listener);
+  },
 });

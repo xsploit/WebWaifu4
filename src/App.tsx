@@ -4377,6 +4377,40 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const desktopBridge = window.webWaifuDesktop;
+    if (!desktopBridge?.isDesktop) {
+      return undefined;
+    }
+
+    const offBackground = desktopBridge.onSceneBackgroundModeRequested?.((mode) => {
+      if (mode !== 'persona' && mode !== 'custom' && mode !== 'chroma' && mode !== 'transparent') {
+        return;
+      }
+      setVisualSettings((current) => ({
+        ...current,
+        sceneBackgroundMode: mode,
+        sceneChromaColor: mode === 'chroma' ? '#00ff00' : current.sceneChromaColor,
+      }));
+      setActiveTab('background');
+      setMenuOpen(true);
+      appendSystemMessage(`[Desktop] Scene background set to ${mode}.`);
+    });
+
+    const offAbout = desktopBridge.onOpenAboutRequested?.(() => {
+      setActiveTab('account');
+      setMenuOpen(true);
+      appendSystemMessage(
+        '[Desktop] WebWaifu 4 local-first desktop/OBS VTuber assistant. Provider keys stay local; use Background for transparent/chroma scene controls.',
+      );
+    });
+
+    return () => {
+      offBackground?.();
+      offAbout?.();
+    };
+  }, [appendSystemMessage]);
+
+  useEffect(() => {
     if (!hydrated || startupStatusSentRef.current) {
       return;
     }

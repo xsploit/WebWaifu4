@@ -17,6 +17,10 @@ type DesktopRuntimeBridge = {
     }) => void,
   ) => () => void;
   relaunchWindowMode?: (mode: DesktopWindowMode) => Promise<void>;
+  onSceneBackgroundModeRequested?: (
+    callback: (mode: 'persona' | 'custom' | 'chroma' | 'transparent') => void,
+  ) => () => void;
+  onOpenAboutRequested?: (callback: () => void) => () => void;
   setClickThrough?: (enabled: boolean) => Promise<{
     backendPort: string;
     clickThrough: boolean;

@@ -1091,6 +1091,7 @@ function SceneRuntime({
   const scene = useThree((state) => state.scene);
   const size = useThree((state) => state.size);
   const postProcessingRef = useRef<PostProcessingRefs | null>(null);
+  const transparentScene = visualSettings.sceneBackgroundMode === 'transparent';
   const cameraRigScratchRef = useRef(createCameraRigVectors());
   const cameraRefsInitializedRef = useRef(false);
   const cameraTargetPositionRef = useRef(new THREE.Vector3());
@@ -1112,7 +1113,8 @@ function SceneRuntime({
     const cameraRig = getCameraRigVectors(visualSettings, cameraRigScratchRef.current);
 
     gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    gl.setClearColor(0x02040a, 0);
+    scene.background = null;
+    gl.setClearColor(0x000000, 0);
     gl.autoClear = true;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
     gl.toneMappingExposure = visualSettings.sceneExposure;
@@ -1138,6 +1140,12 @@ function SceneRuntime({
       postProcessingRef.current = null;
     };
   }, [camera, gl, scene]);
+
+  useEffect(() => {
+    scene.background = null;
+    gl.setClearColor(0x000000, transparentScene ? 0 : 0);
+    gl.domElement.style.background = 'transparent';
+  }, [gl, scene, transparentScene]);
 
   useEffect(() => {
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
@@ -1225,7 +1233,9 @@ function SceneRuntime({
       return;
     }
 
-    if (visualSettings.outline && postProcessing.outlineEffect) {
+    if (transparentScene) {
+      gl.render(scene, camera);
+    } else if (visualSettings.outline && postProcessing.outlineEffect) {
       postProcessing.outlineEffect.render(scene, camera);
     } else if (hasActivePass(postProcessing)) {
       postProcessing.composer.render();
@@ -1918,6 +1928,7 @@ export const VrmStage = memo(function VrmStage({
         gl={{
           alpha: true,
           antialias: true,
+          premultipliedAlpha: false,
           powerPreference: 'high-performance',
           precision: 'highp',
           stencil: false,

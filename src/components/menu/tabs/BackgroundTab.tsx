@@ -69,6 +69,18 @@ export function BackgroundTab({
     void window.webWaifuDesktop?.relaunchWindowMode?.('desktop');
   };
 
+  const relaunchTransparentOverlay = () => {
+    setTransparentScene();
+    void window.webWaifuDesktop?.relaunchWindowMode?.('overlay');
+  };
+
+  const setClickThrough = (enabled: boolean) => {
+    void window.webWaifuDesktop
+      ?.setClickThrough?.(enabled)
+      .then((runtime) => setDesktopRuntime(runtime))
+      .catch(() => undefined);
+  };
+
   return (
     <>
       <div className="control-group">
@@ -125,16 +137,56 @@ export function BackgroundTab({
           </button>
           <button
             className="btn-tech"
-            disabled={!desktopRuntime || transparentWindowActive}
+            disabled={!desktopRuntime || desktopRuntime.mode === 'desktop'}
             onClick={relaunchTransparentWindow}
             type="button"
           >
-            Relaunch Transparent Window
+            Desktop Window
+          </button>
+          <button
+            className="btn-tech"
+            disabled={!desktopRuntime || desktopRuntime.mode === 'overlay'}
+            onClick={relaunchTransparentOverlay}
+            type="button"
+          >
+            OBS Overlay
           </button>
         </div>
+        {desktopRuntime ? (
+          <div className="btn-row">
+            <button
+              className={`btn-tech ${desktopRuntime.clickThrough ? '' : 'secondary'}`}
+              disabled={!transparentWindowActive}
+              onClick={() => setClickThrough(!desktopRuntime.clickThrough)}
+              type="button"
+            >
+              Click-through {desktopRuntime.clickThrough ? 'On' : 'Off'}
+            </button>
+            <button
+              className="btn-tech secondary"
+              onClick={() => updateVisualSettings({ sceneBackgroundMode: 'persona' })}
+              type="button"
+            >
+              Painted Test
+            </button>
+            <button
+              className="btn-tech secondary"
+              onClick={() =>
+                updateVisualSettings({
+                  sceneBackgroundMode: 'chroma',
+                  sceneChromaColor: '#ff00ff',
+                })
+              }
+              type="button"
+            >
+              Magenta Test
+            </button>
+          </div>
+        ) : null}
         <div className="field-hint">
-          Real desktop alpha needs both: scene background set to Transparent, and Electron launched
-          as Desktop Transparent or Overlay. Editor mode keeps a solid normal app window.
+          Real desktop alpha needs both: scene background set to Transparent and Electron launched
+          as Desktop Window or OBS Overlay. Painted/Magenta tests should visibly fill the window;
+          Transparent should show the desktop behind the VRM.
         </div>
       </div>
 

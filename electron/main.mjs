@@ -274,7 +274,31 @@ function relaunchWithMode(mode) {
 function installMenu() {
   const template = [
     {
-      label: 'WebWaifu 4',
+      label: 'File',
+      submenu: [
+        { label: 'Open Editor Window', click: () => relaunchWithMode('editor') },
+        { label: 'Open Desktop Transparent Window', click: () => relaunchWithMode('desktop') },
+        { label: 'Open OBS Overlay Window', click: () => relaunchWithMode('overlay') },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
       submenu: [
         { label: 'Relaunch as Editor', click: () => relaunchWithMode('editor') },
         { label: 'Relaunch as Desktop Transparent', click: () => relaunchWithMode('desktop') },
@@ -289,10 +313,61 @@ function installMenu() {
             applyLiveWindowOptions();
           },
         },
-        { role: 'toggleDevTools' },
-        { role: 'reload' },
+      ],
+    },
+    {
+      label: 'Background',
+      submenu: [
+        {
+          label: 'Transparent Scene',
+          click: () => {
+            mainWindow?.webContents.send('desktop-scene-background-mode', 'transparent');
+          },
+        },
+        {
+          label: 'Chroma Key Scene',
+          click: () => {
+            mainWindow?.webContents.send('desktop-scene-background-mode', 'chroma');
+          },
+        },
+        {
+          label: 'Character Background Scene',
+          click: () => {
+            mainWindow?.webContents.send('desktop-scene-background-mode', 'persona');
+          },
+        },
         { type: 'separator' },
-        { role: 'quit' },
+        {
+          label: 'Transparent Desktop Window',
+          click: () => {
+            mainWindow?.webContents.send('desktop-scene-background-mode', 'transparent');
+            relaunchWithMode('desktop');
+          },
+        },
+        {
+          label: 'Transparent OBS Overlay Window',
+          click: () => {
+            mainWindow?.webContents.send('desktop-scene-background-mode', 'transparent');
+            relaunchWithMode('overlay');
+          },
+        },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About WebWaifu 4',
+          click: () => {
+            mainWindow?.webContents.send('desktop-open-about');
+          },
+        },
+        {
+          label: 'Open Project on GitHub',
+          click: () => {
+            void shell.openExternal('https://github.com/xsploit/WebWaifu4');
+          },
+        },
       ],
     },
   ];
