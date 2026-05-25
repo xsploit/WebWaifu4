@@ -2201,9 +2201,12 @@ function App() {
       if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
         setGrilloMemoryState(nextGrilloMemoryState);
       }
+      void refreshMemoryBackendStatus();
+    }).catch((error) => {
+      console.warn('[App] Failed to record raw chat memory turns', error);
     });
     scheduleMemoryAgentAfterChatTurnsRef.current(stateKey);
-  }, [syncMemoryAgentPendingCounts]);
+  }, [refreshMemoryBackendStatus, syncMemoryAgentPendingCounts]);
 
   const captureTwitchStreamTranscript = useCallback(async () => {
     const currentTwitchSettings = twitchSettingsRef.current;
@@ -5445,7 +5448,11 @@ function App() {
           settings.llmProvider,
           setMemoryEmbeddingDebug,
           'semantic-save',
-        );
+        ).then(() => {
+          void refreshMemoryBackendStatus();
+        }).catch((error) => {
+          console.warn('[App] Failed to record semantic chat memory turn', error);
+        });
         const nextGrilloMemoryState = await recordGrilloMemoryTurnAsync({
           assistantText: assistantContent,
           persona,
@@ -5455,6 +5462,7 @@ function App() {
         if (stateKey === activeRelationshipStateKey) {
           setGrilloMemoryState(nextGrilloMemoryState);
         }
+        void refreshMemoryBackendStatus();
       } catch (error) {
         const message = getAiErrorMessage(error, 'chat');
         setChatHistory((current) =>
