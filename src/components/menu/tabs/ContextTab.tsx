@@ -301,6 +301,24 @@ export function ContextTab({
                 </div>
               </div>
             ))}
+            {memoryGraphSummary.recent.semantic.slice(0, 4).map((record) => (
+              <div className="memory-entry" key={record.id}>
+                <div className="memory-entry-header">
+                  <strong>Semantic record</strong>
+                  <span>{record.personaId || 'unknown persona'}</span>
+                </div>
+                <p>{record.text || 'No semantic text captured.'}</p>
+              </div>
+            ))}
+            {memoryGraphSummary.recent.vectors.slice(0, 4).map((record) => (
+              <div className="memory-entry" key={record.id}>
+                <div className="memory-entry-header">
+                  <strong>Vector record</strong>
+                  <span>{record.personaId || 'unknown persona'}</span>
+                </div>
+                <p>{record.text || 'No vector text captured.'}</p>
+              </div>
+            ))}
           </div>
         ) : null}
       </div>
