@@ -23,6 +23,13 @@ export type LadybugMemoryGraphSummary = {
   participants: Array<{ channel: string; displayName: string; id: string; source: string }>;
   personas: Array<{ id: string; name: string }>;
   recent: {
+    blocks: Array<{
+      blockName: string;
+      id: string;
+      itemCount: number;
+      participantKey: string;
+      scopeKey: string;
+    }>;
     candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
     diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
     emotions: Array<{
@@ -93,6 +100,7 @@ export class LadybugMemoryService {
       participants,
       personas,
       candidates,
+      memoryBlocks,
       diaryEntries,
       emotionStates,
       emotionIntensities,
@@ -121,6 +129,7 @@ export class LadybugMemoryService {
         this.scalarCount('MATCH (m:Participant) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:Persona) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:MemoryCandidate) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:MemoryBlock) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:DiaryEntry) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:EmotionState) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:EmotionIntensity) RETURN count(m) AS count'),
@@ -163,6 +172,7 @@ export class LadybugMemoryService {
       participants,
       personas,
       candidates,
+      memoryBlocks,
       diaryEntries,
       emotionStates,
       emotionIntensities,
@@ -302,6 +312,7 @@ export class LadybugMemoryService {
       participants,
       personas,
       candidates,
+      blocks,
       diary,
       emotions,
       relationships,
@@ -347,6 +358,9 @@ export class LadybugMemoryService {
       this.all('MATCH (p:Persona) RETURN p.id AS id, p.name AS name LIMIT 12'),
       this.all(
         'MATCH (m:MemoryCandidate) RETURN m.id AS id, m.participantKey AS participantKey, m.type AS type, m.summary AS summary LIMIT 8',
+      ),
+      this.all(
+        'MATCH (m:MemoryBlock) RETURN m.id AS id, m.scopeKey AS scopeKey, m.participantKey AS participantKey, m.blockName AS blockName, m.itemsJson AS itemsJson LIMIT 8',
       ),
       this.all(
         'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
@@ -397,6 +411,13 @@ export class LadybugMemoryService {
         name: stringValue(row['name']),
       })),
       recent: {
+        blocks: blocks.map((row) => ({
+          blockName: stringValue(row['blockName']),
+          id: stringValue(row['id']),
+          itemCount: arrayValue(safeJsonParse(stringValue(row['itemsJson']))).length,
+          participantKey: stringValue(row['participantKey']),
+          scopeKey: stringValue(row['scopeKey']),
+        })),
         candidates: candidates.map((row) => ({
           id: stringValue(row['id']),
           participantKey: stringValue(row['participantKey']),

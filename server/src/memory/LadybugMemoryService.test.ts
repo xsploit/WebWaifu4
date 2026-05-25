@@ -132,6 +132,7 @@ describe('LadybugMemoryService', () => {
       expect(status.participants).toBe(1);
       expect(status.personas).toBe(1);
       expect(status.candidates).toBe(1);
+      expect(status.memoryBlocks).toBe(1);
       expect(status.diaryEntries).toBe(1);
       expect(status.emotionStates).toBe(1);
       expect(status.emotionIntensities).toBe(1);
@@ -158,6 +159,13 @@ describe('LadybugMemoryService', () => {
         ]),
       );
       expect(graph.recent.candidates[0]?.summary).toBe('Subby likes fast TTS.');
+      expect(graph.recent.blocks[0]).toMatchObject({
+        blockName: 'preferences',
+        id: 'block-1',
+        itemCount: 1,
+        participantKey: 'local:local:subby',
+        scopeKey: 'local:persona:hikari-chan',
+      });
       expect(graph.recent.emotions[0]?.lastSignalSource).toBe('worker');
       expect(graph.recent.relationships[0]?.summary).toContain('low-latency');
       expect(graph.recent.relationshipFacts[0]).toMatchObject({

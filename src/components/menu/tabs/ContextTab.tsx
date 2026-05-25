@@ -216,6 +216,9 @@ export function ContextTab({
             Graph candidates: <strong>{memoryBackendStatus?.candidates ?? 0}</strong>
           </div>
           <div className="status-copy">
+            Memory blocks: <strong>{memoryBackendStatus?.memoryBlocks ?? 0}</strong>
+          </div>
+          <div className="status-copy">
             Graph diary: <strong>{memoryBackendStatus?.diaryEntries ?? 0}</strong>
           </div>
           <div className="status-copy">
@@ -295,6 +298,16 @@ export function ContextTab({
                   <span>{fact.scopeKey || 'unknown scope'}</span>
                 </div>
                 <p>{fact.text || 'No relationship fact captured.'}</p>
+              </div>
+            ))}
+            {memoryGraphSummary.recent.blocks.slice(0, 4).map((block) => (
+              <div className="memory-entry" key={block.id}>
+                <div className="memory-entry-header">
+                  <strong>{block.blockName || 'Memory block'}</strong>
+                  <span>{block.itemCount} items</span>
+                </div>
+                <p>{block.participantKey || 'unknown participant'}</p>
+                <div className="status-copy">{block.scopeKey || 'unknown scope'}</div>
               </div>
             ))}
             {memoryGraphSummary.recent.emotions.slice(0, 4).map((emotion) => (

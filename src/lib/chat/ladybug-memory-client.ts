@@ -11,6 +11,7 @@ export type LadybugMemoryStatus = {
   emotionIntensities?: number;
   emotionStates?: number;
   grilloScopes?: number;
+  memoryBlocks?: number;
   participants?: number;
   personas?: number;
   relationshipFacts?: number;
@@ -29,6 +30,13 @@ export type LadybugMemoryGraphSummary = {
   participants: Array<{ channel: string; displayName: string; id: string; source: string }>;
   personas: Array<{ id: string; name: string }>;
   recent: {
+    blocks: Array<{
+      blockName: string;
+      id: string;
+      itemCount: number;
+      participantKey: string;
+      scopeKey: string;
+    }>;
     candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
     diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
     emotions: Array<{
