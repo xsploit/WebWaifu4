@@ -105,9 +105,11 @@ Packaged Electron status: the app starts a bundled Node sidecar from `release/wi
 LadybugDB was tested as a Node/Electron-side graph memory candidate.
 
 - Package: `@ladybugdb/core@0.16.1`
-- Probe script: `scripts/probe-ladybug-memory.mjs`
+- Probe script: `scripts/probe-ladybug-memory.ts`
 - Command: `npm run probe:ladybug-memory`
-- Result: pass on Windows with local and Twitch participants, chat turns, memory facts, and diary edges.
+- Result: pass on Windows through the production `LadybugMemoryService` with local/Twitch
+  scopes, Grillo snapshots, relationship profiles/facts, semantic records, vector records,
+  emotion rows, graph rows, and vector search.
 
 Current recommendation:
 
