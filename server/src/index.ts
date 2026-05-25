@@ -267,6 +267,15 @@ function createProvider(
       apiKey: config.aiApiKey,
       model: config.aiModel,
       maxTokens: 120,
+      tavilyTools: config.tavilyApiKey
+        ? {
+            apiKey: config.tavilyApiKey,
+            searchDepth: config.tavilySearchDepth,
+            maxResults: config.tavilyMaxResults,
+            crawlLimit: config.tavilyCrawlLimit,
+            timeoutMs: config.tavilyTimeoutMs,
+          }
+        : undefined,
       temperature: 0.7,
     });
   }
