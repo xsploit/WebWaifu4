@@ -31,6 +31,7 @@
     "bench:pipeline": "tsx scripts/bench-openai-fish-pipeline.ts",
     "smoke:packaged-ai": "tsx scripts/smoke-packaged-ai.ts",
     "smoke:packaged-ui": "node scripts/smoke-packaged-ui.mjs",
+    "smoke:packaged-ui:desktop": "node scripts/smoke-packaged-ui.mjs --window-mode=desktop --exercise-desktop-controls",
     "smoke:desktop-port-fallback": "node scripts/smoke-desktop-port-fallback.mjs",
     "probe:ladybug-memory": "tsx scripts/probe-ladybug-memory.ts",
     "test:structured-ws": "tsx scripts/test-openai-ws-structured-reply.ts",

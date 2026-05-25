@@ -168,7 +168,7 @@ function createCorsHeaders(request?: IncomingMessage) {
       typeof requestedHeaders === 'string' && requestedHeaders.trim()
         ? requestedHeaders
         : CORS_REQUEST_HEADERS,
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Private-Network': 'true',
     Vary: 'Origin, Access-Control-Request-Headers',

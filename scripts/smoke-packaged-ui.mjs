@@ -8,6 +8,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const exePath = path.join(repoRoot, 'release', 'win-unpacked', 'WebWaifu 4.exe');
 const debugPort = Number.parseInt(process.env.WEBWAIFU_UI_SMOKE_DEBUG_PORT || '9333', 10);
 const timeoutMs = Number.parseInt(process.env.WEBWAIFU_UI_SMOKE_TIMEOUT_MS || '30000', 10);
+const args = new Set(process.argv.slice(2));
+const modeArg = process.argv.find((arg) => arg.startsWith('--window-mode='));
+const requestedMode = (modeArg?.split('=').slice(1).join('=') || 'editor').trim();
+const shouldExerciseDesktopControls = args.has('--exercise-desktop-controls');
 
 function getJson(url) {
   return new Promise((resolve, reject) => {
@@ -96,7 +100,12 @@ async function evaluateJson(cdp, expression) {
     returnByValue: true,
   });
   if (result.exceptionDetails) {
-    throw new Error(result.exceptionDetails.text || 'Renderer evaluation failed.');
+    const details = result.exceptionDetails;
+    const description = details.exception?.description || details.exception?.value || details.text;
+    const frames = details.stackTrace?.callFrames
+      ?.map((frame) => `${frame.functionName || '<anonymous>'} (${frame.url || 'eval'}:${frame.lineNumber + 1}:${frame.columnNumber + 1})`)
+      .join('\n');
+    throw new Error([description || 'Renderer evaluation failed.', frames].filter(Boolean).join('\n'));
   }
   return result.result?.value;
 }
@@ -128,7 +137,12 @@ function summarizeBadEvents(events) {
     });
 }
 
-const child = spawn(exePath, [`--remote-debugging-port=${debugPort}`], {
+const childArgs = [`--remote-debugging-port=${debugPort}`];
+if (requestedMode && requestedMode !== 'editor') {
+  childArgs.push(`--window-mode=${requestedMode}`);
+}
+
+const child = spawn(exePath, childArgs, {
   cwd: path.dirname(exePath),
   detached: false,
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -153,6 +167,38 @@ try {
   await cdp.send('Log.enable');
   await new Promise((resolve) => setTimeout(resolve, 2500));
 
+  if (shouldExerciseDesktopControls) {
+    await evaluateJson(
+      cdp,
+      `(async () => JSON.stringify(await (async () => {
+        const runtimeBefore = await window.webWaifuDesktop?.getRuntime?.();
+        const clickRuntime = await window.webWaifuDesktop?.setClickThrough?.(true);
+        await window.webWaifuDesktop?.setClickThrough?.(false);
+        document.querySelector('.desktop-control-strip__button:last-child')?.click();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const hidden = Boolean(document.querySelector('.desktop-controls-reveal'));
+        document.querySelector('.desktop-controls-reveal')?.click();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const visibleAgain = Boolean(document.querySelector('.desktop-control-strip'));
+        return {
+          clickThroughWorked: clickRuntime?.clickThrough === true,
+          hidden,
+          runtimeMode: runtimeBefore?.mode || null,
+          visibleAgain
+        };
+      })()))()`,
+    )
+      .then(JSON.parse)
+      .then((result) => {
+        if (!result.clickThroughWorked) {
+          throw new Error('Desktop click-through IPC did not report enabled state.');
+        }
+        if (!result.hidden || !result.visibleAgain) {
+          throw new Error('Desktop control strip hide/reveal did not work.');
+        }
+      });
+  }
+
   const snapshot = await evaluateJson(
     cdp,
     `JSON.stringify({
@@ -161,7 +207,10 @@ try {
       isDesktop: Boolean(window.webWaifuDesktop?.isDesktop),
       backendPort: window.webWaifuDesktop?.getBackendPort?.() || window.webWaifuDesktop?.backendPort || null,
       mode: document.documentElement.dataset.webwaifuWindowMode || null,
-      bodyText: document.body?.innerText?.slice(0, 2000) || ''
+      bodyText: document.body?.innerText?.slice(0, 2000) || '',
+      shellTransparentClass: Boolean(document.querySelector('.shell.scene-background-transparent')),
+      shellBgColor: getComputedStyle(document.querySelector('.shell')).backgroundColor,
+      canvasBg: getComputedStyle(document.querySelector('canvas')).backgroundColor
     })`,
   ).then(JSON.parse);
 
@@ -187,6 +236,7 @@ try {
       mode: snapshot.mode,
       rendererErrors: badEvents.length,
       reactChildCrashText: badText,
+      transparentClass: snapshot.shellTransparentClass,
       readyState: snapshot.readyState,
     },
   ]);
@@ -202,6 +252,14 @@ try {
   }
   if (badEvents.length > 0) {
     throw new Error(`Renderer emitted errors:\n${badEvents.join('\n')}`);
+  }
+  if (requestedMode !== 'editor') {
+    if (snapshot.mode !== requestedMode) {
+      throw new Error(`Expected desktop mode ${requestedMode}, got ${snapshot.mode}.`);
+    }
+    if (!snapshot.shellTransparentClass) {
+      throw new Error('Transparent desktop/overlay mode did not set transparent scene class.');
+    }
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

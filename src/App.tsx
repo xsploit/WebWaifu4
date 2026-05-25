@@ -4721,7 +4721,7 @@ function App() {
       return;
     }
     setVisualSettings((current) => {
-      if (current.sceneBackgroundMode !== 'persona') {
+      if (current.sceneBackgroundMode === 'transparent' || current.sceneBackgroundMode === 'chroma') {
         return current;
       }
       return {
