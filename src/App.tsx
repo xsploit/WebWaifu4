@@ -43,7 +43,9 @@ import {
   type GrilloMemoryState,
 } from './lib/chat/grillo-memory';
 import {
+  loadLadybugMemoryGraph,
   loadLadybugMemoryStatus,
+  type LadybugMemoryGraphSummary,
   type LadybugMemoryStatus,
 } from './lib/chat/ladybug-memory-client';
 import {
@@ -1879,6 +1881,8 @@ function App() {
   const [memoryAgentBusy, setMemoryAgentBusy] = useState(false);
   const [memoryAgentStatus, setMemoryAgentStatus] = useState('Memory worker idle.');
   const [memoryBackendStatus, setMemoryBackendStatus] = useState<LadybugMemoryStatus | null>(null);
+  const [memoryGraphSummary, setMemoryGraphSummary] =
+    useState<LadybugMemoryGraphSummary | null>(null);
   const [grilloMemoryState, setGrilloMemoryState] = useState<GrilloMemoryState>(() =>
     createDefaultGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
   );
@@ -2035,8 +2039,9 @@ function App() {
   }, []);
 
   const refreshMemoryBackendStatus = useCallback(() => {
-    void loadLadybugMemoryStatus().then((status) => {
+    void Promise.all([loadLadybugMemoryStatus(), loadLadybugMemoryGraph()]).then(([status, graph]) => {
       setMemoryBackendStatus(status?.ok ? status : null);
+      setMemoryGraphSummary(graph);
     });
   }, []);
 
@@ -6142,6 +6147,7 @@ function App() {
               memoryAgentBusy={memoryAgentBusy}
               memoryAgentStatus={memoryAgentStatus}
               memoryBackendStatus={memoryBackendStatus}
+              memoryGraphSummary={memoryGraphSummary}
               sequencerSettings={sequencerSettings}
               setAiSettings={setAiSettings}
               setSequencerSettings={setSequencerSettings}

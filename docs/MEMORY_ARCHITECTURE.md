@@ -78,6 +78,7 @@ The worker runs on chat-message cadence and manual runs.
 LadybugDB is now wired into the local backend route surface:
 
 - `GET /memory/status`
+- `GET /memory/graph`
 - `GET /memory/grillo?scopeKey=...`
 - `PUT /memory/grillo`
 - `DELETE /memory/grillo?scopeKey=...`
@@ -87,7 +88,7 @@ LadybugDB is now wired into the local backend route surface:
 The renderer uses those endpoints in desktop mode through `src/lib/chat/ladybug-memory-client.ts`.
 If the backend reports unavailable or the request fails, the existing IndexedDB/localStorage path remains the fallback.
 
-The backend stores full Grillo and semantic snapshots in LadybugDB and also mirrors queryable graph rows for memory scopes, participants, personas, candidates, memory blocks, diary entries, semantic records, and the edges between them.
+The backend stores full Grillo and semantic snapshots in LadybugDB and also mirrors queryable graph rows for memory scopes, participants, personas, candidates, memory blocks, diary entries, semantic records, and the edges between them. The Memory tab reads the status and graph summary so desktop builds expose the active scopes and relationship edge types instead of only a raw count.
 
 Packaged Electron status: the app starts a bundled Node sidecar from `release/win-unpacked/resources/desktop-runtime/node.exe`, and that sidecar owns the LadybugDB process. This avoids loading the Ladybug native module inside Electron's main process. Packaged Grillo and semantic save/load has been smoke-tested through the EXE.
 
@@ -117,11 +118,11 @@ Current recommendation:
 ## Recommended Next Migration
 
 1. Write adapter tests that prove local and Twitch scopes return identical prompt context across IndexedDB and Ladybug.
-2. Add a Memory Debug page that shows:
+2. Expand the Memory Debug page so it shows:
    - current scope
    - pending worker turns
    - last worker run
    - injected Grillo lanes
    - injected semantic matches
    - failed embedding/provider status
-3. Add direct graph recall endpoints for participant/persona relationship inspection once the UI needs them.
+3. Add direct graph recall endpoints for deeper participant/persona inspection once the UI needs more than the summary endpoint.

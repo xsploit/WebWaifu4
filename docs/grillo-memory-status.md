@@ -24,7 +24,7 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - The worker loop now requests a `json_schema` structured output contract named `grillo_worker_loop`, and the runtime accepts both `{toolCalls:[...]}` JSON and OpenAI-style `tool_calls` / function-call shaped JSON with stringified arguments.
 - Grillo memory is scoped by conversation state key and participant key. In desktop mode it tries the local backend LadybugDB routes first, then falls back to browser IndexedDB with legacy localStorage fallback.
 - Semantic vector memory uses the same desktop-backend-first path, then falls back to browser IndexedDB/localStorage, calls `/ai/embeddings` for query/save vectors, and does local cosine/lexical/recency scoring before injection into the Grillo/POML context.
-- LadybugDB now has runtime backend routes for Grillo snapshots, semantic snapshots, memory scopes, participant/persona rows, graph candidate rows, graph diary rows, graph block rows, graph semantic rows, and graph relationship edges. Packaged Electron starts a bundled Node sidecar so `@ladybugdb/core` loads under Node instead of Electron.
+- LadybugDB now has runtime backend routes for Grillo snapshots, semantic snapshots, memory scopes, participant/persona rows, graph candidate rows, graph diary rows, graph block rows, graph semantic rows, graph relationship edges, and a read-only graph summary for the Memory tab. Packaged Electron starts a bundled Node sidecar so `@ladybugdb/core` loads under Node instead of Electron.
 
 ## Verification Log
 
@@ -51,6 +51,10 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-25 00:45: `npm run desktop:pack` -> passed with bundled Node sidecar. Packaged EXE smoke: app opens, `/health` returns 200, `/memory/status` returns `ok:true` with `backend: ladybug`, and backend closes after app exit.
 - 2026-05-25 00:52: packaged EXE `/memory/grillo` and `/memory/semantic` smoke -> passed save/load through the Ladybug sidecar.
 - 2026-05-25 00:58: `npx vitest run server/src/memory/LadybugMemoryService.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 24 tests.
+- 2026-05-25 01:08: `npx vitest run server/src/memory/LadybugMemoryService.test.ts` -> passed, verifies graph summary scopes, participants, personas, relation types, and recent memory rows.
+- 2026-05-25 01:09: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-25 01:09: `npx vitest run server/src/memory/LadybugMemoryService.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 24 tests.
+- 2026-05-25 01:11: `npm run desktop:pack` -> passed. Packaged EXE smoke: `/health` 200, `/memory/status` reports `backend: ladybug`, `/memory/graph` returns scopes/edges/recent rows after Grillo and semantic writes, and backend closes after app exit.
 
 ## Next Patch
 

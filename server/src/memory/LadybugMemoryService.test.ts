@@ -88,6 +88,7 @@ describe('LadybugMemoryService', () => {
       const grilloState = await service.loadGrilloState('local:persona:hikari-chan');
       const semanticRecords = await service.loadSemanticRecords('local:persona:hikari-chan');
       const status = await service.getStatus();
+      const graph = await service.getGraphSummary();
 
       expect((grilloState as { candidates: unknown[] }).candidates).toHaveLength(1);
       expect(semanticRecords?.[0]?.embedding).toEqual([0.1, 0.2, 0.3]);
@@ -98,6 +99,19 @@ describe('LadybugMemoryService', () => {
       expect(status.diaryEntries).toBe(1);
       expect(status.semanticRecords).toBe(1);
       expect(status.relationshipEdges).toBe(4);
+      expect(graph.scopes[0]?.id).toBe('local:persona:hikari-chan');
+      expect(graph.participants[0]?.id).toBe('local:local:subby');
+      expect(graph.personas[0]?.id).toBe('hikari-chan');
+      expect(graph.edges.map((edge) => edge.relation)).toEqual(
+        expect.arrayContaining([
+          'HAS_CANDIDATE',
+          'HAS_BLOCK',
+          'HAS_DIARY',
+          'HAS_SEMANTIC',
+        ]),
+      );
+      expect(graph.recent.candidates[0]?.summary).toBe('Subby likes fast TTS.');
+      expect(graph.recent.semantic[0]?.text).toContain('remember fast TTS');
     } finally {
       await service.close();
     }

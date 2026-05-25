@@ -1,6 +1,9 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { GrilloMemoryState } from '../../../lib/chat/grillo-memory';
-import type { LadybugMemoryStatus } from '../../../lib/chat/ladybug-memory-client';
+import type {
+  LadybugMemoryGraphSummary,
+  LadybugMemoryStatus,
+} from '../../../lib/chat/ladybug-memory-client';
 import type { AiSettings, RelationshipMemory } from '../../../lib/chat/types';
 
 type ContextTabProps = {
@@ -19,6 +22,7 @@ type ContextTabProps = {
   memoryAgentBusy: boolean;
   memoryAgentStatus: string;
   memoryBackendStatus: LadybugMemoryStatus | null;
+  memoryGraphSummary: LadybugMemoryGraphSummary | null;
   modelsError: string | null;
   modelsLoading: boolean;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
@@ -40,6 +44,7 @@ export function ContextTab({
   memoryAgentBusy,
   memoryAgentStatus,
   memoryBackendStatus,
+  memoryGraphSummary,
   modelsError,
   modelsLoading,
   setAiSettings,
@@ -159,6 +164,32 @@ export function ContextTab({
           participants, personas, scopes, and graph edges, then falls back to browser IndexedDB if
           the backend is unavailable.
         </div>
+        {memoryGraphSummary ? (
+          <div className="memory-list">
+            {memoryGraphSummary.scopes.slice(0, 4).map((scope) => (
+              <div className="memory-entry" key={scope.id}>
+                <div className="memory-entry-header">
+                  <strong>{scope.personaId || 'unknown persona'}</strong>
+                  <span>{scope.source}:{scope.channel}</span>
+                </div>
+                <p>{scope.id}</p>
+              </div>
+            ))}
+            {memoryGraphSummary.edges.length > 0 ? (
+              <div className="memory-entry">
+                <div className="memory-entry-header">
+                  <strong>Graph relations</strong>
+                  <span>{memoryGraphSummary.edges.length} active types</span>
+                </div>
+                <p>
+                  {memoryGraphSummary.edges
+                    .map((edge) => `${edge.relation}: ${edge.count}`)
+                    .join(' / ')}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="control-group">

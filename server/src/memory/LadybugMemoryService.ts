@@ -13,6 +13,18 @@ export type LadybugSemanticMemoryRecord = {
   embedding: number[] | null;
 };
 
+export type LadybugMemoryGraphSummary = {
+  edges: Array<{ count: number; relation: string }>;
+  participants: Array<{ channel: string; displayName: string; id: string; source: string }>;
+  personas: Array<{ id: string; name: string }>;
+  recent: {
+    candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
+    diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
+    semantic: Array<{ id: string; personaId: string; text: string }>;
+  };
+  scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
+};
+
 type LadybugSnapshotKind = 'grillo' | 'semantic';
 
 type LadybugSnapshot = {
@@ -142,6 +154,107 @@ export class LadybugMemoryService {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     await this.deleteSnapshot('semantic', normalizedScopeKey);
     await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord']);
+  }
+
+  async getGraphSummary(): Promise<LadybugMemoryGraphSummary> {
+    await this.open();
+    const [
+      hasCandidateEdges,
+      hasBlockEdges,
+      hasDiaryEdges,
+      hasSemanticEdges,
+      candidateAboutEdges,
+      blockAboutEdges,
+      diaryAboutEdges,
+      semanticForPersonaEdges,
+      scopes,
+      participants,
+      personas,
+      candidates,
+      diary,
+      semantic,
+    ] = await Promise.all([
+      this.scalarCount(
+        'MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count',
+      ),
+      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count'),
+      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count'),
+      this.scalarCount(
+        'MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count',
+      ),
+      this.scalarCount(
+        'MATCH (m:MemoryCandidate)-[:CANDIDATE_ABOUT]->(p:Participant) RETURN count(m) AS count',
+      ),
+      this.scalarCount('MATCH (m:MemoryBlock)-[:BLOCK_ABOUT]->(p:Participant) RETURN count(m) AS count'),
+      this.scalarCount('MATCH (m:DiaryEntry)-[:DIARY_ABOUT]->(p:Participant) RETURN count(m) AS count'),
+      this.scalarCount(
+        'MATCH (m:SemanticRecord)-[:SEMANTIC_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
+      ),
+      this.all(
+        'MATCH (s:MemoryScope) RETURN s.id AS id, s.source AS source, s.channel AS channel, s.personaId AS personaId LIMIT 12',
+      ),
+      this.all(
+        'MATCH (p:Participant) RETURN p.id AS id, p.source AS source, p.channel AS channel, p.displayName AS displayName LIMIT 16',
+      ),
+      this.all('MATCH (p:Persona) RETURN p.id AS id, p.name AS name LIMIT 12'),
+      this.all(
+        'MATCH (m:MemoryCandidate) RETURN m.id AS id, m.participantKey AS participantKey, m.type AS type, m.summary AS summary LIMIT 8',
+      ),
+      this.all(
+        'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
+      ),
+      this.all(
+        'MATCH (m:SemanticRecord) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
+      ),
+    ]);
+
+    return {
+      edges: [
+        { relation: 'HAS_CANDIDATE', count: hasCandidateEdges },
+        { relation: 'HAS_BLOCK', count: hasBlockEdges },
+        { relation: 'HAS_DIARY', count: hasDiaryEdges },
+        { relation: 'HAS_SEMANTIC', count: hasSemanticEdges },
+        { relation: 'CANDIDATE_ABOUT', count: candidateAboutEdges },
+        { relation: 'BLOCK_ABOUT', count: blockAboutEdges },
+        { relation: 'DIARY_ABOUT', count: diaryAboutEdges },
+        { relation: 'SEMANTIC_FOR_PERSONA', count: semanticForPersonaEdges },
+      ].filter((edge) => edge.count > 0),
+      participants: participants.map((row) => ({
+        channel: stringValue(row['channel']),
+        displayName: stringValue(row['displayName']),
+        id: stringValue(row['id']),
+        source: stringValue(row['source']),
+      })),
+      personas: personas.map((row) => ({
+        id: stringValue(row['id']),
+        name: stringValue(row['name']),
+      })),
+      recent: {
+        candidates: candidates.map((row) => ({
+          id: stringValue(row['id']),
+          participantKey: stringValue(row['participantKey']),
+          summary: stringValue(row['summary']),
+          type: stringValue(row['type']),
+        })),
+        diary: diary.map((row) => ({
+          beatType: stringValue(row['beatType']),
+          id: stringValue(row['id']),
+          participantKey: stringValue(row['participantKey']),
+          summary: stringValue(row['summary']),
+        })),
+        semantic: semantic.map((row) => ({
+          id: stringValue(row['id']),
+          personaId: stringValue(row['personaId']),
+          text: stringValue(row['text']),
+        })),
+      },
+      scopes: scopes.map((row) => ({
+        channel: stringValue(row['channel']),
+        id: stringValue(row['id']),
+        personaId: stringValue(row['personaId']),
+        source: stringValue(row['source']),
+      })),
+    };
   }
 
   async close() {

@@ -1397,6 +1397,23 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'GET' && runtimePath === '/memory/graph') {
+    try {
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        graph: await getLadybugMemoryService().getGraphSummary(),
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug memory graph load failed.',
+      });
+    }
+    return;
+  }
+
   if (request.method === 'GET' && runtimePath === '/memory/grillo') {
     try {
       const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));

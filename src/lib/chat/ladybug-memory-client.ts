@@ -18,6 +18,18 @@ export type LadybugMemoryStatus = {
   snapshots?: number;
 };
 
+export type LadybugMemoryGraphSummary = {
+  edges: Array<{ count: number; relation: string }>;
+  participants: Array<{ channel: string; displayName: string; id: string; source: string }>;
+  personas: Array<{ id: string; name: string }>;
+  recent: {
+    candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
+    diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
+    semantic: Array<{ id: string; personaId: string; text: string }>;
+  };
+  scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
+};
+
 type LadybugResponse<T> = T & {
   backend?: string;
   error?: string;
@@ -81,6 +93,13 @@ export async function saveLadybugSemanticMemory(
 
 export async function loadLadybugMemoryStatus() {
   return requestLadybugMemory<LadybugMemoryStatus>('/memory/status');
+}
+
+export async function loadLadybugMemoryGraph() {
+  const response = await requestLadybugMemory<{ graph: LadybugMemoryGraphSummary }>(
+    '/memory/graph',
+  );
+  return response?.ok === true ? response.graph : null;
 }
 
 async function requestLadybugMemory<T>(
