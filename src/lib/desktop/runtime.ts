@@ -2,6 +2,7 @@ export type DesktopWindowMode = 'editor' | 'desktop' | 'overlay';
 
 type DesktopRuntimeBridge = {
   backendPort?: string;
+  getBackendPort?: () => string;
   isDesktop?: boolean;
   mode?: DesktopWindowMode;
   getRuntime?: () => Promise<{
@@ -55,7 +56,9 @@ export function getDesktopBackendBaseUrl() {
     return '';
   }
   const params = readDesktopSearchParams();
-  const port = params?.get('botPort') || window.webWaifuDesktop?.backendPort || '8797';
+  const bridgePort =
+    window.webWaifuDesktop?.getBackendPort?.() || window.webWaifuDesktop?.backendPort;
+  const port = bridgePort || params?.get('botPort') || '8797';
   return `http://127.0.0.1:${port}`;
 }
 

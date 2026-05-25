@@ -42,4 +42,15 @@ describe('desktop runtime bridge', () => {
     expect(getDesktopBackendUrl('/ai/chat')).toBe('http://127.0.0.1:8797/ai/chat');
     expect(getDesktopOverlaySocketUrl()).toBe('ws://127.0.0.1:8797/ws');
   });
+
+  it('prefers the live desktop bridge port after backend restart', () => {
+    installWindow('?desktop=1&botPort=8797', {
+      backendPort: '8797',
+      getBackendPort: () => '8798',
+    });
+
+    expect(getDesktopBackendBaseUrl()).toBe('http://127.0.0.1:8798');
+    expect(getDesktopBackendUrl('/ai/chat')).toBe('http://127.0.0.1:8798/ai/chat');
+    expect(getDesktopOverlaySocketUrl()).toBe('ws://127.0.0.1:8798/ws');
+  });
 });

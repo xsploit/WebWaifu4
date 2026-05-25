@@ -136,7 +136,11 @@ function canListenOnPort(port) {
     probe.once('listening', () => {
       probe.close(() => resolve(true));
     });
-    probe.listen(Number(port));
+    probe.listen({
+      exclusive: true,
+      host: '127.0.0.1',
+      port: Number(port),
+    });
   });
 }
 
