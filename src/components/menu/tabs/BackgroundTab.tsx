@@ -12,6 +12,12 @@ export function BackgroundTab({
   setVisualSettings,
   visualSettings,
 }: BackgroundTabProps) {
+  const customControlFallbackMode =
+    visualSettings.sceneBackgroundMode === 'chroma' ||
+    visualSettings.sceneBackgroundMode === 'transparent'
+      ? 'custom'
+      : visualSettings.sceneBackgroundMode;
+
   const updateVisualSettings = (patch: Partial<VisualSettings>) => {
     setVisualSettings((current) => ({
       ...current,
@@ -35,6 +41,7 @@ export function BackgroundTab({
           <option value="persona">Auto-load character background</option>
           <option value="custom">Custom image / URL</option>
           <option value="chroma">Chroma key color</option>
+          <option value="transparent">Transparent</option>
         </select>
         <div className="status-grid">
           <div className="status-copy">
@@ -45,8 +52,9 @@ export function BackgroundTab({
           </div>
         </div>
         <div className="field-hint">
-          Persona mode follows the selected character. Custom mode overrides the background.
-          Chroma mode fills the overlay with a solid key color for OBS.
+          Persona mode follows the selected character. Custom mode overrides the background. Chroma
+          mode fills the overlay with a solid key color for OBS. Transparent removes the scene
+          background entirely.
         </div>
       </div>
 
@@ -69,10 +77,7 @@ export function BackgroundTab({
           onChange={(event) =>
             updateVisualSettings({
               sceneBackgroundOverlay: event.target.value,
-              sceneBackgroundMode:
-                visualSettings.sceneBackgroundMode === 'chroma'
-                  ? 'custom'
-                  : visualSettings.sceneBackgroundMode,
+              sceneBackgroundMode: customControlFallbackMode,
             })
           }
           placeholder="CSS overlay gradient..."
@@ -84,10 +89,7 @@ export function BackgroundTab({
           onChange={(event) =>
             updateVisualSettings({
               sceneBackgroundFilter: event.target.value,
-              sceneBackgroundMode:
-                visualSettings.sceneBackgroundMode === 'chroma'
-                  ? 'custom'
-                  : visualSettings.sceneBackgroundMode,
+              sceneBackgroundMode: customControlFallbackMode,
             })
           }
           placeholder="saturate(1.08) brightness(0.9) contrast(1.04)"
@@ -132,10 +134,17 @@ export function BackgroundTab({
           >
             Auto Background
           </button>
+          <button
+            className="btn-tech secondary"
+            onClick={() => updateVisualSettings({ sceneBackgroundMode: 'transparent' })}
+            type="button"
+          >
+            Transparent
+          </button>
         </div>
         <div className="field-hint">
-          Use chroma mode for transparent-style OBS workflows. The VRM and UI stay rendered;
-          only the scene background becomes the key color.
+          Use chroma mode for transparent-style OBS workflows. The VRM and UI stay rendered; only
+          the scene background becomes the key color.
         </div>
       </div>
     </>

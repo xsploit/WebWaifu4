@@ -760,7 +760,8 @@ function normalizeVisualSettings(value: unknown): VisualSettings {
   if (
     source.sceneBackgroundMode === 'persona' ||
     source.sceneBackgroundMode === 'custom' ||
-    source.sceneBackgroundMode === 'chroma'
+    source.sceneBackgroundMode === 'chroma' ||
+    source.sceneBackgroundMode === 'transparent'
   ) {
     next.sceneBackgroundMode = source.sceneBackgroundMode;
   }

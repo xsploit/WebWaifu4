@@ -2239,18 +2239,20 @@ function App() {
     const customImage = visualSettings.sceneBackgroundImage.trim();
     const customOverlay = visualSettings.sceneBackgroundOverlay.trim();
     const customFilter = visualSettings.sceneBackgroundFilter.trim();
+    const transparentBackground = backgroundMode === 'transparent';
     const backgroundImage =
       backgroundMode === 'custom' && customImage
         ? customImage
         : activePersonaScenePreset.backgroundImage;
-    const backgroundOverlay =
-      backgroundMode === 'chroma'
+    const backgroundOverlay = transparentBackground
+      ? 'none'
+      : backgroundMode === 'chroma'
         ? 'linear-gradient(0deg, var(--stream-chroma-color), var(--stream-chroma-color))'
         : backgroundMode === 'custom' && customOverlay
           ? customOverlay
           : activePersonaScenePreset.backgroundOverlay;
     const backgroundFilter =
-      backgroundMode === 'chroma'
+      transparentBackground || backgroundMode === 'chroma'
         ? 'none'
         : backgroundMode === 'custom' && customFilter
           ? customFilter
@@ -2261,9 +2263,13 @@ function App() {
       '--safe-right': `${safeArea.right}px`,
       '--safe-bottom': `${safeArea.bottom}px`,
       '--safe-left': `${safeArea.left}px`,
-      '--stream-bg-image': backgroundMode === 'chroma' ? 'none' : `url("${backgroundImage}")`,
-      '--stream-bg-color':
-        backgroundMode === 'chroma' ? visualSettings.sceneChromaColor : '#02040a',
+      '--stream-bg-image':
+        transparentBackground || backgroundMode === 'chroma' ? 'none' : `url("${backgroundImage}")`,
+      '--stream-bg-color': transparentBackground
+        ? 'transparent'
+        : backgroundMode === 'chroma'
+          ? visualSettings.sceneChromaColor
+          : '#02040a',
       '--stream-bg-overlay': backgroundOverlay,
       '--stream-bg-filter': backgroundFilter,
       '--stream-chroma-color': visualSettings.sceneChromaColor,
@@ -5688,7 +5694,7 @@ function App() {
     <div
       className={`shell ${productShellActive ? 'product-shell-mode' : ''} ${
         overlayPageActive ? 'overlay-shell-mode' : ''
-      }`}
+      } ${visualSettings.sceneBackgroundMode === 'transparent' ? 'scene-background-transparent' : ''}`}
       onClick={(event) => {
         if (!menuOpen) {
           return;

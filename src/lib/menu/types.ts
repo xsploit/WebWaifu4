@@ -14,7 +14,7 @@ export type CameraViewMode = 'full-body' | 'half-body';
 
 export type CameraRigMode = 'locked' | 'custom';
 
-export type SceneBackgroundMode = 'persona' | 'custom' | 'chroma';
+export type SceneBackgroundMode = 'persona' | 'custom' | 'chroma' | 'transparent';
 
 export type BundledVrmOption = {
   id: string;

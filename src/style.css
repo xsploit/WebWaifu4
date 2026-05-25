@@ -69,7 +69,14 @@ select {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #02040a;
+  background: var(--stream-bg-color, #02040a);
+}
+
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop']
+  .shell.scene-background-transparent,
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay']
+  .shell.scene-background-transparent {
+  background: transparent;
 }
 
 html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'] .shell,
@@ -94,7 +101,8 @@ html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell {
 }
 
 html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='desktop'] .shell::before,
-html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell::before {
+html[data-webwaifu-desktop='true'][data-webwaifu-window-mode='overlay'] .shell::before,
+.shell.scene-background-transparent::before {
   display: none;
   background-color: transparent;
   background-image: none;

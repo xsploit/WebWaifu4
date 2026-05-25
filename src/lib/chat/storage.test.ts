@@ -139,6 +139,7 @@ describe('chat settings persistence', () => {
       pbrSpecularIntensity: 0.7,
       realisticMode: true,
       rimLight: 0.9,
+      sceneBackgroundMode: 'transparent',
       sceneExposure: 1.25,
     } satisfies PersistedChatState['visualSettings'];
     const state: PersistedChatState = {
