@@ -186,6 +186,12 @@ describe('ContextTab', () => {
     expect(html).toContain('Relationship facts:');
     expect(html).toContain('Graph relations');
     expect(html).toContain('HAS_VECTOR: 2');
+    expect(html).toContain('Subby');
+    expect(html).toContain('Persona');
+    expect(html).toContain('Graph candidate');
+    expect(html).toContain('Subby asked me to remember Ladybug.');
+    expect(html).toContain('Graph diary');
+    expect(html).toContain('Subby verified memory.');
     expect(html).toContain('Semantic record');
     expect(html).toContain('Vector record');
     expect(html).toContain('Last Prompt Injection');

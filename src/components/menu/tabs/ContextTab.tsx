@@ -279,6 +279,24 @@ export function ContextTab({
                 <p>{scope.id}</p>
               </div>
             ))}
+            {memoryGraphSummary.participants.slice(0, 6).map((participant) => (
+              <div className="memory-entry" key={participant.id}>
+                <div className="memory-entry-header">
+                  <strong>{participant.displayName || participant.id}</strong>
+                  <span>{participant.source}:{participant.channel}</span>
+                </div>
+                <p>{participant.id}</p>
+              </div>
+            ))}
+            {memoryGraphSummary.personas.slice(0, 6).map((persona) => (
+              <div className="memory-entry" key={persona.id}>
+                <div className="memory-entry-header">
+                  <strong>Persona</strong>
+                  <span>{persona.name || persona.id}</span>
+                </div>
+                <p>{persona.id}</p>
+              </div>
+            ))}
             {memoryGraphSummary.edges.length > 0 ? (
               <div className="memory-entry">
                 <div className="memory-entry-header">
@@ -292,6 +310,26 @@ export function ContextTab({
                 </p>
               </div>
             ) : null}
+            {memoryGraphSummary.recent.candidates.slice(0, 4).map((candidate) => (
+              <div className="memory-entry" key={candidate.id}>
+                <div className="memory-entry-header">
+                  <strong>Graph candidate</strong>
+                  <span>{candidate.type || 'memory'}</span>
+                </div>
+                <p>{candidate.participantKey || 'unknown participant'}</p>
+                <div className="status-copy">{candidate.summary || 'No candidate summary.'}</div>
+              </div>
+            ))}
+            {memoryGraphSummary.recent.diary.slice(0, 4).map((entry) => (
+              <div className="memory-entry" key={entry.id}>
+                <div className="memory-entry-header">
+                  <strong>Graph diary</strong>
+                  <span>{entry.beatType || 'reflection'}</span>
+                </div>
+                <p>{entry.participantKey || 'unknown participant'}</p>
+                <div className="status-copy">{entry.summary || 'No diary summary.'}</div>
+              </div>
+            ))}
             {memoryGraphSummary.recent.relationships.slice(0, 4).map((profile) => (
               <div className="memory-entry" key={profile.id}>
                 <div className="memory-entry-header">
