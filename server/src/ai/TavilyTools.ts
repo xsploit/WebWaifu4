@@ -194,6 +194,7 @@ export function buildTavilyToolInstruction() {
     toolList,
     '',
     'Tool Use Rules:',
+    '- If the user explicitly asks you to search, look up, browse, check the web, open a URL, or get current/latest information, call the relevant tool before answering.',
     '- You may call these tools directly when the user asks for current, external, source-backed, or URL-specific information.',
     '- You may use multiple tool rounds when a search result points to a page that needs open_url or a small crawl_site follow-up.',
     '- Use web_search for current facts, news, pricing, streamer/profile context, and anything likely to have changed.',

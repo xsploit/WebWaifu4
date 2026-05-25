@@ -24,6 +24,7 @@ import {
   isPremiumCostModelId,
 } from './lib/chat/provider-defaults';
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
+import { findOverlappingSuffix } from './lib/chat/streaming-overlap';
 import {
   buildMemoryAgentMessages,
   MEMORY_AGENT_JSON_FORMAT,
@@ -2968,9 +2969,9 @@ function App() {
             queueDisplayText(suffix);
             queueLiveSubtitleText(suffix);
           } else {
+            const suffix = findOverlappingSuffix(fullText, normalizedFinal);
             const visiblePrefix = displayText + queuedDisplayText;
             fullText = normalizedFinal;
-            pendingText = normalizedFinal;
             if (normalizedFinal.startsWith(visiblePrefix)) {
               const suffix = normalizedFinal.slice(visiblePrefix.length);
               queueDisplayText(suffix);
@@ -2983,6 +2984,7 @@ function App() {
               queuedLiveSubtitleText = '';
               queueLiveSubtitleText(normalizedFinal);
             }
+            pendingText += suffix;
           }
         }
         if (!isStale() && fullText.trim()) {
@@ -3153,8 +3155,9 @@ function App() {
             fullText = normalizedFinal;
             pendingText += suffix;
           } else {
+            const suffix = findOverlappingSuffix(fullText, normalizedFinal);
             fullText = normalizedFinal;
-            pendingText = normalizedFinal;
+            pendingText += suffix;
           }
         }
 

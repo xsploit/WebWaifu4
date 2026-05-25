@@ -124,6 +124,13 @@ type OpenAiRequestRuntime = {
   useWebSocket: boolean;
 };
 
+export function createWebSocketResponseCreateMessage(payload: Record<string, unknown>) {
+  return {
+    ...payload,
+    type: 'response.create',
+  };
+}
+
 type UnsupportedOpenAiParam = 'reasoning' | 'temperature';
 type StreamReadResult<T> = { done: false; value: T } | { done: true; value?: T };
 
@@ -378,6 +385,11 @@ function isStreamingFunctionCallItem(value: unknown): value is OpenAiFunctionCal
 
 function getFunctionCalls(payload: OpenAiResponsePayload) {
   return (payload.output ?? []).filter(isFunctionCallItem);
+}
+
+function sanitizeFunctionCallForInput(call: OpenAiFunctionCall): OpenAiFunctionCall {
+  const { id: _persistedItemId, ...portableCall } = call;
+  return portableCall;
 }
 
 function createStreamingFunctionCallState(): StreamingFunctionCallState {
@@ -1089,7 +1101,9 @@ export class OpenAiResponsesProvider implements ChatProvider {
       return nextPayload;
     }
 
-    const responseOutput = Array.isArray(response.output) ? response.output : functionCalls;
+    const responseOutput = (Array.isArray(response.output) ? response.output : functionCalls).map(
+      (item) => (isFunctionCallItem(item) ? sanitizeFunctionCallForInput(item) : item),
+    );
     nextPayload.input = [
       ...(usesConversation ? [] : Array.isArray(payload['input']) ? payload['input'] : []),
       ...responseOutput,
@@ -1478,7 +1492,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
         socket.on('message', onMessage);
         socket.on('close', onClose);
         socket.on('error', onError);
-        socket.send(JSON.stringify({ type: 'response.create', ...payload }));
+        socket.send(JSON.stringify(createWebSocketResponseCreateMessage(payload)));
       });
     });
   }

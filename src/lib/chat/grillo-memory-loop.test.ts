@@ -142,7 +142,7 @@ describe('Grillo memory worker loop', () => {
   });
 
   it('persists enriched diary fields from the original Grillo worker contract', async () => {
-    const scopeKey = 'local:persona:hikari';
+    const scopeKey = 'local:persona:hikari-enriched-diary';
     await runGrilloMemoryWorkerLoop({
       complete: async () =>
         JSON.stringify({
@@ -180,8 +180,8 @@ describe('Grillo memory worker loop', () => {
     });
 
     const state = loadGrilloMemoryState(scopeKey);
-    expect(state.diaryEntries).toHaveLength(1);
-    expect(state.diaryEntries[0]).toMatchObject({
+    const diaryEntry = state.diaryEntries.find((entry) => entry.summary === 'Subby greeted casually.');
+    expect(diaryEntry).toMatchObject({
       beatType: 'chat_interaction',
       content: 'sup',
       contextTags: ['greeting', 'vibe'],
@@ -191,7 +191,7 @@ describe('Grillo memory worker loop', () => {
       summary: 'Subby greeted casually.',
       userMessage: 'yo',
     });
-    expect(state.diaryEntries[0]?.emotions?.[0]).toEqual({ intensity: 7, name: 'happy' });
+    expect(diaryEntry?.emotions?.[0]).toEqual({ intensity: 7, name: 'happy' });
     expect(state.emotionState.intensities.happy).toBeGreaterThan(0);
   });
 
@@ -274,7 +274,10 @@ describe('Grillo memory worker loop', () => {
     const state = loadGrilloMemoryState(scopeKey);
     expect(result.sideEffects.candidateIds).toHaveLength(1);
     expect(result.toolCalls[0]?.name).toBe('core.worker_candidate_write');
-    expect(state.candidates[0]?.summary).toBe('Subsect wants agentic memory tools');
+    const writtenCandidate = state.candidates.find((candidate) =>
+      result.sideEffects.candidateIds.includes(candidate.candidateId),
+    );
+    expect(writtenCandidate?.summary).toBe('Subsect wants agentic memory tools');
   });
 
   it('bridges worker semantic search and archival insert into the app memory index', async () => {

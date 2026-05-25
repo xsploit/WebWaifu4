@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { OpenAiResponsesProvider } from './OpenAiResponsesProvider.js';
+import {
+  OpenAiResponsesProvider,
+  createWebSocketResponseCreateMessage,
+} from './OpenAiResponsesProvider.js';
 import { runTavilyToolCall } from './TavilyTools.js';
 import type { ChatProviderRequest } from './ChatProvider.js';
 
@@ -207,6 +210,7 @@ function createToolCallingFetcher(calls: FetchCall[]) {
       output: [
         {
           type: 'function_call',
+          id: 'rs_persisted_item_id',
           call_id: 'call_search',
           name: 'web_search',
           arguments: JSON.stringify({ query: 'latest vtuber AI news', max_results: 2 }),
@@ -676,6 +680,20 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('keeps WebSocket response.create payload fields top-level for the Responses socket endpoint', () => {
+    const payload = {
+      model: 'gpt-5-nano',
+      text: { format: { name: 'reply_metadata', type: 'json_schema' } },
+      tool_choice: 'auto',
+      tools: [{ name: 'web_search', type: 'function' }],
+    };
+
+    expect(createWebSocketResponseCreateMessage(payload)).toEqual({
+      ...payload,
+      type: 'response.create',
+    });
+  });
+
   it('keeps OpenRouter Responses structured output stateless even if configured otherwise', async () => {
     const calls: FetchCall[] = [];
     const provider = new OpenAiResponsesProvider({
@@ -939,6 +957,7 @@ describe('OpenAiResponsesProvider', () => {
         }),
       ]),
     );
+    expect(JSON.stringify(calls[1]?.body['input'])).not.toContain('rs_persisted_item_id');
     expect(tavilyCalls).toHaveLength(1);
     expect(tavilyCalls[0]?.url).toBe('https://api.tavily.com/search');
     expect(tavilyCalls[0]?.body).toMatchObject({
