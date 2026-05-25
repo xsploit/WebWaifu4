@@ -45,6 +45,7 @@ describe('Grillo memory worker loop', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -286,6 +287,43 @@ describe('Grillo memory worker loop', () => {
       result.sideEffects.candidateIds.includes(candidate.candidateId),
     );
     expect(writtenCandidate?.summary).toBe('Subsect wants agentic memory tools');
+  });
+
+  it('warns when function tool arguments are malformed JSON', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await runGrilloMemoryWorkerLoop({
+      complete: async () =>
+        JSON.stringify({
+          candidate: null,
+          diary: null,
+          done: false,
+          memory: null,
+          notes: 'malformed function args',
+          relationship: null,
+          toolCalls: [],
+          tool_calls: [
+            {
+              function: {
+                arguments: '{"limit":',
+                name: 'core.worker_memory_read',
+              },
+              type: 'function',
+            },
+          ],
+        }),
+      history: [],
+      maxRounds: 1,
+      model: 'gpt-test',
+      persona: DEFAULT_PERSONA,
+      relationshipMemory: createDefaultRelationshipMemory(),
+      scopeKey: 'twitch:subsect:persona:hikari-malformed-tool-args',
+      turns: [createTurn()],
+    });
+
+    expect(result.toolCalls[0]?.name).toBe('core.worker_memory_read');
+    expect(warning).toHaveBeenCalledWith(
+      '[GrilloMemoryWorker] Ignoring malformed tool arguments JSON.',
+    );
   });
 
   it('bridges worker semantic search and archival insert into the app memory index', async () => {

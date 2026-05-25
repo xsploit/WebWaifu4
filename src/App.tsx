@@ -3336,6 +3336,13 @@ function App() {
     },
     [refreshSubtitleFromAudio, stopSubtitleTracking],
   );
+  const startSubtitleTrackingRef = useRef(startSubtitleTracking);
+  const stopSubtitleTrackingRef = useRef(stopSubtitleTracking);
+
+  useEffect(() => {
+    startSubtitleTrackingRef.current = startSubtitleTracking;
+    stopSubtitleTrackingRef.current = stopSubtitleTracking;
+  }, [startSubtitleTracking, stopSubtitleTracking]);
 
   const handleStopTts = useCallback(() => {
     stopTtsPlayback();
@@ -3415,7 +3422,7 @@ function App() {
       setTtsStatus('Playing speech.');
     };
     ttsManager.onSpeechFinished = () => {
-      stopSubtitleTracking(false);
+      stopSubtitleTrackingRef.current(false);
       subtitleClearTimeoutRef.current = window.setTimeout(() => {
         subtitleDataRef.current = null;
         setSubtitleText('');
@@ -3427,10 +3434,10 @@ function App() {
       if (liveBridgeSubtitleActiveRef.current && data.wordBoundaries.length === 0) {
         return;
       }
-      startSubtitleTracking(data);
+      startSubtitleTrackingRef.current(data);
     };
     ttsManager.onError = (error) => {
-      stopSubtitleTracking(true);
+      stopSubtitleTrackingRef.current(true);
       setTtsVoicesError(error.message);
       setTtsStatus(`TTS failed: ${error.message}`);
     };
@@ -3440,9 +3447,9 @@ function App() {
       ttsManager.onSpeechFinished = null;
       ttsManager.onLipSyncData = null;
       ttsManager.onError = null;
-      stopSubtitleTracking(true);
+      stopSubtitleTrackingRef.current(true);
     };
-  }, [startSubtitleTracking, stopSubtitleTracking, ttsManager]);
+  }, [ttsManager]);
 
   useEffect(() => {
     let cancelled = false;

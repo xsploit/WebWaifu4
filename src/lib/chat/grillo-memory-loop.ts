@@ -761,7 +761,13 @@ function parseToolArguments(value: unknown): Record<string, unknown> {
     return record;
   }
   if (typeof value === 'string') {
-    return parseJsonLoose(value) ?? {};
+    const parsed = parseJsonLoose(value);
+    if (parsed) {
+      return parsed;
+    }
+    if (value.trim()) {
+      console.warn('[GrilloMemoryWorker] Ignoring malformed tool arguments JSON.');
+    }
   }
   return {};
 }
