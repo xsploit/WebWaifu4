@@ -603,9 +603,9 @@ describe('OpenAiResponsesProvider', () => {
       text: 'visible reply',
     });
     expect(calls[0]?.body).toMatchObject({
-      include_reasoning: false,
-      reasoning: { exclude: true },
+      reasoning: { effort: 'minimal' },
     });
+    expect(calls[0]?.body).not.toHaveProperty('include_reasoning');
   });
 
   it('reports incomplete Responses payloads instead of a generic empty response', async () => {
@@ -740,9 +740,8 @@ describe('OpenAiResponsesProvider', () => {
     expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/responses');
     expect(calls[0]?.body).toMatchObject({
       cache_control: { ttl: '1h', type: 'ephemeral' },
-      include_reasoning: false,
       prompt_cache_key: 'yourwifey-stream',
-      reasoning: { exclude: true },
+      reasoning: { effort: 'minimal' },
       text: {
         format: {
           name: 'reply_metadata',
@@ -751,6 +750,7 @@ describe('OpenAiResponsesProvider', () => {
         },
       },
     });
+    expect(calls[0]?.body).not.toHaveProperty('include_reasoning');
     expect(calls[0]?.body).not.toHaveProperty('conversation');
     expect(calls[0]?.body).not.toHaveProperty('prompt_cache_retention');
     expect(calls[0]?.body).not.toHaveProperty('previous_response_id');
@@ -829,14 +829,14 @@ describe('OpenAiResponsesProvider', () => {
     expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/responses');
     expect(calls[0]?.body).toMatchObject({
       cache_control: { ttl: '1h', type: 'ephemeral' },
-      include_reasoning: false,
       instructions: expect.stringContaining('You may call these tools directly'),
       prompt_cache_key: 'yourwifey-stream',
-      reasoning: { exclude: true },
+      reasoning: { effort: 'minimal' },
       tool_choice: 'auto',
       tools: expect.arrayContaining([expect.objectContaining({ name: 'web_search' })]),
       text: { format: { name: 'reply_metadata', strict: true, type: 'json_schema' } },
     });
+    expect(calls[0]?.body).not.toHaveProperty('include_reasoning');
     expect(calls[0]?.body).not.toHaveProperty('conversation');
     expect(calls[0]?.body).not.toHaveProperty('previous_response_id');
     expect(calls[0]?.body).not.toHaveProperty('prompt_cache_retention');
@@ -1744,9 +1744,9 @@ describe('OpenAiResponsesProvider', () => {
     expect(deltas).toEqual(['visible']);
     expect(response.text).toBe('visible');
     expect(calls[0]?.body).toMatchObject({
-      include_reasoning: false,
-      reasoning: { exclude: true },
+      reasoning: { effort: 'minimal' },
     });
+    expect(calls[0]?.body).not.toHaveProperty('include_reasoning');
   });
 
   it('does not treat output item lifecycle events as terminal stream events', async () => {

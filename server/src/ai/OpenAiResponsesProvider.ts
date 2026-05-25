@@ -504,7 +504,7 @@ function normalizeStateKey(value: string | undefined) {
 }
 
 function isReasoningStyleModel(model: string) {
-  const normalized = model.trim().toLowerCase();
+  const normalized = model.trim().toLowerCase().split('/').pop() ?? '';
   return (
     normalized.startsWith('gpt-5') ||
     normalized.startsWith('o1') ||
@@ -973,9 +973,8 @@ export class OpenAiResponsesProvider implements ChatProvider {
 
     if (isOpenRouter) {
       payload.reasoning = {
-        exclude: true,
+        effort: reasoningEffort ?? 'minimal',
       };
-      payload.include_reasoning = false;
       const cacheControl = getOpenRouterCacheControl(
         this.options.model,
         this.options.promptCacheRetention,
