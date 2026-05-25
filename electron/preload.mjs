@@ -5,12 +5,18 @@ const initialMode = params.get('desktopMode') || 'editor';
 const initialBackendPort = params.get('botPort') || '8797';
 
 function applyDocumentFlags(mode = initialMode) {
-  document.documentElement.dataset.webwaifuDesktop = 'true';
-  document.documentElement.dataset.webwaifuWindowMode = mode;
+  const root = document.documentElement;
+  if (!root) {
+    return;
+  }
+  root.dataset.webwaifuDesktop = 'true';
+  root.dataset.webwaifuWindowMode = mode;
 }
 
-applyDocumentFlags(initialMode);
-globalThis.addEventListener('DOMContentLoaded', () => applyDocumentFlags(initialMode));
+if (document.documentElement) {
+  applyDocumentFlags(initialMode);
+}
+globalThis.addEventListener('DOMContentLoaded', () => applyDocumentFlags(initialMode), { once: true });
 
 contextBridge.exposeInMainWorld('webWaifuDesktop', {
   backendPort: initialBackendPort,
