@@ -262,6 +262,12 @@ describe('Ladybug memory pipeline', () => {
             },
             {
               args: {
+                text: 'Subby wants archival worker memories stored as Ladybug vectors.',
+              },
+              name: 'core.worker_memory_insert_archival',
+            },
+            {
+              args: {
                 block_name: 'ongoing_topics',
                 items: ['Prove worker memory writes persist in Ladybug.'],
                 operation: 'merge',
@@ -276,6 +282,26 @@ describe('Ladybug memory pipeline', () => {
       persona: { ...DEFAULT_PERSONA, id: 'hikari-worker', name: 'Hikari' },
       relationshipMemory: createDefaultRelationshipMemory(),
       scopeKey,
+      semanticMemory: {
+        insert: async (text) => {
+          const currentRecords = (await service?.loadSemanticRecords(scopeKey)) ?? [];
+          const id = `worker-archival-${currentRecords.length + 1}`;
+          await service?.saveSemanticRecords(scopeKey, [
+            ...currentRecords,
+            {
+              assistantText: '',
+              createdAt: Date.parse('2026-05-25T10:00:01.000Z'),
+              embedding: [1, 0, 0],
+              id,
+              personaId: 'hikari-worker',
+              scopeKey,
+              text,
+              userText: text,
+            },
+          ]);
+          return { id, ok: true, totalIndexed: currentRecords.length + 1 };
+        },
+      },
       turns: [
         {
           badges: ['local-controller'],
@@ -301,6 +327,7 @@ describe('Ladybug memory pipeline', () => {
     };
     expect(result.sideEffects.candidateIds).toHaveLength(1);
     expect(result.sideEffects.diaryIds).toHaveLength(1);
+    expect(result.sideEffects.archivalWrites).toBe(1);
     expect(result.sideEffects.slotWrites).toBe(1);
     expect(persisted.candidates?.[0]?.summary).toBe('Subby wants Ladybug-first worker writes');
     expect(persisted.diaryEntries?.[0]?.summary).toBe(
@@ -309,5 +336,21 @@ describe('Ladybug memory pipeline', () => {
     expect(persisted.blocks?.some((block) =>
       block.items?.includes('Prove worker memory writes persist in Ladybug.'),
     )).toBe(true);
+    await expect(service?.loadSemanticRecords(scopeKey)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'worker-archival-1',
+          text: 'Subby wants archival worker memories stored as Ladybug vectors.',
+        }),
+      ]),
+    );
+    await expect(service?.querySemanticVectors(scopeKey, [1, 0, 0], 4)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'worker-archival-1',
+          text: 'Subby wants archival worker memories stored as Ladybug vectors.',
+        }),
+      ]),
+    );
   });
 });
