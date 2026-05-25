@@ -17,6 +17,7 @@ afterEach(async () => {
     dbPaths.splice(0).map(async (dbPath) => {
       await rm(dbPath, { force: true }).catch(() => undefined);
       await rm(`${dbPath}.wal`, { force: true }).catch(() => undefined);
+      await rm(`${dbPath}.json`, { force: true }).catch(() => undefined);
     }),
   );
 });
@@ -252,6 +253,70 @@ describe('LadybugMemoryService', () => {
         'twitch:subsect:persona:hikari-chan',
       ]);
       expect(graph.recent.relationships[0]?.summary).toBe('Twitch profile should remain.');
+    } finally {
+      await service.close();
+    }
+  });
+
+  it('falls back to local JSON snapshots when Ladybug native storage fails', async () => {
+    const service = createService();
+    const failingService = service as unknown as { init: () => Promise<never> };
+    failingService.init = async () => {
+      throw new Error('native wal unavailable');
+    };
+
+    try {
+      await service.saveGrilloState('local:persona:fallback', {
+        blocks: [
+          {
+            blockId: 'fallback-block',
+            blockName: 'verified_facts',
+            items: ['Fallback memory works.'],
+          },
+        ],
+        diary: [{ id: 'fallback-diary', summary: 'Fallback diary works.' }],
+      });
+      await service.saveSemanticRecords('local:persona:fallback', [
+        {
+          assistantText: 'remembered',
+          createdAt: 10,
+          embedding: [1, 0, 0],
+          id: 'fallback-semantic',
+          personaId: 'fallback',
+          scopeKey: 'local:persona:fallback',
+          text: 'Fallback semantic memory works.',
+          userText: 'remember fallback',
+        },
+      ]);
+      await service.saveRelationshipProfiles({
+        'local:persona:fallback': {
+          facts: ['Fallback relationship works.'],
+          mood: 'focused',
+          relationshipStage: 'new',
+          summary: 'Fallback relationship summary.',
+        },
+      });
+
+      const status = await service.getStatus();
+      const graph = await service.getGraphSummary();
+
+      expect(status.backend).toBe('json-fallback');
+      expect(status.snapshots).toBe(3);
+      expect(await service.loadGrilloState('local:persona:fallback')).toMatchObject({
+        blocks: [expect.objectContaining({ blockId: 'fallback-block' })],
+      });
+      expect(await service.loadSemanticRecords('local:persona:fallback')).toEqual([
+        expect.objectContaining({ id: 'fallback-semantic' }),
+      ]);
+      expect(await service.querySemanticVectors('local:persona:fallback', [1, 0, 0], 1)).toEqual([
+        expect.objectContaining({ id: 'fallback-semantic', score: 1 }),
+      ]);
+      expect(await service.loadRelationshipProfiles()).toMatchObject({
+        'local:persona:fallback': expect.objectContaining({ mood: 'focused' }),
+      });
+      expect(JSON.stringify(graph)).toContain('Fallback memory works.');
+      expect(JSON.stringify(graph)).toContain('Fallback semantic memory works.');
+      expect(JSON.stringify(graph)).toContain('Fallback relationship works.');
     } finally {
       await service.close();
     }

@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Connection, Database } from '@ladybugdb/core';
 
@@ -86,6 +86,20 @@ type LadybugCoreModule = {
   Database: new (path: string) => Database;
 };
 
+type FallbackSnapshot = {
+  kind: LadybugSnapshotKind;
+  scopeKey: string;
+  updatedAt: number;
+  value: unknown;
+};
+
+type FallbackStore = {
+  reason: string | null;
+  snapshots: Record<string, FallbackSnapshot>;
+  updatedAt: number;
+  version: 1;
+};
+
 const DEFAULT_MEMORY_DB_DIR = join(process.cwd(), '.webwaifu4', 'ladybug-memory.db');
 const MAX_SCOPE_KEY_LENGTH = 180;
 const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
@@ -94,14 +108,20 @@ export class LadybugMemoryService {
   readonly dbDir: string;
   private state: LadybugState | null = null;
   private initPromise: Promise<LadybugState> | null = null;
+  private fallbackReason: string | null = null;
 
   constructor(dbDir = process.env['WEBWAIFU_MEMORY_DB_DIR']?.trim() || DEFAULT_MEMORY_DB_DIR) {
     this.dbDir = dbDir;
   }
 
+  getBackendLabel() {
+    return this.fallbackReason ? 'json-fallback' : 'ladybug';
+  }
+
   async getStatus() {
-    const state = await this.open();
-    const [
+    try {
+      const state = await this.open();
+      const [
       snapshots,
       grilloScopes,
       semanticScopes,
@@ -170,7 +190,7 @@ export class LadybugMemoryService {
       hasRelationshipEdges +
       hasRelationshipPersonaEdges +
       hasRelationshipFactEdges;
-    return {
+      return {
       backend: 'ladybug',
       dbDir: this.dbDir,
       initialized: state.initialized,
@@ -190,44 +210,68 @@ export class LadybugMemoryService {
       relationshipProfiles,
       relationshipFacts,
       relationshipEdges,
-    };
+      };
+    } catch (error) {
+      return this.getFallbackStatus(error);
+    }
   }
 
   async loadGrilloState(scopeKey: string) {
-    const snapshot = await this.loadSnapshot('grillo', scopeKey);
-    return snapshot ? safeJsonParse(snapshot.json) : null;
+    try {
+      const snapshot = await this.loadSnapshot('grillo', scopeKey);
+      return snapshot ? safeJsonParse(snapshot.json) : null;
+    } catch (error) {
+      return this.loadFallbackSnapshotValue('grillo', scopeKey, error);
+    }
   }
 
   async saveGrilloState(scopeKey: string, state: unknown) {
-    await this.saveSnapshot('grillo', scopeKey, state);
-    await this.replaceGrilloGraph(scopeKey, state);
+    try {
+      await this.saveSnapshot('grillo', scopeKey, state);
+      await this.replaceGrilloGraph(scopeKey, state);
+    } catch (error) {
+      await this.saveFallbackSnapshotValue('grillo', scopeKey, state, error);
+    }
   }
 
   async deleteGrilloState(scopeKey: string) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
-    await this.deleteSnapshot('grillo', normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, [
-      'MemoryCandidate',
-      'MemoryBlock',
-      'DiaryEntry',
-      'EmotionState',
-      'EmotionIntensity',
-    ], true);
+    try {
+      await this.deleteSnapshot('grillo', normalizedScopeKey);
+      await this.deleteGraphRowsForScope(normalizedScopeKey, [
+        'MemoryCandidate',
+        'MemoryBlock',
+        'DiaryEntry',
+        'EmotionState',
+        'EmotionIntensity',
+      ], true);
+    } catch (error) {
+      await this.deleteFallbackSnapshotValue('grillo', normalizedScopeKey, error);
+    }
   }
 
   async loadSemanticRecords(scopeKey: string): Promise<LadybugSemanticMemoryRecord[] | null> {
-    const snapshot = await this.loadSnapshot('semantic', scopeKey);
-    if (!snapshot) {
-      return null;
+    try {
+      const snapshot = await this.loadSnapshot('semantic', scopeKey);
+      if (!snapshot) {
+        return null;
+      }
+      const parsed = safeJsonParse(snapshot.json);
+      return Array.isArray(parsed) ? normalizeSemanticRecords(parsed) : [];
+    } catch (error) {
+      const fallback = await this.loadFallbackSnapshotValue('semantic', scopeKey, error);
+      return Array.isArray(fallback) ? normalizeSemanticRecords(fallback) : null;
     }
-    const parsed = safeJsonParse(snapshot.json);
-    return Array.isArray(parsed) ? normalizeSemanticRecords(parsed) : [];
   }
 
   async saveSemanticRecords(scopeKey: string, records: LadybugSemanticMemoryRecord[]) {
     const normalized = normalizeSemanticRecords(records);
-    await this.saveSnapshot('semantic', scopeKey, normalized);
-    await this.replaceSemanticGraph(scopeKey, normalized);
+    try {
+      await this.saveSnapshot('semantic', scopeKey, normalized);
+      await this.replaceSemanticGraph(scopeKey, normalized);
+    } catch (error) {
+      await this.saveFallbackSnapshotValue('semantic', scopeKey, normalized, error);
+    }
   }
 
   async querySemanticVectors(
@@ -240,8 +284,12 @@ export class LadybugMemoryService {
       return [];
     }
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
-    await this.open();
-    await this.ensureSemanticVectorIndex(normalizedEmbedding.length).catch(() => undefined);
+    try {
+      await this.open();
+      await this.ensureSemanticVectorIndex(normalizedEmbedding.length).catch(() => undefined);
+    } catch (error) {
+      return this.queryFallbackSemanticVectors(normalizedScopeKey, normalizedEmbedding, limit, error);
+    }
     const vectorTable = semanticVectorTableName(normalizedEmbedding.length);
     const vectorIndex = semanticVectorIndexName(normalizedEmbedding.length);
     const rows = await this.all(
@@ -269,23 +317,36 @@ export class LadybugMemoryService {
 
   async deleteSemanticRecords(scopeKey: string) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
-    await this.deleteSnapshot('semantic', normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector'], true);
+    try {
+      await this.deleteSnapshot('semantic', normalizedScopeKey);
+      await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector'], true);
+    } catch (error) {
+      await this.deleteFallbackSnapshotValue('semantic', normalizedScopeKey, error);
+    }
   }
 
   async loadRelationshipProfiles() {
-    const snapshot = await this.loadSnapshot('relationships', 'all');
-    if (!snapshot) {
-      return null;
+    try {
+      const snapshot = await this.loadSnapshot('relationships', 'all');
+      if (!snapshot) {
+        return null;
+      }
+      const parsed = safeJsonParse(snapshot.json);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      const fallback = await this.loadFallbackSnapshotValue('relationships', 'all', error);
+      return fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : null;
     }
-    const parsed = safeJsonParse(snapshot.json);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   }
 
   async saveRelationshipProfiles(profiles: Record<string, unknown>) {
     const normalizedProfiles = normalizeRelationshipProfiles(profiles);
-    await this.saveSnapshot('relationships', 'all', normalizedProfiles);
-    await this.replaceRelationshipGraph(normalizedProfiles);
+    try {
+      await this.saveSnapshot('relationships', 'all', normalizedProfiles);
+      await this.replaceRelationshipGraph(normalizedProfiles);
+    } catch (error) {
+      await this.saveFallbackSnapshotValue('relationships', 'all', normalizedProfiles, error);
+    }
   }
 
   async deleteRelationshipProfile(scopeKey: string) {
@@ -297,12 +358,17 @@ export class LadybugMemoryService {
         : {};
     delete nextProfiles[normalizedScopeKey];
     await this.saveRelationshipProfiles(nextProfiles);
-    await this.deleteScopeNodeIfUnused(normalizedScopeKey);
+    try {
+      await this.deleteScopeNodeIfUnused(normalizedScopeKey);
+    } catch {
+      // The JSON fallback has no graph rows to prune.
+    }
   }
 
   async getGraphSummary(): Promise<LadybugMemoryGraphSummary> {
-    await this.open();
-    const [
+    try {
+      await this.open();
+      const [
       hasCandidateEdges,
       hasBlockEdges,
       hasDiaryEdges,
@@ -396,7 +462,7 @@ export class LadybugMemoryService {
       ),
     ]);
 
-    return {
+      return {
       edges: [
         { relation: 'HAS_CANDIDATE', count: hasCandidateEdges },
         { relation: 'HAS_BLOCK', count: hasBlockEdges },
@@ -491,7 +557,284 @@ export class LadybugMemoryService {
         personaId: stringValue(row['personaId']),
         source: stringValue(row['source']),
       })),
+      };
+    } catch (error) {
+      return this.getFallbackGraphSummary(error);
+    }
+  }
+
+  private async getFallbackStatus(error: unknown) {
+    await this.enableFallback(error);
+    const store = await this.readFallbackStore();
+    const snapshots = Object.values(store.snapshots);
+    const grilloStates = snapshots.filter((snapshot) => snapshot.kind === 'grillo');
+    const semanticStates = snapshots.filter((snapshot) => snapshot.kind === 'semantic');
+    const relationshipProfiles = getFallbackRelationshipProfiles(store);
+    const grilloCounts = grilloStates.reduce(
+      (counts, snapshot) => {
+        const value = snapshot.value && typeof snapshot.value === 'object'
+          ? (snapshot.value as Record<string, unknown>)
+          : {};
+        counts.candidates += arrayValue(value['candidates']).length;
+        counts.memoryBlocks += arrayValue(value['blocks']).length;
+        counts.diaryEntries += [
+          ...arrayValue(value['diaryEntries']),
+          ...arrayValue(value['diary']),
+        ].length;
+        return counts;
+      },
+      { candidates: 0, diaryEntries: 0, memoryBlocks: 0 },
+    );
+    const semanticRecords = semanticStates.reduce(
+      (count, snapshot) =>
+        count + (Array.isArray(snapshot.value) ? normalizeSemanticRecords(snapshot.value).length : 0),
+      0,
+    );
+    return {
+      backend: 'json-fallback',
+      dbDir: this.dbDir,
+      fallbackFile: this.fallbackStorePath,
+      fallbackReason: store.reason ?? this.fallbackReason,
+      initialized: true,
+      snapshots: snapshots.length,
+      grilloScopes: new Set(grilloStates.map((snapshot) => snapshot.scopeKey)).size,
+      semanticScopes: new Set(semanticStates.map((snapshot) => snapshot.scopeKey)).size,
+      scopes: new Set(snapshots.map((snapshot) => snapshot.scopeKey)).size,
+      participants: 0,
+      personas: 0,
+      candidates: grilloCounts.candidates,
+      memoryBlocks: grilloCounts.memoryBlocks,
+      diaryEntries: grilloCounts.diaryEntries,
+      emotionStates: 0,
+      emotionIntensities: 0,
+      semanticRecords,
+      semanticVectors: semanticRecords,
+      relationshipProfiles: Object.keys(relationshipProfiles).length,
+      relationshipFacts: Object.values(relationshipProfiles).reduce<number>(
+        (count, profile) =>
+          count +
+          (profile && typeof profile === 'object'
+            ? getRelationshipFacts(profile as Record<string, unknown>).length
+            : 0),
+        0,
+      ),
+      relationshipEdges: 0,
     };
+  }
+
+  private async getFallbackGraphSummary(error: unknown): Promise<LadybugMemoryGraphSummary> {
+    await this.enableFallback(error);
+    const store = await this.readFallbackStore();
+    const snapshots = Object.values(store.snapshots);
+    const grilloStates = snapshots.filter((snapshot) => snapshot.kind === 'grillo');
+    const semanticStates = snapshots.filter((snapshot) => snapshot.kind === 'semantic');
+    const relationshipProfiles = getFallbackRelationshipProfiles(store);
+    const recent = createEmptyGraphSummary().recent;
+
+    for (const snapshot of grilloStates.slice(-8)) {
+      const value = snapshot.value && typeof snapshot.value === 'object'
+        ? (snapshot.value as Record<string, unknown>)
+        : {};
+      for (const block of arrayValue(value['blocks']).slice(-8)) {
+        if (!block || typeof block !== 'object') continue;
+        const row = block as Record<string, unknown>;
+        const items = arrayValue(row['items']).map((item) => stringValue(item)).filter(Boolean);
+        recent.blocks.push({
+          blockName: stringValue(row['blockName'] ?? row['name']),
+          id: stringValue(row['blockId'] ?? row['id']),
+          itemCount: items.length,
+          items: items.slice(0, 4),
+          participantKey: stringValue(row['participantKey']),
+          scopeKey: snapshot.scopeKey,
+        });
+      }
+      for (const candidate of arrayValue(value['candidates']).slice(-8)) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        const row = candidate as Record<string, unknown>;
+        recent.candidates.push({
+          id: stringValue(row['candidateId'] ?? row['id']),
+          participantKey: stringValue(row['participantKey']),
+          summary: stringValue(row['summary']),
+          type: stringValue(row['type']),
+        });
+      }
+      for (const diaryEntry of [
+        ...arrayValue(value['diaryEntries']),
+        ...arrayValue(value['diary']),
+      ].slice(-8)) {
+        if (!diaryEntry || typeof diaryEntry !== 'object') continue;
+        const row = diaryEntry as Record<string, unknown>;
+        recent.diary.push({
+          beatType: stringValue(row['beatType'] ?? row['beat_type']),
+          id: stringValue(row['diaryId'] ?? row['id']),
+          participantKey: stringValue(row['participantKey']),
+          summary: stringValue(row['summary']),
+        });
+      }
+    }
+
+    for (const [scopeKey, rawProfile] of Object.entries(relationshipProfiles).slice(-8)) {
+      const profile = rawProfile && typeof rawProfile === 'object'
+        ? (rawProfile as Record<string, unknown>)
+        : {};
+      recent.relationships.push({
+        id: `relationship:${scopeKey}`,
+        mood: stringValue(profile['mood']),
+        relationshipStage: stringValue(profile['relationshipStage']),
+        scopeKey,
+        summary: stringValue(profile['profileSummary'] ?? profile['summary']),
+      });
+      for (const fact of getRelationshipFacts(profile).slice(0, 4)) {
+        recent.relationshipFacts.push({
+          id: `relationship-fact:${scopeKey}:${recent.relationshipFacts.length}`,
+          scopeKey,
+          text: stringValue(fact),
+        });
+      }
+    }
+
+    for (const snapshot of semanticStates.slice(-8)) {
+      const records = Array.isArray(snapshot.value) ? normalizeSemanticRecords(snapshot.value) : [];
+      for (const record of records.slice(-8)) {
+        recent.semantic.push({
+          id: record.id,
+          personaId: record.personaId,
+          text: record.text,
+        });
+        if (record.embedding?.length) {
+          recent.vectors.push({
+            id: record.id,
+            personaId: record.personaId,
+            text: record.text,
+          });
+        }
+      }
+    }
+
+    return {
+      ...createEmptyGraphSummary(),
+      edges: [],
+      recent,
+      scopes: snapshots.map((snapshot) => {
+        const parsed = parseScopeKey(snapshot.scopeKey);
+        return {
+          channel: parsed.channel,
+          id: snapshot.scopeKey,
+          personaId: parsed.personaId,
+          source: parsed.source,
+        };
+      }),
+    };
+  }
+
+  private async loadFallbackSnapshotValue(
+    kind: LadybugSnapshotKind,
+    scopeKey: string,
+    error: unknown,
+  ) {
+    await this.enableFallback(error);
+    const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    const store = await this.readFallbackStore();
+    return store.snapshots[snapshotId(kind, normalizedScopeKey)]?.value ?? null;
+  }
+
+  private async saveFallbackSnapshotValue(
+    kind: LadybugSnapshotKind,
+    scopeKey: string,
+    value: unknown,
+    error: unknown,
+  ) {
+    await this.enableFallback(error);
+    const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    const store = await this.readFallbackStore();
+    store.snapshots[snapshotId(kind, normalizedScopeKey)] = {
+      kind,
+      scopeKey: normalizedScopeKey,
+      updatedAt: Date.now(),
+      value,
+    };
+    await this.writeFallbackStore(store);
+  }
+
+  private async deleteFallbackSnapshotValue(
+    kind: LadybugSnapshotKind,
+    scopeKey: string,
+    error: unknown,
+  ) {
+    await this.enableFallback(error);
+    const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    const store = await this.readFallbackStore();
+    delete store.snapshots[snapshotId(kind, normalizedScopeKey)];
+    await this.writeFallbackStore(store);
+  }
+
+  private async queryFallbackSemanticVectors(
+    scopeKey: string,
+    embedding: number[],
+    limit: number,
+    error: unknown,
+  ): Promise<LadybugSemanticMemoryMatch[]> {
+    await this.enableFallback(error);
+    const records = await this.loadSemanticRecords(scopeKey);
+    return (records ?? [])
+      .map((record) => {
+        const distance = cosineDistance(embedding, normalizeEmbeddingArray(record.embedding));
+        return {
+          ...record,
+          distance,
+          score: Math.max(0, 1 - distance),
+        };
+      })
+      .filter((record) => Number.isFinite(record.distance))
+      .sort((left, right) => left.distance - right.distance)
+      .slice(0, Math.max(1, Math.min(20, Math.trunc(limit))));
+  }
+
+  private async enableFallback(error: unknown) {
+    this.fallbackReason ??= error instanceof Error ? error.message : String(error);
+    this.initPromise = null;
+    const state = this.state;
+    this.state = null;
+    await state?.connection.close().catch(() => undefined);
+    await state?.database.close().catch(() => undefined);
+  }
+
+  private get fallbackStorePath() {
+    return `${this.dbDir}.json`;
+  }
+
+  private async readFallbackStore(): Promise<FallbackStore> {
+    await mkdir(dirname(this.fallbackStorePath), { recursive: true });
+    try {
+      const parsed = JSON.parse(await readFile(this.fallbackStorePath, 'utf8')) as Partial<FallbackStore>;
+      return {
+        reason: typeof parsed.reason === 'string' ? parsed.reason : this.fallbackReason,
+        snapshots:
+          parsed.snapshots && typeof parsed.snapshots === 'object' && !Array.isArray(parsed.snapshots)
+            ? (parsed.snapshots as Record<string, FallbackSnapshot>)
+            : {},
+        updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now(),
+        version: 1,
+      };
+    } catch {
+      return {
+        reason: this.fallbackReason,
+        snapshots: {},
+        updatedAt: Date.now(),
+        version: 1,
+      };
+    }
+  }
+
+  private async writeFallbackStore(store: FallbackStore) {
+    const nextStore: FallbackStore = {
+      ...store,
+      reason: store.reason ?? this.fallbackReason,
+      updatedAt: Date.now(),
+      version: 1,
+    };
+    await mkdir(dirname(this.fallbackStorePath), { recursive: true });
+    await writeFile(this.fallbackStorePath, `${JSON.stringify(nextStore, null, 2)}\n`, 'utf8');
   }
 
   async close() {
@@ -1222,4 +1565,57 @@ function normalizeRelationshipProfiles(value: Record<string, unknown>) {
       ])
       .filter((entry): entry is [string, Record<string, unknown>] => Boolean(entry[0] && entry[1])),
   );
+}
+
+function getFallbackRelationshipProfiles(store: FallbackStore) {
+  const snapshot = store.snapshots[snapshotId('relationships', 'all')];
+  return snapshot?.value && typeof snapshot.value === 'object' && !Array.isArray(snapshot.value)
+    ? (snapshot.value as Record<string, unknown>)
+    : {};
+}
+
+function getRelationshipFacts(profile: Record<string, unknown>) {
+  return [...arrayValue(profile['facts']), ...arrayValue(profile['storedFacts'])]
+    .map((fact) => stringValue(fact))
+    .filter(Boolean);
+}
+
+function createEmptyGraphSummary(): LadybugMemoryGraphSummary {
+  return {
+    edges: [],
+    participants: [],
+    personas: [],
+    recent: {
+      blocks: [],
+      candidates: [],
+      diary: [],
+      emotions: [],
+      emotionIntensities: [],
+      relationships: [],
+      relationshipFacts: [],
+      semantic: [],
+      vectors: [],
+    },
+    scopes: [],
+  };
+}
+
+function cosineDistance(left: number[], right: number[]) {
+  if (!left.length || left.length !== right.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let dot = 0;
+  let leftMagnitude = 0;
+  let rightMagnitude = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftValue = left[index] ?? 0;
+    const rightValue = right[index] ?? 0;
+    dot += leftValue * rightValue;
+    leftMagnitude += leftValue * leftValue;
+    rightMagnitude += rightValue * rightValue;
+  }
+  if (leftMagnitude <= 0 || rightMagnitude <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return 1 - dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
 }

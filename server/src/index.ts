@@ -1403,7 +1403,7 @@ const httpServer = createServer(async (request, response) => {
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug memory status failed.',
       });
     }
@@ -1414,13 +1414,13 @@ const httpServer = createServer(async (request, response) => {
     try {
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         graph: await getLadybugMemoryService().getGraphSummary(),
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug memory graph load failed.',
       });
     }
@@ -1432,14 +1432,14 @@ const httpServer = createServer(async (request, response) => {
       const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         scopeKey,
         state: await getLadybugMemoryService().loadGrilloState(scopeKey),
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug Grillo memory load failed.',
       });
     }
@@ -1453,13 +1453,13 @@ const httpServer = createServer(async (request, response) => {
       await getLadybugMemoryService().saveGrilloState(scopeKey, body.state);
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         scopeKey,
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug Grillo memory save failed.',
       });
     }
@@ -1472,13 +1472,13 @@ const httpServer = createServer(async (request, response) => {
       await getLadybugMemoryService().deleteGrilloState(scopeKey);
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         scopeKey,
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug Grillo memory delete failed.',
       });
     }
@@ -1490,14 +1490,14 @@ const httpServer = createServer(async (request, response) => {
       const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         records: await getLadybugMemoryService().loadSemanticRecords(scopeKey),
         scopeKey,
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug semantic memory load failed.',
       });
     }
@@ -1512,13 +1512,13 @@ const httpServer = createServer(async (request, response) => {
       await getLadybugMemoryService().saveSemanticRecords(scopeKey, records);
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         scopeKey,
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug semantic memory save failed.',
       });
     }
@@ -1531,13 +1531,13 @@ const httpServer = createServer(async (request, response) => {
       await getLadybugMemoryService().deleteSemanticRecords(scopeKey);
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         scopeKey,
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug semantic memory delete failed.',
       });
     }
@@ -1554,14 +1554,14 @@ const httpServer = createServer(async (request, response) => {
       const limit = Math.max(1, Math.min(20, Math.trunc(Number(body.limit) || 4)));
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         matches: await getLadybugMemoryService().querySemanticVectors(scopeKey, embedding, limit),
         scopeKey,
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug semantic vector search failed.',
       });
     }
@@ -1572,13 +1572,13 @@ const httpServer = createServer(async (request, response) => {
     try {
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         profiles: await getLadybugMemoryService().loadRelationshipProfiles(),
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error:
           error instanceof Error
             ? error.message
@@ -1598,12 +1598,12 @@ const httpServer = createServer(async (request, response) => {
       await getLadybugMemoryService().saveRelationshipProfiles(profiles);
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error:
           error instanceof Error
             ? error.message
@@ -1619,13 +1619,13 @@ const httpServer = createServer(async (request, response) => {
       await getLadybugMemoryService().deleteRelationshipProfile(scopeKey);
       writeJson(response, 200, {
         ok: true,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         scopeKey,
       });
     } catch (error) {
       writeJson(response, 200, {
         ok: false,
-        backend: 'ladybug',
+        backend: getLadybugMemoryService().getBackendLabel(),
         error:
           error instanceof Error
             ? error.message
