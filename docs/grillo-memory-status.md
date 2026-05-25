@@ -6,7 +6,7 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 
 ## Source Of Truth
 
-- Worktree: `C:\Users\SUBSECT\Documents\Codex\2026-05-04\https-github-com-prismml-eng-bonsai\yourwifey-stream`
+- Worktree: `C:\Users\SUBSECT\Documents\GitHub\WebWaifu4`
 - Reference: `C:\Users\SUBSECT\Downloads\ClosedRouter\grillo_next`
 - Historical loop prompt and completion-promise files were removed from the
   public repo; this document is now only the Grillo memory implementation
@@ -22,8 +22,9 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - Completed local/Twitch replies now write scoped Grillo candidates and diary entries, then promote repeated high-confidence candidates into memory blocks.
 - Scheduled/manual memory passes now run a tool loop before the legacy relationship merge. The loop can read/search/list memory, write candidates, write diary entries, write consolidated memory blocks, insert archival thread memory, and recover candidate/diary objects that were returned without an explicit tool call.
 - The worker loop now requests a `json_schema` structured output contract named `grillo_worker_loop`, and the runtime accepts both `{toolCalls:[...]}` JSON and OpenAI-style `tool_calls` / function-call shaped JSON with stringified arguments.
-- Grillo memory is scoped by conversation state key and participant key. It currently persists in browser localStorage. Server JSONL/SQLite backing is still the next implementation step.
+- Grillo memory is scoped by conversation state key and participant key. It persists in browser IndexedDB with legacy localStorage fallback.
 - Semantic vector memory now persists in browser IndexedDB when available, migrates/falls back to the older semantic localStorage records, calls `/ai/embeddings` for query/save vectors, and does local cosine/lexical/recency scoring before injection into the Grillo/POML context.
+- A LadybugDB graph-memory probe exists at `scripts/probe-ladybug-memory.mjs`. It proves local/Twitch participants, chat turns, memory facts, diary entries, and graph edges work in the Windows/Electron Node stack, but Ladybug is not wired into runtime memory yet.
 
 ## Verification Log
 
@@ -42,14 +43,17 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-13 23:06: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 - 2026-05-14 00:25: `npx vitest run src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-context.test.ts src/lib/chat/prompt.test.ts src/lib/chat/chat-turn.test.ts` -> passed, 18 tests.
 - 2026-05-14 00:26: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-24 18:08: `npx vitest run src/lib/chat/prompt.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/chat-turn.test.ts` -> passed, 25 tests.
+- 2026-05-24 18:12: `npm run probe:ladybug-memory` -> passed, verdict `ladybug-memory-graph-probe-pass`.
 
 ## Next Patch
 
-Implement the durable memory repository:
+Implement the repository boundary before migrating storage:
 
-- Make the worker loop use native OpenAI app-local tool definitions when the server provider exposes them; the structured JSON tool loop remains the browser-safe fallback.
+- Add `MemoryRepository` interfaces for Grillo state and semantic state so IndexedDB and a future Ladybug backend can be tested for identical prompt output.
+- Keep IndexedDB as the default implementation until packaged Electron proves a Ladybug service can own the DB path without blocking UI or breaking portability.
 - Add a visible memory/debug panel or command output for recent worker rounds, side effects, and tool errors.
-- Move the Grillo localStorage repository and browser IndexedDB semantic vector store behind server JSONL or SQLite only if we need multi-browser/session durability.
+- Consider a Ladybug-backed Electron/backend `MemoryGraphService` for connected participant facts, diary entries, and recall metadata after adapter tests pass.
 
 ## Completion Bar
 
