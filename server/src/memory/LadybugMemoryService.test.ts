@@ -162,6 +162,11 @@ describe('LadybugMemoryService', () => {
       expect(graph.recent.relationships[0]?.summary).toContain('low-latency');
       expect(graph.recent.semantic[0]?.text).toContain('remember fast TTS');
       expect(graph.recent.vectors[0]?.text).toContain('remember fast TTS');
+      await service.deleteSemanticRecords('local:persona:hikari-chan');
+      expect(await service.loadSemanticRecords('local:persona:hikari-chan')).toBeNull();
+      const clearedStatus = await service.getStatus();
+      expect(clearedStatus.semanticRecords).toBe(0);
+      expect(clearedStatus.semanticVectors).toBe(0);
     } finally {
       await service.close();
     }

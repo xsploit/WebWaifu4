@@ -111,6 +111,14 @@ export async function saveLadybugSemanticMemory(
   return response?.ok === true;
 }
 
+export async function deleteLadybugSemanticMemory(scopeKey: string) {
+  const response = await requestLadybugMemory(
+    `/memory/semantic?scopeKey=${encodeURIComponent(scopeKey)}`,
+    { method: 'DELETE' },
+  );
+  return response?.ok === true;
+}
+
 export async function searchLadybugSemanticMemory(
   scopeKey: string,
   embedding: number[] | null,

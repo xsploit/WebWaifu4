@@ -10,6 +10,7 @@ const mockedLadybug = vi.hoisted(() => ({
 vi.mock('./ladybug-memory-client', () => ({
   canUseLadybugMemoryBackend: () => true,
   deleteLadybugGrilloState: vi.fn(async () => true),
+  deleteLadybugSemanticMemory: vi.fn(async () => true),
   loadLadybugGrilloState: vi.fn(async () => mockedLadybug.grilloState),
   loadLadybugMemoryGraph: vi.fn(async () => null),
   loadLadybugMemoryStatus: vi.fn(async () => null),

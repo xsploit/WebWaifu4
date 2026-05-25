@@ -1,5 +1,6 @@
 import type { PersonaProfile } from './types';
 import {
+  deleteLadybugSemanticMemory,
   loadLadybugSemanticMemory,
   saveLadybugSemanticMemory,
   searchLadybugSemanticMemory,
@@ -126,6 +127,15 @@ export async function saveSemanticMemory(scopeKey: string, records: SemanticMemo
     );
     saveLegacySemanticMemory(scopeKey, normalizedRecords);
   }
+}
+
+export async function clearSemanticMemory(scopeKey: string) {
+  const cacheKey = normalizeScopeKey(scopeKey);
+  setSemanticMemoryRecordCache(cacheKey, []);
+  if (await deleteLadybugSemanticMemory(scopeKey)) {
+    return;
+  }
+  await saveSemanticMemory(scopeKey, []);
 }
 
 export async function addSemanticMemoryTurn({

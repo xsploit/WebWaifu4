@@ -3,9 +3,9 @@ import { DEFAULT_PERSONA } from './defaults';
 import {
   addSemanticMemoryTurn,
   buildSemanticMemoryContext,
+  clearSemanticMemory,
   findSemanticMemoryMatchesInRecords,
   loadSemanticMemory,
-  saveSemanticMemory,
   scoreSemanticMemoryRecord,
   type SemanticMemoryRecord,
 } from './semantic-memory';
@@ -73,7 +73,7 @@ describe('semantic memory', () => {
       scopeKey,
       userText: 'remember my favorite stage is chroma',
     });
-    await saveSemanticMemory(scopeKey, []);
+    await clearSemanticMemory(scopeKey);
 
     expect(await loadSemanticMemory(scopeKey)).toEqual([]);
   });

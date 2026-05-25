@@ -1522,6 +1522,25 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'DELETE' && runtimePath === '/memory/semantic') {
+    try {
+      const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
+      await getLadybugMemoryService().deleteSemanticRecords(scopeKey);
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        scopeKey,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug semantic memory delete failed.',
+      });
+    }
+    return;
+  }
+
   if (request.method === 'POST' && runtimePath === '/memory/semantic/search') {
     try {
       const body = await readRequestJson<MemorySemanticSearchBody>(request, 1024 * 1024);
