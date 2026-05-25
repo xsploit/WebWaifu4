@@ -2068,12 +2068,6 @@ function sendAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
   return true;
 }
 
-function sendRequiredAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
-  if (!sendAiLiveEvent(socket, event)) {
-    throw new Error('AI live websocket client disconnected.');
-  }
-}
-
 async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, raw: RawData) {
   let message: AiLiveClientMessage;
   try {
@@ -2115,7 +2109,7 @@ async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, 
       body: { ...message.body, stream: true },
       request: runtimeRequest,
       streamEvent: (event) => {
-        sendRequiredAiLiveEvent(socket, { ...event, requestId });
+        sendAiLiveEvent(socket, { ...event, requestId });
       },
     });
     sendAiLiveEvent(socket, {

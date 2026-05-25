@@ -986,15 +986,17 @@ function getAiLiveSocket() {
     socket.onmessage = handleAiLiveSocketMessage;
     socket.onerror = () => {
       const error = new Error('AI live websocket connection failed.');
-      reject(error);
-      rejectAiLivePending(error);
+      if (aiLiveSocket === socket) {
+        reject(error);
+        rejectAiLivePending(error);
+      }
     };
     socket.onclose = () => {
       if (aiLiveSocket === socket) {
         aiLiveSocket = null;
         aiLiveSocketReady = null;
+        rejectAiLivePending(new Error('AI live websocket closed.'));
       }
-      rejectAiLivePending(new Error('AI live websocket closed.'));
     };
   });
   return aiLiveSocketReady;
@@ -1022,18 +1024,12 @@ async function requestChatCompletionLiveWs({
 
   const requestId = `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return new Promise<AppCompletionResponse>((resolve, reject) => {
-    const closeSocketForAbort = () => {
-      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-        socket.close(1000, 'AI live websocket request aborted.');
-      }
-    };
     const cleanup = () => {
       aiLivePendingRequests.delete(requestId);
       signal?.removeEventListener('abort', onAbort);
     };
     const onAbort = () => {
       cleanup();
-      closeSocketForAbort();
       reject(new DOMException('AI live websocket request aborted.', 'AbortError'));
     };
     signal?.addEventListener('abort', onAbort, { once: true });

@@ -55,4 +55,16 @@ describe('server visible delta filter', () => {
       ),
     ).toBe('Final fallback only.');
   });
+
+  it('strips final metadata blocks for non-stream fallback paths', () => {
+    expect(
+      getSafeFinalVisibleText('Visible line. <yw-meta>{"emotion":"happy"}</yw-meta>', undefined),
+    ).toBe('Visible line.');
+    expect(
+      getSafeFinalVisibleText(
+        'Visible line. <hidden block>{"emotion":"annoyed"}</hidden block>',
+        undefined,
+      ),
+    ).toBe('Visible line.');
+  });
 });

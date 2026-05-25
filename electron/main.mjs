@@ -21,6 +21,7 @@ let backendPort = normalizePort(process.env.ELECTRON_BOT_PORT || process.env.BOT
 const devServerUrl = (process.env.ELECTRON_DEV_SERVER_URL || '').trim();
 const externalBackend = process.env.ELECTRON_BACKEND_EXTERNAL === 'true';
 const allowedWindowModes = new Set(['editor', 'desktop', 'overlay']);
+const BACKEND_MAX_EARLY_RESTARTS = 6;
 
 let mainWindow = null;
 let windowMode = readInitialWindowMode();
@@ -145,6 +146,10 @@ function requestBackendJson(port, requestPath, timeout = 1500) {
           body += chunk;
         });
         response.on('end', () => {
+          if (response.statusCode && response.statusCode >= 400) {
+            reject(new Error(`Backend ${requestPath} returned HTTP ${response.statusCode}.`));
+            return;
+          }
           try {
             resolve(JSON.parse(body));
           } catch (error) {
@@ -371,6 +376,16 @@ function scheduleBackendRestartIfNeeded() {
     } catch (error) {
       logDesktop(`failed to rotate Ladybug memory DB: ${formatError(error)}`);
     }
+  }
+  if (backendEarlyExitCount >= BACKEND_MAX_EARLY_RESTARTS) {
+    logDesktop(`backend restart limit reached after ${backendEarlyExitCount} early exits`);
+    mainWindow?.webContents.send('desktop-window-mode-changed', {
+      backendFailed: true,
+      backendPort,
+      clickThrough,
+      mode: windowMode,
+    });
+    return;
   }
   if (backendRestartTimer) {
     clearTimeout(backendRestartTimer);
@@ -662,11 +677,15 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', (event) => {
-  if (externalBackend || !backendProcess || quitAfterBackendStop) {
+  quitAfterBackendStop = true;
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer);
+    backendRestartTimer = null;
+  }
+  if (externalBackend || !backendProcess) {
     return;
   }
   event.preventDefault();
-  quitAfterBackendStop = true;
   void stopBackendIfNeeded().finally(() => app.quit());
 });
 

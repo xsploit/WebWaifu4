@@ -339,9 +339,6 @@ export function getSafeFinalVisibleText(
   if (!trimmed) {
     return '';
   }
-  if (!trimmed.startsWith('{')) {
-    return trimmed;
-  }
-  const filter = createJsonMessageDeltaFilter();
+  const filter = createAiVisibleDeltaFilter(responseFormat);
   return `${filter.push(trimmed)}${filter.flush()}`.trim();
 }
