@@ -25,6 +25,7 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - Grillo memory is scoped by conversation state key and participant key. In desktop mode it tries the local backend LadybugDB routes first, then falls back to browser IndexedDB with legacy localStorage fallback.
 - Semantic vector memory uses the same desktop-backend-first path, then falls back to browser IndexedDB/localStorage, calls `/ai/embeddings` for query/save vectors, and does local cosine/lexical/recency scoring before injection into the Grillo/POML context.
 - LadybugDB now has runtime backend routes for Grillo snapshots, semantic snapshots, memory scopes, participant/persona rows, graph candidate rows, graph diary rows, graph block rows, graph semantic rows, graph relationship edges, and a read-only graph summary for the Memory tab. Packaged Electron starts a bundled Node sidecar so `@ladybugdb/core` loads under Node instead of Electron.
+- The Memory tab now shows the last main-reply prompt injection snapshot: source/state key, current turn text, relationship memory lane, recalled memories lane, and semantic memory lane.
 
 ## Verification Log
 
@@ -57,12 +58,14 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-25 01:11: `npm run desktop:pack` -> passed. Packaged EXE smoke: `/health` 200, `/memory/status` reports `backend: ladybug`, `/memory/graph` returns scopes/edges/recent rows after Grillo and semantic writes, and backend closes after app exit.
 - 2026-05-25 01:13: `npx vitest run src/lib/chat/memory-backend-parity.test.ts` -> passed, verifies Ladybug-backed Grillo and semantic records enter the actual rendered POML prompt lanes.
 - 2026-05-25 01:13: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-25 01:16: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-25 01:16: `npx vitest run src/lib/chat/memory-backend-parity.test.ts server/src/memory/LadybugMemoryService.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 25 tests.
 
 ## Next Patch
 
 Continue the Ladybug migration:
 
-- Expand the visible Memory tab into a full debug panel for injected lanes, semantic matches, worker side effects, and provider/embedding failures.
+- Expand the visible Memory tab with pending worker turn counts, worker side effects, and provider/embedding failures.
 - Add a packaged-runtime chat smoke that proves a completed local reply writes Grillo and semantic memory through Ladybug, not only direct memory endpoints.
 
 ## Completion Bar

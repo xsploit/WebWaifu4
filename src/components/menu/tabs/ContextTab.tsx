@@ -4,6 +4,7 @@ import type {
   LadybugMemoryGraphSummary,
   LadybugMemoryStatus,
 } from '../../../lib/chat/ladybug-memory-client';
+import type { MemoryPromptDebugSnapshot } from '../../../lib/chat/memory-debug';
 import type { AiSettings, RelationshipMemory } from '../../../lib/chat/types';
 
 type ContextTabProps = {
@@ -23,6 +24,7 @@ type ContextTabProps = {
   memoryAgentStatus: string;
   memoryBackendStatus: LadybugMemoryStatus | null;
   memoryGraphSummary: LadybugMemoryGraphSummary | null;
+  memoryPromptDebug: MemoryPromptDebugSnapshot | null;
   modelsError: string | null;
   modelsLoading: boolean;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
@@ -45,6 +47,7 @@ export function ContextTab({
   memoryAgentStatus,
   memoryBackendStatus,
   memoryGraphSummary,
+  memoryPromptDebug,
   modelsError,
   modelsLoading,
   setAiSettings,
@@ -60,6 +63,10 @@ export function ContextTab({
   const lastUpdated =
     hasGrilloMemory && grilloMemoryState.updatedAt > 0
       ? new Date(grilloMemoryState.updatedAt).toLocaleString()
+      : '';
+  const lastPromptDebugAt =
+    memoryPromptDebug && memoryPromptDebug.updatedAt > 0
+      ? new Date(memoryPromptDebug.updatedAt).toLocaleTimeString()
       : '';
 
   return (
@@ -219,6 +226,61 @@ export function ContextTab({
           stores. Candidate memories ingest raw local and Twitch chat turns; diary thoughts are
           written by the worker only when there is something worth reflecting on.
         </div>
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">Last Prompt Injection</div>
+        {memoryPromptDebug ? (
+          <div className="memory-list">
+            <div className="memory-entry">
+              <div className="memory-entry-header">
+                <strong>{memoryPromptDebug.source}</strong>
+                <span>{lastPromptDebugAt}</span>
+              </div>
+              <p>{memoryPromptDebug.turnText || 'No turn text captured.'}</p>
+              <p>{memoryPromptDebug.stateKey}</p>
+            </div>
+            <div className="memory-entry">
+              <div className="memory-entry-header">
+                <strong>relationship_memory</strong>
+                <span>{memoryPromptDebug.grilloRelationshipMemory.length}</span>
+              </div>
+              <ul>
+                {memoryPromptDebug.grilloRelationshipMemory.length > 0 ? (
+                  memoryPromptDebug.grilloRelationshipMemory.map((item, index) => (
+                    <li key={`${index}:${item}`}>{item}</li>
+                  ))
+                ) : (
+                  <li>No relationship memory injected.</li>
+                )}
+              </ul>
+            </div>
+            <div className="memory-entry">
+              <div className="memory-entry-header">
+                <strong>recalled_memories</strong>
+                <span>{memoryPromptDebug.grilloRecalledMemories.length}</span>
+              </div>
+              <ul>
+                {memoryPromptDebug.grilloRecalledMemories.length > 0 ? (
+                  memoryPromptDebug.grilloRecalledMemories.map((item, index) => (
+                    <li key={`${index}:${item}`}>{item}</li>
+                  ))
+                ) : (
+                  <li>No Grillo recall injected.</li>
+                )}
+              </ul>
+            </div>
+            <div className="memory-entry">
+              <div className="memory-entry-header">
+                <strong>semantic_memory</strong>
+                <span>{memoryPromptDebug.semanticMemoryContext.trim() ? 'present' : 'empty'}</span>
+              </div>
+              <p>{memoryPromptDebug.semanticMemoryContext || 'No semantic matches injected.'}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="status-copy">No completed prompt injection captured yet.</div>
+        )}
       </div>
 
       <div className="control-group">

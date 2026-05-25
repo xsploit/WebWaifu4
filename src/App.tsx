@@ -31,6 +31,7 @@ import {
   normalizeMemoryAgentIntervalMessages,
   shouldRunMemoryAgent,
 } from './lib/chat/memory-agent';
+import type { MemoryPromptDebugSnapshot } from './lib/chat/memory-debug';
 import { updateRelationshipMemory } from './lib/chat/memory';
 import {
   buildGrilloMemoryPromptAdditionsAsync,
@@ -1883,6 +1884,8 @@ function App() {
   const [memoryBackendStatus, setMemoryBackendStatus] = useState<LadybugMemoryStatus | null>(null);
   const [memoryGraphSummary, setMemoryGraphSummary] =
     useState<LadybugMemoryGraphSummary | null>(null);
+  const [memoryPromptDebug, setMemoryPromptDebug] =
+    useState<MemoryPromptDebugSnapshot | null>(null);
   const [grilloMemoryState, setGrilloMemoryState] = useState<GrilloMemoryState>(() =>
     createDefaultGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
   );
@@ -5106,6 +5109,18 @@ function App() {
           query: userContent,
           scopeKey: stateKey,
         });
+        setMemoryPromptDebug({
+          grilloDiaryThoughts: grilloMemory.diaryThoughts.slice(0, 4),
+          grilloRecalledMemories: grilloMemory.recalledMemories
+            .slice(0, 6)
+            .map((item) => item.text),
+          grilloRelationshipMemory: grilloMemory.relationshipMemory.slice(0, 6),
+          semanticMemoryContext,
+          source: targetMessage?.source ?? 'twitch',
+          stateKey,
+          turnText: userContent.slice(0, 600),
+          updatedAt: Date.now(),
+        });
         const promptVisionFrame = getFreshTwitchStreamFrameForPrompt({
           frame: twitchStreamFrameRef.current,
           llmProvider: settings.llmProvider,
@@ -6148,6 +6163,7 @@ function App() {
               memoryAgentStatus={memoryAgentStatus}
               memoryBackendStatus={memoryBackendStatus}
               memoryGraphSummary={memoryGraphSummary}
+              memoryPromptDebug={memoryPromptDebug}
               sequencerSettings={sequencerSettings}
               setAiSettings={setAiSettings}
               setSequencerSettings={setSequencerSettings}
