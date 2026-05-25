@@ -1778,4 +1778,35 @@ describe('OpenAiResponsesProvider', () => {
       previousResponseId: 'resp_stream_lifecycle',
     });
   });
+
+  it('aborts upstream HTTP requests when the request signal aborts', async () => {
+    const controller = new AbortController();
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-4.1-mini',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      useWebSocket: false,
+      fetcher: (async (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          if (init?.signal?.aborted) {
+            reject(new Error('fetch aborted by signal'));
+            return;
+          }
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new Error('fetch aborted by signal')),
+            { once: true },
+          );
+        })) as typeof fetch,
+    });
+
+    const pending = provider.complete({ ...createRequest('abort me'), signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('fetch aborted by signal');
+  });
 });

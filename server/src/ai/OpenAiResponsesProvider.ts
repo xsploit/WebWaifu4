@@ -703,7 +703,13 @@ export class OpenAiResponsesProvider implements ChatProvider {
   async complete(request: ChatProviderRequest): Promise<ChatProviderResponse> {
     const runtime = this.getRequestRuntime(request);
     const payload = await this.createResponsesPayload(request, runtime);
-    const result = await this.completeResponsesWithTools(payload, false, undefined, runtime);
+    const result = await this.completeResponsesWithTools(
+      payload,
+      false,
+      undefined,
+      runtime,
+      request.signal,
+    );
     const text = extractResponseText(result.response);
 
     if (!text) {
@@ -731,6 +737,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       true,
       handlers.onTextDelta,
       runtime,
+      request.signal,
     );
     const text = extractResponseText(result.response);
 
@@ -780,17 +787,20 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return this.sdkClient;
   }
 
-  private async createSdkResponse(payload: Record<string, unknown>) {
-    return (await this.getOpenAiClient().responses.create(
-      payload as never,
-    )) as unknown as OpenAiResponsePayload;
+  private async createSdkResponse(payload: Record<string, unknown>, signal?: AbortSignal) {
+    return (await this.getOpenAiClient().responses.create(payload as never, {
+      signal,
+    } as never)) as unknown as OpenAiResponsePayload;
   }
 
-  private async createSdkResponseStream(payload: Record<string, unknown>) {
-    return (await this.getOpenAiClient().responses.create({
-      ...payload,
-      stream: true,
-    } as never)) as unknown as AsyncIterable<OpenAiWebSocketEvent>;
+  private async createSdkResponseStream(payload: Record<string, unknown>, signal?: AbortSignal) {
+    return (await this.getOpenAiClient().responses.create(
+      {
+        ...payload,
+        stream: true,
+      } as never,
+      { signal } as never,
+    )) as unknown as AsyncIterable<OpenAiWebSocketEvent>;
   }
 
   private async createSdkConversation() {
@@ -1013,9 +1023,10 @@ export class OpenAiResponsesProvider implements ChatProvider {
       stateMode: this.options.stateMode,
       useWebSocket: this.options.useWebSocket,
     },
+    signal?: AbortSignal,
   ) {
     let payload = initialPayload;
-    let response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime);
+    let response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime, signal);
     const toolsUsed: string[] = [];
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -1048,7 +1059,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
         toolOutputs,
         runtime,
       );
-      response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime);
+      response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime, signal);
     }
 
     if (this.options.tavilyTools && getFunctionCalls(response).length > 0) {
@@ -1066,17 +1077,22 @@ export class OpenAiResponsesProvider implements ChatProvider {
       stateMode: this.options.stateMode,
       useWebSocket: this.options.useWebSocket,
     },
+    signal?: AbortSignal,
   ) {
     let nextPayload = { ...payload };
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         if (runtime.useWebSocket) {
-          return await this.completeWithWebSocket(nextPayload, stream ? onTextDelta : undefined);
+          return await this.completeWithWebSocket(
+            nextPayload,
+            stream ? onTextDelta : undefined,
+            signal,
+          );
         }
 
         return stream
-          ? await this.completeWithHttpStream(nextPayload, onTextDelta)
-          : await this.completeWithHttp(nextPayload);
+          ? await this.completeWithHttpStream(nextPayload, onTextDelta, signal)
+          : await this.completeWithHttp(nextPayload, signal);
       } catch (error) {
         const unsupportedParam = getUnsupportedParamFromError(error);
         if (!unsupportedParam || !(unsupportedParam in nextPayload)) {
@@ -1149,12 +1165,12 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return (await response.json()) as OpenAiConversationPayload;
   }
 
-  private async completeWithHttp(payload: Record<string, unknown>) {
+  private async completeWithHttp(payload: Record<string, unknown>, signal?: AbortSignal) {
     if (this.useSdkHttp) {
-      return this.createSdkResponse(payload);
+      return this.createSdkResponse(payload, signal);
     }
 
-    const { controller, timeout } = this.createRequestAbortController();
+    const { cleanup, controller, timeout } = this.createRequestAbortController(signal);
     let response: Response;
     try {
       response = await this.fetcher(`${this.baseUrl}/responses`, {
@@ -1165,6 +1181,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       });
     } finally {
       clearTimeout(timeout);
+      cleanup();
     }
 
     if (!response.ok) {
@@ -1180,12 +1197,13 @@ export class OpenAiResponsesProvider implements ChatProvider {
   private async completeWithHttpStream(
     payload: Record<string, unknown>,
     onTextDelta?: (delta: string) => void,
+    signal?: AbortSignal,
   ) {
     if (this.useSdkHttp) {
-      return this.completeWithSdkStream(payload, onTextDelta);
+      return this.completeWithSdkStream(payload, onTextDelta, signal);
     }
 
-    const { controller, timeout } = this.createRequestAbortController();
+    const { cleanup, controller, timeout } = this.createRequestAbortController(signal);
     let response: Response;
     try {
       response = await this.fetcher(`${this.baseUrl}/responses`, {
@@ -1196,6 +1214,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       });
     } finally {
       clearTimeout(timeout);
+      cleanup();
     }
 
     if (!response.ok) {
@@ -1205,19 +1224,23 @@ export class OpenAiResponsesProvider implements ChatProvider {
       );
     }
 
-    return this.parseHttpStreamResponse(response, onTextDelta);
+    return this.parseHttpStreamResponse(response, onTextDelta, signal);
   }
 
   private async completeWithSdkStream(
     payload: Record<string, unknown>,
     onTextDelta?: (delta: string) => void,
+    signal?: AbortSignal,
   ): Promise<OpenAiResponsePayload> {
-    const stream = await this.createSdkResponseStream(payload);
+    const stream = await this.createSdkResponseStream(payload, signal);
     let text = '';
     let completed: OpenAiResponsePayload | null = null;
     const functionCalls = createStreamingFunctionCallState();
 
     for await (const event of stream) {
+      if (signal?.aborted) {
+        throw new Error('OpenAI Responses request aborted.');
+      }
       if (event.type === 'response.output_item.added' && isStreamingFunctionCallItem(event.item)) {
         rememberStreamingFunctionCall(functionCalls, event, { ...event.item });
         continue;
@@ -1277,6 +1300,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
   private async parseHttpStreamResponse(
     response: Response,
     onTextDelta?: (delta: string) => void,
+    signal?: AbortSignal,
   ): Promise<OpenAiResponsePayload> {
     if (!response.body) {
       return (await response.json()) as OpenAiResponsePayload;
@@ -1351,7 +1375,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
     };
 
     while (true) {
-      const { value, done } = await this.readStreamChunkWithIdleTimeout(reader);
+      const { value, done } = await this.readStreamChunkWithIdleTimeout(reader, signal);
       if (done) {
         break;
       }
@@ -1380,6 +1404,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
   private async completeWithWebSocket(
     payload: Record<string, unknown>,
     onTextDelta?: (delta: string) => void,
+    signal?: AbortSignal,
   ): Promise<OpenAiResponsePayload> {
     return this.enqueueWebSocketRequest(async () => {
       const socket = await this.createRequestWebSocket();
@@ -1395,6 +1420,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
         const cleanup = (closeSocket = false) => {
           settled = true;
           clearTimeout(timeout);
+          signal?.removeEventListener('abort', onAbort);
           socket.off('message', onMessage);
           socket.off('close', onClose);
           socket.off('error', onError);
@@ -1496,6 +1522,17 @@ export class OpenAiResponsesProvider implements ChatProvider {
           }
         };
 
+        const onAbort = () => {
+          if (!settled) {
+            fail(new Error('OpenAI Responses WebSocket request aborted.'), true);
+          }
+        };
+
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener('abort', onAbort, { once: true });
         socket.on('message', onMessage);
         socket.on('close', onClose);
         socket.on('error', onError);
@@ -1522,32 +1559,55 @@ export class OpenAiResponsesProvider implements ChatProvider {
     return run;
   }
 
-  private createRequestAbortController() {
+  private createRequestAbortController(signal?: AbortSignal) {
     const controller = new AbortController();
+    const abortFromParent = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener('abort', abortFromParent, { once: true });
+    }
     const timeout = setTimeout(
       () => controller.abort(),
       this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
     );
-    return { controller, timeout };
+    const cleanup = () => signal?.removeEventListener('abort', abortFromParent);
+    return { cleanup, controller, timeout };
   }
 
-  private readStreamChunkWithIdleTimeout(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  private readStreamChunkWithIdleTimeout(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    signal?: AbortSignal,
+  ) {
     const idleTimeoutMs = this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     return new Promise<StreamReadResult<Uint8Array>>((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timeout);
+        void reader.cancel().catch(() => {});
+        reject(new Error('OpenAI Responses stream request aborted.'));
+      };
       const timeout = setTimeout(() => {
+        signal?.removeEventListener('abort', abort);
         void reader.cancel().catch(() => {});
         reject(
           new Error(`OpenAI Responses stream was idle for ${Math.round(idleTimeoutMs / 1000)}s.`),
         );
       }, idleTimeoutMs);
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
+      signal?.addEventListener('abort', abort, { once: true });
 
       reader.read().then(
         (result) => {
           clearTimeout(timeout);
+          signal?.removeEventListener('abort', abort);
           resolve(result);
         },
         (error) => {
           clearTimeout(timeout);
+          signal?.removeEventListener('abort', abort);
           reject(error);
         },
       );

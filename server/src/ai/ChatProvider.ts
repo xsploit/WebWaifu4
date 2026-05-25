@@ -35,6 +35,7 @@ export type ChatProviderRequest = {
   openAiStateMode?: 'conversation' | 'previous-response' | 'stateless';
   target?: TwitchChatMessage;
   maxTokens?: number;
+  signal?: AbortSignal;
   temperature?: number;
 };
 

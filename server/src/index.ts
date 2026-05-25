@@ -1097,11 +1097,13 @@ async function runAiChatRequest({
   allowServerProviderProxy,
   body,
   request,
+  signal,
   streamEvent,
 }: {
   allowServerProviderProxy: boolean;
   body: AiChatRequestBody;
   request: IncomingMessage;
+  signal?: AbortSignal;
   streamEvent?: (event: AiChatStreamEvent) => void | Promise<void>;
 }) {
   const messages = normalizeProviderMessages(body.messages);
@@ -1147,6 +1149,7 @@ async function runAiChatRequest({
     sourceMessages: [],
     maxTokens: body.maxTokens,
     responseFormat: normalizeResponseFormat(body.responseFormat),
+    signal,
     stateKey: targetStateKey,
     stateScope: normalizeStateScope(body.stateScope),
     temperature: body.temperature,
@@ -2077,7 +2080,12 @@ function sendAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
   return true;
 }
 
-async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, raw: RawData) {
+async function handleAiLiveMessage(
+  socket: WebSocket,
+  request: IncomingMessage,
+  raw: RawData,
+  signal?: AbortSignal,
+) {
   let message: AiLiveClientMessage;
   try {
     message = JSON.parse(rawDataToUtf8(raw)) as AiLiveClientMessage;
@@ -2095,6 +2103,16 @@ async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, 
     typeof message.requestId === 'string' && message.requestId.trim()
       ? message.requestId.trim().slice(0, 120)
       : `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  if (signal?.aborted) {
+    sendAiLiveEvent(socket, {
+      type: 'error',
+      ok: false,
+      requestId,
+      error: 'AI live websocket request aborted.',
+    });
+    return;
+  }
 
   if (message.type === 'ping') {
     sendAiLiveEvent(socket, { type: 'done', ok: true, requestId, text: '', meta: null });
@@ -2117,6 +2135,7 @@ async function handleAiLiveMessage(socket: WebSocket, request: IncomingMessage, 
       allowServerProviderProxy: config.providerProxyEnabled,
       body: { ...message.body, stream: true },
       request: runtimeRequest,
+      signal,
       streamEvent: (event) => {
         sendAiLiveEvent(socket, { ...event, requestId });
       },
@@ -2156,26 +2175,40 @@ httpServer.on('upgrade', (request, socket, head) => {
 aiLiveSocket.on('connection', (socket, request) => {
   let queue = Promise.resolve();
   let queuedMessages = 0;
+  const activeControllers = new Set<AbortController>();
   const onMessage = (raw: RawData) => {
     if (socket.readyState !== WebSocket.OPEN) {
       return;
     }
     if (queuedMessages >= AI_LIVE_MAX_QUEUED_MESSAGES) {
+      for (const controller of activeControllers) {
+        controller.abort();
+      }
       socket.close(1013, 'AI live websocket queue limit exceeded.');
       return;
     }
+    const controller = new AbortController();
+    activeControllers.add(controller);
     queuedMessages += 1;
     queue = queue.then(
-      () => handleAiLiveMessage(socket, request, raw).finally(() => {
-        queuedMessages = Math.max(0, queuedMessages - 1);
-      }),
-      () => handleAiLiveMessage(socket, request, raw).finally(() => {
-        queuedMessages = Math.max(0, queuedMessages - 1);
-      }),
+      () =>
+        handleAiLiveMessage(socket, request, raw, controller.signal).finally(() => {
+          activeControllers.delete(controller);
+          queuedMessages = Math.max(0, queuedMessages - 1);
+        }),
+      () =>
+        handleAiLiveMessage(socket, request, raw, controller.signal).finally(() => {
+          activeControllers.delete(controller);
+          queuedMessages = Math.max(0, queuedMessages - 1);
+        }),
     );
     void queue.catch(() => {});
   };
   const cleanup = () => {
+    for (const controller of activeControllers) {
+      controller.abort();
+    }
+    activeControllers.clear();
     socket.off('message', onMessage);
     socket.off('close', cleanup);
     socket.off('error', cleanup);
