@@ -223,7 +223,7 @@ async function startBackendIfNeeded(recoveredFromStartupCrash = false) {
 
   process.env.BOT_PORT = backendPort;
   process.env.TWITCH_MOCK ??= 'true';
-  process.env.VITE_BOT_PORT ??= backendPort;
+  process.env.VITE_BOT_PORT = backendPort;
   process.env.WEBWAIFU_MEMORY_DB_DIR ??= path.join(app.getPath('userData'), 'ladybug-memory.db');
 
   const serverEntry = resolveBackendServerEntry();
@@ -240,7 +240,7 @@ async function startBackendIfNeeded(recoveredFromStartupCrash = false) {
       ...process.env,
       BOT_PORT: backendPort,
       TWITCH_MOCK: process.env.TWITCH_MOCK ?? 'true',
-      VITE_BOT_PORT: process.env.VITE_BOT_PORT ?? backendPort,
+      VITE_BOT_PORT: backendPort,
       WEBWAIFU_MEMORY_DB_DIR:
         process.env.WEBWAIFU_MEMORY_DB_DIR ??
         path.join(app.getPath('userData'), 'ladybug-memory.db'),

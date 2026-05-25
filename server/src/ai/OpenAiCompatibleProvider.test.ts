@@ -137,4 +137,34 @@ describe('OpenAiCompatibleProvider', () => {
     expect(calls[0]).not.toHaveProperty('tool_choice');
     expect(JSON.stringify(calls[0]?.['messages'])).not.toContain('Available Runtime Tools');
   });
+
+  it('aborts upstream compatible chat requests when the request signal aborts', async () => {
+    const controller = new AbortController();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          if (init?.signal?.aborted) {
+            reject(new Error('compatible fetch aborted'));
+            return;
+          }
+          init?.signal?.addEventListener('abort', () => reject(new Error('compatible fetch aborted')), {
+            once: true,
+          });
+        })),
+    );
+
+    const provider = new OpenAiCompatibleProvider({
+      apiBaseUrl: 'https://compatible.example/v1',
+      apiKey: 'test-key',
+      maxTokens: 120,
+      model: 'compatible-model',
+      temperature: 0.7,
+    });
+
+    const pending = provider.complete({ ...createRequest('abort compatible'), signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('compatible fetch aborted');
+  });
 });

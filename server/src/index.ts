@@ -1172,6 +1172,7 @@ async function runAiChatRequest({
       });
     }
     const bridge = bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge(bridgeRequest) : null;
+    let bridgeTextPushed = false;
     const bridgeDone = bridge
       ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
           onAudioChunk: (chunk) => {
@@ -1201,22 +1202,29 @@ async function runAiChatRequest({
             }
             visibleTextLength += visibleDelta.length;
             void streamEvent({ type: 'delta', delta: visibleDelta });
-            bridge?.push(visibleDelta);
+            if (bridge) {
+              bridgeTextPushed = true;
+              bridge.push(visibleDelta);
+            }
           },
         })) ?? (await runtimeProvider.complete(providerRequest));
       const finalVisibleDelta = visibleDeltaFilter.flush();
       if (finalVisibleDelta) {
         visibleTextLength += finalVisibleDelta.length;
         void streamEvent({ type: 'delta', delta: finalVisibleDelta });
-        bridge?.push(finalVisibleDelta);
+        if (bridge) {
+          bridgeTextPushed = true;
+          bridge.push(finalVisibleDelta);
+        }
       }
       const finalProviderText = getSafeFinalVisibleText(
         providerResponse.text,
         providerRequest.responseFormat,
       );
-      if (bridge && visibleTextLength === 0 && finalProviderText) {
+      if (bridge && !bridgeTextPushed && visibleTextLength === 0 && finalProviderText) {
         visibleTextLength += finalProviderText.length;
         await streamEvent({ type: 'delta', delta: finalProviderText });
+        bridgeTextPushed = true;
         bridge.push(finalProviderText);
       }
       bridge?.close();

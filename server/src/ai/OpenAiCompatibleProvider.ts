@@ -124,6 +124,7 @@ export class OpenAiCompatibleProvider implements ChatProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: request.signal,
       });
 
       if (!response.ok) {
