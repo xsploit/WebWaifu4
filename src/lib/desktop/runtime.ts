@@ -36,7 +36,7 @@ declare global {
 }
 
 function readDesktopSearchParams() {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !window.location) {
     return null;
   }
   return new URLSearchParams(window.location.search);

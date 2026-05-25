@@ -43,6 +43,10 @@ import {
   type GrilloMemoryState,
 } from './lib/chat/grillo-memory';
 import {
+  loadLadybugMemoryStatus,
+  type LadybugMemoryStatus,
+} from './lib/chat/ladybug-memory-client';
+import {
   extractGrilloWorkerRelationshipJson,
   runGrilloMemoryWorkerLoop,
 } from './lib/chat/grillo-memory-loop';
@@ -1874,6 +1878,7 @@ function App() {
   const [aiProxyHealthError, setAiProxyHealthError] = useState<string | null>(null);
   const [memoryAgentBusy, setMemoryAgentBusy] = useState(false);
   const [memoryAgentStatus, setMemoryAgentStatus] = useState('Memory worker idle.');
+  const [memoryBackendStatus, setMemoryBackendStatus] = useState<LadybugMemoryStatus | null>(null);
   const [grilloMemoryState, setGrilloMemoryState] = useState<GrilloMemoryState>(() =>
     createDefaultGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
   );
@@ -2028,6 +2033,18 @@ function App() {
       }
     });
   }, []);
+
+  const refreshMemoryBackendStatus = useCallback(() => {
+    void loadLadybugMemoryStatus().then((status) => {
+      setMemoryBackendStatus(status?.ok ? status : null);
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshMemoryBackendStatus();
+    const timer = window.setInterval(refreshMemoryBackendStatus, 15000);
+    return () => window.clearInterval(timer);
+  }, [refreshMemoryBackendStatus]);
 
   const getScopedRelationshipMemory = useCallback((stateKey: string) => {
     return relationshipMemoriesRef.current[stateKey] ?? createDefaultRelationshipMemory();
@@ -6124,6 +6141,7 @@ function App() {
               relationshipMemory={relationshipMemory}
               memoryAgentBusy={memoryAgentBusy}
               memoryAgentStatus={memoryAgentStatus}
+              memoryBackendStatus={memoryBackendStatus}
               sequencerSettings={sequencerSettings}
               setAiSettings={setAiSettings}
               setSequencerSettings={setSequencerSettings}

@@ -13,6 +13,11 @@ import {
   type MemoryBlock as GrilloCoreMemoryBlock,
   type PromotionCandidate,
 } from '../grillo/memory-promotion';
+import {
+  deleteLadybugGrilloState,
+  loadLadybugGrilloState,
+  saveLadybugGrilloState,
+} from './ladybug-memory-client';
 
 export type GrilloCandidateType =
   | 'preference'
@@ -180,6 +185,13 @@ export function loadGrilloMemoryState(scopeKey: string): GrilloMemoryState {
 
 export async function hydrateGrilloMemoryState(scopeKey: string): Promise<GrilloMemoryState> {
   const key = normalizeScopeStorageKey(scopeKey);
+  const remoteState = await loadLadybugGrilloState(scopeKey);
+  if (remoteState) {
+    const normalizedRemoteState = normalizeGrilloMemoryState(scopeKey, remoteState);
+    grilloMemoryCache.set(key, normalizedRemoteState);
+    return normalizedRemoteState;
+  }
+
   const db = await openGrilloMemoryDb();
   if (!db) {
     const state = loadLegacyGrilloMemoryState(scopeKey);
@@ -1017,6 +1029,10 @@ function enqueueGrilloMemoryWrite(scopeKey: string, task: () => Promise<void>) {
 }
 
 async function persistGrilloMemoryState(state: GrilloMemoryState) {
+  if (await saveLadybugGrilloState(state.scopeKey, compactState(state))) {
+    return;
+  }
+
   const db = await openGrilloMemoryDb();
   if (db) {
     await saveGrilloMemoryStateToIndexedDb(db, state);
@@ -1026,6 +1042,8 @@ async function persistGrilloMemoryState(state: GrilloMemoryState) {
 }
 
 async function deletePersistedGrilloMemoryState(scopeKey: string) {
+  await deleteLadybugGrilloState(scopeKey);
+
   const db = await openGrilloMemoryDb();
   if (db) {
     await deleteGrilloMemoryStateFromIndexedDb(db, scopeKey);

@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { GrilloMemoryState } from '../../../lib/chat/grillo-memory';
+import type { LadybugMemoryStatus } from '../../../lib/chat/ladybug-memory-client';
 import type { AiSettings, RelationshipMemory } from '../../../lib/chat/types';
 
 type ContextTabProps = {
@@ -17,6 +18,7 @@ type ContextTabProps = {
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
   memoryAgentStatus: string;
+  memoryBackendStatus: LadybugMemoryStatus | null;
   modelsError: string | null;
   modelsLoading: boolean;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
@@ -37,6 +39,7 @@ export function ContextTab({
   relationshipMemory,
   memoryAgentBusy,
   memoryAgentStatus,
+  memoryBackendStatus,
   modelsError,
   modelsLoading,
   setAiSettings,
@@ -117,6 +120,32 @@ export function ContextTab({
         </div>
         <div className="status-copy">{memoryAgentStatus}</div>
         {modelsError ? <div className="status-copy">{modelsError}</div> : null}
+      </div>
+
+      <div className="control-group">
+        <div className="control-label">Memory Backend</div>
+        <div className="memory-kv-grid">
+          <div className="status-copy">
+            Backend:{' '}
+            <strong>{memoryBackendStatus?.ok ? memoryBackendStatus.backend : 'browser fallback'}</strong>
+          </div>
+          <div className="status-copy">
+            Snapshots: <strong>{memoryBackendStatus?.snapshots ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Graph candidates: <strong>{memoryBackendStatus?.candidates ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Graph diary: <strong>{memoryBackendStatus?.diaryEntries ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Semantic records: <strong>{memoryBackendStatus?.semanticRecords ?? 0}</strong>
+          </div>
+        </div>
+        <div className="field-hint">
+          Desktop mode uses the local LadybugDB backend for memory snapshots and graph rows, then
+          falls back to browser IndexedDB if the backend is unavailable.
+        </div>
       </div>
 
       <div className="control-group">

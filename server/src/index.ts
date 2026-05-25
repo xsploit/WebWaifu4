@@ -52,6 +52,10 @@ import {
   providerUsesAppOwnedState,
   type RuntimeLlmProvider,
 } from './runtimeProviderRouting.js';
+import {
+  closeLadybugMemoryService,
+  getLadybugMemoryService,
+} from './memory/LadybugMemoryService.js';
 
 type OpenAiEmbeddingPayload = {
   data?: Array<{
@@ -67,6 +71,16 @@ type ProviderModelsPayload = {
   error?: {
     message?: string;
   };
+};
+
+type MemoryGrilloBody = {
+  scopeKey?: unknown;
+  state?: unknown;
+};
+
+type MemorySemanticBody = {
+  records?: unknown;
+  scopeKey?: unknown;
 };
 
 type AiChatRequestBody = {
@@ -1257,10 +1271,17 @@ function getRuntimeApiPath(pathname: string) {
   return pathname.startsWith('/api/ai/') ||
     pathname.startsWith('/api/tts/') ||
     pathname.startsWith('/api/twitch/') ||
+    pathname.startsWith('/api/memory/') ||
     pathname.startsWith('/api/mock/') ||
     pathname === '/api/health'
     ? pathname.slice('/api'.length)
     : pathname;
+}
+
+function normalizeMemoryScopeKey(value: unknown) {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().replace(/[^a-z0-9:_-]+/gi, '-').slice(0, 180) || 'default'
+    : 'default';
 }
 
 const config = loadConfig();
@@ -1357,6 +1378,120 @@ const httpServer = createServer(async (request, response) => {
         },
       },
     });
+    return;
+  }
+
+  if (request.method === 'GET' && runtimePath === '/memory/status') {
+    try {
+      writeJson(response, 200, {
+        ok: true,
+        ...(await getLadybugMemoryService().getStatus()),
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug memory status failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && runtimePath === '/memory/grillo') {
+    try {
+      const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        scopeKey,
+        state: await getLadybugMemoryService().loadGrilloState(scopeKey),
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug Grillo memory load failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'PUT' && runtimePath === '/memory/grillo') {
+    try {
+      const body = await readRequestJson<MemoryGrilloBody>(request, 8 * 1024 * 1024);
+      const scopeKey = normalizeMemoryScopeKey(body.scopeKey);
+      await getLadybugMemoryService().saveGrilloState(scopeKey, body.state);
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        scopeKey,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug Grillo memory save failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'DELETE' && runtimePath === '/memory/grillo') {
+    try {
+      const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
+      await getLadybugMemoryService().deleteGrilloState(scopeKey);
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        scopeKey,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug Grillo memory delete failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && runtimePath === '/memory/semantic') {
+    try {
+      const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        records: await getLadybugMemoryService().loadSemanticRecords(scopeKey),
+        scopeKey,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug semantic memory load failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'PUT' && runtimePath === '/memory/semantic') {
+    try {
+      const body = await readRequestJson<MemorySemanticBody>(request, 8 * 1024 * 1024);
+      const scopeKey = normalizeMemoryScopeKey(body.scopeKey);
+      const records = Array.isArray(body.records) ? body.records : [];
+      await getLadybugMemoryService().saveSemanticRecords(scopeKey, records);
+      writeJson(response, 200, {
+        ok: true,
+        backend: 'ladybug',
+        scopeKey,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: 'ladybug',
+        error: error instanceof Error ? error.message : 'Ladybug semantic memory save failed.',
+      });
+    }
     return;
   }
 
@@ -1968,6 +2103,7 @@ export async function shutdownStreamBot() {
   clearInterval(batchTimer);
   disposeRuntimeChatProviderCache();
   disposeChatProvider(provider);
+  await closeLadybugMemoryService();
   chatSource.stop();
   aiLiveSocket.close();
   overlaySocket.close();

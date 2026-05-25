@@ -170,6 +170,7 @@ async function startBackendIfNeeded() {
   process.env.BOT_PORT = backendPort;
   process.env.TWITCH_MOCK ??= 'true';
   process.env.VITE_BOT_PORT ??= backendPort;
+  process.env.WEBWAIFU_MEMORY_DB_DIR ??= path.join(app.getPath('userData'), 'ladybug-memory.db');
 
   const serverEntry = path.join(appRoot, 'server', 'dist', 'index.js');
   if (!fs.existsSync(serverEntry)) {

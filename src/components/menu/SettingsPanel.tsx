@@ -27,6 +27,7 @@ import type {
 } from '../../lib/tts/remote';
 import { DEFAULT_PERSONA } from '../../lib/chat/defaults';
 import type { GrilloMemoryState } from '../../lib/chat/grillo-memory';
+import type { LadybugMemoryStatus } from '../../lib/chat/ladybug-memory-client';
 import { AccountTab } from './tabs/AccountTab';
 import { AiTab } from './tabs/AiTab';
 import { AnimTab } from './tabs/AnimTab';
@@ -103,6 +104,7 @@ type SettingsPanelProps = {
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
   memoryAgentStatus: string;
+  memoryBackendStatus: LadybugMemoryStatus | null;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
   setSequencerSettings: Dispatch<SetStateAction<SequencerSettings>>;
   setTwitchSettings: Dispatch<SetStateAction<TwitchSettings>>;
@@ -209,6 +211,7 @@ export function SettingsPanel({
   relationshipMemory,
   memoryAgentBusy,
   memoryAgentStatus,
+  memoryBackendStatus,
   setAiSettings,
   setSequencerSettings,
   setTwitchSettings,
@@ -332,6 +335,7 @@ export function SettingsPanel({
         relationshipMemory={relationshipMemory}
         memoryAgentBusy={memoryAgentBusy}
         memoryAgentStatus={memoryAgentStatus}
+        memoryBackendStatus={memoryBackendStatus}
         modelsError={modelsError}
         modelsLoading={modelsLoading}
         setAiSettings={setAiSettings}

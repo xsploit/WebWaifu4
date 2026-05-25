@@ -22,9 +22,9 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - Completed local/Twitch replies now write scoped Grillo candidates and diary entries, then promote repeated high-confidence candidates into memory blocks.
 - Scheduled/manual memory passes now run a tool loop before the legacy relationship merge. The loop can read/search/list memory, write candidates, write diary entries, write consolidated memory blocks, insert archival thread memory, and recover candidate/diary objects that were returned without an explicit tool call.
 - The worker loop now requests a `json_schema` structured output contract named `grillo_worker_loop`, and the runtime accepts both `{toolCalls:[...]}` JSON and OpenAI-style `tool_calls` / function-call shaped JSON with stringified arguments.
-- Grillo memory is scoped by conversation state key and participant key. It persists in browser IndexedDB with legacy localStorage fallback.
-- Semantic vector memory now persists in browser IndexedDB when available, migrates/falls back to the older semantic localStorage records, calls `/ai/embeddings` for query/save vectors, and does local cosine/lexical/recency scoring before injection into the Grillo/POML context.
-- A LadybugDB graph-memory probe exists at `scripts/probe-ladybug-memory.mjs`. It proves local/Twitch participants, chat turns, memory facts, diary entries, and graph edges work in the Windows/Electron Node stack, but Ladybug is not wired into runtime memory yet.
+- Grillo memory is scoped by conversation state key and participant key. In desktop mode it tries the local backend LadybugDB routes first, then falls back to browser IndexedDB with legacy localStorage fallback.
+- Semantic vector memory uses the same desktop-backend-first path, then falls back to browser IndexedDB/localStorage, calls `/ai/embeddings` for query/save vectors, and does local cosine/lexical/recency scoring before injection into the Grillo/POML context.
+- LadybugDB now has runtime backend routes for Grillo snapshots, semantic snapshots, graph candidate rows, graph diary rows, graph block rows, and graph semantic rows. Normal Node backend smoke passes. Packaged Electron currently reports Ladybug unavailable because `@ladybugdb/core`'s native module does not load inside Electron on Windows, so packaged builds safely fall back to IndexedDB instead of crashing.
 
 ## Verification Log
 
@@ -45,15 +45,17 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-14 00:26: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 - 2026-05-24 18:08: `npx vitest run src/lib/chat/prompt.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/chat-turn.test.ts` -> passed, 25 tests.
 - 2026-05-24 18:12: `npm run probe:ladybug-memory` -> passed, verdict `ladybug-memory-graph-probe-pass`.
+- 2026-05-25 00:10: `npx vitest run src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 23 tests.
+- 2026-05-25 00:12: local Node backend `/memory/status`, `/memory/grillo`, and `/memory/semantic` smoke -> passed save/load for one Grillo candidate and one semantic record.
+- 2026-05-25 00:14: `npm run desktop:pack` -> passed. Packaged smoke: app opens, `/health` returns 200, backend closes after app exit; `/memory/status` reports Ladybug unavailable in packaged Electron because the native module does not load under Electron.
 
 ## Next Patch
 
-Implement the repository boundary before migrating storage:
+Resolve the packaged Ladybug runtime boundary:
 
-- Add `MemoryRepository` interfaces for Grillo state and semantic state so IndexedDB and a future Ladybug backend can be tested for identical prompt output.
-- Keep IndexedDB as the default implementation until packaged Electron proves a Ladybug service can own the DB path without blocking UI or breaking portability.
-- Add a visible memory/debug panel or command output for recent worker rounds, side effects, and tool errors.
-- Consider a Ladybug-backed Electron/backend `MemoryGraphService` for connected participant facts, diary entries, and recall metadata after adapter tests pass.
+- Choose either a separate Node sidecar backend for packaged desktop, a working Electron-compatible Ladybug native build, or IndexedDB as the packaged default.
+- Add adapter tests that prove identical prompt lanes across IndexedDB fallback and Ladybug Node backend storage.
+- Expand the visible Memory tab into a full debug panel for injected lanes, semantic matches, worker side effects, and provider/embedding failures.
 
 ## Completion Bar
 

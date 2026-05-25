@@ -1,4 +1,8 @@
 import type { PersonaProfile } from './types';
+import {
+  loadLadybugSemanticMemory,
+  saveLadybugSemanticMemory,
+} from './ladybug-memory-client';
 
 export type SemanticMemoryRecord = {
   id: string;
@@ -59,6 +63,13 @@ export async function loadSemanticMemory(scopeKey: string): Promise<SemanticMemo
     return cached;
   }
 
+  const remoteRecords = await loadLadybugSemanticMemory(scopeKey);
+  if (remoteRecords) {
+    const records = normalizeSemanticMemoryRecords(remoteRecords, MAX_RECORDS_PER_SCOPE);
+    setSemanticMemoryRecordCache(cacheKey, records);
+    return records;
+  }
+
   const db = await openSemanticMemoryDb();
   if (!db) {
     const records = loadLegacySemanticMemory(scopeKey);
@@ -95,6 +106,10 @@ export async function saveSemanticMemory(scopeKey: string, records: SemanticMemo
   const cacheKey = normalizeScopeKey(scopeKey);
   const normalizedRecords = normalizeSemanticMemoryRecords(records, MAX_RECORDS_PER_SCOPE);
   setSemanticMemoryRecordCache(cacheKey, normalizedRecords);
+  if (await saveLadybugSemanticMemory(scopeKey, normalizedRecords)) {
+    return;
+  }
+
   const db = await openSemanticMemoryDb();
   if (!db) {
     saveLegacySemanticMemory(scopeKey, normalizedRecords);
