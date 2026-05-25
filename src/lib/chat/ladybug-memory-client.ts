@@ -46,6 +46,14 @@ export type LadybugMemoryGraphSummary = {
       scopeKey: string;
       updatedAt: number;
     }>;
+    emotionIntensities: Array<{
+      emotionStateId: string;
+      id: string;
+      intensity: number;
+      name: string;
+      scopeKey: string;
+      updatedAt: number;
+    }>;
     relationships: Array<{
       id: string;
       mood: string;

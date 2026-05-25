@@ -168,6 +168,12 @@ describe('LadybugMemoryService', () => {
         scopeKey: 'local:persona:hikari-chan',
       });
       expect(graph.recent.emotions[0]?.lastSignalSource).toBe('worker');
+      expect(graph.recent.emotionIntensities[0]).toMatchObject({
+        emotionStateId: 'emotion:local:persona:hikari-chan',
+        intensity: 4,
+        name: 'happy',
+        scopeKey: 'local:persona:hikari-chan',
+      });
       expect(graph.recent.relationships[0]?.summary).toContain('low-latency');
       expect(graph.recent.relationshipFacts[0]).toMatchObject({
         scopeKey: 'local:persona:hikari-chan',

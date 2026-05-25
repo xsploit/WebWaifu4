@@ -39,6 +39,14 @@ export type LadybugMemoryGraphSummary = {
       scopeKey: string;
       updatedAt: number;
     }>;
+    emotionIntensities: Array<{
+      emotionStateId: string;
+      id: string;
+      intensity: number;
+      name: string;
+      scopeKey: string;
+      updatedAt: number;
+    }>;
     relationships: Array<{
       id: string;
       mood: string;
@@ -317,6 +325,7 @@ export class LadybugMemoryService {
       blocks,
       diary,
       emotions,
+      emotionIntensities,
       relationships,
       relationshipFacts,
       semantic,
@@ -369,6 +378,9 @@ export class LadybugMemoryService {
       ),
       this.all(
         'MATCH (m:EmotionState) RETURN m.id AS id, m.scopeKey AS scopeKey, m.lastSignalSource AS lastSignalSource, m.updatedAt AS updatedAt LIMIT 8',
+      ),
+      this.all(
+        'MATCH (m:EmotionIntensity) RETURN m.id AS id, m.scopeKey AS scopeKey, m.emotionStateId AS emotionStateId, m.name AS name, m.intensity AS intensity, m.updatedAt AS updatedAt LIMIT 12',
       ),
       this.all(
         'MATCH (m:RelationshipProfile) RETURN m.id AS id, m.scopeKey AS scopeKey, m.relationshipStage AS relationshipStage, m.mood AS mood, m.summary AS summary LIMIT 8',
@@ -439,6 +451,14 @@ export class LadybugMemoryService {
         emotions: emotions.map((row) => ({
           id: stringValue(row['id']),
           lastSignalSource: stringValue(row['lastSignalSource']),
+          scopeKey: stringValue(row['scopeKey']),
+          updatedAt: Number(row['updatedAt'] ?? 0),
+        })),
+        emotionIntensities: emotionIntensities.map((row) => ({
+          emotionStateId: stringValue(row['emotionStateId']),
+          id: stringValue(row['id']),
+          intensity: numberValue(row['intensity'], 0),
+          name: stringValue(row['name']),
           scopeKey: stringValue(row['scopeKey']),
           updatedAt: Number(row['updatedAt'] ?? 0),
         })),

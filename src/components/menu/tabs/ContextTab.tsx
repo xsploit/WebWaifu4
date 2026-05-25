@@ -326,6 +326,16 @@ export function ContextTab({
                 </div>
               </div>
             ))}
+            {memoryGraphSummary.recent.emotionIntensities.slice(0, 6).map((emotion) => (
+              <div className="memory-entry" key={emotion.id}>
+                <div className="memory-entry-header">
+                  <strong>{emotion.name || 'emotion'}</strong>
+                  <span>{emotion.intensity}</span>
+                </div>
+                <p>{emotion.scopeKey}</p>
+                <div className="status-copy">{emotion.emotionStateId}</div>
+              </div>
+            ))}
             {memoryGraphSummary.recent.semantic.slice(0, 4).map((record) => (
               <div className="memory-entry" key={record.id}>
                 <div className="memory-entry-header">
