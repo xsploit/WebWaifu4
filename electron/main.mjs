@@ -130,7 +130,7 @@ function canListenOnPort(port) {
     probe.once('listening', () => {
       probe.close(() => resolve(true));
     });
-    probe.listen(Number(port), '127.0.0.1');
+    probe.listen(Number(port));
   });
 }
 
