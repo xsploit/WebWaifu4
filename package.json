@@ -71,7 +71,8 @@
       }
     ],
     "asarUnpack": [
-      "server/dist/**"
+      "server/dist/**",
+      "src/lib/chat/templates/**"
     ],
     "win": {
       "target": [

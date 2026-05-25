@@ -30,6 +30,10 @@ let backendProcess = null;
 let backendStopping = null;
 let quitAfterBackendStop = false;
 let desktopControlsVisible = true;
+let backendRestartTimer = null;
+let backendStartedAt = 0;
+let backendEarlyExitCount = 0;
+let memoryDbRecoveryCount = 0;
 
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -157,6 +161,11 @@ async function waitForBackendHealth(port) {
 
 async function startBackendIfNeeded() {
   if (externalBackend) {
+    logDesktop('backend external mode enabled; not starting bundled backend');
+    return;
+  }
+
+  if (backendProcess) {
     return;
   }
 
@@ -179,6 +188,8 @@ async function startBackendIfNeeded() {
   }
 
   const nodeBinary = resolveNodeRuntimeBinary();
+  logDesktop(`starting backend node=${nodeBinary} entry=${serverEntry} port=${backendPort}`);
+  backendStartedAt = Date.now();
   backendProcess = spawn(nodeBinary, [serverEntry], {
     cwd: app.isPackaged ? process.resourcesPath : appRoot,
     env: {
@@ -194,21 +205,25 @@ async function startBackendIfNeeded() {
     windowsHide: true,
   });
   backendProcess.once('error', (error) => {
-    console.error('[desktop] backend process failed to start', error);
+    logDesktop(`backend process failed to start: ${formatError(error)}`);
   });
   backendProcess.stdout?.on('data', (chunk) => {
+    logDesktop(`[backend:stdout] ${chunk.toString().trimEnd()}`);
     process.stdout.write(`[backend] ${chunk}`);
   });
   backendProcess.stderr?.on('data', (chunk) => {
+    logDesktop(`[backend:stderr] ${chunk.toString().trimEnd()}`);
     process.stderr.write(`[backend] ${chunk}`);
   });
   backendProcess.once('exit', (code, signal) => {
     if (backendProcess) {
-      console.warn(`[desktop] backend exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
+      logDesktop(`backend exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
     }
     backendProcess = null;
+    scheduleBackendRestartIfNeeded();
   });
   await waitForBackendHealth(backendPort);
+  logDesktop(`backend healthy on port ${backendPort}`);
 }
 
 async function stopBackendIfNeeded() {
@@ -258,6 +273,91 @@ function resolveBackendServerEntry() {
     return path.join(process.resourcesPath, 'app.asar.unpacked', 'server', 'dist', 'index.js');
   }
   return path.join(appRoot, 'server', 'dist', 'index.js');
+}
+
+function getMemoryDbPath() {
+  return (
+    process.env.WEBWAIFU_MEMORY_DB_DIR ||
+    path.join(app.getPath('userData'), 'ladybug-memory.db')
+  );
+}
+
+function rotateMemoryDbForRecovery() {
+  const dbPath = getMemoryDbPath();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  let rotated = false;
+  for (const candidate of [dbPath, `${dbPath}.wal`]) {
+    if (!fs.existsSync(candidate)) {
+      continue;
+    }
+    const target = `${candidate}.crash-backup-${stamp}`;
+    fs.renameSync(candidate, target);
+    logDesktop(`rotated Ladybug memory DB after backend crash: ${candidate} -> ${target}`);
+    rotated = true;
+  }
+  return rotated;
+}
+
+function scheduleBackendRestartIfNeeded() {
+  if (externalBackend || quitAfterBackendStop || backendStopping || !mainWindow) {
+    return;
+  }
+  const runtimeMs = Date.now() - backendStartedAt;
+  if (runtimeMs < 10000) {
+    backendEarlyExitCount += 1;
+  } else {
+    backendEarlyExitCount = 0;
+  }
+  if (backendEarlyExitCount >= 2 && memoryDbRecoveryCount < 1) {
+    memoryDbRecoveryCount += 1;
+    backendEarlyExitCount = 0;
+    try {
+      rotateMemoryDbForRecovery();
+    } catch (error) {
+      logDesktop(`failed to rotate Ladybug memory DB: ${formatError(error)}`);
+    }
+  }
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer);
+  }
+  backendRestartTimer = setTimeout(() => {
+    backendRestartTimer = null;
+    startBackendIfNeeded()
+      .then(() => {
+        mainWindow?.webContents.send('desktop-window-mode-changed', {
+          backendPort,
+          clickThrough,
+          mode: windowMode,
+        });
+      })
+      .catch((error) => {
+        logDesktop(`backend restart failed: ${formatError(error)}`);
+        scheduleBackendRestartIfNeeded();
+      });
+  }, 1000);
+}
+
+function getDesktopLogPath() {
+  try {
+    return path.join(app.getPath('userData'), 'desktop-main.log');
+  } catch {
+    return path.join(appRoot, 'desktop-main.log');
+  }
+}
+
+function logDesktop(message) {
+  const line = `[${new Date().toISOString()}] ${message}\n`;
+  try {
+    fs.mkdirSync(path.dirname(getDesktopLogPath()), { recursive: true });
+    fs.appendFileSync(getDesktopLogPath(), line);
+  } catch {
+    // Logging must not block app startup.
+  }
+  console.log(`[desktop] ${message}`);
+}
+
+function formatError(error) {
+  return error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
 }
 
 function resolveRendererFile(requestUrl) {
