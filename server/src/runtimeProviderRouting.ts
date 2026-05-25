@@ -10,6 +10,15 @@ export function normalizeRuntimeLlmProvider(value: unknown): RuntimeLlmProvider 
   return 'openai-responses';
 }
 
+export function resolveRuntimeLlmProvider(...values: unknown[]): RuntimeLlmProvider {
+  for (const value of values) {
+    if (value === 'openrouter-responses' || value === 'openai-responses') {
+      return value;
+    }
+  }
+  return 'openai-responses';
+}
+
 export function getRuntimeProviderBaseUrl(provider: RuntimeLlmProvider, openAiBaseUrl: string) {
   if (provider === 'openrouter-responses') {
     return OPENROUTER_BASE_URL;

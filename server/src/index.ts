@@ -50,6 +50,7 @@ import {
   normalizeRuntimeLlmProvider,
   providerModelsCanBeListedWithoutKey,
   providerUsesAppOwnedState,
+  resolveRuntimeLlmProvider,
   type RuntimeLlmProvider,
 } from './runtimeProviderRouting.js';
 import {
@@ -691,8 +692,9 @@ function getRuntimeEmbeddingConfig(
   allowServerProxy = false,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
-  const providerName = normalizeRuntimeLlmProvider(
-    getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
+  const providerName = resolveRuntimeLlmProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider'),
+    llmProvider,
   );
   const serverApiKey =
     providerName === 'openai-responses' ? baseConfig.aiApiKey : getProviderEnvApiKey(providerName);
@@ -714,8 +716,9 @@ function getRuntimeProviderConfig(
   allowServerProxy = false,
 ) {
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
-  const providerName = normalizeRuntimeLlmProvider(
-    getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
+  const providerName = resolveRuntimeLlmProvider(
+    getHeaderValue(request, 'x-yourwifey-llm-provider'),
+    llmProvider,
   );
   if (!apiKey && providerModelsCanBeListedWithoutKey(providerName)) {
     return {
@@ -1800,10 +1803,14 @@ const httpServer = createServer(async (request, response) => {
         return;
       }
 
+      const providerName = resolveRuntimeLlmProvider(
+        getHeaderValue(request, 'x-yourwifey-llm-provider'),
+        body.llmProvider,
+      );
       const model = normalizeEmbeddingModel(
         body.model,
         getProviderEmbeddingModel(
-          normalizeRuntimeLlmProvider(body.llmProvider),
+          providerName,
           process.env['OPENAI_EMBEDDING_MODEL'] || 'text-embedding-3-small',
         ),
       );
@@ -1812,6 +1819,7 @@ const httpServer = createServer(async (request, response) => {
         embedding,
         model,
         ok: true,
+        provider: providerName,
       });
     } catch (error) {
       writeJson(response, 200, {
