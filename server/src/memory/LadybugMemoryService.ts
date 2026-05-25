@@ -78,7 +78,7 @@ export class LadybugMemoryService {
   private state: LadybugState | null = null;
   private initPromise: Promise<LadybugState> | null = null;
 
-  constructor(dbDir = process.env.WEBWAIFU_MEMORY_DB_DIR?.trim() || DEFAULT_MEMORY_DB_DIR) {
+  constructor(dbDir = process.env['WEBWAIFU_MEMORY_DB_DIR']?.trim() || DEFAULT_MEMORY_DB_DIR) {
     this.dbDir = dbDir;
   }
 
