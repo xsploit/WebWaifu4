@@ -1,0 +1,196 @@
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it, vi } from 'vitest';
+import { createDefaultAiSettings, createDefaultRelationshipMemory } from '../../../lib/chat/defaults';
+import { createDefaultGrilloMemoryState } from '../../../lib/chat/grillo-memory';
+import { ContextTab } from './ContextTab';
+
+describe('ContextTab', () => {
+  it('renders Ladybug backend database, vector, graph, and prompt-inspection state', () => {
+    const html = renderToStaticMarkup(
+      <ContextTab
+        aiSettings={createDefaultAiSettings()}
+        availableModels={['gpt-5-nano']}
+        chatDraftLength={0}
+        grilloMemoryState={createDefaultGrilloMemoryState('local:persona:hikari-context')}
+        memoryAgentBusy={false}
+        memoryAgentPendingCounts={{ 'local:persona:hikari-context': 2 }}
+        memoryAgentStatus="Memory worker ready."
+        memoryBackendStatus={{
+          backend: 'ladybug',
+          candidates: 3,
+          dbDir: 'C:/tmp/webwaifu4-memory.db',
+          diaryEntries: 1,
+          emotionIntensities: 2,
+          emotionStates: 1,
+          grilloScopes: 1,
+          memoryBlocks: 1,
+          ok: true,
+          participants: 2,
+          personas: 1,
+          relationshipEdges: 12,
+          relationshipFacts: 1,
+          relationshipProfiles: 1,
+          scopes: 2,
+          semanticRecords: 2,
+          semanticScopes: 1,
+          semanticVectors: 2,
+          snapshots: 3,
+        }}
+        memoryEmbeddingDebug={{
+          inputChars: 42,
+          operation: 'prompt-recall',
+          provider: 'openai-responses',
+          status: 'ok',
+          updatedAt: Date.parse('2026-05-25T12:00:00.000Z'),
+          vectorDims: 1536,
+        }}
+        memoryGraphSummary={{
+          edges: [{ count: 2, relation: 'HAS_VECTOR' }],
+          participants: [
+            { channel: 'local', displayName: 'Subby', id: 'local:local:subby', source: 'local' },
+          ],
+          personas: [{ id: 'hikari-context', name: 'Hikari' }],
+          recent: {
+            blocks: [
+              {
+                blockName: 'preferences',
+                id: 'block-1',
+                itemCount: 1,
+                items: ['Subby prefers Ladybug memory first.'],
+                participantKey: 'local:local:subby',
+                scopeKey: 'local:persona:hikari-context',
+              },
+            ],
+            candidates: [
+              {
+                id: 'candidate-1',
+                participantKey: 'local:local:subby',
+                summary: 'Subby asked me to remember Ladybug.',
+                type: 'fact',
+              },
+            ],
+            diary: [
+              {
+                beatType: 'relationship',
+                id: 'diary-1',
+                participantKey: 'local:local:subby',
+                summary: 'Subby verified memory.',
+              },
+            ],
+            emotionIntensities: [
+              {
+                emotionStateId: 'emotion:local:persona:hikari-context',
+                id: 'emotion-focused',
+                intensity: 6,
+                name: 'focused',
+                scopeKey: 'local:persona:hikari-context',
+                updatedAt: Date.parse('2026-05-25T12:00:00.000Z'),
+              },
+            ],
+            emotions: [
+              {
+                id: 'emotion:local:persona:hikari-context',
+                lastSignalSource: 'diary:diary-1',
+                scopeKey: 'local:persona:hikari-context',
+                updatedAt: Date.parse('2026-05-25T12:00:00.000Z'),
+              },
+            ],
+            relationshipFacts: [
+              {
+                id: 'fact-1',
+                scopeKey: 'local:persona:hikari-context',
+                text: 'Subby prefers Ladybug memory first.',
+              },
+            ],
+            relationships: [
+              {
+                id: 'relationship-1',
+                mood: 'focused',
+                relationshipStage: 'familiar',
+                scopeKey: 'local:persona:hikari-context',
+                summary: 'Local chat is auditing Ladybug memory.',
+              },
+            ],
+            semantic: [
+              {
+                id: 'semantic-1',
+                personaId: 'hikari-context',
+                text: 'User: remember Ladybug semantic memory.',
+              },
+            ],
+            vectors: [
+              {
+                id: 'vector-1',
+                personaId: 'hikari-context',
+                text: 'User: remember Ladybug vector memory.',
+              },
+            ],
+          },
+          scopes: [
+            {
+              channel: 'local',
+              id: 'local:persona:hikari-context',
+              personaId: 'hikari-context',
+              source: 'local',
+            },
+          ],
+        }}
+        memoryPromptDebug={{
+          grilloDiaryThoughts: ['I should keep this memory visible.'],
+          grilloRecalledMemories: ['Subby asked me to remember Ladybug.'],
+          grilloRelationshipMemory: ['Subby prefers Ladybug memory first.'],
+          semanticMemoryContext: '1. User: remember Ladybug vector memory.',
+          source: 'local',
+          stateKey: 'local:persona:hikari-context',
+          turnText: 'Do you remember Ladybug?',
+          updatedAt: Date.parse('2026-05-25T12:00:00.000Z'),
+        }}
+        memoryWorkerDebug={{
+          model: 'gpt-5-nano',
+          processedChatTurnCount: 1,
+          reason: 'chat-cadence',
+          stateKey: 'local:persona:hikari-context',
+          status: 'updated',
+          toolCalls: 2,
+          updatedAt: Date.parse('2026-05-25T12:00:00.000Z'),
+        }}
+        messageCount={1}
+        modelsError={null}
+        modelsLoading={false}
+        onClearChat={vi.fn()}
+        onClearDraft={vi.fn()}
+        onClearMemory={vi.fn()}
+        onRefreshModels={vi.fn()}
+        onResetContext={vi.fn()}
+        onRunMemoryAgent={vi.fn()}
+        relationshipMemory={{
+          ...createDefaultRelationshipMemory(),
+          facts: ['Subby prefers Ladybug memory first.'],
+          mood: 'curious',
+          relationshipStage: 'familiar',
+          summary: 'Local chat is auditing Ladybug memory.',
+          trust: 8,
+          turnCount: 1,
+        }}
+        setAiSettings={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('Backend:');
+    expect(html).toContain('ladybug');
+    expect(html).toContain('Database path:');
+    expect(html).toContain('C:/tmp/webwaifu4-memory.db');
+    expect(html).toContain('Grillo scopes:');
+    expect(html).toContain('Semantic scopes:');
+    expect(html).toContain('Vector records:');
+    expect(html).toContain('Relationship facts:');
+    expect(html).toContain('Graph relations');
+    expect(html).toContain('HAS_VECTOR: 2');
+    expect(html).toContain('Semantic record');
+    expect(html).toContain('Vector record');
+    expect(html).toContain('Last Prompt Injection');
+    expect(html).toContain('relationship_memory');
+    expect(html).toContain('semantic_memory');
+    expect(html).toContain('semantic recall');
+  });
+});

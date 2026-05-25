@@ -213,6 +213,12 @@ export function ContextTab({
             Snapshots: <strong>{memoryBackendStatus?.snapshots ?? 0}</strong>
           </div>
           <div className="status-copy">
+            Grillo scopes: <strong>{memoryBackendStatus?.grilloScopes ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Semantic scopes: <strong>{memoryBackendStatus?.semanticScopes ?? 0}</strong>
+          </div>
+          <div className="status-copy">
             Graph candidates: <strong>{memoryBackendStatus?.candidates ?? 0}</strong>
           </div>
           <div className="status-copy">
@@ -252,10 +258,15 @@ export function ContextTab({
             Graph edges: <strong>{memoryBackendStatus?.relationshipEdges ?? 0}</strong>
           </div>
         </div>
+        {memoryBackendStatus?.dbDir ? (
+          <div className="status-copy">
+            Database path: <strong>{memoryBackendStatus.dbDir}</strong>
+          </div>
+        ) : null}
         <div className="field-hint">
-          Desktop mode uses the local LadybugDB backend for memory snapshots, vector records,
-          participants, personas, scopes, and graph edges, then falls back to browser IndexedDB if
-          the backend is unavailable.
+          Local backend mode uses LadybugDB for memory snapshots, vector records, participants,
+          personas, scopes, and graph edges, then falls back to browser IndexedDB if the backend is
+          unavailable.
         </div>
         {memoryGraphSummary ? (
           <div className="memory-list">
@@ -612,8 +623,9 @@ export function ContextTab({
           </button>
         </div>
         <div className="field-hint">
-          Reset All Context clears chat history, draft text, relationship profile, memory store,
-          pending assistant playback, and any in-flight reply for the current session.
+          Reset All Context clears chat history, draft text, relationship profile, Grillo memory,
+          semantic recall, pending assistant playback, and any in-flight reply for the current
+          session.
         </div>
       </div>
     </>
