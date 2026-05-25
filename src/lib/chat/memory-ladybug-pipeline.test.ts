@@ -7,6 +7,7 @@ import { LadybugMemoryService } from '../../../server/src/memory/LadybugMemorySe
 import { createDefaultRelationshipMemory, DEFAULT_PERSONA } from './defaults';
 import { buildGrilloMemoryPromptAdditionsAsync } from './grillo-memory';
 import { loadLadybugRelationshipMemories } from './ladybug-memory-client';
+import { runGrilloMemoryWorkerLoop } from './grillo-memory-loop';
 import { buildSemanticMemoryContext, findSemanticMemoryMatches } from './semantic-memory';
 import { buildChatCompletionMessages } from './prompt';
 
@@ -51,6 +52,18 @@ describe('Ladybug memory pipeline', () => {
             backend: 'ladybug',
             scopeKey: url.searchParams.get('scopeKey'),
             state: await service.loadGrilloState(url.searchParams.get('scopeKey') ?? ''),
+          });
+        }
+        if (url.pathname === '/memory/grillo' && init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body ?? '{}')) as {
+            scopeKey?: unknown;
+            state?: unknown;
+          };
+          await service.saveGrilloState(String(body.scopeKey ?? ''), body.state);
+          return Response.json({
+            ok: true,
+            backend: 'ladybug',
+            scopeKey: String(body.scopeKey ?? ''),
           });
         }
         if (url.pathname === '/memory/relationships' && (init?.method ?? 'GET') === 'GET') {
@@ -215,5 +228,86 @@ describe('Ladybug memory pipeline', () => {
     expect(systemPrompt).toContain('Ladybug vector recall reaches the prompt');
     expect(systemPrompt).toContain('"stateKey":"local:persona:hikari-pipeline"');
     expect(systemPrompt).toContain('semanticMemory":"present');
+  });
+
+  it('persists memory worker tool writes into Ladybug before the worker pass completes', async () => {
+    const scopeKey = 'local:persona:hikari-worker';
+    const result = await runGrilloMemoryWorkerLoop({
+      complete: async () =>
+        JSON.stringify({
+          candidate: null,
+          diary: null,
+          done: false,
+          memory: null,
+          notes: 'write through Ladybug',
+          relationship: null,
+          toolCalls: [
+            {
+              args: {
+                confidence: 0.93,
+                content: 'Subby wants worker writes to persist through Ladybug first.',
+                summary: 'Subby wants Ladybug-first worker writes',
+                type: 'goal',
+              },
+              name: 'core.worker_candidate_write',
+            },
+            {
+              args: {
+                personal_thought:
+                  'I felt focused because the memory worker had to prove real persistence.',
+                summary: 'Subby asked for memory worker persistence proof.',
+                tags: ['ladybug', 'worker'],
+              },
+              name: 'core.worker_diary_write',
+            },
+            {
+              args: {
+                block_name: 'ongoing_topics',
+                items: ['Prove worker memory writes persist in Ladybug.'],
+                operation: 'merge',
+              },
+              name: 'core.worker_memory_write',
+            },
+          ],
+        }),
+      history: [],
+      maxRounds: 1,
+      model: 'gpt-test',
+      persona: { ...DEFAULT_PERSONA, id: 'hikari-worker', name: 'Hikari' },
+      relationshipMemory: createDefaultRelationshipMemory(),
+      scopeKey,
+      turns: [
+        {
+          badges: ['local-controller'],
+          channel: 'local',
+          displayName: 'Subby',
+          id: 'turn-worker',
+          isBroadcaster: true,
+          isLocal: true,
+          isMod: true,
+          isTrustedController: true,
+          login: 'subby',
+          source: 'local',
+          text: 'make the memory worker write to Ladybug',
+          timestamp: Date.parse('2026-05-25T10:00:00.000Z'),
+        },
+      ],
+    });
+
+    const persisted = (await service?.loadGrilloState(scopeKey)) as {
+      blocks?: Array<{ items?: string[] }>;
+      candidates?: Array<{ summary?: string }>;
+      diaryEntries?: Array<{ summary?: string }>;
+    };
+    expect(result.sideEffects.candidateIds).toHaveLength(1);
+    expect(result.sideEffects.diaryIds).toHaveLength(1);
+    expect(result.sideEffects.slotWrites).toBe(1);
+    expect(persisted.candidates?.[0]?.summary).toBe('Subby wants Ladybug-first worker writes');
+    expect(persisted.diaryEntries?.[0]?.summary).toBe(
+      'Subby asked for memory worker persistence proof.',
+    );
+    expect(persisted.blocks?.some((block) =>
+      block.items?.includes('Prove worker memory writes persist in Ladybug.'),
+    )).toBe(true);
   });
 });
