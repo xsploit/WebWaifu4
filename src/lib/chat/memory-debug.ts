@@ -9,6 +9,16 @@ export type MemoryPromptDebugSnapshot = {
   updatedAt: number;
 };
 
+export type MemoryEmbeddingDebugSnapshot = {
+  error?: string;
+  inputChars: number;
+  operation: 'prompt-recall' | 'semantic-save' | 'worker-search' | 'worker-insert';
+  provider: string;
+  status: 'ok' | 'failed' | 'skipped-empty';
+  updatedAt: number;
+  vectorDims?: number;
+};
+
 export type MemoryWorkerDebugSnapshot = {
   error?: string;
   model?: string;

@@ -27,6 +27,7 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - LadybugDB now has runtime backend routes for Grillo snapshots, semantic snapshots, memory scopes, participant/persona rows, graph candidate rows, graph diary rows, graph block rows, graph semantic rows, graph relationship edges, and a read-only graph summary for the Memory tab. Packaged Electron starts a bundled Node sidecar so `@ladybugdb/core` loads under Node instead of Electron.
 - The Memory tab now shows the last main-reply prompt injection snapshot: source/state key, current turn text, relationship memory lane, recalled memories lane, and semantic memory lane.
 - The Memory tab also shows pending memory-worker turn counts for the current scope/all scopes and the last worker run status, model, reason, processed turn count, tool-call count, and round count.
+- The Memory tab also shows the last embedding call status, operation, provider, input length, vector dimensions, and error when embedding recall/save fails.
 
 ## Verification Log
 
@@ -65,12 +66,14 @@ Adapt the useful non-Discord parts of `C:\Users\SUBSECT\Downloads\ClosedRouter\g
 - 2026-05-25 01:22: `npx vitest run src/lib/chat/memory-backend-parity.test.ts server/src/memory/LadybugMemoryService.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 25 tests.
 - 2026-05-25 01:23: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
 - 2026-05-25 01:23: `git diff --check` -> passed with line-ending warnings only.
+- 2026-05-25 01:26: `npx vitest run src/lib/chat/memory-backend-parity.test.ts server/src/memory/LadybugMemoryService.test.ts src/lib/chat/semantic-memory.test.ts src/lib/chat/grillo-memory.test.ts src/lib/chat/grillo-memory-loop.test.ts src/lib/chat/prompt.test.ts` -> passed, 25 tests.
+- 2026-05-25 01:27: `npm run build` -> passed with existing Vite warnings for onnxruntime-web eval and large chunks.
+- 2026-05-25 01:27: `git diff --check` -> passed with line-ending warnings only.
 
 ## Next Patch
 
 Continue the Ladybug migration:
 
-- Expand the visible Memory tab with provider/embedding failures.
 - Add a packaged-runtime chat smoke that proves a completed local reply writes Grillo and semantic memory through Ladybug, not only direct memory endpoints.
 
 ## Completion Bar

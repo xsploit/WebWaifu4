@@ -11,6 +11,7 @@ import type {
   VoiceLabVoice,
 } from '../../lib/chat/types';
 import type {
+  MemoryEmbeddingDebugSnapshot,
   MemoryPromptDebugSnapshot,
   MemoryWorkerDebugSnapshot,
 } from '../../lib/chat/memory-debug';
@@ -113,6 +114,7 @@ type SettingsPanelProps = {
   memoryAgentPendingCounts: Record<string, number>;
   memoryAgentStatus: string;
   memoryBackendStatus: LadybugMemoryStatus | null;
+  memoryEmbeddingDebug: MemoryEmbeddingDebugSnapshot | null;
   memoryGraphSummary: LadybugMemoryGraphSummary | null;
   memoryPromptDebug: MemoryPromptDebugSnapshot | null;
   memoryWorkerDebug: MemoryWorkerDebugSnapshot | null;
@@ -224,6 +226,7 @@ export function SettingsPanel({
   memoryAgentPendingCounts,
   memoryAgentStatus,
   memoryBackendStatus,
+  memoryEmbeddingDebug,
   memoryGraphSummary,
   memoryPromptDebug,
   memoryWorkerDebug,
@@ -352,6 +355,7 @@ export function SettingsPanel({
         memoryAgentPendingCounts={memoryAgentPendingCounts}
         memoryAgentStatus={memoryAgentStatus}
         memoryBackendStatus={memoryBackendStatus}
+        memoryEmbeddingDebug={memoryEmbeddingDebug}
         memoryGraphSummary={memoryGraphSummary}
         memoryPromptDebug={memoryPromptDebug}
         memoryWorkerDebug={memoryWorkerDebug}

@@ -31,7 +31,11 @@ import {
   normalizeMemoryAgentIntervalMessages,
   shouldRunMemoryAgent,
 } from './lib/chat/memory-agent';
-import type { MemoryPromptDebugSnapshot, MemoryWorkerDebugSnapshot } from './lib/chat/memory-debug';
+import type {
+  MemoryEmbeddingDebugSnapshot,
+  MemoryPromptDebugSnapshot,
+  MemoryWorkerDebugSnapshot,
+} from './lib/chat/memory-debug';
 import { updateRelationshipMemory } from './lib/chat/memory';
 import {
   buildGrilloMemoryPromptAdditionsAsync,
@@ -1205,9 +1209,18 @@ async function requestTextEmbedding(
   input: string,
   providerKeyVaultWorkspaceId?: string,
   llmProvider: AiSettings['llmProvider'] = 'openai-responses',
+  operation: MemoryEmbeddingDebugSnapshot['operation'] = 'prompt-recall',
+  onDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
 ): Promise<number[] | null> {
   const text = input.trim();
   if (!text) {
+    onDebug?.({
+      inputChars: 0,
+      operation,
+      provider: llmProvider,
+      status: 'skipped-empty',
+      updatedAt: Date.now(),
+    });
     return null;
   }
 
@@ -1230,12 +1243,38 @@ async function requestTextEmbedding(
       }),
     });
     if (!response.ok) {
+      onDebug?.({
+        error: `HTTP ${response.status}`,
+        inputChars: text.length,
+        operation,
+        provider: llmProvider,
+        status: 'failed',
+        updatedAt: Date.now(),
+      });
       return null;
     }
 
     const data = (await response.json()) as AppEmbeddingResponse;
-    return data.ok && Array.isArray(data.embedding) ? data.embedding : null;
-  } catch {
+    const embedding = data.ok && Array.isArray(data.embedding) ? data.embedding : null;
+    onDebug?.({
+      error: embedding ? undefined : 'Embedding response did not include a vector.',
+      inputChars: text.length,
+      operation,
+      provider: llmProvider,
+      status: embedding ? 'ok' : 'failed',
+      updatedAt: Date.now(),
+      vectorDims: embedding?.length,
+    });
+    return embedding;
+  } catch (error) {
+    onDebug?.({
+      error: error instanceof Error ? error.message : String(error),
+      inputChars: text.length,
+      operation,
+      provider: llmProvider,
+      status: 'failed',
+      updatedAt: Date.now(),
+    });
     return null;
   } finally {
     window.clearTimeout(timeout);
@@ -1363,8 +1402,15 @@ async function getSemanticMemoryContext(
   query: string,
   providerKeyVaultWorkspaceId?: string,
   llmProvider: AiSettings['llmProvider'] = 'openai-responses',
+  onEmbeddingDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
 ) {
-  const embedding = await requestTextEmbedding(query, providerKeyVaultWorkspaceId, llmProvider);
+  const embedding = await requestTextEmbedding(
+    query,
+    providerKeyVaultWorkspaceId,
+    llmProvider,
+    'prompt-recall',
+    onEmbeddingDebug,
+  );
   return buildSemanticMemoryContext(await findSemanticMemoryMatches(scopeKey, query, embedding));
 }
 
@@ -1375,11 +1421,15 @@ async function rememberSemanticTurn(
   persona: PersonaProfile | null,
   providerKeyVaultWorkspaceId?: string,
   llmProvider: AiSettings['llmProvider'] = 'openai-responses',
+  onEmbeddingDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
+  operation: MemoryEmbeddingDebugSnapshot['operation'] = 'semantic-save',
 ) {
   const embedding = await requestTextEmbedding(
     `${userText}\n${assistantText}`,
     providerKeyVaultWorkspaceId,
     llmProvider,
+    operation,
+    onEmbeddingDebug,
   );
   await addSemanticMemoryTurn({
     assistantText,
@@ -1886,6 +1936,8 @@ function App() {
     useState<LadybugMemoryGraphSummary | null>(null);
   const [memoryPromptDebug, setMemoryPromptDebug] =
     useState<MemoryPromptDebugSnapshot | null>(null);
+  const [memoryEmbeddingDebug, setMemoryEmbeddingDebug] =
+    useState<MemoryEmbeddingDebugSnapshot | null>(null);
   const [memoryWorkerDebug, setMemoryWorkerDebug] =
     useState<MemoryWorkerDebugSnapshot | null>(null);
   const [memoryAgentPendingCounts, setMemoryAgentPendingCounts] = useState<
@@ -4121,6 +4173,8 @@ function App() {
                     activePersona ?? DEFAULT_PERSONA,
                     providerKeyVaultWorkspaceId,
                     aiSettings.llmProvider,
+                    setMemoryEmbeddingDebug,
+                    'worker-insert',
                   );
                   return { ok: true };
                 },
@@ -4129,6 +4183,8 @@ function App() {
                     query,
                     providerKeyVaultWorkspaceId,
                     aiSettings.llmProvider,
+                    'worker-search',
+                    setMemoryEmbeddingDebug,
                   );
                   return (await findSemanticMemoryMatches(stateKey, query, embedding, limit)).map(
                     (match) => ({
@@ -5163,6 +5219,7 @@ function App() {
           userContent,
           providerKeyVaultWorkspaceId,
           settings.llmProvider,
+          setMemoryEmbeddingDebug,
         );
         const grilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
           participantKeys: job.messages.map(getGrilloParticipantKey),
@@ -5313,6 +5370,8 @@ function App() {
           persona,
           providerKeyVaultWorkspaceId,
           settings.llmProvider,
+          setMemoryEmbeddingDebug,
+          'semantic-save',
         );
         const nextGrilloMemoryState = await recordGrilloMemoryTurnAsync({
           assistantText: assistantContent,
@@ -6223,6 +6282,7 @@ function App() {
               memoryAgentStatus={memoryAgentStatus}
               memoryBackendStatus={memoryBackendStatus}
               memoryGraphSummary={memoryGraphSummary}
+              memoryEmbeddingDebug={memoryEmbeddingDebug}
               memoryPromptDebug={memoryPromptDebug}
               memoryWorkerDebug={memoryWorkerDebug}
               memoryAgentPendingCounts={memoryAgentPendingCounts}

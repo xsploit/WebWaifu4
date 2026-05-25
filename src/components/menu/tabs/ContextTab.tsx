@@ -5,6 +5,7 @@ import type {
   LadybugMemoryStatus,
 } from '../../../lib/chat/ladybug-memory-client';
 import type {
+  MemoryEmbeddingDebugSnapshot,
   MemoryPromptDebugSnapshot,
   MemoryWorkerDebugSnapshot,
 } from '../../../lib/chat/memory-debug';
@@ -27,6 +28,7 @@ type ContextTabProps = {
   memoryAgentPendingCounts: Record<string, number>;
   memoryAgentStatus: string;
   memoryBackendStatus: LadybugMemoryStatus | null;
+  memoryEmbeddingDebug: MemoryEmbeddingDebugSnapshot | null;
   memoryGraphSummary: LadybugMemoryGraphSummary | null;
   memoryPromptDebug: MemoryPromptDebugSnapshot | null;
   memoryWorkerDebug: MemoryWorkerDebugSnapshot | null;
@@ -52,6 +54,7 @@ export function ContextTab({
   memoryAgentPendingCounts,
   memoryAgentStatus,
   memoryBackendStatus,
+  memoryEmbeddingDebug,
   memoryGraphSummary,
   memoryPromptDebug,
   memoryWorkerDebug,
@@ -83,6 +86,10 @@ export function ContextTab({
   const lastWorkerDebugAt =
     memoryWorkerDebug && memoryWorkerDebug.updatedAt > 0
       ? new Date(memoryWorkerDebug.updatedAt).toLocaleTimeString()
+      : '';
+  const lastEmbeddingDebugAt =
+    memoryEmbeddingDebug && memoryEmbeddingDebug.updatedAt > 0
+      ? new Date(memoryEmbeddingDebug.updatedAt).toLocaleTimeString()
       : '';
 
   return (
@@ -174,6 +181,22 @@ export function ContextTab({
             </p>
             <p>{memoryWorkerDebug.stateKey}</p>
             {memoryWorkerDebug.error ? <p>{memoryWorkerDebug.error}</p> : null}
+          </div>
+        ) : null}
+        {memoryEmbeddingDebug ? (
+          <div className="memory-entry">
+            <div className="memory-entry-header">
+              <strong>Last embedding call</strong>
+              <span>{lastEmbeddingDebugAt}</span>
+            </div>
+            <p>
+              {memoryEmbeddingDebug.status} / {memoryEmbeddingDebug.operation} /{' '}
+              {memoryEmbeddingDebug.provider} / chars {memoryEmbeddingDebug.inputChars}
+              {typeof memoryEmbeddingDebug.vectorDims === 'number'
+                ? ` / dims ${memoryEmbeddingDebug.vectorDims}`
+                : ''}
+            </p>
+            {memoryEmbeddingDebug.error ? <p>{memoryEmbeddingDebug.error}</p> : null}
           </div>
         ) : null}
         {modelsError ? <div className="status-copy">{modelsError}</div> : null}
