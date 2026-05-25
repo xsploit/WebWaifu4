@@ -219,6 +219,12 @@ export function ContextTab({
             Graph diary: <strong>{memoryBackendStatus?.diaryEntries ?? 0}</strong>
           </div>
           <div className="status-copy">
+            Emotion states: <strong>{memoryBackendStatus?.emotionStates ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Emotion signals: <strong>{memoryBackendStatus?.emotionIntensities ?? 0}</strong>
+          </div>
+          <div className="status-copy">
             Semantic records: <strong>{memoryBackendStatus?.semanticRecords ?? 0}</strong>
           </div>
           <div className="status-copy">
@@ -277,6 +283,19 @@ export function ContextTab({
                 </div>
                 <p>{profile.scopeKey}</p>
                 <div className="status-copy">{profile.summary || 'No relationship summary yet.'}</div>
+              </div>
+            ))}
+            {memoryGraphSummary.recent.emotions.slice(0, 4).map((emotion) => (
+              <div className="memory-entry" key={emotion.id}>
+                <div className="memory-entry-header">
+                  <strong>Emotion state</strong>
+                  <span>{emotion.lastSignalSource || 'no signal source'}</span>
+                </div>
+                <p>{emotion.scopeKey}</p>
+                <div className="status-copy">
+                  Updated:{' '}
+                  {emotion.updatedAt > 0 ? new Date(emotion.updatedAt).toLocaleString() : 'not yet'}
+                </div>
               </div>
             ))}
           </div>

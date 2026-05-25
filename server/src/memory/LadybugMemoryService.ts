@@ -20,6 +20,12 @@ export type LadybugMemoryGraphSummary = {
   recent: {
     candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
     diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
+    emotions: Array<{
+      id: string;
+      lastSignalSource: string;
+      scopeKey: string;
+      updatedAt: number;
+    }>;
     relationships: Array<{
       id: string;
       mood: string;
@@ -81,12 +87,16 @@ export class LadybugMemoryService {
       personas,
       candidates,
       diaryEntries,
+      emotionStates,
+      emotionIntensities,
       semanticRecords,
       relationshipProfiles,
       relationshipFacts,
       hasCandidateEdges,
       hasBlockEdges,
       hasDiaryEdges,
+      hasEmotionEdges,
+      hasEmotionIntensityEdges,
       hasSemanticEdges,
       hasRelationshipEdges,
       hasRelationshipPersonaEdges,
@@ -102,12 +112,16 @@ export class LadybugMemoryService {
         this.scalarCount('MATCH (m:Persona) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:MemoryCandidate) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:DiaryEntry) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:EmotionState) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:EmotionIntensity) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:SemanticRecord) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipProfile) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipFact) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_EMOTION]->(m:EmotionState) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:EmotionState)-[:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) RETURN count(i) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count'),
         this.scalarCount('MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count'),
@@ -117,6 +131,8 @@ export class LadybugMemoryService {
       hasCandidateEdges +
       hasBlockEdges +
       hasDiaryEdges +
+      hasEmotionEdges +
+      hasEmotionIntensityEdges +
       hasSemanticEdges +
       hasRelationshipEdges +
       hasRelationshipPersonaEdges +
@@ -133,6 +149,8 @@ export class LadybugMemoryService {
       personas,
       candidates,
       diaryEntries,
+      emotionStates,
+      emotionIntensities,
       semanticRecords,
       relationshipProfiles,
       relationshipFacts,
@@ -157,6 +175,8 @@ export class LadybugMemoryService {
       'MemoryCandidate',
       'MemoryBlock',
       'DiaryEntry',
+      'EmotionState',
+      'EmotionIntensity',
     ]);
   }
 
@@ -206,6 +226,8 @@ export class LadybugMemoryService {
       candidateAboutEdges,
       blockAboutEdges,
       diaryAboutEdges,
+      emotionScopeEdges,
+      emotionIntensityEdges,
       semanticForPersonaEdges,
       relationshipScopeEdges,
       relationshipPersonaEdges,
@@ -215,6 +237,7 @@ export class LadybugMemoryService {
       personas,
       candidates,
       diary,
+      emotions,
       relationships,
       semantic,
     ] = await Promise.all([
@@ -231,6 +254,8 @@ export class LadybugMemoryService {
       ),
       this.scalarCount('MATCH (m:MemoryBlock)-[:BLOCK_ABOUT]->(p:Participant) RETURN count(m) AS count'),
       this.scalarCount('MATCH (m:DiaryEntry)-[:DIARY_ABOUT]->(p:Participant) RETURN count(m) AS count'),
+      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_EMOTION]->(m:EmotionState) RETURN count(m) AS count'),
+      this.scalarCount('MATCH (m:EmotionState)-[:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) RETURN count(i) AS count'),
       this.scalarCount(
         'MATCH (m:SemanticRecord)-[:SEMANTIC_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
       ),
@@ -257,6 +282,9 @@ export class LadybugMemoryService {
         'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
       ),
       this.all(
+        'MATCH (m:EmotionState) RETURN m.id AS id, m.scopeKey AS scopeKey, m.lastSignalSource AS lastSignalSource, m.updatedAt AS updatedAt LIMIT 8',
+      ),
+      this.all(
         'MATCH (m:RelationshipProfile) RETURN m.id AS id, m.scopeKey AS scopeKey, m.relationshipStage AS relationshipStage, m.mood AS mood, m.summary AS summary LIMIT 8',
       ),
       this.all(
@@ -273,6 +301,8 @@ export class LadybugMemoryService {
         { relation: 'CANDIDATE_ABOUT', count: candidateAboutEdges },
         { relation: 'BLOCK_ABOUT', count: blockAboutEdges },
         { relation: 'DIARY_ABOUT', count: diaryAboutEdges },
+        { relation: 'HAS_EMOTION', count: emotionScopeEdges },
+        { relation: 'HAS_EMOTION_INTENSITY', count: emotionIntensityEdges },
         { relation: 'SEMANTIC_FOR_PERSONA', count: semanticForPersonaEdges },
         { relation: 'HAS_RELATIONSHIP', count: relationshipScopeEdges },
         { relation: 'RELATIONSHIP_AS_PERSONA', count: relationshipPersonaEdges },
@@ -300,6 +330,12 @@ export class LadybugMemoryService {
           id: stringValue(row['id']),
           participantKey: stringValue(row['participantKey']),
           summary: stringValue(row['summary']),
+        })),
+        emotions: emotions.map((row) => ({
+          id: stringValue(row['id']),
+          lastSignalSource: stringValue(row['lastSignalSource']),
+          scopeKey: stringValue(row['scopeKey']),
+          updatedAt: Number(row['updatedAt'] ?? 0),
         })),
         relationships: relationships.map((row) => ({
           id: stringValue(row['id']),
@@ -385,6 +421,16 @@ export class LadybugMemoryService {
     );
     await this.ensureNodeTable(
       connection,
+      'EmotionState',
+      'id STRING, scopeKey STRING, intensitiesJson STRING, lastSignalAt INT64, lastSignalSource STRING, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'EmotionIntensity',
+      'id STRING, emotionStateId STRING, scopeKey STRING, name STRING, intensity DOUBLE, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
       'SemanticRecord',
       'id STRING, scopeKey STRING, personaId STRING, text STRING, userText STRING, assistantText STRING, embeddingJson STRING, createdAt INT64, PRIMARY KEY(id)',
     );
@@ -401,6 +447,12 @@ export class LadybugMemoryService {
     await this.ensureRelTable(connection, 'HAS_CANDIDATE', 'FROM MemoryScope TO MemoryCandidate');
     await this.ensureRelTable(connection, 'HAS_BLOCK', 'FROM MemoryScope TO MemoryBlock');
     await this.ensureRelTable(connection, 'HAS_DIARY', 'FROM MemoryScope TO DiaryEntry');
+    await this.ensureRelTable(connection, 'HAS_EMOTION', 'FROM MemoryScope TO EmotionState');
+    await this.ensureRelTable(
+      connection,
+      'HAS_EMOTION_INTENSITY',
+      'FROM EmotionState TO EmotionIntensity',
+    );
     await this.ensureRelTable(connection, 'HAS_SEMANTIC', 'FROM MemoryScope TO SemanticRecord');
     await this.ensureRelTable(connection, 'HAS_RELATIONSHIP', 'FROM MemoryScope TO RelationshipProfile');
     await this.ensureRelTable(
@@ -480,6 +532,8 @@ export class LadybugMemoryService {
       'MemoryCandidate',
       'MemoryBlock',
       'DiaryEntry',
+      'EmotionState',
+      'EmotionIntensity',
     ]);
     if (!value || typeof value !== 'object') {
       return;
@@ -488,6 +542,10 @@ export class LadybugMemoryService {
     const candidates = Array.isArray(source['candidates']) ? source['candidates'] : [];
     const blocks = Array.isArray(source['blocks']) ? source['blocks'] : [];
     const diaryEntries = Array.isArray(source['diaryEntries']) ? source['diaryEntries'] : [];
+    const emotionState =
+      source['emotionState'] && typeof source['emotionState'] === 'object'
+        ? (source['emotionState'] as Record<string, unknown>)
+        : null;
 
     for (const candidate of candidates.slice(-120)) {
       if (!candidate || typeof candidate !== 'object') continue;
@@ -526,6 +584,39 @@ export class LadybugMemoryService {
       );
       await this.createScopeRelation('HAS_DIARY', 'DiaryEntry', normalizedScopeKey, id);
       await this.createAboutRelation('DIARY_ABOUT', 'DiaryEntry', id, participantKey);
+    }
+
+    if (emotionState) {
+      await this.createEmotionGraph(normalizedScopeKey, emotionState);
+    }
+  }
+
+  private async createEmotionGraph(scopeKey: string, emotionState: Record<string, unknown>) {
+    const emotionStateId = `emotion:${scopeKey}`;
+    const intensities =
+      emotionState['intensities'] &&
+      typeof emotionState['intensities'] === 'object' &&
+      !Array.isArray(emotionState['intensities'])
+        ? (emotionState['intensities'] as Record<string, unknown>)
+        : {};
+    await this.exec(
+      `CREATE (:EmotionState {id: ${q(emotionStateId)}, scopeKey: ${q(scopeKey)}, intensitiesJson: ${q(JSON.stringify(intensities))}, lastSignalAt: ${intValue(emotionState['lastSignalAt'])}, lastSignalSource: ${q(stringValue(emotionState['lastSignalSource']))}, updatedAt: ${intValue(emotionState['updatedAt'])}})`,
+    );
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:EmotionState) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(emotionStateId)} CREATE (s)-[:HAS_EMOTION]->(m)`,
+    );
+    for (const [name, rawIntensity] of Object.entries(intensities)) {
+      const intensity = numberValue(rawIntensity, 0);
+      if (!Number.isFinite(intensity) || intensity <= 0) {
+        continue;
+      }
+      const intensityId = `${emotionStateId}:${normalizeScopeKey(name)}`;
+      await this.exec(
+        `CREATE (:EmotionIntensity {id: ${q(intensityId)}, emotionStateId: ${q(emotionStateId)}, scopeKey: ${q(scopeKey)}, name: ${q(name)}, intensity: ${intensity}, updatedAt: ${intValue(emotionState['updatedAt'])}})`,
+      );
+      await this.exec(
+        `MATCH (m:EmotionState), (i:EmotionIntensity) WHERE m.id = ${q(emotionStateId)} AND i.id = ${q(intensityId)} CREATE (m)-[:HAS_EMOTION_INTENSITY]->(i)`,
+      );
     }
   }
 
@@ -617,6 +708,14 @@ export class LadybugMemoryService {
       ).catch(() => undefined);
       await this.exec(
         `MATCH (m:DiaryEntry)-[r:DIARY_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+    if (labels.includes('EmotionState') || labels.includes('EmotionIntensity')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_EMOTION]->(m:EmotionState) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:EmotionState)-[r:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
       ).catch(() => undefined);
     }
     if (labels.includes('SemanticRecord')) {

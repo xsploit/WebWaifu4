@@ -65,7 +65,12 @@ describe('LadybugMemoryService', () => {
             tags: ['tts'],
           },
         ],
-        emotionState: { intensities: {}, updatedAt: 0 },
+        emotionState: {
+          intensities: { happy: 4 },
+          lastSignalAt: 5,
+          lastSignalSource: 'worker',
+          updatedAt: 5,
+        },
         promotedCandidateIds: ['candidate-1'],
         scopeKey: 'local:persona:hikari-chan',
         updatedAt: 5,
@@ -122,10 +127,12 @@ describe('LadybugMemoryService', () => {
       expect(status.personas).toBe(1);
       expect(status.candidates).toBe(1);
       expect(status.diaryEntries).toBe(1);
+      expect(status.emotionStates).toBe(1);
+      expect(status.emotionIntensities).toBe(1);
       expect(status.semanticRecords).toBe(1);
       expect(status.relationshipProfiles).toBe(1);
       expect(status.relationshipFacts).toBe(1);
-      expect(status.relationshipEdges).toBe(7);
+      expect(status.relationshipEdges).toBe(9);
       expect(graph.scopes[0]?.id).toBe('local:persona:hikari-chan');
       expect(graph.participants[0]?.id).toBe('local:local:subby');
       expect(graph.personas[0]?.id).toBe('hikari-chan');
@@ -134,12 +141,15 @@ describe('LadybugMemoryService', () => {
           'HAS_CANDIDATE',
           'HAS_BLOCK',
           'HAS_DIARY',
+          'HAS_EMOTION',
+          'HAS_EMOTION_INTENSITY',
           'HAS_SEMANTIC',
           'HAS_RELATIONSHIP',
           'HAS_RELATIONSHIP_FACT',
         ]),
       );
       expect(graph.recent.candidates[0]?.summary).toBe('Subby likes fast TTS.');
+      expect(graph.recent.emotions[0]?.lastSignalSource).toBe('worker');
       expect(graph.recent.relationships[0]?.summary).toContain('low-latency');
       expect(graph.recent.semantic[0]?.text).toContain('remember fast TTS');
     } finally {

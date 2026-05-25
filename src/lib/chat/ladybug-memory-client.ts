@@ -8,6 +8,8 @@ export type LadybugMemoryStatus = {
   candidates?: number;
   dbDir?: string;
   diaryEntries?: number;
+  emotionIntensities?: number;
+  emotionStates?: number;
   grilloScopes?: number;
   participants?: number;
   personas?: number;
@@ -28,6 +30,12 @@ export type LadybugMemoryGraphSummary = {
   recent: {
     candidates: Array<{ id: string; participantKey: string; summary: string; type: string }>;
     diary: Array<{ beatType: string; id: string; participantKey: string; summary: string }>;
+    emotions: Array<{
+      id: string;
+      lastSignalSource: string;
+      scopeKey: string;
+      updatedAt: number;
+    }>;
     relationships: Array<{
       id: string;
       mood: string;
