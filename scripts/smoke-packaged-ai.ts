@@ -156,6 +156,62 @@ async function assertBackendHealthy(baseUrl: string) {
   }
 }
 
+function runAiLiveOriginGuardSmoke(baseUrl: string): Promise<SmokeResult> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(getAiLiveUrl(baseUrl), {
+      origin: 'https://evil.example',
+    });
+    const timeout = setTimeout(() => {
+      socket.close();
+      reject(new Error('AI live origin guard smoke timed out.'));
+    }, 10000);
+
+    const finish = (result: SmokeResult) => {
+      clearTimeout(timeout);
+      try {
+        socket.close();
+      } catch {
+        // Socket may already be closed by the rejected upgrade.
+      }
+      resolve(result);
+    };
+
+    socket.once('open', () =>
+      finish({
+        deltaChars: 0,
+        error: 'forbidden origin opened websocket',
+        eventCount: 0,
+        name: 'ai-live-origin-guard',
+        ok: false,
+        status: 101,
+        toolsUsed: [],
+      }),
+    );
+    socket.once('unexpected-response', (_request, response) =>
+      finish({
+        deltaChars: 0,
+        error: response.statusCode === 403 ? null : `expected 403, got ${response.statusCode}`,
+        eventCount: 0,
+        name: 'ai-live-origin-guard',
+        ok: response.statusCode === 403,
+        status: response.statusCode ?? 0,
+        toolsUsed: [],
+      }),
+    );
+    socket.once('error', (error) =>
+      finish({
+        deltaChars: 0,
+        error: error instanceof Error ? error.message : String(error),
+        eventCount: 0,
+        name: 'ai-live-origin-guard',
+        ok: false,
+        status: 0,
+        toolsUsed: [],
+      }),
+    );
+  });
+}
+
 function isPremiumCostModelId(model: string) {
   const normalized = model.trim().toLowerCase();
   const parts = normalized.split('/');
@@ -781,6 +837,9 @@ async function main() {
   await assertBackendHealthy(baseUrl);
 
   const results: SmokeResult[] = [];
+  results.push(
+    await runSmokeStep('ai-live-origin-guard', () => runAiLiveOriginGuardSmoke(baseUrl)),
+  );
   results.push(await runSmokeStep('poml-memory-render', () => runPomlMemorySmoke(baseUrl)));
   if (openAiKey) {
     const openAiHeaders = {

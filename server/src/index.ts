@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
@@ -222,6 +223,19 @@ function writeCorsPreflight(request: IncomingMessage, response: ServerResponse) 
     'Content-Length': '0',
   });
   response.end();
+}
+
+function rejectWebSocketUpgrade(socket: Duplex, statusCode: number, message: string) {
+  const body = `${message}\n`;
+  socket.write(
+    `HTTP/1.1 ${statusCode} ${message}\r\n` +
+      'Connection: close\r\n' +
+      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+      'Content-Type: text/plain; charset=utf-8\r\n' +
+      '\r\n' +
+      body,
+    () => socket.destroy(),
+  );
 }
 
 function waitForLiveTtsBridge(done: Promise<void>, onTimeout: () => void) {
@@ -2217,6 +2231,10 @@ const aiLiveSocket = new WebSocketServer({
 httpServer.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
   if (getRuntimeApiPath(url.pathname) !== AI_LIVE_SOCKET_PATH) {
+    return;
+  }
+  if (!isAllowedCorsOrigin(request)) {
+    rejectWebSocketUpgrade(socket, 403, 'Forbidden');
     return;
   }
   aiLiveSocket.handleUpgrade(request, socket, head, (webSocket) => {
