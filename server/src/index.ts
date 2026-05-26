@@ -153,6 +153,7 @@ const AUTH_SCHEME_PATTERNS = {
   basic: /^basic\s+/i,
   bearer: /^bearer\s+/i,
 } satisfies Record<'basic' | 'bearer', RegExp>;
+const responseRequestMap = new WeakMap<ServerResponse, IncomingMessage>();
 
 type CachedRuntimeChatProvider = {
   key: string;
@@ -162,21 +163,59 @@ type CachedRuntimeChatProvider = {
 
 const runtimeChatProviderCache = new Map<string, CachedRuntimeChatProvider>();
 
+function isLocalCorsHost(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function isAllowedCorsOrigin(request: IncomingMessage | undefined) {
+  const origin = request?.headers.origin;
+  if (!origin) {
+    return '*';
+  }
+  if (typeof origin !== 'string') {
+    return '';
+  }
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol === 'webwaifu:') {
+      return origin;
+    }
+    if (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      isLocalCorsHost(parsed.hostname)
+    ) {
+      return origin;
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
 function createCorsHeaders(request?: IncomingMessage) {
   const requestedHeaders = request?.headers['access-control-request-headers'];
+  const allowedOrigin = isAllowedCorsOrigin(request);
   return {
     'Access-Control-Allow-Headers':
       typeof requestedHeaders === 'string' && requestedHeaders.trim()
         ? requestedHeaders
         : CORS_REQUEST_HEADERS,
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Allow-Origin': '*',
+    ...(allowedOrigin ? { 'Access-Control-Allow-Origin': allowedOrigin } : {}),
     'Access-Control-Allow-Private-Network': 'true',
     Vary: 'Origin, Access-Control-Request-Headers',
   };
 }
 
 function writeCorsPreflight(request: IncomingMessage, response: ServerResponse) {
+  if (!isAllowedCorsOrigin(request)) {
+    response.writeHead(403, {
+      'Content-Length': '0',
+      Vary: 'Origin, Access-Control-Request-Headers',
+    });
+    response.end();
+    return;
+  }
   response.writeHead(204, {
     ...createCorsHeaders(request),
     'Access-Control-Max-Age': '86400',
@@ -367,9 +406,13 @@ function readRequestJson<T>(request: IncomingMessage, maxBodyLength = 100000) {
   });
 }
 
+function createResponseCorsHeaders(response: ServerResponse) {
+  return createCorsHeaders(responseRequestMap.get(response));
+}
+
 function writeJson(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
-    ...createCorsHeaders(),
+    ...createResponseCorsHeaders(response),
     'Content-Type': 'application/json',
   });
   response.end(JSON.stringify(body));
@@ -378,7 +421,7 @@ function writeJson(response: ServerResponse, status: number, body: unknown) {
 function writeSseHead(response: ServerResponse) {
   response.socket?.setNoDelay(true);
   response.writeHead(200, {
-    ...createCorsHeaders(),
+    ...createResponseCorsHeaders(response),
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -445,7 +488,7 @@ function createSseWriter(response: ServerResponse) {
 function writeNdjsonHead(response: ServerResponse) {
   response.socket?.setNoDelay(true);
   response.writeHead(200, {
-    ...createCorsHeaders(),
+    ...createResponseCorsHeaders(response),
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
     'Content-Type': 'application/x-ndjson; charset=utf-8',
@@ -1327,6 +1370,7 @@ let chatSource: TwitchChatSource;
 let commandRouter: CommandRouter;
 
 const httpServer = createServer(async (request, response) => {
+  responseRequestMap.set(response, request);
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
 
   if (request.method === 'OPTIONS') {
