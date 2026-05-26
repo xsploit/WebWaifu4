@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
 
 type ProviderSecretRecord = {
@@ -108,7 +109,7 @@ function getStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
-function hasStructuredJsonEnvelopeLeak(text: string) {
+export function hasStructuredJsonEnvelopeLeak(text: string) {
   const trimmed = text.trim();
   if (!trimmed) {
     return false;
@@ -903,7 +904,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+function isMainModule() {
+  const entrypoint = process.argv[1];
+  return Boolean(entrypoint && import.meta.url === pathToFileURL(entrypoint).href);
+}
+
+if (isMainModule()) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
