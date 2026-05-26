@@ -712,6 +712,11 @@ async function main() {
   const skipOpenAi = hasFlag('--skip-openai');
   const skipOpenRouter = hasFlag('--skip-openrouter');
   const skipTts = hasFlag('--skip-tts');
+  if (skipOpenAi && skipOpenRouter) {
+    throw new Error(
+      'Packaged AI smoke must exercise at least one LLM provider. Use verify:release --skip-packaged-ai for structural checks.',
+    );
+  }
   const openAiKey = skipOpenAi ? '' : requireSecret(backup, 'openai', '--skip-openai');
   const openRouterKey = skipOpenRouter
     ? ''

@@ -226,7 +226,10 @@ OpenRouter, Fish Speech, and Tavily provider keys for the full packaged AI
 smoke. You can also set `WEBWAIFU_RELEASE_BACKUP` instead of passing
 `--backup`, use `--skip-packaged-ai` for a no-provider-key structural release
 check, or pass `--skip-tts`, `--skip-openai`, or `--skip-openrouter` directly to
-`smoke:packaged-ai` when intentionally narrowing that lower-level smoke.
+`smoke:packaged-ai` when intentionally narrowing that lower-level smoke. The
+lower-level packaged AI smoke still requires at least one LLM provider; use
+`verify:release -- --skip-packaged-ai` for structural checks without provider
+calls.
 
 ---
 
