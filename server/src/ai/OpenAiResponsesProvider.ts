@@ -1030,9 +1030,20 @@ export class OpenAiResponsesProvider implements ChatProvider {
     const toolsUsed: string[] = [];
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+      const functionCallItems = (response.output ?? []).filter(isFunctionCallLikeItem);
       const functionCalls = getFunctionCalls(response);
       if (!this.options.tavilyTools || functionCalls.length === 0) {
+        if (this.options.tavilyTools && functionCallItems.length > 0 && !extractResponseText(response)) {
+          throw new Error('AI tool call response is missing a call_id.');
+        }
         return { response, toolsUsed };
+      }
+      if (functionCallItems.length > functionCalls.length) {
+        console.warn(
+          `[OpenAiResponsesProvider] Ignoring ${
+            functionCallItems.length - functionCalls.length
+          } function call item(s) without call_id.`,
+        );
       }
 
       const toolOutputs: ResponsesFunctionCallOutput[] = [];

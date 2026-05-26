@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
+import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -156,6 +157,14 @@ async function runPackagedAiSmoke(backupPath) {
   }
 }
 
+function assertBuiltServerEntry() {
+  const serverEntry = path.join(repoRoot, 'server', 'dist', 'index.js');
+  const stat = fs.statSync(serverEntry);
+  if (!stat.isFile() || stat.size < 1024) {
+    throw new Error(`Built server entry is missing or unexpectedly small: ${serverEntry}`);
+  }
+}
+
 async function main() {
   const backupPath = getArg('--backup') || process.env.WEBWAIFU_RELEASE_BACKUP || '';
   const skipPackagedAi = hasFlag('--skip-packaged-ai');
@@ -171,6 +180,7 @@ async function main() {
   await run('npm', ['run', 'probe:ladybug-memory']);
   await killPackagedRuntime();
   await run('npm', ['run', 'desktop:pack']);
+  assertBuiltServerEntry();
   await killPackagedRuntime();
   await run('npm', ['run', 'smoke:packaged-ui']);
   await run('npm', ['run', 'smoke:packaged-ui:desktop']);

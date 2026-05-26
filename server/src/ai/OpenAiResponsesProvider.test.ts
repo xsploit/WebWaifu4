@@ -259,6 +259,32 @@ function createToolCallingFetcher(calls: FetchCall[]) {
   }) as typeof fetch;
 }
 
+function createMissingToolCallIdFetcher(calls: FetchCall[]) {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+    });
+
+    return new Response(
+      JSON.stringify({
+        id: 'resp_missing_call_id',
+        output: [
+          {
+            type: 'function_call',
+            name: 'web_search',
+            arguments: JSON.stringify({ query: 'latest vtuber AI news', max_results: 2 }),
+          },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+  }) as typeof fetch;
+}
+
 function createEndlessToolCallingFetcher(calls: FetchCall[]) {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     calls.push({
@@ -1139,6 +1165,38 @@ describe('OpenAiResponsesProvider', () => {
       'AI tool loop exceeded 5 rounds.',
     );
     expect(calls).toHaveLength(6);
+  });
+
+  it('fails clearly when a tool call is missing a call id', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-4.1-mini',
+      maxOutputTokens: 300,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createMissingToolCallIdFetcher(calls),
+      tavilyTools: {
+        apiKey: 'test-tavily',
+        searchDepth: 'basic',
+        maxResults: 5,
+        timeoutMs: 10000,
+        fetcher: (async () =>
+          new Response(JSON.stringify({ answer: 'unused', results: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })) as typeof fetch,
+      },
+    });
+
+    await expect(provider.complete(createRequest('look this up'))).rejects.toThrow(
+      'AI tool call response is missing a call_id.',
+    );
+    expect(calls).toHaveLength(1);
   });
 
   it('maps streamed function-call argument events by stable call id', async () => {
