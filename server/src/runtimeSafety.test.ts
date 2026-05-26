@@ -48,6 +48,15 @@ describe('runtimeSafety', () => {
         browserProviderKeyPresent: false,
         configuredModel: 'gpt-5.4-nano',
         defaultModel: 'gpt-5-nano',
+        requestedModel: 'google/gemini-2.5-pro',
+      }),
+    ).toMatchObject({ allowed: false });
+
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: false,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
         requestedModel: 'gpt-5.4-nano',
       }),
     ).toEqual({ allowed: true, model: 'gpt-5.4-nano' });
@@ -82,6 +91,15 @@ describe('runtimeSafety', () => {
         requestedModel: 'openai/o1-pro-2025-03-19',
       }),
     ).toMatchObject({ allowed: false });
+
+    expect(
+      resolveServerProviderProxyModel({
+        browserProviderKeyPresent: true,
+        configuredModel: 'gpt-5.4-nano',
+        defaultModel: 'gpt-5-nano',
+        requestedModel: 'google/gemini-2.5-pro',
+      }),
+    ).toEqual({ allowed: true, model: 'google/gemini-2.5-pro' });
   });
 
   it('supports an explicit server model allowlist for trusted deployments', () => {

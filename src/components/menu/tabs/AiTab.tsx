@@ -1,6 +1,9 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AiProxyHealth, AiSettings } from '../../../lib/chat/types';
-import { applyLlmProviderSwitchDefaults } from '../../../lib/chat/provider-defaults';
+import {
+  applyLlmProviderSwitchDefaults,
+  filterSafeProviderModels,
+} from '../../../lib/chat/provider-defaults';
 import { getReplyLengthLabel, REPLY_LENGTH_MODES } from '../../../lib/chat/reply-length';
 import { Slider } from '../ui/Slider';
 
@@ -89,9 +92,9 @@ export function AiTab({
   setAiSettings,
 }: AiTabProps) {
   const selectedModel = aiSettings.model.trim();
-  const modelOptions = selectedModel
-    ? Array.from(new Set([...availableModels, selectedModel]))
-    : availableModels;
+  const modelOptions = filterSafeProviderModels(
+    selectedModel ? Array.from(new Set([...availableModels, selectedModel])) : availableModels,
+  );
   const providerState = aiProxyHealth?.providerState ?? null;
 
   return (
@@ -145,8 +148,8 @@ export function AiTab({
           ) : null}
         </select>
         <div className="field-hint">
-          Models are loaded directly from the selected provider API through the backend. The list is
-          not curated or filtered by Web Waifu 4.
+          Models are loaded directly from the selected provider API through the backend. OpenAI o1
+          and OpenAI pro models are hidden by default.
         </div>
         <button className="btn-tech secondary" onClick={onRefreshModels} type="button">
           {modelsLoading ? 'Refreshing...' : 'Refresh Models'}

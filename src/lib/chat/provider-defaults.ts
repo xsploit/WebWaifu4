@@ -37,18 +37,17 @@ export function isPremiumCostModelId(value: unknown) {
     return false;
   }
   const normalized = value.trim().toLowerCase();
+  const parts = normalized.split('/');
+  const provider = parts.length > 1 ? parts[0] : '';
   const leaf = (normalized.split('/').pop() ?? normalized).replace(/_/g, '.');
-  return (
+  const isOpenAiModel = !provider || provider === 'openai';
+  const isO1Model =
     leaf === 'o1' ||
     leaf.startsWith('o1-') ||
     leaf.startsWith('o1.') ||
-    leaf.startsWith('o1pro') ||
-    leaf.startsWith('o1-pro') ||
-    leaf.startsWith('o3-pro') ||
-    leaf.startsWith('o4-pro') ||
-    /^gpt-5[.-]4-pro(?:[.-]|$)/.test(leaf) ||
-    /^gpt-5[.-]5(?:[.-]|$)/.test(leaf)
-  );
+    leaf.startsWith('o1pro');
+  const isProModel = /(^|[.-])pro([.-]|$)/.test(leaf);
+  return isOpenAiModel && (isO1Model || isProModel);
 }
 
 export function filterSafeProviderModels(models: readonly string[]) {

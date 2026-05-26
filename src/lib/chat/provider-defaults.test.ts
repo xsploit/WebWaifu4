@@ -100,9 +100,14 @@ describe('LLM provider defaults', () => {
   });
 
   it('blocks known high-cost model ids from persisted settings and model pickers', () => {
+    expect(isPremiumCostModelId('o1')).toBe(true);
     expect(isPremiumCostModelId('o1-pro-2025-03-19')).toBe(true);
     expect(isPremiumCostModelId('openai/o1-pro-2025-03-19')).toBe(true);
     expect(isPremiumCostModelId('gpt-5_4-pro-2026-03-05')).toBe(true);
+    expect(isPremiumCostModelId('openai/gpt-5_4-pro-2026-03-05')).toBe(true);
+    expect(isPremiumCostModelId('google/gemini-2.5-pro')).toBe(false);
+    expect(isPremiumCostModelId('anthropic/claude-3-opus')).toBe(false);
+    expect(isPremiumCostModelId('gpt-5_5-2026-04-23')).toBe(false);
     expect(isPremiumCostModelId(DEFAULT_OPENAI_MODEL)).toBe(false);
 
     const next = normalizeLlmProviderCompatibility({
@@ -114,7 +119,12 @@ describe('LLM provider defaults', () => {
     expect(next.model).toBe(DEFAULT_OPENAI_MODEL);
     expect(next.memoryAgentModel).toBe(DEFAULT_MEMORY_AGENT_MODEL);
     expect(
-      filterSafeProviderModels(['gpt-5.4-nano', 'o1-pro-2025-03-19', 'openai/o1-pro-2025-03-19']),
-    ).toEqual(['gpt-5.4-nano']);
+      filterSafeProviderModels([
+        'gpt-5.4-nano',
+        'o1-pro-2025-03-19',
+        'openai/o1-pro-2025-03-19',
+        'google/gemini-2.5-pro',
+      ]),
+    ).toEqual(['gpt-5.4-nano', 'google/gemini-2.5-pro']);
   });
 });

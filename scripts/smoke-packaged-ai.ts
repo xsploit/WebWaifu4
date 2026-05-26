@@ -90,6 +90,21 @@ function getAiLiveUrl(baseUrl: string) {
   return url.toString();
 }
 
+function isPremiumCostModelId(model: string) {
+  const normalized = model.trim().toLowerCase();
+  const parts = normalized.split('/');
+  const provider = parts.length > 1 ? parts[0] : '';
+  const leaf = (parts.at(-1) ?? normalized).replace(/_/g, '.');
+  const isOpenAiModel = !provider || provider === 'openai';
+  const isO1Model =
+    leaf === 'o1' ||
+    leaf.startsWith('o1-') ||
+    leaf.startsWith('o1.') ||
+    leaf.startsWith('o1pro');
+  const isProModel = /(^|[.-])pro([.-]|$)/.test(leaf);
+  return isOpenAiModel && (isO1Model || isProModel);
+}
+
 async function postAiChat(
   baseUrl: string,
   headers: Record<string, string>,
@@ -162,6 +177,37 @@ async function runPomlMemorySmoke(baseUrl: string): Promise<SmokeResult> {
     eventCount: messages.length,
     name: 'poml-memory-render',
     ok: response.ok && payload?.ok === true && missing.length === 0 && leaked.length === 0,
+    status: response.status,
+    toolsUsed: [],
+  };
+}
+
+async function runPremiumModelGuardSmoke(
+  baseUrl: string,
+  headers: Record<string, string>,
+): Promise<SmokeResult> {
+  const url = new URL(`${baseUrl.replace(/\/$/, '')}/health`);
+  url.searchParams.set('model', 'o1-pro-2025-03-19');
+  url.searchParams.set('openAiStateMode', 'stateless');
+  url.searchParams.set('stateKey', 'local:smoke:premium-model-guard');
+  url.searchParams.set('transportMode', 'http-stream');
+  const response = await fetch(url, { headers });
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: unknown; model?: unknown; ok?: boolean }
+    | null;
+  const resolvedModel = typeof payload?.model === 'string' ? payload.model : '';
+  const blocked = Boolean(resolvedModel) && !isPremiumCostModelId(resolvedModel);
+  return {
+    deltaChars: resolvedModel.length,
+    error:
+      typeof payload?.error === 'string'
+        ? payload.error
+        : blocked
+          ? null
+          : `premium model leaked through as ${resolvedModel || '(missing)'}`,
+    eventCount: 1,
+    name: 'premium-model-guard',
+    ok: response.ok && payload?.ok === true && blocked,
     status: response.status,
     toolsUsed: [],
   };
@@ -665,6 +711,7 @@ async function main() {
       'x-yourwifey-llm-provider-key': openAiKey,
       'x-yourwifey-tavily-provider-key': tavilyKey,
     };
+    results.push(await runPremiumModelGuardSmoke(baseUrl, openAiHeaders));
     results.push(
       await runToolSmoke({
         baseUrl,

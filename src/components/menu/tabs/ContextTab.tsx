@@ -9,6 +9,7 @@ import type {
   MemoryPromptDebugSnapshot,
   MemoryWorkerDebugSnapshot,
 } from '../../../lib/chat/memory-debug';
+import { filterSafeProviderModels } from '../../../lib/chat/provider-defaults';
 import type { AiSettings, RelationshipMemory } from '../../../lib/chat/types';
 
 type ContextTabProps = {
@@ -91,6 +92,7 @@ export function ContextTab({
     memoryEmbeddingDebug && memoryEmbeddingDebug.updatedAt > 0
       ? new Date(memoryEmbeddingDebug.updatedAt).toLocaleTimeString()
       : '';
+  const memoryModelOptions = filterSafeProviderModels(availableModels);
 
   return (
     <>
@@ -107,7 +109,7 @@ export function ContextTab({
           value={aiSettings.memoryAgentModel}
         >
           <option value="">Auto (preferred cheap model)</option>
-          {availableModels.map((model) => (
+          {memoryModelOptions.map((model) => (
             <option key={model} value={model}>
               {model}
             </option>
