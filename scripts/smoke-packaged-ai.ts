@@ -66,6 +66,14 @@ function getSecret(backup: LocalBackup, provider: string) {
   );
 }
 
+function requireSecret(backup: LocalBackup, provider: string, flagName: string) {
+  const secret = getSecret(backup, provider);
+  if (!secret) {
+    throw new Error(`Backup is missing ${provider} key; pass ${flagName} to skip that smoke.`);
+  }
+  return secret;
+}
+
 function parseSseEvents(text: string) {
   const events: Array<Record<string, unknown>> = [];
   for (const block of text.split(/\r?\n\r?\n/)) {
@@ -701,9 +709,15 @@ async function main() {
   const openAiModel = getArg('--openai-model', 'gpt-5-nano');
   const openRouterModel = getArg('--openrouter-model', 'openai/gpt-5-nano');
   const backup = readBackup(backupPath);
-  const openAiKey = getSecret(backup, 'openai');
-  const openRouterKey = getSecret(backup, 'openrouter');
-  const fishKey = getSecret(backup, 'fish_speech');
+  const skipOpenAi = hasFlag('--skip-openai');
+  const skipOpenRouter = hasFlag('--skip-openrouter');
+  const skipTts = hasFlag('--skip-tts');
+  const openAiKey = skipOpenAi ? '' : requireSecret(backup, 'openai', '--skip-openai');
+  const openRouterKey = skipOpenRouter
+    ? ''
+    : requireSecret(backup, 'openrouter', '--skip-openrouter');
+  const fishKey =
+    skipTts || skipOpenAi ? '' : requireSecret(backup, 'fish_speech', '--skip-tts');
   const tavilyKey = getSecret(backup, 'tavily');
   if (!tavilyKey) {
     throw new Error('Backup is missing Tavily key; tool smokes cannot prove web_search.');
@@ -746,7 +760,7 @@ async function main() {
         model: openAiModel,
       }),
     );
-    if (fishKey && !hasFlag('--skip-tts')) {
+    if (fishKey) {
       const ttsHeaders = {
         ...openAiHeaders,
         'x-yourwifey-tts-provider-key': fishKey,
