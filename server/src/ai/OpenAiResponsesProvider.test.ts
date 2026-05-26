@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { WebSocketServer } from 'ws';
 import {
   OpenAiResponsesProvider,
   createWebSocketResponseCreateMessage,
@@ -21,6 +22,12 @@ function createRequest(content = 'hello @Riko'): ChatProviderRequest {
     ],
     sourceMessages: [],
   };
+}
+
+function listen(server: WebSocketServer) {
+  return new Promise<void>((resolve) => {
+    server.once('listening', resolve);
+  });
 }
 
 function createFetcher(calls: FetchCall[]) {
@@ -697,6 +704,74 @@ describe('OpenAiResponsesProvider', () => {
       ...payload,
       type: 'response.create',
     });
+  });
+
+  it('opens a fresh WebSocket after an aborted request closes the previous socket', async () => {
+    const server = new WebSocketServer({ port: 0 });
+    await listen(server);
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('WebSocket test server did not expose a TCP port.');
+    }
+
+    let connectionCount = 0;
+    let firstRequestReceived!: () => void;
+    const firstRequest = new Promise<void>((resolve) => {
+      firstRequestReceived = resolve;
+    });
+
+    server.on('connection', (socket) => {
+      connectionCount += 1;
+      const currentConnection = connectionCount;
+      socket.on('message', () => {
+        if (currentConnection === 1) {
+          firstRequestReceived();
+          return;
+        }
+        socket.send(JSON.stringify({ type: 'response.output_text.delta', delta: 'recovered' }));
+        socket.send(
+          JSON.stringify({
+            type: 'response.completed',
+            response: { id: 'resp_recovered' },
+          }),
+        );
+      });
+    });
+
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+      maxOutputTokens: 120,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'minimal',
+      useWebSocket: true,
+      webSocketUrl: `ws://127.0.0.1:${address.port}`,
+      fetcher: createFetcher([]),
+    });
+
+    try {
+      const controller = new AbortController();
+      const first = provider.completeStream({
+        ...createRequest('abort first websocket request'),
+        signal: controller.signal,
+      });
+      await firstRequest;
+      controller.abort();
+      await expect(first).rejects.toThrow('aborted');
+
+      await expect(
+        provider.completeStream(createRequest('second websocket request')),
+      ).resolves.toMatchObject({
+        text: 'recovered',
+      });
+      expect(connectionCount).toBe(2);
+    } finally {
+      provider.dispose();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it('keeps OpenRouter Responses structured output stateless even if configured otherwise', async () => {
