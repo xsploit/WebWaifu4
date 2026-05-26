@@ -62,6 +62,7 @@ export type StreamBotConfig = {
   providerProxyEnabled: boolean;
   overlayPort: number;
   botPort: number;
+  botHost: string;
 };
 
 function numberFromEnv(name: string, fallback: number) {
@@ -327,5 +328,6 @@ export function loadConfig(): StreamBotConfig {
       booleanFromEnv('BYOK_SERVER_PROVIDER_PROXY_ENABLED', false),
     overlayPort: numberFromEnv('OVERLAY_PORT', 5173),
     botPort: numberFromEnv('BOT_PORT', 8797),
+    botHost: process.env.BOT_HOST?.trim() || '127.0.0.1',
   };
 }

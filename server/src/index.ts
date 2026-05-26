@@ -2346,10 +2346,15 @@ function shutdownAndExit() {
 process.once('SIGINT', shutdownAndExit);
 process.once('SIGTERM', shutdownAndExit);
 
-httpServer.listen(config.botPort, () => {
-  console.log(`Web Waifu 4 stream bot listening on http://127.0.0.1:${config.botPort}`);
-  console.log(`AI Live WebSocket path: ws://127.0.0.1:${config.botPort}${AI_LIVE_SOCKET_PATH}`);
-  console.log(`Overlay WebSocket path: ws://127.0.0.1:${config.botPort}/ws`);
+function formatHostForUrl(host: string) {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
+httpServer.listen(config.botPort, config.botHost, () => {
+  const urlHost = formatHostForUrl(config.botHost);
+  console.log(`Web Waifu 4 stream bot listening on http://${urlHost}:${config.botPort}`);
+  console.log(`AI Live WebSocket path: ws://${urlHost}:${config.botPort}${AI_LIVE_SOCKET_PATH}`);
+  console.log(`Overlay WebSocket path: ws://${urlHost}:${config.botPort}/ws`);
   console.log(`Twitch chat mode: ${serverTwitchMode} (#${chatSource.channel})`);
   chatSource.start();
 });

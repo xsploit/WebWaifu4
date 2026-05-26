@@ -24,7 +24,7 @@ function createPortBlocker(port) {
   return new Promise((resolve, reject) => {
     const server = net.createServer((socket) => socket.destroy());
     server.once('error', reject);
-    server.listen({ exclusive: true, port }, () => resolve(server));
+    server.listen({ exclusive: true, host: '127.0.0.1', port }, () => resolve(server));
   });
 }
 
