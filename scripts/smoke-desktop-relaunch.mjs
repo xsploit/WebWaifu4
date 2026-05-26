@@ -113,24 +113,12 @@ async function evaluateJson(cdp, expression) {
   return result.result?.value;
 }
 
-function killProcessTree(pid) {
-  if (process.platform === 'win32') {
-    spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
-    return;
-  }
-  try {
-    process.kill(pid, 'SIGTERM');
-  } catch {
-    // Process already exited.
-  }
-}
-
 function killPackagedProcesses() {
   if (process.platform !== 'win32') {
-    return;
+    return Promise.resolve();
   }
   const escapedRoot = repoRoot.replace(/'/g, "''");
-  spawn(
+  const child = spawn(
     'powershell',
     [
       '-NoProfile',
@@ -139,10 +127,11 @@ function killPackagedProcesses() {
     ],
     { stdio: 'ignore', windowsHide: true },
   );
+  return new Promise((resolve) => child.once('exit', resolve));
 }
 
 async function main() {
-  const child = spawn(exePath, [`--remote-debugging-port=${debugPort}`], {
+  spawn(exePath, [`--remote-debugging-port=${debugPort}`], {
     cwd: path.dirname(exePath),
     detached: false,
     env: {
@@ -159,7 +148,13 @@ async function main() {
     }
     const cdp = connectCdp(first.page.webSocketDebuggerUrl);
     await cdp.waitOpen();
-    await evaluateJson(cdp, `window.webWaifuDesktop.relaunchWindowMode('desktop').then(() => 'ok')`);
+    await evaluateJson(
+      cdp,
+      `(() => {
+        setTimeout(() => window.webWaifuDesktop.relaunchWindowMode('desktop'), 0);
+        return 'scheduled';
+      })()`,
+    );
     cdp.close();
 
     const second = await waitForDebugPage('desktop');
@@ -183,10 +178,7 @@ async function main() {
       ),
     );
   } finally {
-    if (child.pid) {
-      killProcessTree(child.pid);
-    }
-    killPackagedProcesses();
+    await killPackagedProcesses();
     await wait(1000);
   }
 }

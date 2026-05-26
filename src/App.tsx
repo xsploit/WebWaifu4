@@ -431,6 +431,7 @@ type AppModelsResponse = {
 };
 
 type StreamingSpeechPlayer = {
+  cancel?: () => void;
   finish: (finalText?: string) => Promise<AssistantReplyParseResult>;
   pushAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
   pushDelta: (delta: string) => void;
@@ -2914,6 +2915,33 @@ function App() {
         }
       };
 
+      const cancel = () => {
+        assistantRenderRunRef.current += 1;
+        if (displayPumpTimer !== null) {
+          window.clearTimeout(displayPumpTimer);
+          displayPumpTimer = null;
+        }
+        if (liveSubtitlePumpTimer !== null) {
+          window.clearTimeout(liveSubtitlePumpTimer);
+          liveSubtitlePumpTimer = null;
+        }
+        queuedDisplayText = '';
+        queuedLiveSubtitleText = '';
+        pendingText = '';
+        liveBridgeSubtitleActiveRef.current = false;
+        if (liveBridgeSink) {
+          void liveBridgeSink.close().catch(() => undefined);
+          liveBridgeSink = null;
+        }
+        if (canSpeak) {
+          ttsManager.stop();
+          setTtsBusy(false);
+          setTtsStatus(`${label} cancelled.`);
+        }
+        resolveDisplaySettled();
+        clearChatDisplayOverride(assistantMessage.id);
+      };
+
       const pushAudioChunk = (chunk: RemoteTtsAudioChunk) => {
         if (!liveBridgeSink || isStale()) {
           return;
@@ -3089,7 +3117,7 @@ function App() {
         };
       };
 
-      return { finish, pushAudioChunk, pushDelta };
+      return { cancel, finish, pushAudioChunk, pushDelta };
     },
     [
       providerKeyVaultWorkspaceId,
@@ -3167,6 +3195,16 @@ function App() {
         }
       };
 
+      const cancel = () => {
+        assistantRenderRunRef.current += 1;
+        pendingText = '';
+        if (canSpeak) {
+          ttsManager.stop();
+          setTtsBusy(false);
+          setTtsStatus(`${label} cancelled.`);
+        }
+      };
+
       const pushDelta = (delta: string) => {
         if (!delta || isStale()) {
           return;
@@ -3234,7 +3272,7 @@ function App() {
         };
       };
 
-      return { finish, pushDelta };
+      return { cancel, finish, pushDelta };
     },
     [
       providerKeyVaultWorkspaceId,
@@ -5523,6 +5561,7 @@ function App() {
         }
         void refreshMemoryBackendStatus();
       } catch (error) {
+        speechPlayer.cancel?.();
         const message = getAiErrorMessage(error, 'chat');
         setChatHistory((current) =>
           trimChatHistory(
