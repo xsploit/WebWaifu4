@@ -29,4 +29,10 @@ describe('runtimeProviderRouting', () => {
       OPENROUTER_BASE_URL,
     );
   });
+
+  it('does not let the old local-compatible fallback leak into OpenAI Responses requests', () => {
+    expect(getRuntimeProviderBaseUrl('openai-responses', 'http://127.0.0.1:1234/v1')).toBe(
+      OPENAI_BASE_URL,
+    );
+  });
 });

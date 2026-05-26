@@ -23,7 +23,8 @@ export function getRuntimeProviderBaseUrl(provider: RuntimeLlmProvider, openAiBa
   if (provider === 'openrouter-responses') {
     return OPENROUTER_BASE_URL;
   }
-  return (openAiBaseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
+  const normalized = (openAiBaseUrl || OPENAI_BASE_URL).replace(/\/+$/, '');
+  return normalized === 'http://127.0.0.1:1234/v1' ? OPENAI_BASE_URL : normalized;
 }
 
 export function providerUsesAppOwnedState(provider: RuntimeLlmProvider) {

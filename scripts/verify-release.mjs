@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -78,6 +79,26 @@ async function waitForHealth(port, timeoutMs = 45000) {
   );
 }
 
+function canListenOnPort(port) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(false));
+    probe.once('listening', () => {
+      probe.close(() => resolve(true));
+    });
+    probe.listen({ exclusive: true, host: '127.0.0.1', port });
+  });
+}
+
+async function assertPackagedAiPortAvailable(port) {
+  if (await canListenOnPort(port)) {
+    return;
+  }
+  throw new Error(
+    `Port ${port} is already occupied before packaged AI smoke. Stop the stale backend or run the app smoke that discovers the fallback port.`,
+  );
+}
+
 async function killPackagedRuntime() {
   const escapedRoot = repoRoot.replace(/'/g, "''");
   const command = `
@@ -116,6 +137,7 @@ if ($targets) {
 
 async function runPackagedAiSmoke(backupPath) {
   await killPackagedRuntime();
+  await assertPackagedAiPortAvailable(8797);
   const child = spawn(exePath, [], {
     cwd: repoRoot,
     detached: false,

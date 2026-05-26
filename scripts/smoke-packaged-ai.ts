@@ -34,6 +34,15 @@ type SmokeResult = {
   audioChunks?: number;
 };
 
+async function runSmokeStep(name: string, task: () => Promise<SmokeResult>) {
+  try {
+    return await task();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Packaged AI smoke step "${name}" threw: ${message}`);
+  }
+}
+
 const args = process.argv.slice(2);
 
 function getArg(name: string, fallback = '') {
@@ -729,7 +738,7 @@ async function main() {
   }
 
   const results: SmokeResult[] = [];
-  results.push(await runPomlMemorySmoke(baseUrl));
+  results.push(await runSmokeStep('poml-memory-render', () => runPomlMemorySmoke(baseUrl)));
   if (openAiKey) {
     const openAiHeaders = {
       'content-type': 'application/json',
@@ -737,33 +746,43 @@ async function main() {
       'x-yourwifey-llm-provider-key': openAiKey,
       'x-yourwifey-tavily-provider-key': tavilyKey,
     };
-    results.push(await runPremiumModelGuardSmoke(baseUrl, openAiHeaders));
     results.push(
-      await runToolSmoke({
-        baseUrl,
-        headers: openAiHeaders,
-        llmProvider: 'openai-responses',
-        model: openAiModel,
-        name: 'openai-ws-tools',
-        transportMode: 'websocket',
-      }),
+      await runSmokeStep('premium-model-guard', () =>
+        runPremiumModelGuardSmoke(baseUrl, openAiHeaders),
+      ),
     );
     results.push(
-      await runToolSmoke({
-        baseUrl,
-        headers: openAiHeaders,
-        llmProvider: 'openai-responses',
-        model: openAiModel,
-        name: 'openai-http-tools',
-        transportMode: 'http-stream',
-      }),
+      await runSmokeStep('openai-ws-tools', () =>
+        runToolSmoke({
+          baseUrl,
+          headers: openAiHeaders,
+          llmProvider: 'openai-responses',
+          model: openAiModel,
+          name: 'openai-ws-tools',
+          transportMode: 'websocket',
+        }),
+      ),
     );
     results.push(
-      await runAiLiveCancelSmoke({
-        baseUrl,
-        headers: openAiHeaders,
-        model: openAiModel,
-      }),
+      await runSmokeStep('openai-http-tools', () =>
+        runToolSmoke({
+          baseUrl,
+          headers: openAiHeaders,
+          llmProvider: 'openai-responses',
+          model: openAiModel,
+          name: 'openai-http-tools',
+          transportMode: 'http-stream',
+        }),
+      ),
+    );
+    results.push(
+      await runSmokeStep('ai-live-cancel', () =>
+        runAiLiveCancelSmoke({
+          baseUrl,
+          headers: openAiHeaders,
+          model: openAiModel,
+        }),
+      ),
     );
     if (fishKey) {
       const ttsHeaders = {
@@ -771,46 +790,54 @@ async function main() {
         'x-yourwifey-tts-provider-key': fishKey,
       };
       results.push(
-        await runStructuredTtsSmoke({
-          backup,
-          baseUrl,
-          headers: ttsHeaders,
-          model: openAiModel,
-        }),
+        await runSmokeStep('structured-tts', () =>
+          runStructuredTtsSmoke({
+            backup,
+            baseUrl,
+            headers: ttsHeaders,
+            model: openAiModel,
+          }),
+        ),
       );
       results.push(
-        await runLiveWsStructuredTtsSmoke({
-          backup,
-          baseUrl,
-          headers: ttsHeaders,
-          model: openAiModel,
-        }),
+        await runSmokeStep('ai-live-structured-tts', () =>
+          runLiveWsStructuredTtsSmoke({
+            backup,
+            baseUrl,
+            headers: ttsHeaders,
+            model: openAiModel,
+          }),
+        ),
       );
       results.push(
-        await runLiveWsToolTtsSmoke({
-          backup,
-          baseUrl,
-          headers: ttsHeaders,
-          model: openAiModel,
-        }),
+        await runSmokeStep('ai-live-tools-tts', () =>
+          runLiveWsToolTtsSmoke({
+            backup,
+            baseUrl,
+            headers: ttsHeaders,
+            model: openAiModel,
+          }),
+        ),
       );
     }
   }
   if (openRouterKey) {
     results.push(
-      await runToolSmoke({
-        baseUrl,
-        headers: {
-          'content-type': 'application/json',
-          'x-yourwifey-llm-provider': 'openrouter-responses',
-          'x-yourwifey-llm-provider-key': openRouterKey,
-          'x-yourwifey-tavily-provider-key': tavilyKey,
-        },
-        llmProvider: 'openrouter-responses',
-        model: openRouterModel,
-        name: 'openrouter-tools',
-        transportMode: 'http-stream',
-      }),
+      await runSmokeStep('openrouter-tools', () =>
+        runToolSmoke({
+          baseUrl,
+          headers: {
+            'content-type': 'application/json',
+            'x-yourwifey-llm-provider': 'openrouter-responses',
+            'x-yourwifey-llm-provider-key': openRouterKey,
+            'x-yourwifey-tavily-provider-key': tavilyKey,
+          },
+          llmProvider: 'openrouter-responses',
+          model: openRouterModel,
+          name: 'openrouter-tools',
+          transportMode: 'http-stream',
+        }),
+      ),
     );
   }
 

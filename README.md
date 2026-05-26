@@ -229,7 +229,8 @@ check, or pass `--skip-tts`, `--skip-openai`, or `--skip-openrouter` directly to
 `smoke:packaged-ai` when intentionally narrowing that lower-level smoke. The
 lower-level packaged AI smoke still requires at least one LLM provider; use
 `verify:release -- --skip-packaged-ai` for structural checks without provider
-calls.
+calls. The full packaged AI smoke expects port `8797` to be free so it cannot
+accidentally test a stale local backend.
 
 ---
 
