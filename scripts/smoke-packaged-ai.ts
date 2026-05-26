@@ -108,6 +108,30 @@ function getStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
+function hasStructuredJsonEnvelopeLeak(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/"(?:message|emotion)"\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return (
+      Boolean(parsed) &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      ('message' in parsed || 'emotion' in parsed)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function getAiLiveUrl(baseUrl: string) {
   const url = new URL(baseUrl.replace(/\/$/, ''));
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -388,7 +412,7 @@ async function runStructuredTtsSmoke({
     )
     .map((event) => String(event['error'] ?? event['type']));
   const audioChunks = events.filter((event) => event['type'] === 'audio').length;
-  const leakedJsonInDeltas = /[{}]|"emotion"|"message"/.test(deltas);
+  const leakedJsonInDeltas = hasStructuredJsonEnvelopeLeak(deltas);
   return {
     audioChunks,
     deltaChars: deltas.length,
@@ -640,7 +664,7 @@ async function runLiveWsStructuredTtsSmoke({
     )
     .map((event) => String(event['error'] ?? event['type']));
   const audioChunks = events.filter((event) => event['type'] === 'audio').length;
-  const leakedJsonInDeltas = /[{}]|"emotion"|"message"/.test(deltas);
+  const leakedJsonInDeltas = hasStructuredJsonEnvelopeLeak(deltas);
   return {
     audioChunks,
     deltaChars: deltas.length,
