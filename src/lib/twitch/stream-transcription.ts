@@ -1,3 +1,5 @@
+import { isPremiumCostModelId } from '../chat/provider-defaults';
+
 export type TwitchStreamTranscript = {
   channel: string;
   createdAt: number;
@@ -70,18 +72,7 @@ export function isLikelyVisionModel(provider: string, model: string) {
   if (!normalized) {
     return false;
   }
-  const leaf = (normalized.split('/').pop() ?? normalized).replace(/_/g, '.');
-  if (
-    leaf === 'o1' ||
-    leaf.startsWith('o1-') ||
-    leaf.startsWith('o1.') ||
-    leaf.startsWith('o1pro') ||
-    leaf.startsWith('o1-pro') ||
-    leaf.startsWith('o3-pro') ||
-    leaf.startsWith('o4-pro') ||
-    /^gpt-5[.-]4-pro(?:[.-]|$)/.test(leaf) ||
-    /^gpt-5[.-]5(?:[.-]|$)/.test(leaf)
-  ) {
+  if (isPremiumCostModelId(normalized)) {
     return false;
   }
   const openAiVision =
