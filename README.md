@@ -207,6 +207,20 @@ Use the Electron menu to relaunch between modes. The renderer still sends
 provider requests to the same local backend on `127.0.0.1:8797`; API keys are
 not moved into Electron main storage.
 
+<h3 align="center">Release Verification</h3>
+
+```powershell
+npm run verify:release -- --backup "C:\path\to\web-waifu-4-local-backup.json"
+```
+
+This is the full local release gate. It runs diff whitespace checks,
+TypeScript, the Vitest suite, the Ladybug memory probe, rebuilds the unpacked
+Electron app, checks packaged editor and desktop modes, verifies port fallback
+and relaunch behavior, then runs the packaged AI smoke against the backup keys.
+The packaged AI smoke covers OpenAI WebSocket tools, OpenAI HTTP tools,
+OpenRouter tools, structured TTS, live TTS, live tools with TTS, and the
+OpenAI premium-model guard.
+
 ---
 
 <h2 align="center">🔑 Provider Keys</h2>
