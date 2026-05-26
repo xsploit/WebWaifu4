@@ -1417,6 +1417,15 @@ export class OpenAiResponsesProvider implements ChatProvider {
           fail(new Error('OpenAI Responses WebSocket request timed out.'), true);
         }, this.options.requestTimeoutMs ?? 120000);
 
+        const clearCurrentSocket = () => {
+          if (this.ws === socket) {
+            this.ws = null;
+          }
+          if (this.wsReady) {
+            this.wsReady = null;
+          }
+        };
+
         const cleanup = (closeSocket = false) => {
           settled = true;
           clearTimeout(timeout);
@@ -1424,6 +1433,13 @@ export class OpenAiResponsesProvider implements ChatProvider {
           socket.off('message', onMessage);
           socket.off('close', onClose);
           socket.off('error', onError);
+          if (
+            closeSocket ||
+            socket.readyState === WebSocket.CLOSING ||
+            socket.readyState === WebSocket.CLOSED
+          ) {
+            clearCurrentSocket();
+          }
           if (
             closeSocket &&
             (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
@@ -1508,16 +1524,14 @@ export class OpenAiResponsesProvider implements ChatProvider {
 
         const onClose = () => {
           if (!settled) {
-            this.ws = null;
-            this.wsReady = null;
+            clearCurrentSocket();
             fail(new Error('OpenAI Responses WebSocket closed before completion.'));
           }
         };
 
         const onError = (error: Error) => {
           if (!settled) {
-            this.ws = null;
-            this.wsReady = null;
+            clearCurrentSocket();
             fail(error, true);
           }
         };
