@@ -115,6 +115,22 @@ function getAiLiveUrl(baseUrl: string) {
   return url.toString();
 }
 
+async function assertBackendHealthy(baseUrl: string) {
+  const healthUrl = `${baseUrl.replace(/\/$/, '')}/health`;
+  try {
+    const response = await fetch(healthUrl);
+    if (response.ok) {
+      return;
+    }
+    throw new Error(`HTTP ${response.status}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Packaged backend is not reachable at ${healthUrl}: ${message}. Start release/win-unpacked/WebWaifu 4.exe first, or run npm run verify:release -- --backup <backup.json> to have the verifier launch it.`,
+    );
+  }
+}
+
 function isPremiumCostModelId(model: string) {
   const normalized = model.trim().toLowerCase();
   const parts = normalized.split('/');
@@ -736,6 +752,8 @@ async function main() {
   if (!tavilyKey) {
     throw new Error('Backup is missing Tavily key; tool smokes cannot prove web_search.');
   }
+
+  await assertBackendHealthy(baseUrl);
 
   const results: SmokeResult[] = [];
   results.push(await runSmokeStep('poml-memory-render', () => runPomlMemorySmoke(baseUrl)));
