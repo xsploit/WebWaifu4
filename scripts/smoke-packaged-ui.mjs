@@ -217,6 +217,46 @@ try {
   await cdp.send('Log.enable');
   await new Promise((resolve) => setTimeout(resolve, 2500));
 
+  await evaluateJson(
+    cdp,
+    `(async () => JSON.stringify(await (async () => {
+      const menuButton = document.querySelector('.menu-fab');
+      menuButton?.click();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const opened = Boolean(document.querySelector('.settings-panel.open'));
+      const twitchTab = [...document.querySelectorAll('.tab-btn')]
+        .find((button) => button.textContent?.trim() === 'Twitch');
+      twitchTab?.click();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const channelInput = [...document.querySelectorAll('.settings-panel input')]
+        .find((input) => input.value === 'subsect' || input.placeholder?.toLowerCase().includes('channel'));
+      channelInput?.focus();
+      if (channelInput) {
+        channelInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+        channelInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return {
+        activeTab: document.querySelector('.tab-btn.active')?.textContent?.trim() || null,
+        focusedInsidePanel: Boolean(document.activeElement?.closest('.settings-panel')),
+        opened,
+        stillOpen: Boolean(document.querySelector('.settings-panel.open')),
+      };
+    })()))()`,
+  )
+    .then(JSON.parse)
+    .then((result) => {
+      if (!result.opened || !result.stillOpen) {
+        throw new Error('Settings panel closed while interacting with a tab/input.');
+      }
+      if (result.activeTab !== 'Twitch') {
+        throw new Error(`Settings panel tab interaction failed; active tab is ${result.activeTab}.`);
+      }
+      if (!result.focusedInsidePanel) {
+        throw new Error('Settings panel input did not retain focus inside the panel.');
+      }
+    });
+
   if (shouldExerciseDesktopControls) {
     await evaluateJson(
       cdp,
