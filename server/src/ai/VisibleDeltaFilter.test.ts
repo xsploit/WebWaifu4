@@ -26,6 +26,18 @@ describe('server visible delta filter', () => {
     expect(filter.flush()).toBe('');
   });
 
+  it('decodes structured JSON unicode escapes while streaming visible text', () => {
+    const filter = createAiVisibleDeltaFilter(structuredReplyFormat);
+    const visible = [
+      filter.push('{"message":"Hi \\u'),
+      filter.push('0041 \\ud83d'),
+      filter.push('\\ude00","emotion":"happy"}'),
+    ].join('');
+
+    expect(visible).toBe('Hi A 😀');
+    expect(filter.flush()).toBe('');
+  });
+
   it('auto-detects structured JSON even if responseFormat was lost before live TTS bridge', () => {
     const filter = createAiVisibleDeltaFilter(undefined);
     const chunks = ['{"mes', 'sage":"Do not say metadata.",', '"emotion":"annoyed"}'];

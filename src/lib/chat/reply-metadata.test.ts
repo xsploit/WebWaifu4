@@ -104,6 +104,20 @@ describe('assistant reply metadata', () => {
     expect(parsed.metadata).toEqual({ emotion: 'happy' });
   });
 
+  it('decodes streamed structured JSON unicode escapes before the object completes', () => {
+    const filter = createAssistantReplyStreamFilter();
+    const visible = [
+      filter.push('{"message":"Hi \\u'),
+      filter.push('0041 \\ud83d'),
+      filter.push('\\ude00","emotion":"happy"}'),
+    ].join('');
+    const parsed = filter.finish('{"message":"Hi \\u0041 \\ud83d\\ude00","emotion":"happy"}');
+
+    expect(visible).toBe('Hi A 😀');
+    expect(parsed.text).toBe('Hi A 😀');
+    expect(parsed.metadata).toEqual({ emotion: 'happy' });
+  });
+
   it('starts streaming structured message text before the message string closes', () => {
     const filter = createAssistantReplyStreamFilter();
 

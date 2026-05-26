@@ -558,7 +558,7 @@ function createJsonMessageStreamFilter() {
   let activeKey = '';
   let keyEscape = false;
   let valueEscape = false;
-  let unicodeEscape = '';
+  let unicodeEscape: string | null = null;
   let skipString = false;
   let skipEscape = false;
   let skipDepth = 0;
@@ -638,7 +638,7 @@ function createJsonMessageStreamFilter() {
         if (/\s/.test(char)) continue;
         if (char === '"') {
           valueEscape = false;
-          unicodeEscape = '';
+          unicodeEscape = null;
           state = 'valueString';
           continue;
         }
@@ -650,13 +650,13 @@ function createJsonMessageStreamFilter() {
       }
 
       if (state === 'valueString') {
-        if (unicodeEscape) {
+        if (unicodeEscape !== null) {
           unicodeEscape += char;
           if (unicodeEscape.length === 4) {
             if (activeKey === 'message') {
               visible += String.fromCharCode(Number.parseInt(unicodeEscape, 16));
             }
-            unicodeEscape = '';
+            unicodeEscape = null;
             valueEscape = false;
           }
           continue;
