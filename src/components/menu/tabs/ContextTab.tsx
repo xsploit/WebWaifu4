@@ -92,7 +92,12 @@ export function ContextTab({
     memoryEmbeddingDebug && memoryEmbeddingDebug.updatedAt > 0
       ? new Date(memoryEmbeddingDebug.updatedAt).toLocaleTimeString()
       : '';
-  const memoryModelOptions = filterSafeProviderModels(availableModels);
+  const selectedMemoryModel = aiSettings.memoryAgentModel.trim();
+  const memoryModelOptions = filterSafeProviderModels(
+    selectedMemoryModel
+      ? Array.from(new Set([...availableModels, selectedMemoryModel]))
+      : availableModels,
+  );
 
   return (
     <>

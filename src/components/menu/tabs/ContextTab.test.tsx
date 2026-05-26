@@ -199,4 +199,41 @@ describe('ContextTab', () => {
     expect(html).toContain('semantic_memory');
     expect(html).toContain('semantic recall');
   });
+
+  it('keeps the selected safe memory worker model visible when it is missing from the refreshed provider list', () => {
+    const html = renderToStaticMarkup(
+      <ContextTab
+        aiSettings={{
+          ...createDefaultAiSettings(),
+          memoryAgentModel: 'gpt-5-nano',
+        }}
+        availableModels={['gpt-5-mini', 'o1-pro-2025-03-19']}
+        chatDraftLength={0}
+        grilloMemoryState={createDefaultGrilloMemoryState('local:persona:hikari-context')}
+        memoryAgentBusy={false}
+        memoryAgentPendingCounts={{}}
+        memoryAgentStatus="Memory worker ready."
+        memoryBackendStatus={null}
+        memoryEmbeddingDebug={null}
+        memoryGraphSummary={null}
+        memoryPromptDebug={null}
+        memoryWorkerDebug={null}
+        messageCount={0}
+        modelsError={null}
+        modelsLoading={false}
+        onClearChat={vi.fn()}
+        onClearDraft={vi.fn()}
+        onClearMemory={vi.fn()}
+        onRefreshModels={vi.fn()}
+        onResetContext={vi.fn()}
+        onRunMemoryAgent={vi.fn()}
+        relationshipMemory={createDefaultRelationshipMemory()}
+        setAiSettings={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('gpt-5-nano');
+    expect(html).toContain('gpt-5-mini');
+    expect(html).not.toContain('o1-pro-2025-03-19');
+  });
 });
