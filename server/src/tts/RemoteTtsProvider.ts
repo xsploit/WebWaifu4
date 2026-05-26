@@ -162,6 +162,30 @@ function bufferFromAudioChunk(value: unknown) {
   return null;
 }
 
+export function stripWavHeaderFromPcmChunk(chunk: Buffer) {
+  if (
+    chunk.byteLength < 44 ||
+    chunk.toString('ascii', 0, 4) !== 'RIFF' ||
+    chunk.toString('ascii', 8, 12) !== 'WAVE'
+  ) {
+    return chunk;
+  }
+
+  let offset = 12;
+  while (offset + 8 <= chunk.byteLength) {
+    const chunkId = chunk.toString('ascii', offset, offset + 4);
+    const chunkSize = chunk.readUInt32LE(offset + 4);
+    const dataStart = offset + 8;
+    const dataEnd = Math.min(dataStart + chunkSize, chunk.byteLength);
+    if (chunkId === 'data') {
+      return chunk.subarray(dataStart, dataEnd);
+    }
+    offset = dataStart + chunkSize + (chunkSize % 2);
+  }
+
+  return chunk;
+}
+
 function normalizeFishLatency(value: unknown): FishSpeechLatency {
   return value === 'normal' ? 'normal' : 'balanced';
 }
@@ -629,8 +653,12 @@ async function streamInworld(
     for await (const audio of stream) {
       const chunk = bufferFromAudioChunk(audio);
       if (chunk?.length) {
+        const pcmChunk = stripWavHeaderFromPcmChunk(chunk);
+        if (!pcmChunk.length) {
+          continue;
+        }
         handlers.onAudioChunk({
-          audio: chunk,
+          audio: pcmChunk,
           mimeType,
           sampleRate: config.inworldSampleRate,
         });

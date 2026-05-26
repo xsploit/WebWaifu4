@@ -24,4 +24,13 @@ describe('streaming final overlap', () => {
       '',
     );
   });
+
+  it('does not replay a punctuation tail as a fresh suffix', () => {
+    expect(
+      findOverlappingSuffix(
+        'The answer lands here, with this final sentence.',
+        'with this final sentence.',
+      ),
+    ).toBe('');
+  });
 });

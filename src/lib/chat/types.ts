@@ -30,6 +30,7 @@ export type LlmProvider = 'openai-responses' | 'openrouter-responses';
 export type AiTransportMode = 'server-default' | 'http-stream' | 'websocket';
 export type OpenAiStateMode = 'server-default' | 'conversation' | 'previous-response' | 'stateless';
 export type ReplyLengthMode = 'short' | 'balanced' | 'yap';
+export type ToolChoiceMode = 'auto' | 'required';
 
 export type AiSettings = {
   llmProvider: LlmProvider;
@@ -38,6 +39,8 @@ export type AiSettings = {
   memoryAgentIntervalMessages: number;
   aiTransportMode: AiTransportMode;
   openAiStateMode: OpenAiStateMode;
+  toolChoiceMode: ToolChoiceMode;
+  maxToolRounds: number;
   replyLength: ReplyLengthMode;
   temperature: number;
   maxTokens: number;

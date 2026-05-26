@@ -16,8 +16,6 @@ const LIP_SYNC_PROFILE_URL =
         window.location.href,
       ).toString();
 const AUTO_RESUME_AUDIO = import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true';
-const REMOTE_PCM_FADE_SECONDS = 0.006;
-const REMOTE_PCM_CROSSFADE_SECONDS = 0.004;
 const REMOTE_PCM_REAP_GRACE_MS = 5000;
 
 interface ChunkData {
@@ -534,31 +532,13 @@ export class TtsManager {
     this.ensureAnalyserConnected();
 
     const duration = audioBuffer.duration / Math.max(0.01, this.playbackRate);
-    const canCrossfade =
-      this.streamScheduledChunkCount > 0 &&
-      this.streamPlaybackEndTime > this.audioContext.currentTime + REMOTE_PCM_CROSSFADE_SECONDS;
-    const overlap = canCrossfade
-      ? Math.min(REMOTE_PCM_CROSSFADE_SECONDS, Math.max(0, duration * 0.35))
-      : 0;
     const startAt = Math.max(
-      this.streamPlaybackEndTime - overlap,
+      this.streamPlaybackEndTime,
       this.audioContext.currentTime + 0.02,
     );
     const endAt = startAt + duration;
-    const fadeSeconds = Math.min(REMOTE_PCM_FADE_SECONDS, Math.max(0, duration / 3));
-    const fadeInEnd = startAt + fadeSeconds;
-    const fadeOutStart = Math.max(fadeInEnd, endAt - fadeSeconds);
     frameGain.gain.cancelScheduledValues(startAt);
-    frameGain.gain.setValueAtTime(0, startAt);
-    if (fadeSeconds > 0) {
-      frameGain.gain.linearRampToValueAtTime(1, fadeInEnd);
-      if (fadeOutStart > fadeInEnd) {
-        frameGain.gain.setValueAtTime(1, fadeOutStart);
-      }
-      frameGain.gain.linearRampToValueAtTime(0, endAt);
-    } else {
-      frameGain.gain.setValueAtTime(1, startAt);
-    }
+    frameGain.gain.setValueAtTime(1, startAt);
     this.streamPlaybackEndTime = startAt + duration;
     this.currentStreamSources.add(source);
     this.currentStreamGains.add(frameGain);

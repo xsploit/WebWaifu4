@@ -99,6 +99,8 @@ export function createDefaultAiSettings(): AiSettings {
     memoryAgentIntervalMessages: 7,
     aiTransportMode: 'websocket',
     openAiStateMode: 'conversation',
+    toolChoiceMode: 'auto',
+    maxToolRounds: 15,
     replyLength: 'balanced',
     temperature: 0.85,
     maxTokens: 300,

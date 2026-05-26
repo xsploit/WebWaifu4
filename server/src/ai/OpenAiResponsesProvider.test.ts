@@ -732,6 +732,40 @@ describe('OpenAiResponsesProvider', () => {
     });
   });
 
+  it('can require runtime tool calls when tool choice mode is required', async () => {
+    const calls: FetchCall[] = [];
+    const provider = new OpenAiResponsesProvider({
+      apiBaseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-4.1-mini',
+      maxOutputTokens: 300,
+      temperature: 0.7,
+      stateMode: 'stateless',
+      store: false,
+      reasoningEffort: 'none',
+      useWebSocket: false,
+      fetcher: createToolCallingFetcher(calls),
+      tavilyTools: {
+        apiKey: 'test-tavily',
+        searchDepth: 'basic',
+        maxResults: 5,
+        timeoutMs: 10000,
+        fetcher: (async () =>
+          new Response(JSON.stringify({ answer: 'ok', results: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })) as typeof fetch,
+      },
+    });
+
+    await provider.complete({ ...createRequest('look this up'), toolChoiceMode: 'required' });
+
+    expect(calls[0]?.body).toMatchObject({
+      tool_choice: 'required',
+      tools: expect.arrayContaining([expect.objectContaining({ name: 'web_search' })]),
+    });
+  });
+
   it('opens a fresh WebSocket after an aborted request closes the previous socket', async () => {
     const server = new WebSocketServer({ port: 0 });
     await listen(server);
@@ -1161,9 +1195,9 @@ describe('OpenAiResponsesProvider', () => {
       },
     });
 
-    await expect(provider.complete(createRequest('keep searching forever'))).rejects.toThrow(
-      'AI tool loop exceeded 5 rounds.',
-    );
+    await expect(
+      provider.complete({ ...createRequest('keep searching forever'), maxToolRounds: 5 }),
+    ).rejects.toThrow('AI tool loop exceeded 5 rounds.');
     expect(calls).toHaveLength(6);
   });
 

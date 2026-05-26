@@ -164,8 +164,16 @@ type StreamingFunctionCallState = {
   outputIndexToCallId: Map<number, string>;
 };
 
-const MAX_TOOL_ROUNDS = 5;
+const DEFAULT_MAX_TOOL_ROUNDS = 15;
 const STREAMING_FUNCTION_CALL_TTL_MS = 60_000;
+
+function normalizeMaxToolRounds(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_MAX_TOOL_ROUNDS;
+  }
+  return Math.max(1, Math.min(30, Math.round(parsed)));
+}
 
 function splitMessages(messages: readonly ChatProviderMessage[]) {
   const instructions = messages
@@ -708,6 +716,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       false,
       undefined,
       runtime,
+      request.maxToolRounds,
       request.signal,
     );
     const text = extractResponseText(result.response);
@@ -737,6 +746,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       true,
       handlers.onTextDelta,
       runtime,
+      request.maxToolRounds,
       request.signal,
     );
     const text = extractResponseText(result.response);
@@ -1000,7 +1010,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
 
     if (runtimeToolsAvailable) {
       payload.tools = TAVILY_OPENAI_TOOLS;
-      payload.tool_choice = 'auto';
+      payload.tool_choice = request.toolChoiceMode === 'required' ? 'required' : 'auto';
     }
 
     if (usesConversation) {
@@ -1023,13 +1033,15 @@ export class OpenAiResponsesProvider implements ChatProvider {
       stateMode: this.options.stateMode,
       useWebSocket: this.options.useWebSocket,
     },
+    maxToolRounds = DEFAULT_MAX_TOOL_ROUNDS,
     signal?: AbortSignal,
   ) {
     let payload = initialPayload;
     let response = await this.sendResponsesPayload(payload, stream, onTextDelta, runtime, signal);
     const toolsUsed: string[] = [];
+    const toolRoundLimit = normalizeMaxToolRounds(maxToolRounds);
 
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    for (let round = 0; round < toolRoundLimit; round += 1) {
       const functionCallItems = (response.output ?? []).filter(isFunctionCallLikeItem);
       const functionCalls = getFunctionCalls(response);
       if (!this.options.tavilyTools || functionCalls.length === 0) {
@@ -1074,7 +1086,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
     }
 
     if (this.options.tavilyTools && getFunctionCalls(response).length > 0) {
-      throw new Error(`AI tool loop exceeded ${MAX_TOOL_ROUNDS} rounds.`);
+      throw new Error(`AI tool loop exceeded ${toolRoundLimit} rounds.`);
     }
 
     return { response, toolsUsed };

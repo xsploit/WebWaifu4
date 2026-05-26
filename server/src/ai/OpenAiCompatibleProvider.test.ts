@@ -20,6 +20,53 @@ describe('OpenAiCompatibleProvider', () => {
     vi.unstubAllGlobals();
   });
 
+  it('streams compatible chat completion deltas instead of waiting for final text', async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        calls.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ choices: [{ delta: { content: 'hello ' } }] })}\n\n`,
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ choices: [{ delta: { content: 'stream' } }] })}\n\n`,
+                ),
+              );
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        );
+      }),
+    );
+
+    const provider = new OpenAiCompatibleProvider({
+      apiBaseUrl: 'https://compatible.example/v1',
+      apiKey: 'test-key',
+      maxTokens: 120,
+      model: 'compatible-model',
+      temperature: 0.7,
+    });
+    const deltas: string[] = [];
+
+    const result = await provider.completeStream(createRequest('stream'), {
+      onTextDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(calls[0]?.['stream']).toBe(true);
+    expect(deltas).toEqual(['hello ', 'stream']);
+    expect(result.text).toBe('hello stream');
+  });
+
   it('runs Tavily-compatible tool calls through chat completions', async () => {
     const calls: Array<{ body: Record<string, unknown>; url: string }> = [];
     vi.stubGlobal(
@@ -101,6 +148,62 @@ describe('OpenAiCompatibleProvider', () => {
         expect.objectContaining({ role: 'assistant', tool_calls: expect.any(Array) }),
         expect.objectContaining({ role: 'tool', tool_call_id: 'call_search' }),
       ]),
+    );
+  });
+
+  it('passes required tool choice through compatible chat completions', async () => {
+    const calls: Array<{ body: Record<string, unknown>; url: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        calls.push({
+          body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+          url: target,
+        });
+        if (target.includes('api.tavily.com/search')) {
+          return Response.json({ answer: 'ok', results: [] });
+        }
+        if (calls.filter((call) => call.url.endsWith('/chat/completions')).length === 1) {
+          return Response.json({
+            choices: [
+              {
+                message: {
+                  content: '',
+                  tool_calls: [
+                    {
+                      id: 'call_search',
+                      type: 'function',
+                      function: { name: 'web_search', arguments: '{"query":"tools"}' },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+        return Response.json({ choices: [{ message: { content: 'done' } }] });
+      }),
+    );
+
+    const provider = new OpenAiCompatibleProvider({
+      apiBaseUrl: 'https://compatible.example/v1',
+      apiKey: 'test-key',
+      maxTokens: 120,
+      model: 'compatible-model',
+      tavilyTools: {
+        apiKey: 'tavily-key',
+        maxResults: 2,
+        searchDepth: 'basic',
+        timeoutMs: 1000,
+      },
+      temperature: 0.7,
+    });
+
+    await provider.complete({ ...createRequest(), toolChoiceMode: 'required' });
+
+    expect(calls.find((call) => call.url.endsWith('/chat/completions'))?.body['tool_choice']).toBe(
+      'required',
     );
   });
 

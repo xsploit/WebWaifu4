@@ -619,6 +619,16 @@ function getAiHealthUrl({
   return url.toString();
 }
 
+function getAiStateResetUrl() {
+  const url = new URL(getAiProxyUrl());
+  url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/ai/state/reset');
+  if (!/\/ai\/state\/reset\/?$/.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/ai/state/reset`;
+  }
+  url.search = '';
+  return url.toString();
+}
+
 function getClientAiRouteLabel() {
   return `AI backend ${getAiProxyUrl()}`;
 }
@@ -1101,6 +1111,7 @@ async function requestChatCompletion({
   activeChatters = 1,
   disableState,
   maxTokens,
+  maxToolRounds,
   messages,
   mode = 'direct',
   model,
@@ -1112,6 +1123,7 @@ async function requestChatCompletion({
   stateKey,
   stateScope = 'chat',
   temperature,
+  toolChoiceMode = 'auto',
   transportMode,
   ttsBridge,
   providerKeyVaultWorkspaceId,
@@ -1120,6 +1132,7 @@ async function requestChatCompletion({
   activeChatters?: number;
   disableState?: boolean;
   maxTokens: number;
+  maxToolRounds?: number;
   messages: AppCompletionMessage[];
   mode?: 'direct' | 'batch';
   model: string;
@@ -1131,6 +1144,7 @@ async function requestChatCompletion({
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
   temperature: number;
+  toolChoiceMode?: AiSettings['toolChoiceMode'];
   transportMode?: AiSettings['aiTransportMode'];
   ttsBridge?: RemoteTtsRequest;
   providerKeyVaultWorkspaceId?: string;
@@ -1148,6 +1162,7 @@ async function requestChatCompletion({
     activeChatters,
     disableState,
     llmProvider,
+    maxToolRounds,
     maxTokens,
     messages,
     mode,
@@ -1158,6 +1173,7 @@ async function requestChatCompletion({
     stateScope,
     stream: Boolean(onTextDelta),
     temperature,
+    toolChoiceMode,
     transportMode: transportMode === 'server-default' ? undefined : transportMode,
     ttsBridge,
   };
@@ -1240,6 +1256,42 @@ async function requestChatCompletion({
     ],
     meta: data.meta,
   };
+}
+
+async function resetAiProviderConversationState({
+  llmProvider,
+  model,
+  providerKeyVaultWorkspaceId,
+  ttsBridge,
+}: {
+  llmProvider: AiSettings['llmProvider'];
+  model: string;
+  providerKeyVaultWorkspaceId?: string;
+  ttsBridge?: RemoteTtsRequest;
+}) {
+  const providerDefaults = getAiProviderSwitchDefaults(llmProvider);
+  const safeModel = isPremiumCostModelId(model) ? providerDefaults.model : model;
+  const headers = await buildBackendProviderHeaders({
+    llmProvider,
+    model: safeModel,
+    providerKeyVaultWorkspaceId,
+    ttsBridge,
+  });
+  const response = await fetch(getAiStateResetUrl(), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      llmProvider,
+      model: safeModel,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`AI provider state reset failed with HTTP ${response.status}.`);
+  }
+  const data = (await response.json()) as { ok?: boolean; error?: string };
+  if (!data.ok) {
+    throw new Error(data.error ?? 'AI provider state reset failed.');
+  }
 }
 
 async function requestTextEmbedding(
@@ -3026,7 +3078,7 @@ function App() {
         } else {
           console.info('[AI Stream Debug] assistant stream finish', streamDebug);
         }
-        if (!isStale() && normalizedFinal && normalizedFinal !== fullText.trim()) {
+        if (!isStale() && !sawDelta && normalizedFinal && normalizedFinal !== fullText.trim()) {
           if (!sawDelta) {
             fullText = normalizedFinal;
             pendingText = normalizedFinal;
@@ -3226,7 +3278,7 @@ function App() {
       const finish = async (finalText?: string) => {
         const parsedReply = metadataFilter.finish(finalText ?? fullText);
         const normalizedFinal = parsedReply.text;
-        if (!isStale() && normalizedFinal && normalizedFinal !== fullText.trim()) {
+        if (!isStale() && !sawDelta && normalizedFinal && normalizedFinal !== fullText.trim()) {
           if (!sawDelta) {
             fullText = normalizedFinal;
             pendingText = normalizedFinal;
@@ -4234,6 +4286,16 @@ function App() {
     syncMemoryAgentPendingCounts,
   ]);
 
+  const handleResetAiProviderState = useCallback(async () => {
+    const settings = aiSettingsRef.current;
+    await resetAiProviderConversationState({
+      llmProvider: settings.llmProvider,
+      model: settings.model,
+      providerKeyVaultWorkspaceId,
+    });
+    await refreshAiProxyHealth();
+  }, [providerKeyVaultWorkspaceId, refreshAiProxyHealth]);
+
   const handleResetContext = useCallback(() => {
     cancelAssistantPresentation(true);
     setChatGenerating(false);
@@ -4248,14 +4310,22 @@ function App() {
       activeRelationshipStateKey,
     );
     syncMemoryAgentPendingCounts();
-    setMemoryAgentStatus('Context and memory cleared for current scope, including semantic recall.');
-    void Promise.allSettled([relationshipClear, grilloClear, semanticClear]).then(() => {
+    setMemoryAgentStatus(
+      'Context and memory cleared for current scope; rotating provider conversation state.',
+    );
+    void Promise.allSettled([
+      relationshipClear,
+      grilloClear,
+      semanticClear,
+      handleResetAiProviderState(),
+    ]).then(() => {
       void refreshMemoryBackendStatus();
     });
   }, [
     activeRelationshipStateKey,
     cancelAssistantPresentation,
     clearScopedRelationshipMemory,
+    handleResetAiProviderState,
     refreshMemoryBackendStatus,
     syncMemoryAgentPendingCounts,
   ]);
@@ -4310,7 +4380,8 @@ function App() {
               complete: async (request) => {
                 const response = await requestChatCompletion({
                   disableState: true,
-                  maxTokens: request.maxTokens,
+          maxTokens: request.maxTokens,
+          maxToolRounds: aiSettingsRef.current.maxToolRounds,
                   messages: request.messages,
                   model: request.model,
                   llmProvider: aiSettings.llmProvider,
@@ -5477,6 +5548,7 @@ function App() {
           llmProvider: settings.llmProvider,
           messages: promptMessages,
           maxTokens: settings.maxTokens,
+          maxToolRounds: settings.maxToolRounds,
           openAiStateMode: settings.openAiStateMode,
           stateKey,
           stateScope: 'chat',
@@ -5484,6 +5556,7 @@ function App() {
           onTextDelta: speechPlayer.pushDelta,
           responseFormat: ASSISTANT_REPLY_JSON_FORMAT,
           temperature: settings.temperature,
+          toolChoiceMode: settings.toolChoiceMode,
           transportMode: settings.aiTransportMode,
           ttsBridge,
           providerKeyVaultWorkspaceId,
@@ -6401,6 +6474,15 @@ function App() {
               }}
               onRefreshAiProxyHealth={() => {
                 void refreshAiProxyHealth();
+              }}
+              onResetAiProviderState={() => {
+                void handleResetAiProviderState().catch((error) => {
+                  appendSystemMessage(
+                    `[AI] Provider state reset failed: ${
+                      error instanceof Error ? error.message : 'unknown error'
+                    }`,
+                  );
+                });
               }}
               onApplyPersonaVoice={handleApplyPersonaVoice}
               onCreateVoiceLabProviderVoice={handleCreateVoiceLabProviderVoice}

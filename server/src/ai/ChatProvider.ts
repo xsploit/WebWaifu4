@@ -33,6 +33,8 @@ export type ChatProviderRequest = {
   stateScope?: 'chat' | 'memory';
   transportMode?: 'http-stream' | 'websocket';
   openAiStateMode?: 'conversation' | 'previous-response' | 'stateless';
+  toolChoiceMode?: 'auto' | 'required';
+  maxToolRounds?: number;
   target?: TwitchChatMessage;
   maxTokens?: number;
   signal?: AbortSignal;

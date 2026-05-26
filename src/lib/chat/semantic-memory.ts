@@ -47,10 +47,27 @@ export function buildSemanticMemoryTurnText(
   persona: PersonaProfile | null,
 ) {
   const personaName = persona?.name?.trim() || 'assistant';
-  return [`User: ${userText.trim()}`, `${personaName}: ${assistantText.trim()}`]
+  const normalizedUserText = normalizeSemanticMemoryText(userText, 1200);
+  const normalizedAssistantText = normalizeSemanticAssistantText(assistantText, 1200);
+  return [`User: ${normalizedUserText}`, `${personaName}: ${normalizedAssistantText}`]
     .filter(Boolean)
     .join('\n')
     .slice(0, 2400);
+}
+
+export function normalizeSemanticAssistantText(value: unknown, maxLength = 1200) {
+  const raw = normalizeSemanticMemoryText(value, maxLength * 2);
+  if (!raw) {
+    return '';
+  }
+
+  const parsed = parseAssistantStructuredText(raw);
+  const message = typeof parsed?.['message'] === 'string' ? parsed['message'] : '';
+  if (message.trim()) {
+    return normalizeSemanticMemoryText(message, maxLength);
+  }
+
+  return normalizeSemanticMemoryText(stripAssistantMetadata(raw), maxLength);
 }
 
 export function buildSemanticMemoryContext(matches: SemanticMemoryMatch[]) {
@@ -172,7 +189,9 @@ export async function addSemanticMemoryTurn({
   scopeKey: string;
   userText: string;
 }) {
-  const text = buildSemanticMemoryTurnText(userText, assistantText, persona);
+  const normalizedUserText = normalizeSemanticMemoryText(userText, 1200);
+  const normalizedAssistantText = normalizeSemanticAssistantText(assistantText, 1200);
+  const text = buildSemanticMemoryTurnText(normalizedUserText, normalizedAssistantText, persona);
   if (text.length < 24) {
     return null;
   }
@@ -185,8 +204,8 @@ export async function addSemanticMemoryTurn({
       personaId: persona?.id ?? 'unknown',
       scopeKey,
       text,
-      userText: userText.trim().slice(0, 1200),
-      assistantText: assistantText.trim().slice(0, 1200),
+      userText: normalizedUserText,
+      assistantText: normalizedAssistantText,
       embedding: normalizeEmbedding(embedding),
     };
 
@@ -394,8 +413,16 @@ function normalizeSemanticMemoryRecord(value: unknown): SemanticMemoryRecord | n
   }
 
   const source = value as Partial<SemanticMemoryRecord>;
-  const text = typeof source.text === 'string' ? source.text.trim().slice(0, 2400) : '';
-  if (!source.id || !source.scopeKey || !text) {
+  const userText = normalizeSemanticMemoryText(source.userText, 1200);
+  const assistantText = normalizeSemanticAssistantText(source.assistantText, 1200);
+  const text =
+    userText || assistantText
+      ? buildSemanticMemoryTurnText(userText, assistantText, {
+          id: String(source.personaId ?? 'unknown'),
+          name: inferAssistantNameFromMemoryText(source.text) || 'assistant',
+        } as PersonaProfile)
+      : normalizeLegacySemanticMemoryText(source.text);
+  if (!source.id || !source.scopeKey || !text.trim()) {
     return null;
   }
 
@@ -407,11 +434,76 @@ function normalizeSemanticMemoryRecord(value: unknown): SemanticMemoryRecord | n
         : Date.now(),
     personaId: String(source.personaId ?? 'unknown'),
     scopeKey: String(source.scopeKey),
-    text,
-    userText: String(source.userText ?? '').slice(0, 1200),
-    assistantText: String(source.assistantText ?? '').slice(0, 1200),
+    text: text.trim().slice(0, 2400),
+    userText,
+    assistantText,
     embedding: normalizeEmbedding(source.embedding),
   };
+}
+
+function normalizeSemanticMemoryText(value: unknown, maxLength: number) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function normalizeLegacySemanticMemoryText(value: unknown) {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  return raw
+    .split(/\r?\n/)
+    .map((line) => {
+      const colonIndex = line.indexOf(':');
+      if (colonIndex <= 0) {
+        return normalizeSemanticMemoryText(line, 2400);
+      }
+      const speaker = line.slice(0, colonIndex).trim();
+      const content = line.slice(colonIndex + 1).trim();
+      const normalizedContent =
+        speaker.toLowerCase() === 'user'
+          ? normalizeSemanticMemoryText(content, 1200)
+          : normalizeSemanticAssistantText(content, 1200);
+      return `${speaker}: ${normalizedContent}`;
+    })
+    .filter((line) => line.replace(/^[^:]+:\s*/, '').trim())
+    .join('\n')
+    .slice(0, 2400);
+}
+
+function stripAssistantMetadata(value: string) {
+  return value
+    .replace(/<yw-meta>[\s\S]*?<\/yw-meta>/gi, '')
+    .replace(/<hidden block>[\s\S]*?<\/hidden block>/gi, '')
+    .trim();
+}
+
+function parseAssistantStructuredText(value: string): Record<string, unknown> | null {
+  const candidates = [value.trim(), stripAssistantMetadata(value).trim()];
+  for (const candidate of candidates) {
+    if (!candidate.startsWith('{') || !candidate.endsWith('}')) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
+}
+
+function inferAssistantNameFromMemoryText(value: unknown) {
+  const raw = String(value ?? '');
+  const lines = raw.split(/\r?\n/);
+  const assistantLine = lines.find((line) => {
+    const label = line.slice(0, line.indexOf(':')).trim().toLowerCase();
+    return label && label !== 'user';
+  });
+  const colonIndex = assistantLine?.indexOf(':') ?? -1;
+  return colonIndex > 0 ? assistantLine!.slice(0, colonIndex).trim() : '';
 }
 
 function normalizeEmbedding(value: unknown) {

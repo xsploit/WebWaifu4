@@ -17,6 +17,7 @@ type AiTabProps = {
   modelsLoading: boolean;
   onRefreshAiProxyHealth: () => void;
   onRefreshModels: () => void;
+  onResetAiProviderState: () => void;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
 };
 
@@ -89,6 +90,7 @@ export function AiTab({
   modelsLoading,
   onRefreshAiProxyHealth,
   onRefreshModels,
+  onResetAiProviderState,
   setAiSettings,
 }: AiTabProps) {
   const selectedModel = aiSettings.model.trim();
@@ -228,6 +230,32 @@ export function AiTab({
               : 'not configured'}
           </strong>
         </div>
+        <select
+          className="select-tech"
+          onChange={(event) =>
+            updateAiSettings(setAiSettings, {
+              toolChoiceMode: event.target.value as AiSettings['toolChoiceMode'],
+            })
+          }
+          value={aiSettings.toolChoiceMode}
+        >
+          <option value="auto">Tool Calls: Auto</option>
+          <option value="required">Tool Calls: Required</option>
+        </select>
+        <div className="field-hint">
+          Required tells the provider to call at least one configured runtime tool whenever tools are
+          available for the turn.
+        </div>
+        <Slider
+          label={`Max tool rounds ${aiSettings.maxToolRounds}`}
+          max={30}
+          min={1}
+          onInput={(value) =>
+            updateAiSettings(setAiSettings, { maxToolRounds: Math.round(value) })
+          }
+          step={1}
+          value={aiSettings.maxToolRounds}
+        />
         <div className="field-hint">{describeProviderState(providerState)}</div>
         <div className="field-hint">
           Cached tokens are the last value reported by the provider. A zero here means no cached
@@ -235,6 +263,9 @@ export function AiTab({
         </div>
         <button className="btn-tech secondary" onClick={onRefreshAiProxyHealth} type="button">
           Refresh Transport
+        </button>
+        <button className="btn-tech secondary" onClick={onResetAiProviderState} type="button">
+          Rotate Conversation State
         </button>
         {aiProxyHealthError ? <div className="status-copy">{aiProxyHealthError}</div> : null}
       </div>

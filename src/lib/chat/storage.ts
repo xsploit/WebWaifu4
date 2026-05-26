@@ -324,6 +324,12 @@ function normalizeAiSettings(value: unknown): AiSettings {
     source.openAiStateMode === 'stateless'
       ? source.openAiStateMode
       : defaults.openAiStateMode;
+  const toolChoiceMode =
+    source.toolChoiceMode === 'required' ? source.toolChoiceMode : defaults.toolChoiceMode;
+  const maxToolRounds =
+    typeof source.maxToolRounds === 'number' && Number.isFinite(source.maxToolRounds)
+      ? Math.max(1, Math.min(30, Math.round(source.maxToolRounds)))
+      : defaults.maxToolRounds;
   const playbackRate =
     typeof source.ttsPlaybackRate === 'number' && Number.isFinite(source.ttsPlaybackRate)
       ? Math.max(0.7, Math.min(1.35, source.ttsPlaybackRate))
@@ -384,6 +390,8 @@ function normalizeAiSettings(value: unknown): AiSettings {
     memoryAgentIntervalMessages,
     aiTransportMode,
     openAiStateMode,
+    toolChoiceMode,
+    maxToolRounds,
     replyLength: normalizeReplyLengthMode(source.replyLength),
     temperature: typeof source.temperature === 'number' ? source.temperature : defaults.temperature,
     maxTokens: typeof source.maxTokens === 'number' ? source.maxTokens : defaults.maxTokens,

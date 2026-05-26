@@ -51,6 +51,7 @@ describe('chat settings persistence', () => {
       inworldModelId: 'inworld-tts-2',
       inworldVoiceId: 'inworld-voice',
       llmProvider: 'openrouter-responses',
+      maxToolRounds: 18,
       maxTokens: 420,
       memoryAgentIntervalMessages: 7,
       memoryAgentModel: DEFAULT_OPENROUTER_MODEL,

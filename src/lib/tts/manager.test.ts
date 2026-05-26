@@ -112,7 +112,7 @@ describe('TtsManager remote PCM streaming', () => {
     vi.unstubAllGlobals();
   });
 
-  it('schedules live PCM chunks without waiting for previous playback to end', async () => {
+  it('schedules live PCM chunks back-to-back without overlap', async () => {
     vi.stubGlobal('window', {
       clearTimeout: vi.fn(),
       setTimeout: vi.fn(() => 1),
@@ -132,7 +132,7 @@ describe('TtsManager remote PCM streaming', () => {
     const secondSource = audioContext.sources[1]!;
     expect(firstSource.startedAt).not.toBeNull();
     expect(secondSource.startedAt).not.toBeNull();
-    expect(secondSource.startedAt!).toBeLessThan(firstSource.startedAt! + 0.1);
+    expect(secondSource.startedAt!).toBeGreaterThanOrEqual(firstSource.startedAt! + 0.1);
 
     let firstFinished = false;
     firstPlayback.then(() => {

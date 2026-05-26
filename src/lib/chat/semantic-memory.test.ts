@@ -6,6 +6,7 @@ import {
   clearSemanticMemory,
   findSemanticMemoryMatchesInRecords,
   loadSemanticMemory,
+  normalizeSemanticAssistantText,
   scoreSemanticMemoryRecord,
   type SemanticMemoryRecord,
 } from './semantic-memory';
@@ -73,6 +74,39 @@ describe('semantic memory', () => {
     expect(records[0]?.scopeKey).toBe(scopeKey);
     expect(records[0]?.embedding).toEqual([1, 0, 0]);
     expect(records[0]?.text).toContain('vector memory');
+  });
+
+  it('normalizes structured assistant JSON before saving semantic memory', async () => {
+    const scopeKey = createTestScope('structured-json');
+
+    const write = await addSemanticMemoryTurn({
+      assistantText:
+        '{"message":"Yep, I can search when you ask. [smirk]","emotion":"curious"}',
+      embedding: [1, 0, 0],
+      persona: DEFAULT_PERSONA,
+      scopeKey,
+      userText: 'you got search tools right?',
+    });
+
+    expect(write?.record.assistantText).toBe('Yep, I can search when you ask. [smirk]');
+    expect(write?.record.text).toContain('Neuro-sama: Yep, I can search when you ask. [smirk]');
+    expect(write?.record.text).not.toContain('"emotion"');
+  });
+
+  it('normalizes legacy semantic records with structured assistant JSON on load', async () => {
+    const normalized = normalizeSemanticAssistantText(
+      '{"message":"Clean visible reply.","emotion":"happy"}',
+    );
+
+    expect(normalized).toBe('Clean visible reply.');
+  });
+
+  it('strips assistant metadata tags from semantic assistant text', () => {
+    expect(
+      normalizeSemanticAssistantText(
+        'Visible reply. <yw-meta>{"emotion":"amused"}</yw-meta>',
+      ),
+    ).toBe('Visible reply.');
   });
 
   it('clears semantic memories for a scope when saved empty', async () => {

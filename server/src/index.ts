@@ -109,8 +109,15 @@ type AiChatRequestBody = {
   temperature?: number;
   transportMode?: unknown;
   openAiStateMode?: unknown;
+  toolChoiceMode?: unknown;
+  maxToolRounds?: unknown;
   ttsBridge?: unknown;
   llmProvider?: unknown;
+};
+
+type AiStateResetBody = {
+  llmProvider?: unknown;
+  model?: string;
 };
 
 type AiChatStreamEvent =
@@ -930,6 +937,13 @@ function createAsyncTextQueue() {
       chunks.push(text.endsWith(' ') ? text : `${text} `);
       wake();
     },
+    pushRaw(chunk: string) {
+      if (closed || failure || !chunk) {
+        return;
+      }
+      chunks.push(chunk);
+      wake();
+    },
     close() {
       closed = true;
       wake();
@@ -956,6 +970,12 @@ function createAsyncTextQueue() {
       }
     },
   };
+}
+
+const DEBUG_LIVE_TTS_BRIDGE = process.env.WEBWAIFU_TTS_DEBUG === 'true';
+
+function normalizeLiveSpeechChunk(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function createMetadataSpeechFilter() {
@@ -1078,10 +1098,37 @@ function createLiveSpeechTextBridge(
   const queue = createAsyncTextQueue();
   const filter = createMetadataSpeechFilter();
   let pending = '';
-  const strategy = options?.chunkingStrategy ?? 'app';
+  const strategy = options?.chunkingStrategy ?? 'eager';
   const minLength = options?.minBufferChars ?? (strategy === 'python-safe' ? 160 : 28);
   const maxLength = options?.maxBufferChars ?? (strategy === 'python-safe' ? 240 : 180);
   const softLength = options?.softBufferChars ?? (strategy === 'python-safe' ? 160 : minLength);
+
+  const pushSpeechChunk = (chunk: string) => {
+    const text = normalizeLiveSpeechChunk(chunk);
+    if (!text) {
+      return;
+    }
+    if (DEBUG_LIVE_TTS_BRIDGE) {
+      console.info('[TTS Bridge Text] chunk', {
+        chars: text.length,
+        tail: text.slice(-120),
+      });
+    }
+    queue.push(text);
+  };
+
+  const pushRawSpeechChunk = (chunk: string) => {
+    if (!chunk) {
+      return;
+    }
+    if (DEBUG_LIVE_TTS_BRIDGE) {
+      console.info('[TTS Bridge Text] raw chunk', {
+        chars: chunk.length,
+        tail: chunk.slice(-120),
+      });
+    }
+    queue.pushRaw(chunk);
+  };
 
   const flush = (force = false) => {
     while (pending.trim()) {
@@ -1111,7 +1158,7 @@ function createLiveSpeechTextBridge(
       }
       const chunk = pending.slice(0, splitAt).trim();
       pending = pending.slice(splitAt).trimStart();
-      queue.push(chunk);
+      pushSpeechChunk(chunk);
     }
   };
 
@@ -1119,6 +1166,10 @@ function createLiveSpeechTextBridge(
     push(delta: string) {
       const visible = filter.push(delta);
       if (!visible) {
+        return;
+      }
+      if (strategy === 'eager') {
+        pushRawSpeechChunk(visible);
         return;
       }
       pending += visible;
@@ -1148,6 +1199,18 @@ function normalizeOpenAiStateMode(value: unknown): ChatProviderRequest['openAiSt
   return value === 'conversation' || value === 'previous-response' || value === 'stateless'
     ? value
     : undefined;
+}
+
+function normalizeToolChoiceMode(value: unknown): ChatProviderRequest['toolChoiceMode'] {
+  return value === 'required' ? 'required' : 'auto';
+}
+
+function normalizeMaxToolRounds(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 15;
+  }
+  return Math.max(1, Math.min(30, Math.round(parsed)));
 }
 
 async function runAiChatRequest({
@@ -1210,6 +1273,8 @@ async function runAiChatRequest({
     stateKey: targetStateKey,
     stateScope: normalizeStateScope(body.stateScope),
     temperature: body.temperature,
+    toolChoiceMode: normalizeToolChoiceMode(body.toolChoiceMode),
+    maxToolRounds: normalizeMaxToolRounds(body.maxToolRounds),
     transportMode: appOwnedState ? 'http-stream' : normalizeAiTransportMode(body.transportMode),
     openAiStateMode: appOwnedState ? 'stateless' : normalizeOpenAiStateMode(body.openAiStateMode),
   };
@@ -2022,6 +2087,46 @@ const httpServer = createServer(async (request, response) => {
         ok: false,
         error: error instanceof Error ? error.message : 'Provider model list failed.',
         models: [],
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/ai/state/reset') {
+    try {
+      const body = await readRequestJson<AiStateResetBody>(request);
+      const providerName = normalizeRuntimeLlmProvider(
+        getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider || config.aiProvider,
+      );
+      const requestedModel = typeof body.model === 'string' ? body.model : '';
+      const modelDecision = resolveServerProviderProxyModel({
+        allowlistEnvNames: getAllowlistEnvNamesForProvider(providerName),
+        browserProviderKeyPresent: Boolean(getHeaderSecret(request, 'x-yourwifey-llm-provider-key')),
+        configuredModel: getConfiguredModelForProvider(providerName, config),
+        defaultModel: getDefaultModelForProvider(providerName),
+        requestedModel,
+      });
+      if (!modelDecision.allowed) {
+        throw new Error(modelDecision.error);
+      }
+
+      const runtimeProvider = getRuntimeChatProvider(
+        config,
+        request,
+        providerName,
+        modelDecision.model,
+        allowServerProviderProxy,
+      );
+      runtimeProvider?.resetState?.();
+      writeJson(response, 200, {
+        ok: true,
+        provider: providerName,
+        reset: Boolean(runtimeProvider?.resetState),
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'AI provider state reset failed.',
       });
     }
     return;
