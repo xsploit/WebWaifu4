@@ -102,6 +102,71 @@ async function postAiChat(
   });
 }
 
+async function runPomlMemorySmoke(baseUrl: string): Promise<SmokeResult> {
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/ai/poml/render`, {
+    body: JSON.stringify({
+      variables: {
+        diary_context: '- Subby asked me to prove memory reaches the shipped prompt.',
+        persona_context: 'You are Hikari. Stay direct and in character.',
+        relationship_memory_context:
+          '## relationship_memory\nsummary=Subby is verifying release memory wiring.\nknown_facts=["Subby cares about low-latency TTS"]',
+        reply_metadata_instruction: '<yw-meta>{"emotion":"neutral"}</yw-meta>',
+        semantic_memory_context:
+          '## recalled_memories\n- score=0.98 User: remember WebSocket first audio timing matters',
+        turn_metadata_context:
+          'Turn metadata: {"source":"local","stateKey":"local:persona:hikari-chan"}',
+      },
+    }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { messages?: unknown; ok?: boolean; error?: string }
+    | null;
+  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+  const systemMessage = messages.find(
+    (item): item is { content: string; role: string } =>
+      Boolean(item) &&
+      typeof item === 'object' &&
+      (item as { role?: unknown }).role === 'system' &&
+      typeof (item as { content?: unknown }).content === 'string',
+  );
+  const content = systemMessage?.content ?? '';
+  const required = [
+    '# Relationship Memory',
+    '## relationship_memory',
+    'Subby is verifying release memory wiring.',
+    'Subby cares about low-latency TTS',
+    '# Private Diary Context',
+    'Subby asked me to prove memory reaches the shipped prompt.',
+    '# Relevant Semantic Memory',
+    '## recalled_memories',
+    'WebSocket first audio timing matters',
+    '"stateKey":"local:persona:hikari-chan"',
+    '<yw-meta>',
+  ];
+  const forbidden = [
+    'POML renders the prompt',
+    'OpenAI Responses API',
+    'host_context',
+    'external runtime services',
+    '{{',
+  ];
+  const missing = required.filter((needle) => !content.includes(needle));
+  const leaked = forbidden.filter((needle) => content.includes(needle));
+  return {
+    deltaChars: content.length,
+    error:
+      payload?.error ??
+      (missing.length ? `missing ${missing.join(', ')}` : leaked.length ? `leaked ${leaked.join(', ')}` : null),
+    eventCount: messages.length,
+    name: 'poml-memory-render',
+    ok: response.ok && payload?.ok === true && missing.length === 0 && leaked.length === 0,
+    status: response.status,
+    toolsUsed: [],
+  };
+}
+
 async function runToolSmoke({
   baseUrl,
   headers,
@@ -592,6 +657,7 @@ async function main() {
   }
 
   const results: SmokeResult[] = [];
+  results.push(await runPomlMemorySmoke(baseUrl));
   if (openAiKey) {
     const openAiHeaders = {
       'content-type': 'application/json',
