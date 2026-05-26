@@ -527,7 +527,20 @@ function relaunchWithMode(mode) {
       `--window-mode=${mode}`,
     ],
   });
-  app.exit(0);
+  requestExitAfterBackendStop();
+}
+
+function requestExitAfterBackendStop() {
+  quitAfterBackendStop = true;
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer);
+    backendRestartTimer = null;
+  }
+  if (externalBackend || !backendProcess) {
+    app.exit(0);
+    return;
+  }
+  void stopBackendIfNeeded().finally(() => app.exit(0));
 }
 
 function installMenu() {
