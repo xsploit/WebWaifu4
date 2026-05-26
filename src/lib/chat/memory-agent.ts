@@ -1,4 +1,6 @@
 import type { ChatMessage, PersonaProfile, RelationshipMemory } from './types';
+import { DEFAULT_MEMORY_AGENT_MODEL } from './defaults';
+import { isPremiumCostModelId } from './provider-defaults';
 
 export const MEMORY_AGENT_INTERVAL_TURNS = 7;
 export const MEMORY_AGENT_JSON_FORMAT = { type: 'json_object' } as const;
@@ -99,7 +101,9 @@ export function getMemoryAgentCadenceDecision(
 }
 
 export function chooseMemoryAgentModel(availableModels: string[], fallbackModel: string) {
-  return getMemoryAgentModelCandidates(availableModels, fallbackModel)[0] ?? fallbackModel;
+  return (
+    getMemoryAgentModelCandidates(availableModels, fallbackModel)[0] ?? DEFAULT_MEMORY_AGENT_MODEL
+  );
 }
 
 export function getMemoryAgentModelCandidates(
@@ -116,7 +120,7 @@ export function getMemoryAgentModelCandidates(
 
   const pushCandidate = (model: string | undefined) => {
     const normalized = model?.trim();
-    if (!normalized) {
+    if (!normalized || isPremiumCostModelId(normalized)) {
       return;
     }
 
@@ -128,7 +132,11 @@ export function getMemoryAgentModelCandidates(
     }
 
     const loweredModel = resolvedModel.toLowerCase();
-    if (excluded.has(loweredModel) || seen.has(loweredModel)) {
+    if (
+      excluded.has(loweredModel) ||
+      seen.has(loweredModel) ||
+      isPremiumCostModelId(resolvedModel)
+    ) {
       return;
     }
 

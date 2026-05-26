@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   addMemoryAgentPendingChatTurns,
+  chooseMemoryAgentModel,
   clearMemoryAgentPendingChatTurns,
   consumeMemoryAgentPendingChatTurns,
   getMemoryAgentCadenceDecision,
+  getMemoryAgentModelCandidates,
 } from './memory-agent';
+import { DEFAULT_MEMORY_AGENT_MODEL } from './defaults';
 
 describe('memory agent chat cadence', () => {
   it('queues the worker from local chat only when the configured interval is reached', () => {
@@ -60,5 +63,18 @@ describe('memory agent chat cadence', () => {
     clearMemoryAgentPendingChatTurns(pending, 'local:persona:hikari-chan');
     expect(pending['local:persona:hikari-chan']).toBe(0);
     expect(pending['twitch:subsect:persona:hikari-chan']).toBe(2);
+  });
+
+  it('does not choose expensive OpenAI o1/pro models for the memory worker', () => {
+    expect(
+      getMemoryAgentModelCandidates(
+        ['o1-pro-2025-03-19', 'openai/gpt-5_4-pro-2026-03-05', 'google/gemini-2.5-pro'],
+        'o1-pro-2025-03-19',
+        [],
+        'openai/o1-pro-2025-03-19',
+      ),
+    ).toEqual(['google/gemini-2.5-pro']);
+
+    expect(chooseMemoryAgentModel([], 'o1-pro-2025-03-19')).toBe(DEFAULT_MEMORY_AGENT_MODEL);
   });
 });
