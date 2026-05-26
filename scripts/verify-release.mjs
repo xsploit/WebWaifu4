@@ -6,8 +6,6 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = path.join(repoRoot, 'release', 'win-unpacked', 'WebWaifu 4.exe');
-const defaultBackupPath =
-  'C:\\Users\\SUBSECT\\Downloads\\web-waifu-4-local-backup-2026-05-24T22-18-26.json';
 
 function getArg(name, fallback = '') {
   const index = process.argv.indexOf(name);
@@ -84,10 +82,12 @@ async function killPackagedRuntime() {
   const escapedRoot = repoRoot.replace(/'/g, "''");
   const command = `
 $ProgressPreference = 'SilentlyContinue'
+$releaseRoot = '${escapedRoot}\\release\\win-unpacked\\*'
+$desktopRuntimeNode = '${escapedRoot}\\release\\win-unpacked\\resources\\desktop-runtime\\node.exe'
 $targets = Get-Process | Where-Object {
-  ($_.ProcessName -eq 'WebWaifu 4' -and $_.Path -like '*\\Documents\\GitHub\\WebWaifu4\\release\\win-unpacked\\*') -or
-  ($_.ProcessName -eq 'node' -and $_.Path -like '*\\Documents\\GitHub\\WebWaifu4\\release\\win-unpacked\\resources\\desktop-runtime\\node.exe') -or
-  ($_.Path -like '${escapedRoot}\\release\\win-unpacked\\*')
+  ($_.ProcessName -eq 'WebWaifu 4' -and $_.Path -like $releaseRoot) -or
+  ($_.ProcessName -eq 'node' -and $_.Path -like $desktopRuntimeNode) -or
+  ($_.Path -like $releaseRoot)
 }
 if ($targets) {
   $targets | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -135,9 +135,13 @@ async function runPackagedAiSmoke(backupPath) {
 }
 
 async function main() {
-  const backupPath =
-    getArg('--backup') || process.env.WEBWAIFU_RELEASE_BACKUP || defaultBackupPath;
+  const backupPath = getArg('--backup') || process.env.WEBWAIFU_RELEASE_BACKUP || '';
   const skipPackagedAi = hasFlag('--skip-packaged-ai');
+  if (!skipPackagedAi && !backupPath) {
+    throw new Error(
+      'Missing --backup. Pass --backup <local-transfer-backup.json>, set WEBWAIFU_RELEASE_BACKUP, or use --skip-packaged-ai.',
+    );
+  }
 
   await run('git', ['diff', '--check']);
   await run('npx', ['tsc', '--noEmit']);

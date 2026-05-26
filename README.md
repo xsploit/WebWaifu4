@@ -221,6 +221,11 @@ The packaged AI smoke covers OpenAI WebSocket tools, OpenAI HTTP tools,
 OpenRouter tools, structured TTS, live TTS, live tools with TTS, and the
 OpenAI premium-model guard.
 
+The backup argument must point at a local transfer export with provider keys if
+you want the packaged AI smoke to call real providers. You can also set
+`WEBWAIFU_RELEASE_BACKUP` instead of passing `--backup`, or use
+`--skip-packaged-ai` for a no-provider-key structural release check.
+
 ---
 
 <h2 align="center">🔑 Provider Keys</h2>

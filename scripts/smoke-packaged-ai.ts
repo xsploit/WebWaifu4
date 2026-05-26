@@ -48,6 +48,14 @@ function hasFlag(name: string) {
   return args.includes(name);
 }
 
+function requireArg(name: string, fallback = '') {
+  const value = getArg(name) || fallback;
+  if (!value) {
+    throw new Error(`Missing ${name}. Pass ${name} <path> or set WEBWAIFU_RELEASE_BACKUP.`);
+  }
+  return value;
+}
+
 function readBackup(path: string): LocalBackup {
   return JSON.parse(fs.readFileSync(path, 'utf8')) as LocalBackup;
 }
@@ -688,8 +696,7 @@ async function runLiveWsToolTtsSmoke({
 }
 
 async function main() {
-  const backupPath =
-    getArg('--backup') || 'C:/Users/SUBSECT/Downloads/web-waifu-4-local-backup-2026-05-24T22-18-26.json';
+  const backupPath = requireArg('--backup', process.env['WEBWAIFU_RELEASE_BACKUP'] ?? '');
   const baseUrl = getArg('--base-url', 'http://127.0.0.1:8797');
   const openAiModel = getArg('--openai-model', 'gpt-5-nano');
   const openRouterModel = getArg('--openrouter-model', 'openai/gpt-5-nano');
