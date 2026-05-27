@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { DEFAULT_OPENROUTER_EMBEDDING_MODEL } from '../../../lib/chat/defaults';
 import type { GrilloMemoryState } from '../../../lib/chat/grillo-memory';
 import type {
   LadybugMemoryGraphSummary,
@@ -128,6 +129,41 @@ export function ContextTab({
           thoughts, and the relationship profile used in future replies.
         </div>
         <label className="setting-row">
+          <span>Embedding source</span>
+          <select
+            className="select-tech compact-input"
+            onChange={(event) =>
+              setAiSettings((current) => ({
+                ...current,
+                embeddingMode:
+                  event.target.value === 'provider' || event.target.value === 'auto'
+                    ? event.target.value
+                    : 'browser',
+              }))
+            }
+            value={aiSettings.embeddingMode}
+          >
+            <option value="browser">Browser local</option>
+            <option value="provider">Current provider</option>
+            <option value="auto">Browser, then provider</option>
+          </select>
+        </label>
+        <label className="setting-row">
+          <span>Embedding model</span>
+          <input
+            className="input-tech compact-input"
+            onChange={(event) =>
+              setAiSettings((current) => ({
+                ...current,
+                embeddingModel: event.target.value.trim() || DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+              }))
+            }
+            spellCheck={false}
+            type="text"
+            value={aiSettings.embeddingModel}
+          />
+        </label>
+        <label className="setting-row">
           <span>Auto-run every N chat messages</span>
           <input
             className="input-tech compact-input"
@@ -214,7 +250,9 @@ export function ContextTab({
         <div className="memory-kv-grid">
           <div className="status-copy">
             Backend:{' '}
-            <strong>{memoryBackendStatus?.ok ? memoryBackendStatus.backend : 'browser fallback'}</strong>
+            <strong>
+              {memoryBackendStatus?.ok ? memoryBackendStatus.backend : 'browser fallback'}
+            </strong>
           </div>
           <div className="status-copy">
             Snapshots: <strong>{memoryBackendStatus?.snapshots ?? 0}</strong>
@@ -281,7 +319,9 @@ export function ContextTab({
               <div className="memory-entry" key={scope.id}>
                 <div className="memory-entry-header">
                   <strong>{scope.personaId || 'unknown persona'}</strong>
-                  <span>{scope.source}:{scope.channel}</span>
+                  <span>
+                    {scope.source}:{scope.channel}
+                  </span>
                 </div>
                 <p>{scope.id}</p>
               </div>
@@ -290,7 +330,9 @@ export function ContextTab({
               <div className="memory-entry" key={participant.id}>
                 <div className="memory-entry-header">
                   <strong>{participant.displayName || participant.id}</strong>
-                  <span>{participant.source}:{participant.channel}</span>
+                  <span>
+                    {participant.source}:{participant.channel}
+                  </span>
                 </div>
                 <p>{participant.id}</p>
               </div>
@@ -344,7 +386,9 @@ export function ContextTab({
                   <span>{profile.mood || 'mood unknown'}</span>
                 </div>
                 <p>{profile.scopeKey}</p>
-                <div className="status-copy">{profile.summary || 'No relationship summary yet.'}</div>
+                <div className="status-copy">
+                  {profile.summary || 'No relationship summary yet.'}
+                </div>
               </div>
             ))}
             {memoryGraphSummary.recent.relationshipFacts.slice(0, 4).map((fact) => (
@@ -669,8 +713,8 @@ export function ContextTab({
         </div>
         <div className="field-hint">
           New Chat Context clears chat history, draft text, recent Twitch/local transcript context,
-          pending assistant playback, and any in-flight reply. Durable relationship, Grillo,
-          diary, and semantic recall stay available until you press Clear Memory.
+          pending assistant playback, and any in-flight reply. Durable relationship, Grillo, diary,
+          and semantic recall stay available until you press Clear Memory.
         </div>
       </div>
     </>

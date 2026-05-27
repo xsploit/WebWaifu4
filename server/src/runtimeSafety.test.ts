@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getRawPathParts,
   normalizeEmbeddingModel,
-  normalizeOpenAiTranscriptionModel,
+  normalizeTranscriptionModel,
   resolveServerProviderProxyModel,
   resolveRuntimeHealthStateKey,
   safeDecodePathParts,
@@ -117,13 +117,13 @@ describe('runtimeSafety', () => {
     ).toEqual({ allowed: true, model: 'gpt-5_4-pro' });
   });
 
-  it('forces stream transcription onto OpenAI transcription models', () => {
-    expect(normalizeOpenAiTranscriptionModel('whisper-1')).toBe('whisper-1');
-    expect(normalizeOpenAiTranscriptionModel('gpt-4o-mini-transcribe')).toBe(
-      'gpt-4o-mini-transcribe',
+  it('forces stream transcription onto aggregator STT models', () => {
+    expect(normalizeTranscriptionModel('whisper-1')).toBe('openai/whisper-1');
+    expect(normalizeTranscriptionModel('gpt-4o-mini-transcribe')).toBe(
+      'openai/gpt-4o-mini-transcribe',
     );
-    expect(normalizeOpenAiTranscriptionModel('o1-pro-2025-03-19')).toBe('whisper-1');
-    expect(normalizeOpenAiTranscriptionModel('gpt-5_4-pro')).toBe('whisper-1');
+    expect(normalizeTranscriptionModel('o1-pro-2025-03-19')).toBe('openai/whisper-large-v3');
+    expect(normalizeTranscriptionModel('gpt-5_4-pro')).toBe('openai/whisper-large-v3');
   });
 
   it('forces embeddings onto embedding-only models', () => {

@@ -10,6 +10,7 @@ type TranscribeTwitchStreamOptions = {
   apiKey: string;
   channel: string;
   model: string;
+  provider: 'fish-speech' | 'openrouter';
   sampleSeconds: number;
 };
 
@@ -165,7 +166,7 @@ async function captureAudioSample(streamUrl: string, sampleSeconds: number) {
       '-ar',
       '16000',
       '-f',
-      'mp3',
+      'wav',
       'pipe:1',
     ],
     {
@@ -192,6 +193,19 @@ function looksLikePromptEcho(text: string) {
     normalized.includes('chat-relevant context') ||
     normalized.includes('twitch livestream audio')
   );
+}
+
+function normalizeProviderLabel(provider: TranscribeTwitchStreamOptions['provider']) {
+  return provider === 'openrouter' ? 'OpenRouter' : 'Fish Speech';
+}
+
+function resolveFishAsrUrl(baseUrl: string) {
+  const raw = baseUrl.trim() || 'https://api.fish.audio';
+  const withoutTrailingSlash = raw.replace(/\/+$/, '');
+  if (withoutTrailingSlash.endsWith('/v1')) {
+    return `${withoutTrailingSlash}/asr`;
+  }
+  return `${withoutTrailingSlash.replace(/\/v1\/.*$/i, '')}/v1/asr`;
 }
 
 async function captureJpegFrame(streamUrl: string) {
@@ -230,45 +244,79 @@ async function captureJpegFrame(streamUrl: string) {
 export async function transcribeTwitchStreamSample(options: TranscribeTwitchStreamOptions) {
   const channel = cleanChannel(options.channel);
   if (!options.apiKey.trim()) {
-    throw new Error('OpenAI provider key is not configured.');
+    throw new Error(`${normalizeProviderLabel(options.provider)} provider key is not configured.`);
   }
 
   const streamUrl = await resolveTwitchStreamUrl(channel, 'audio');
   const audio = await captureAudioSample(streamUrl, options.sampleSeconds);
-  const form = new FormData();
-  form.append('model', options.model.trim() || 'whisper-1');
-  form.append('response_format', 'json');
-  form.append(
-    'file',
-    new Blob([new Uint8Array(audio)], { type: 'audio/mpeg' }),
-    `twitch-${channel}.mp3`,
-  );
+  const providerLabel = normalizeProviderLabel(options.provider);
 
-  const response = await fetch(
-    `${options.apiBaseUrl.replace(/\/+$/, '')}/audio/transcriptions`,
-    {
-      body: form,
+  if (options.provider === 'openrouter') {
+    const response = await fetch(`${options.apiBaseUrl.replace(/\/+$/, '')}/audio/transcriptions`, {
+      body: JSON.stringify({
+        input_audio: {
+          data: audio.toString('base64'),
+          format: 'wav',
+        },
+        model: options.model.trim() || 'openai/whisper-large-v3',
+      }),
       headers: {
         Authorization: `Bearer ${options.apiKey}`,
+        'Content-Type': 'application/json',
       },
       method: 'POST',
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      error?: { message?: string };
+      text?: string;
+    };
+    if (!response.ok) {
+      throw new Error(
+        data.error?.message ||
+          `${providerLabel} transcription failed with HTTP ${response.status}.`,
+      );
+    }
+    const text = normalizeTranscriptText(data.text ?? '');
+    if (!text || looksLikePromptEcho(text)) {
+      throw new Error(`${providerLabel} transcription returned no usable stream speech.`);
+    }
+
+    return {
+      channel,
+      model: options.model.trim() || 'openai/whisper-large-v3',
+      sampleSeconds: Math.max(5, Math.min(60, Math.round(options.sampleSeconds))),
+      text,
+    };
+  }
+
+  const response = await fetch(resolveFishAsrUrl(options.apiBaseUrl), {
+    body: JSON.stringify({
+      audio: audio.toString('base64'),
+      ignore_timestamps: true,
+    }),
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      'Content-Type': 'application/json',
     },
-  );
+    method: 'POST',
+  });
   const data = (await response.json().catch(() => ({}))) as {
     error?: { message?: string };
     text?: string;
   };
   if (!response.ok) {
-    throw new Error(data.error?.message || `OpenAI transcription failed with HTTP ${response.status}.`);
+    throw new Error(
+      data.error?.message || `${providerLabel} transcription failed with HTTP ${response.status}.`,
+    );
   }
   const text = normalizeTranscriptText(data.text ?? '');
   if (!text || looksLikePromptEcho(text)) {
-    throw new Error('OpenAI transcription returned no usable stream speech.');
+    throw new Error(`${providerLabel} transcription returned no usable stream speech.`);
   }
 
   return {
     channel,
-    model: options.model.trim() || 'whisper-1',
+    model: 'fish-audio/asr',
     sampleSeconds: Math.max(5, Math.min(60, Math.round(options.sampleSeconds))),
     text,
   };

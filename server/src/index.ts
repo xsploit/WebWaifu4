@@ -36,7 +36,7 @@ import {
 import {
   isPremiumCostModelId,
   normalizeEmbeddingModel,
-  normalizeOpenAiTranscriptionModel,
+  normalizeTranscriptionModel,
   resolveRuntimeHealthStateKey,
   resolveServerProviderProxyModel,
 } from './runtimeSafety.js';
@@ -712,28 +712,6 @@ function getRuntimeProviderConfig(
   };
 }
 
-function getOpenAiUtilityProviderConfig(
-  baseConfig: StreamBotConfig,
-  request: IncomingMessage,
-  allowServerProxy = false,
-) {
-  const apiKey =
-    getHeaderSecret(request, 'x-yourwifey-openai-byok-key') ||
-    (allowServerProxy && baseConfig.providerProxyEnabled
-      ? process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || ''
-      : '');
-  if (!apiKey) {
-    return null;
-  }
-  return {
-    ...baseConfig,
-    aiApiBaseUrl:
-      process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') || 'https://api.openai.com/v1',
-    aiApiKey: apiKey,
-    providerProxyEnabled: true,
-  };
-}
-
 async function listProviderModels(config: StreamBotConfig) {
   const url = `${config.aiApiBaseUrl.replace(/\/+$/, '')}/models`;
   const headers: Record<string, string> = {
@@ -1330,7 +1308,7 @@ async function createOpenAiEmbedding(config: StreamBotConfig, input: string, mod
   const data = (await openAiResponse.json()) as OpenAiEmbeddingPayload;
   const embedding = data.data?.[0]?.embedding;
   if (!Array.isArray(embedding)) {
-    throw new Error('OpenAI returned no embedding.');
+    throw new Error('Embedding provider returned no vector.');
   }
 
   return embedding;
@@ -1349,7 +1327,10 @@ function getRuntimeApiPath(pathname: string) {
 
 function normalizeMemoryScopeKey(value: unknown) {
   return typeof value === 'string' && value.trim()
-    ? value.trim().replace(/[^a-z0-9:_-]+/gi, '-').slice(0, 180) || 'default'
+    ? value
+        .trim()
+        .replace(/[^a-z0-9:_-]+/gi, '-')
+        .slice(0, 180) || 'default'
     : 'default';
 }
 
@@ -1606,7 +1587,9 @@ const httpServer = createServer(async (request, response) => {
       const body = await readRequestJson<MemorySemanticSearchBody>(request, 1024 * 1024);
       const scopeKey = normalizeMemoryScopeKey(body.scopeKey);
       const embedding = Array.isArray(body.embedding)
-        ? body.embedding.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+        ? body.embedding.filter(
+            (value): value is number => typeof value === 'number' && Number.isFinite(value),
+          )
         : [];
       const limit = Math.max(1, Math.min(20, Math.trunc(Number(body.limit) || 4)));
       writeJson(response, 200, {
@@ -1636,10 +1619,7 @@ const httpServer = createServer(async (request, response) => {
       writeJson(response, 200, {
         ok: false,
         backend: getLadybugMemoryService().getBackendLabel(),
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Ladybug relationship profile load failed.',
+        error: error instanceof Error ? error.message : 'Ladybug relationship profile load failed.',
       });
     }
     return;
@@ -1661,10 +1641,7 @@ const httpServer = createServer(async (request, response) => {
       writeJson(response, 200, {
         ok: false,
         backend: getLadybugMemoryService().getBackendLabel(),
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Ladybug relationship profile save failed.',
+        error: error instanceof Error ? error.message : 'Ladybug relationship profile save failed.',
       });
     }
     return;
@@ -1684,9 +1661,7 @@ const httpServer = createServer(async (request, response) => {
         ok: false,
         backend: getLadybugMemoryService().getBackendLabel(),
         error:
-          error instanceof Error
-            ? error.message
-            : 'Ladybug relationship profile delete failed.',
+          error instanceof Error ? error.message : 'Ladybug relationship profile delete failed.',
       });
     }
     return;
@@ -1726,7 +1701,12 @@ const httpServer = createServer(async (request, response) => {
     try {
       const body = await readRequestJson<CreateRemoteTtsVoiceRequest>(request, 28 * 1024 * 1024);
       const providerName = normalizeRemoteTtsProvider(body.provider);
-      const ttsConfig = getRuntimeTtsConfig(config, providerName, request, allowServerProviderProxy);
+      const ttsConfig = getRuntimeTtsConfig(
+        config,
+        providerName,
+        request,
+        allowServerProviderProxy,
+      );
       if (!ttsConfig) {
         writeJson(response, 200, {
           ok: false,
@@ -1891,31 +1871,69 @@ const httpServer = createServer(async (request, response) => {
     try {
       const body = await readRequestJson<{
         channel?: unknown;
+        llmProvider?: unknown;
         model?: unknown;
         sampleSeconds?: unknown;
       }>(request);
-      const model = normalizeOpenAiTranscriptionModel(body.model);
+      const providerName = resolveRuntimeLlmProvider(
+        getHeaderValue(request, 'x-yourwifey-llm-provider'),
+        body.llmProvider,
+        config.aiProvider,
+      );
+      const model = normalizeTranscriptionModel(body.model);
       const sampleSeconds =
         typeof body.sampleSeconds === 'number' && Number.isFinite(body.sampleSeconds)
           ? body.sampleSeconds
           : 15;
-      const providerConfig = getOpenAiUtilityProviderConfig(
+      if (providerName === 'openrouter-responses') {
+        const providerConfig = getRuntimeProviderConfig(
+          config,
+          request,
+          providerName,
+          allowServerProviderProxy,
+        );
+        if (!providerConfig?.aiApiKey) {
+          writeJson(response, 200, {
+            ok: false,
+            error: 'OpenRouter provider key is not configured.',
+          });
+          return;
+        }
+        const transcript = await transcribeTwitchStreamSample({
+          apiBaseUrl: providerConfig.aiApiBaseUrl,
+          apiKey: providerConfig.aiApiKey,
+          channel: typeof body.channel === 'string' ? body.channel : chatSource.channel,
+          model,
+          provider: 'openrouter',
+          sampleSeconds,
+        });
+        writeJson(response, 200, {
+          ok: true,
+          transcript,
+        });
+        return;
+      }
+
+      const fishConfig = getRuntimeTtsConfig(
         config,
+        'fish-speech',
         request,
         allowServerProviderProxy,
       );
-      if (!providerConfig?.aiApiKey) {
+      if (!fishConfig?.fishSpeechApiKey) {
         writeJson(response, 200, {
           ok: false,
-          error: 'OpenAI provider key is not configured.',
+          error:
+            'Vercel AI Gateway does not expose a documented audio transcription endpoint here. Add a Fish Speech key for ASR or switch the LLM provider to OpenRouter.',
         });
         return;
       }
       const transcript = await transcribeTwitchStreamSample({
-        apiBaseUrl: providerConfig.aiApiBaseUrl,
-        apiKey: providerConfig.aiApiKey,
+        apiBaseUrl: fishConfig.fishSpeechBaseUrl,
+        apiKey: fishConfig.fishSpeechApiKey,
         channel: typeof body.channel === 'string' ? body.channel : chatSource.channel,
-        model,
+        model: 'fish-audio/asr',
+        provider: 'fish-speech',
         sampleSeconds,
       });
       writeJson(response, 200, {
@@ -2008,7 +2026,9 @@ const httpServer = createServer(async (request, response) => {
     try {
       const body = await readRequestJson<AiStateResetBody>(request);
       const providerName = normalizeRuntimeLlmProvider(
-        getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider || config.aiProvider,
+        getHeaderValue(request, 'x-yourwifey-llm-provider') ||
+          body.llmProvider ||
+          config.aiProvider,
       );
       writeJson(response, 200, {
         ok: true,

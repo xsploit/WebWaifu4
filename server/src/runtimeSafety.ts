@@ -8,10 +8,15 @@ export type ServerProviderProxyModelDecision =
       error: string;
     };
 
-const SAFE_OPENAI_TRANSCRIPTION_MODELS = new Set([
-  'whisper-1',
-  'gpt-4o-transcribe',
-  'gpt-4o-mini-transcribe',
+const SAFE_TRANSCRIPTION_MODELS = new Map([
+  ['whisper-1', 'openai/whisper-1'],
+  ['openai/whisper-1', 'openai/whisper-1'],
+  ['whisper-large-v3', 'openai/whisper-large-v3'],
+  ['openai/whisper-large-v3', 'openai/whisper-large-v3'],
+  ['gpt-4o-transcribe', 'openai/gpt-4o-transcribe'],
+  ['openai/gpt-4o-transcribe', 'openai/gpt-4o-transcribe'],
+  ['gpt-4o-mini-transcribe', 'openai/gpt-4o-mini-transcribe'],
+  ['openai/gpt-4o-mini-transcribe', 'openai/gpt-4o-mini-transcribe'],
 ]);
 
 const SAFE_EMBEDDING_MODELS = new Set([
@@ -33,17 +38,14 @@ export function isPremiumCostModelId(value: unknown) {
   const leaf = (normalized.split('/').pop() ?? normalized).replace(/_/g, '.');
   const isOpenAiModel = !provider || provider === 'openai';
   const isO1Model =
-    leaf === 'o1' ||
-    leaf.startsWith('o1-') ||
-    leaf.startsWith('o1.') ||
-    leaf.startsWith('o1pro');
+    leaf === 'o1' || leaf.startsWith('o1-') || leaf.startsWith('o1.') || leaf.startsWith('o1pro');
   const isProModel = /(^|[.-])pro([.-]|$)/.test(leaf);
   return isOpenAiModel && (isO1Model || isProModel);
 }
 
-export function normalizeOpenAiTranscriptionModel(value: unknown, fallback = 'whisper-1') {
+export function normalizeTranscriptionModel(value: unknown, fallback = 'openai/whisper-large-v3') {
   const model = normalizeModelName(value);
-  return SAFE_OPENAI_TRANSCRIPTION_MODELS.has(model.toLowerCase()) ? model : fallback;
+  return SAFE_TRANSCRIPTION_MODELS.get(model.toLowerCase()) ?? fallback;
 }
 
 export function normalizeEmbeddingModel(value: unknown, fallback: string) {

@@ -753,19 +753,6 @@ async function buildBackendProviderHeaders({
   return headers;
 }
 
-async function buildOpenAiUtilityHeaders(providerKeyVaultWorkspaceId?: string) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const openAiByokApiKey = await getBrowserProviderApiKey({
-    keyName: 'openai.apiKey',
-    provider: 'openai',
-    providerKeyVaultWorkspaceId,
-  });
-  if (openAiByokApiKey) {
-    headers['x-yourwifey-openai-byok-key'] = openAiByokApiKey;
-  }
-  return headers;
-}
-
 async function readAiProxyStream(
   response: Response,
   onTextDelta?: (delta: string) => void,
@@ -1019,6 +1006,8 @@ async function requestTextEmbedding(
   llmProvider: AiSettings['llmProvider'] = 'vercel-gateway',
   operation: MemoryEmbeddingDebugSnapshot['operation'] = 'prompt-recall',
   onDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
+  embeddingMode: AiSettings['embeddingMode'] = 'browser',
+  embeddingModel = DEFAULT_OPENROUTER_EMBEDDING_MODEL,
 ): Promise<number[] | null> {
   const text = input.trim();
   if (!text) {
@@ -1032,31 +1021,37 @@ async function requestTextEmbedding(
     return null;
   }
 
-  try {
-    const localEmbedding = await requestLocalTextEmbedding(
-      text,
-      operation === 'prompt-recall' || operation === 'worker-search' ? 2500 : 6000,
-    );
-    if (localEmbedding?.length) {
+  if (embeddingMode === 'browser' || embeddingMode === 'auto') {
+    try {
+      const localEmbedding = await requestLocalTextEmbedding(
+        text,
+        operation === 'prompt-recall' || operation === 'worker-search' ? 2500 : 6000,
+      );
+      if (localEmbedding?.length) {
+        onDebug?.({
+          inputChars: text.length,
+          operation,
+          provider: 'transformers-local',
+          status: 'ok',
+          updatedAt: Date.now(),
+          vectorDims: localEmbedding.length,
+        });
+        return localEmbedding;
+      }
+    } catch (error) {
       onDebug?.({
+        error: error instanceof Error ? error.message : String(error),
         inputChars: text.length,
         operation,
         provider: 'transformers-local',
-        status: 'ok',
+        status: 'failed',
         updatedAt: Date.now(),
-        vectorDims: localEmbedding.length,
       });
-      return localEmbedding;
     }
-  } catch (error) {
-    onDebug?.({
-      error: error instanceof Error ? error.message : String(error),
-      inputChars: text.length,
-      operation,
-      provider: 'transformers-local',
-      status: 'failed',
-      updatedAt: Date.now(),
-    });
+
+    if (embeddingMode === 'browser') {
+      return null;
+    }
   }
 
   const controller = new AbortController();
@@ -1073,10 +1068,7 @@ async function requestTextEmbedding(
       body: JSON.stringify({
         input: text.slice(0, 4000),
         llmProvider,
-        model:
-          llmProvider === 'openrouter-responses' || llmProvider === 'vercel-gateway'
-            ? DEFAULT_OPENROUTER_EMBEDDING_MODEL
-            : undefined,
+        model: embeddingModel.trim() || DEFAULT_OPENROUTER_EMBEDDING_MODEL,
       }),
     });
     if (!response.ok) {
@@ -1120,18 +1112,31 @@ async function requestTextEmbedding(
 
 async function requestTwitchStreamTranscript(input: {
   channel: string;
+  llmProvider: AiSettings['llmProvider'];
   model: string;
   providerKeyVaultWorkspaceId?: string;
   sampleSeconds: number;
 }) {
   const model = normalizeTwitchStreamTranscriptionModel(input.model);
+  const headers = await buildBackendProviderHeaders({
+    llmProvider: input.llmProvider,
+    providerKeyVaultWorkspaceId: input.providerKeyVaultWorkspaceId,
+  });
+  const fishAsrApiKey = await getBrowserRemoteTtsApiKey(
+    'fish-speech',
+    input.providerKeyVaultWorkspaceId,
+  );
+  if (fishAsrApiKey) {
+    headers['x-yourwifey-tts-provider-key'] = fishAsrApiKey;
+  }
   const response = await fetch(getTwitchTranscriptionUrl(), {
     body: JSON.stringify({
       channel: input.channel,
+      llmProvider: input.llmProvider,
       model,
       sampleSeconds: input.sampleSeconds,
     }),
-    headers: await buildOpenAiUtilityHeaders(input.providerKeyVaultWorkspaceId),
+    headers,
     method: 'POST',
   });
   const data = (await response.json().catch(() => ({}))) as TwitchStreamTranscriptionResponse;
@@ -1235,6 +1240,8 @@ async function getSemanticMemoryContext(
   providerKeyVaultWorkspaceId?: string,
   llmProvider: AiSettings['llmProvider'] = 'vercel-gateway',
   onEmbeddingDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
+  embeddingMode: AiSettings['embeddingMode'] = 'browser',
+  embeddingModel = DEFAULT_OPENROUTER_EMBEDDING_MODEL,
 ) {
   const embedding = await requestTextEmbedding(
     query,
@@ -1242,6 +1249,8 @@ async function getSemanticMemoryContext(
     llmProvider,
     'prompt-recall',
     onEmbeddingDebug,
+    embeddingMode,
+    embeddingModel,
   );
   return buildSemanticMemoryContext(await findSemanticMemoryMatches(scopeKey, query, embedding));
 }
@@ -1255,6 +1264,8 @@ async function rememberSemanticTurn(
   llmProvider: AiSettings['llmProvider'] = 'vercel-gateway',
   onEmbeddingDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
   operation: MemoryEmbeddingDebugSnapshot['operation'] = 'semantic-save',
+  embeddingMode: AiSettings['embeddingMode'] = 'browser',
+  embeddingModel = DEFAULT_OPENROUTER_EMBEDDING_MODEL,
 ) {
   const embedding = await requestTextEmbedding(
     `${userText}\n${assistantText}`,
@@ -1262,6 +1273,8 @@ async function rememberSemanticTurn(
     llmProvider,
     operation,
     onEmbeddingDebug,
+    embeddingMode,
+    embeddingModel,
   );
   return addSemanticMemoryTurn({
     assistantText,
@@ -1764,17 +1777,20 @@ function App() {
   const [memoryAgentBusy, setMemoryAgentBusy] = useState(false);
   const [memoryAgentStatus, setMemoryAgentStatus] = useState('Memory worker idle.');
   const [memoryBackendStatus, setMemoryBackendStatus] = useState<LadybugMemoryStatus | null>(null);
-  const [memoryGraphSummary, setMemoryGraphSummary] =
-    useState<LadybugMemoryGraphSummary | null>(null);
-  const [memoryPromptDebug, setMemoryPromptDebug] =
-    useState<MemoryPromptDebugSnapshot | null>(null);
+  const [memoryGraphSummary, setMemoryGraphSummary] = useState<LadybugMemoryGraphSummary | null>(
+    null,
+  );
+  const [memoryPromptDebug, setMemoryPromptDebug] = useState<MemoryPromptDebugSnapshot | null>(
+    null,
+  );
   const [memoryEmbeddingDebug, setMemoryEmbeddingDebug] =
     useState<MemoryEmbeddingDebugSnapshot | null>(null);
-  const [memoryWorkerDebug, setMemoryWorkerDebug] =
-    useState<MemoryWorkerDebugSnapshot | null>(null);
-  const [memoryAgentPendingCounts, setMemoryAgentPendingCounts] = useState<
-    Record<string, number>
-  >({});
+  const [memoryWorkerDebug, setMemoryWorkerDebug] = useState<MemoryWorkerDebugSnapshot | null>(
+    null,
+  );
+  const [memoryAgentPendingCounts, setMemoryAgentPendingCounts] = useState<Record<string, number>>(
+    {},
+  );
   const [grilloMemoryState, setGrilloMemoryState] = useState<GrilloMemoryState>(() =>
     createDefaultGrilloMemoryState(getLocalConversationStateKey(DEFAULT_PERSONA)),
   );
@@ -2006,31 +2022,42 @@ function App() {
     activePersonaRef.current = activePersona;
   }, [activePersona]);
 
-  const recordRawChatMemoryTurns = useCallback((stateKey: string, turns: ChatTurn[]) => {
-    if (turns.length === 0) {
-      return;
-    }
-    grilloRecentTurnsByStateKeyRef.current[stateKey] = [
-      ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
-      ...turns,
-    ].slice(-24);
-    addMemoryAgentPendingChatTurns(memoryAgentPendingChatTurnCountsRef.current, stateKey, turns.length);
-    syncMemoryAgentPendingCounts();
-    void recordGrilloMemoryTurnAsync({
-      assistantText: '',
-      persona: activePersonaRef.current ?? DEFAULT_PERSONA,
-      scopeKey: stateKey,
-      turns,
-    }).then((nextGrilloMemoryState) => {
-      if (shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)) {
-        setGrilloMemoryState(nextGrilloMemoryState);
+  const recordRawChatMemoryTurns = useCallback(
+    (stateKey: string, turns: ChatTurn[]) => {
+      if (turns.length === 0) {
+        return;
       }
-      void refreshMemoryBackendStatus();
-    }).catch((error) => {
-      console.warn('[App] Failed to record raw chat memory turns', error);
-    });
-    scheduleMemoryAgentAfterChatTurnsRef.current(stateKey);
-  }, [refreshMemoryBackendStatus, syncMemoryAgentPendingCounts]);
+      grilloRecentTurnsByStateKeyRef.current[stateKey] = [
+        ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
+        ...turns,
+      ].slice(-24);
+      addMemoryAgentPendingChatTurns(
+        memoryAgentPendingChatTurnCountsRef.current,
+        stateKey,
+        turns.length,
+      );
+      syncMemoryAgentPendingCounts();
+      void recordGrilloMemoryTurnAsync({
+        assistantText: '',
+        persona: activePersonaRef.current ?? DEFAULT_PERSONA,
+        scopeKey: stateKey,
+        turns,
+      })
+        .then((nextGrilloMemoryState) => {
+          if (
+            shouldExposeScopedRelationshipMemory(stateKey, activeRelationshipStateKeyRef.current)
+          ) {
+            setGrilloMemoryState(nextGrilloMemoryState);
+          }
+          void refreshMemoryBackendStatus();
+        })
+        .catch((error) => {
+          console.warn('[App] Failed to record raw chat memory turns', error);
+        });
+      scheduleMemoryAgentAfterChatTurnsRef.current(stateKey);
+    },
+    [refreshMemoryBackendStatus, syncMemoryAgentPendingCounts],
+  );
 
   const captureTwitchStreamTranscript = useCallback(async () => {
     const currentTwitchSettings = twitchSettingsRef.current;
@@ -2048,11 +2075,13 @@ function App() {
     }
 
     twitchStreamTranscriptionBusyRef.current = true;
-    setTwitchStreamTranscriptionStatus(`Sampling #${channel} audio for Whisper...`);
+    const llmProvider = aiSettingsRef.current.llmProvider;
+    setTwitchStreamTranscriptionStatus(`Sampling #${channel} audio for stream transcription...`);
     try {
       const transcript = await requestTwitchStreamTranscript({
         channel,
-        model: currentTwitchSettings.streamTranscriptionModel || 'whisper-1',
+        llmProvider,
+        model: currentTwitchSettings.streamTranscriptionModel || 'openai/whisper-large-v3',
         providerKeyVaultWorkspaceId,
         sampleSeconds: currentTwitchSettings.streamTranscriptionSampleSeconds,
       });
@@ -2060,7 +2089,7 @@ function App() {
         [...current, transcript].slice(-currentTwitchSettings.streamTranscriptionContextLimit),
       );
       setTwitchStreamTranscriptionStatus(
-        `Last Whisper sample: ${new Date(transcript.createdAt).toLocaleTimeString()} (${transcript.text.slice(0, 90)}${transcript.text.length > 90 ? '...' : ''})`,
+        `Last stream audio sample: ${new Date(transcript.createdAt).toLocaleTimeString()} (${transcript.text.slice(0, 90)}${transcript.text.length > 90 ? '...' : ''})`,
       );
     } catch (error) {
       setTwitchStreamTranscriptionStatus(
@@ -4041,11 +4070,7 @@ function App() {
     );
     syncMemoryAgentPendingCounts();
     setMemoryAgentStatus('Local chat context reset. Durable memory was kept.');
-  }, [
-    activeRelationshipStateKey,
-    cancelAssistantPresentation,
-    syncMemoryAgentPendingCounts,
-  ]);
+  }, [activeRelationshipStateKey, cancelAssistantPresentation, syncMemoryAgentPendingCounts]);
 
   const runRelationshipMemoryRefresh = useCallback(
     async (
@@ -4097,8 +4122,8 @@ function App() {
               complete: async (request) => {
                 const response = await requestChatCompletion({
                   disableState: true,
-          maxTokens: request.maxTokens,
-          maxToolRounds: aiSettingsRef.current.maxToolRounds,
+                  maxTokens: request.maxTokens,
+                  maxToolRounds: aiSettingsRef.current.maxToolRounds,
                   messages: request.messages,
                   model: request.model,
                   llmProvider: aiSettings.llmProvider,
@@ -4126,6 +4151,8 @@ function App() {
                     aiSettings.llmProvider,
                     setMemoryEmbeddingDebug,
                     'worker-insert',
+                    aiSettings.embeddingMode,
+                    aiSettings.embeddingModel,
                   );
                   return {
                     id: write?.record.id,
@@ -4141,6 +4168,8 @@ function App() {
                     aiSettings.llmProvider,
                     'worker-search',
                     setMemoryEmbeddingDebug,
+                    aiSettings.embeddingMode,
+                    aiSettings.embeddingModel,
                   );
                   return (await findSemanticMemoryMatches(stateKey, query, embedding, limit)).map(
                     (match) => ({
@@ -4560,19 +4589,16 @@ function App() {
     void window.webWaifuDesktop?.relaunchWindowMode?.(mode);
   }, []);
 
-  const handleDesktopSceneMode = useCallback(
-    (mode: SceneBackgroundMode) => {
-      setVisualSettings((current) => ({
-        ...current,
-        sceneBackgroundMode: mode,
-        sceneChromaColor: mode === 'chroma' ? '#00ff00' : current.sceneChromaColor,
-      }));
-      if (mode === 'transparent' || mode === 'chroma') {
-        setActiveTab('background');
-      }
-    },
-    [],
-  );
+  const handleDesktopSceneMode = useCallback((mode: SceneBackgroundMode) => {
+    setVisualSettings((current) => ({
+      ...current,
+      sceneBackgroundMode: mode,
+      sceneChromaColor: mode === 'chroma' ? '#00ff00' : current.sceneChromaColor,
+    }));
+    if (mode === 'transparent' || mode === 'chroma') {
+      setActiveTab('background');
+    }
+  }, []);
 
   const handleDesktopClickThrough = useCallback(() => {
     if (!desktopRuntime) {
@@ -4594,7 +4620,10 @@ function App() {
       return;
     }
     setVisualSettings((current) => {
-      if (current.sceneBackgroundMode === 'transparent' || current.sceneBackgroundMode === 'chroma') {
+      if (
+        current.sceneBackgroundMode === 'transparent' ||
+        current.sceneBackgroundMode === 'chroma'
+      ) {
         return current;
       }
       return {
@@ -5181,6 +5210,8 @@ function App() {
           providerKeyVaultWorkspaceId,
           settings.llmProvider,
           setMemoryEmbeddingDebug,
+          settings.embeddingMode,
+          settings.embeddingModel,
         );
         const grilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
           participantKeys: job.messages.map(getGrilloParticipantKey),
@@ -5331,11 +5362,15 @@ function App() {
           settings.llmProvider,
           setMemoryEmbeddingDebug,
           'semantic-save',
-        ).then(() => {
-          void refreshMemoryBackendStatus();
-        }).catch((error) => {
-          console.warn('[App] Failed to record semantic chat memory turn', error);
-        });
+          settings.embeddingMode,
+          settings.embeddingModel,
+        )
+          .then(() => {
+            void refreshMemoryBackendStatus();
+          })
+          .catch((error) => {
+            console.warn('[App] Failed to record semantic chat memory turn', error);
+          });
         const nextGrilloMemoryState = await recordGrilloMemoryTurnAsync({
           assistantText: assistantContent,
           persona,

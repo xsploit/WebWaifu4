@@ -194,7 +194,7 @@ describe('chat settings persistence', () => {
         streamTranscriptionContextLimit: 6,
         streamTranscriptionEnabled: true,
         streamTranscriptionIntervalSeconds: 120,
-        streamTranscriptionModel: 'whisper-1',
+        streamTranscriptionModel: 'openai/whisper-large-v3',
         streamTranscriptionSampleSeconds: 20,
         streamVisionContextEnabled: true,
         streamVisionDetail: 'auto',
@@ -267,7 +267,7 @@ describe('chat settings persistence', () => {
       streamTranscriptionContextLimit: 6,
       streamTranscriptionEnabled: true,
       streamTranscriptionIntervalSeconds: 120,
-      streamTranscriptionModel: 'whisper-1',
+      streamTranscriptionModel: 'openai/whisper-large-v3',
       streamTranscriptionSampleSeconds: 20,
       streamVisionContextEnabled: true,
       streamVisionDetail: 'auto',
@@ -298,6 +298,8 @@ describe('chat settings persistence', () => {
 
     expect(defaults.toolChoiceMode).toBe('auto');
     expect(defaults.maxToolRounds).toBe(15);
+    expect(defaults.embeddingMode).toBe('browser');
+    expect(defaults.embeddingModel).toBe('openai/text-embedding-3-small');
   });
 
   it('ignores retired post-processing settings from older saved state', async () => {
@@ -359,7 +361,7 @@ describe('chat settings persistence', () => {
 
     const loaded = await loadPersistedChatState();
 
-    expect(loaded.twitchSettings.streamTranscriptionModel).toBe('whisper-1');
+    expect(loaded.twitchSettings.streamTranscriptionModel).toBe('openai/whisper-large-v3');
   });
 
   it('normalizes malformed save input before writing persistence entries', async () => {

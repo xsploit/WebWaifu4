@@ -31,12 +31,15 @@ export type AiTransportMode = 'http-stream';
 export type OpenAiStateMode = 'stateless';
 export type ReplyLengthMode = 'short' | 'balanced' | 'yap';
 export type ToolChoiceMode = 'auto' | 'required';
+export type EmbeddingMode = 'auto' | 'browser' | 'provider';
 
 export type AiSettings = {
   llmProvider: LlmProvider;
   model: string;
   memoryAgentModel: string;
   memoryAgentIntervalMessages: number;
+  embeddingMode: EmbeddingMode;
+  embeddingModel: string;
   aiTransportMode: AiTransportMode;
   openAiStateMode: OpenAiStateMode;
   toolChoiceMode: ToolChoiceMode;

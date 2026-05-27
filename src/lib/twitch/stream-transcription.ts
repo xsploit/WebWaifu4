@@ -37,15 +37,21 @@ export type TwitchStreamFrameResponse = {
   ok?: boolean;
 };
 
-const SAFE_TWITCH_TRANSCRIPTION_MODELS = new Set([
-  'whisper-1',
-  'gpt-4o-transcribe',
-  'gpt-4o-mini-transcribe',
+const SAFE_TWITCH_TRANSCRIPTION_MODELS = new Map([
+  ['whisper-1', 'openai/whisper-1'],
+  ['openai/whisper-1', 'openai/whisper-1'],
+  ['whisper-large-v3', 'openai/whisper-large-v3'],
+  ['openai/whisper-large-v3', 'openai/whisper-large-v3'],
+  ['gpt-4o-transcribe', 'openai/gpt-4o-transcribe'],
+  ['openai/gpt-4o-transcribe', 'openai/gpt-4o-transcribe'],
+  ['gpt-4o-mini-transcribe', 'openai/gpt-4o-mini-transcribe'],
+  ['openai/gpt-4o-mini-transcribe', 'openai/gpt-4o-mini-transcribe'],
+  ['fish-audio/asr', 'fish-audio/asr'],
 ]);
 
 export function normalizeTwitchStreamTranscriptionModel(value: unknown) {
   const model = typeof value === 'string' ? value.trim() : '';
-  return SAFE_TWITCH_TRANSCRIPTION_MODELS.has(model.toLowerCase()) ? model : 'whisper-1';
+  return SAFE_TWITCH_TRANSCRIPTION_MODELS.get(model.toLowerCase()) ?? 'openai/whisper-large-v3';
 }
 
 export function formatTwitchStreamTranscriptContext(

@@ -267,9 +267,7 @@ export function TwitchTab({
           label="Max batch messages retained"
           max={500}
           min={10}
-          onChange={(value) =>
-            updateTwitchSettings(setTwitchSettings, { maxBatchMessages: value })
-          }
+          onChange={(value) => updateTwitchSettings(setTwitchSettings, { maxBatchMessages: value })}
           value={twitchSettings.maxBatchMessages}
         />
         <div className="field-hint">
@@ -321,7 +319,7 @@ export function TwitchTab({
         <div className="control-label">Stream Audio Context</div>
         <div className="status-grid">
           <div className="status-copy">
-            Whisper: <strong>{twitchSettings.streamTranscriptionEnabled ? 'On' : 'Off'}</strong>
+            ASR: <strong>{twitchSettings.streamTranscriptionEnabled ? 'On' : 'Off'}</strong>
           </div>
           <div className="status-copy">
             Snippets: <strong>{streamTranscriptCount}</strong>
@@ -340,12 +338,12 @@ export function TwitchTab({
           />
         </div>
         <label className="setting-row">
-          <span>Whisper model</span>
+          <span>OpenRouter STT model</span>
           <input
             className="input-tech compact-input"
             onChange={(event) =>
               updateTwitchSettings(setTwitchSettings, {
-                streamTranscriptionModel: event.target.value.trim() || 'whisper-1',
+                streamTranscriptionModel: event.target.value.trim() || 'openai/whisper-large-v3',
               })
             }
             spellCheck={false}
@@ -353,6 +351,10 @@ export function TwitchTab({
             value={twitchSettings.streamTranscriptionModel}
           />
         </label>
+        <div className="field-hint">
+          OpenRouter uses this model through /audio/transcriptions. Vercel Gateway falls back to
+          Fish Speech ASR when a Fish key is saved.
+        </div>
         <NumberField
           label="Sample seconds"
           max={60}

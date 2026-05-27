@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { isLikelyVisionModel, normalizeTwitchStreamTranscriptionModel } from './stream-transcription';
+import {
+  isLikelyVisionModel,
+  normalizeTwitchStreamTranscriptionModel,
+} from './stream-transcription';
 
 describe('stream transcription helpers', () => {
   it('keeps transcription models on explicit transcription endpoints', () => {
     expect(normalizeTwitchStreamTranscriptionModel('gpt-4o-mini-transcribe')).toBe(
-      'gpt-4o-mini-transcribe',
+      'openai/gpt-4o-mini-transcribe',
     );
-    expect(normalizeTwitchStreamTranscriptionModel('o1-pro-2025-03-19')).toBe('whisper-1');
+    expect(normalizeTwitchStreamTranscriptionModel('o1-pro-2025-03-19')).toBe(
+      'openai/whisper-large-v3',
+    );
   });
 
   it('blocks OpenAI o1 and pro models from stream-frame vision only', () => {

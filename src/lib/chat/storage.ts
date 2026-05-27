@@ -12,7 +12,11 @@ import {
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
 import { normalizeTwitchStreamTranscriptionModel } from '../twitch/stream-transcription';
 import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
-import { getAiProviderSwitchDefaults, normalizeLlmProviderCompatibility } from './provider-defaults';
+import {
+  getAiProviderSwitchDefaults,
+  isPremiumCostModelId,
+  normalizeLlmProviderCompatibility,
+} from './provider-defaults';
 import type {
   AiSettings,
   ChatMessage,
@@ -317,10 +321,20 @@ function normalizeAiSettings(value: unknown): AiSettings {
     Number.isFinite(source.memoryAgentIntervalMessages)
       ? Math.max(1, Math.min(100, Math.round(source.memoryAgentIntervalMessages)))
       : defaults.memoryAgentIntervalMessages;
+  const embeddingMode =
+    source.embeddingMode === 'auto' ||
+    source.embeddingMode === 'browser' ||
+    source.embeddingMode === 'provider'
+      ? source.embeddingMode
+      : defaults.embeddingMode;
+  const embeddingModel =
+    typeof source.embeddingModel === 'string' &&
+    source.embeddingModel.trim() &&
+    !isPremiumCostModelId(source.embeddingModel)
+      ? source.embeddingModel.trim().slice(0, 160)
+      : defaults.embeddingModel;
   const aiTransportMode =
-    source.aiTransportMode === 'http-stream'
-      ? source.aiTransportMode
-      : defaults.aiTransportMode;
+    source.aiTransportMode === 'http-stream' ? source.aiTransportMode : defaults.aiTransportMode;
   const openAiStateMode = defaults.openAiStateMode;
   const toolChoiceMode =
     source.toolChoiceMode === 'required' || source.toolChoiceMode === 'auto'
@@ -388,6 +402,8 @@ function normalizeAiSettings(value: unknown): AiSettings {
     model: normalizedModel,
     memoryAgentModel: normalizedMemoryAgentModel || defaults.memoryAgentModel,
     memoryAgentIntervalMessages,
+    embeddingMode,
+    embeddingModel,
     aiTransportMode,
     openAiStateMode,
     toolChoiceMode,
