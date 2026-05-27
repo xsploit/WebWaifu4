@@ -95,9 +95,9 @@ export function createDefaultPersonaVoiceBindings(
 
 export function createDefaultAiSettings(): AiSettings {
   return {
-    llmProvider: 'openai-responses',
-    model: DEFAULT_OPENAI_MODEL,
-    memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
+    llmProvider: 'vercel-gateway',
+    model: DEFAULT_AI_GATEWAY_MODEL,
+    memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
     memoryAgentIntervalMessages: 7,
     aiTransportMode: 'http-stream',
     openAiStateMode: 'stateless',

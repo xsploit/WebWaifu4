@@ -12,7 +12,7 @@ import {
 import { createDefaultSequencerSettings, createDefaultVisualSettings } from '../menu/defaults';
 import { normalizeTwitchStreamTranscriptionModel } from '../twitch/stream-transcription';
 import { DEFAULT_ANIMATIONS } from '../vrm/sequencer';
-import { normalizeLlmProviderCompatibility } from './provider-defaults';
+import { getAiProviderSwitchDefaults, normalizeLlmProviderCompatibility } from './provider-defaults';
 import type {
   AiSettings,
   ChatMessage,
@@ -299,19 +299,18 @@ function normalizeAiSettings(value: unknown): AiSettings {
 
   const source = value as Partial<AiSettings>;
   const llmProvider =
-    source.llmProvider === 'openrouter-responses' ||
-    source.llmProvider === 'vercel-gateway' ||
-    source.llmProvider === 'deepseek'
+    source.llmProvider === 'openrouter-responses' || source.llmProvider === 'vercel-gateway'
       ? source.llmProvider
       : defaults.llmProvider;
+  const providerDefaults = getAiProviderSwitchDefaults(llmProvider);
   const requestedModel = String(source.model ?? defaults.model);
-  const normalizedModel = normalizeLegacyOpenAiModel(requestedModel, defaults.model);
+  const normalizedModel = normalizeLegacyOpenAiModel(requestedModel, providerDefaults.model);
   const requestedMemoryAgentModel = String(
     source.memoryAgentModel ?? defaults.memoryAgentModel,
   ).trim();
   const normalizedMemoryAgentModel = normalizeLegacyOpenAiModel(
     requestedMemoryAgentModel,
-    defaults.memoryAgentModel,
+    providerDefaults.memoryAgentModel,
   );
   const memoryAgentIntervalMessages =
     typeof source.memoryAgentIntervalMessages === 'number' &&
@@ -322,12 +321,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
     source.aiTransportMode === 'http-stream'
       ? source.aiTransportMode
       : defaults.aiTransportMode;
-  const openAiStateMode =
-    source.openAiStateMode === 'conversation' ||
-    source.openAiStateMode === 'previous-response' ||
-    source.openAiStateMode === 'stateless'
-      ? source.openAiStateMode
-      : defaults.openAiStateMode;
+  const openAiStateMode = defaults.openAiStateMode;
   const toolChoiceMode =
     source.toolChoiceMode === 'required' || source.toolChoiceMode === 'auto'
       ? source.toolChoiceMode

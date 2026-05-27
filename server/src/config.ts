@@ -130,11 +130,7 @@ function parseAiProvider(): StreamBotConfig['aiProvider'] {
 }
 
 function parseOpenAiStateMode(): OpenAiResponsesStateMode {
-  const raw = process.env.OPENAI_STATE_MODE?.trim().toLowerCase();
-  if (raw === 'conversation' || raw === 'previous-response' || raw === 'stateless') {
-    return raw;
-  }
-  return 'conversation';
+  return 'stateless';
 }
 
 function parsePromptCacheRetention() {

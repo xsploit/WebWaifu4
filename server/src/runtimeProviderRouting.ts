@@ -51,7 +51,12 @@ export function getRuntimeProviderBaseUrl(provider: RuntimeLlmProvider, openAiBa
 }
 
 export function providerUsesAppOwnedState(provider: RuntimeLlmProvider) {
-  return provider === 'deepseek' || provider === 'openrouter-responses' || provider === 'vercel-gateway';
+  return (
+    provider === 'openai-responses' ||
+    provider === 'deepseek' ||
+    provider === 'openrouter-responses' ||
+    provider === 'vercel-gateway'
+  );
 }
 
 export function providerModelsCanBeListedWithoutKey(provider: RuntimeLlmProvider) {

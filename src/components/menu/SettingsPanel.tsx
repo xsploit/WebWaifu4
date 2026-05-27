@@ -82,7 +82,6 @@ type SettingsPanelProps = {
   onPlayAnimation: (request: ManualPlayRequest) => void;
   onRefreshModels: () => void;
   onRefreshAiProxyHealth: () => void;
-  onResetAiProviderState: () => void;
   onRefreshSavedVrmModels: () => void;
   onRefreshRemoteVoices: (provider: RemoteTtsProvider) => void;
   onRefreshVoices: () => void;
@@ -197,7 +196,6 @@ export function SettingsPanel({
   onPlayAnimation,
   onRefreshModels,
   onRefreshAiProxyHealth,
-  onResetAiProviderState,
   onRefreshSavedVrmModels,
   onRefreshRemoteVoices,
   onRefreshVoices,
@@ -317,7 +315,6 @@ export function SettingsPanel({
         modelsLoading={modelsLoading}
         onRefreshAiProxyHealth={onRefreshAiProxyHealth}
         onRefreshModels={onRefreshModels}
-        onResetAiProviderState={onResetAiProviderState}
         setAiSettings={setAiSettings}
       />
     ) : activeTab === 'twitch' ? (

@@ -64,6 +64,7 @@ type OpenAiEmbeddingPayload = {
 type ProviderModelsPayload = {
   data?: Array<{
     id?: string;
+    type?: string;
     [key: string]: unknown;
   }>;
   error?: {
@@ -289,6 +290,7 @@ function buildRuntimeChatProviderCacheKey(
     runtimeConfig.aiApiBaseUrl,
     runtimeConfig.aiModel,
     hashCacheSecret(runtimeConfig.aiApiKey),
+    hashCacheSecret(runtimeConfig.aiGatewayByokOpenAiApiKey),
     hashCacheSecret(runtimeConfig.tavilyApiKey || ''),
     runtimeConfig.openAiStateMode,
     runtimeConfig.openAiStore ? 'store' : 'nostore',
@@ -784,6 +786,7 @@ async function listProviderModels(config: StreamBotConfig) {
   }
 
   return (data.data ?? [])
+    .filter((model) => !model.type || model.type === 'language')
     .map((model) => (typeof model.id === 'string' ? model.id.trim() : ''))
     .filter((model) => model && !isPremiumCostModelId(model));
 }
@@ -1140,9 +1143,7 @@ function normalizeAiTransportMode(value: unknown): ChatProviderRequest['transpor
 }
 
 function normalizeOpenAiStateMode(value: unknown): ChatProviderRequest['openAiStateMode'] {
-  return value === 'conversation' || value === 'previous-response' || value === 'stateless'
-    ? value
-    : undefined;
+  return 'stateless';
 }
 
 function normalizeToolChoiceMode(value: unknown): ChatProviderRequest['toolChoiceMode'] {
@@ -1220,7 +1221,7 @@ async function runAiChatRequest({
     toolChoiceMode: normalizeToolChoiceMode(body.toolChoiceMode),
     maxToolRounds: normalizeMaxToolRounds(body.maxToolRounds),
     transportMode: appOwnedState ? 'http-stream' : normalizeAiTransportMode(body.transportMode),
-    openAiStateMode: appOwnedState ? 'stateless' : normalizeOpenAiStateMode(body.openAiStateMode),
+    openAiStateMode: normalizeOpenAiStateMode(body.openAiStateMode),
   };
 
   if (body.stream === true && streamEvent) {
@@ -1414,9 +1415,9 @@ const httpServer = createServer(async (request, response) => {
     const requestedTransportMode = appOwnedState
       ? 'http-stream'
       : normalizeAiTransportMode(url.searchParams.get('transportMode'));
-    const requestedOpenAiStateMode = appOwnedState
-      ? 'stateless'
-      : normalizeOpenAiStateMode(url.searchParams.get('openAiStateMode'));
+    const requestedOpenAiStateMode = normalizeOpenAiStateMode(
+      url.searchParams.get('openAiStateMode'),
+    );
 
     const healthStateKey = resolveRuntimeHealthStateKey({
       browserProviderKeyPresent: Boolean(getHeaderSecret(request, 'x-yourwifey-llm-provider-key')),
@@ -2042,30 +2043,11 @@ const httpServer = createServer(async (request, response) => {
       const providerName = normalizeRuntimeLlmProvider(
         getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider || config.aiProvider,
       );
-      const requestedModel = typeof body.model === 'string' ? body.model : '';
-      const modelDecision = resolveServerProviderProxyModel({
-        allowlistEnvNames: getAllowlistEnvNamesForProvider(providerName),
-        browserProviderKeyPresent: Boolean(getHeaderSecret(request, 'x-yourwifey-llm-provider-key')),
-        configuredModel: getConfiguredModelForProvider(providerName, config),
-        defaultModel: getDefaultModelForProvider(providerName),
-        requestedModel,
-      });
-      if (!modelDecision.allowed) {
-        throw new Error(modelDecision.error);
-      }
-
-      const runtimeProvider = getRuntimeChatProvider(
-        config,
-        request,
-        providerName,
-        modelDecision.model,
-        allowServerProviderProxy,
-      );
-      runtimeProvider?.resetState?.();
       writeJson(response, 200, {
         ok: true,
         provider: providerName,
-        reset: Boolean(runtimeProvider?.resetState),
+        reset: false,
+        stateMode: 'stateless',
       });
     } catch (error) {
       writeJson(response, 200, {

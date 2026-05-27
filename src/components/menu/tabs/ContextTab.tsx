@@ -664,13 +664,13 @@ export function ContextTab({
             Clear Memory
           </button>
           <button className="btn-tech danger" onClick={onResetContext} type="button">
-            Reset All Context
+            New Chat Context
           </button>
         </div>
         <div className="field-hint">
-          Reset All Context clears chat history, draft text, relationship profile, Grillo memory,
-          semantic recall, pending assistant playback, and any in-flight reply for the current
-          session.
+          New Chat Context clears chat history, draft text, recent Twitch/local transcript context,
+          pending assistant playback, and any in-flight reply. Durable relationship, Grillo,
+          diary, and semantic recall stay available until you press Clear Memory.
         </div>
       </div>
     </>

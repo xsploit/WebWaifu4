@@ -62,8 +62,7 @@ export class CommandRouter {
         this.reply(`AI state: ${this.formatProviderState()}.`);
         break;
       case 'reset-ai-state':
-        this.options.provider.resetState?.();
-        this.reply('AI conversation state reset.');
+        this.reply('Provider state is stateless; clear app context/memory from the overlay if needed.');
         break;
       case 'refresh':
         this.options.emit({ type: 'overlay:command', payload: { action: 'reload' } });
@@ -191,12 +190,6 @@ export class CommandRouter {
 
     const stateMode = typeof state['stateMode'] === 'string' ? state['stateMode'] : 'unknown';
     const cachedTokens = typeof state['cachedTokens'] === 'number' ? state['cachedTokens'] : 0;
-    const conversationId =
-      typeof state['conversationId'] === 'string' ? state['conversationId'] : '';
-    const previousResponseId =
-      typeof state['previousResponseId'] === 'string' ? state['previousResponseId'] : '';
-    const stateId = conversationId || previousResponseId || 'new';
-
-    return `state=${stateMode}, stateId=${stateId}, cachedTokens=${cachedTokens}`;
+    return `state=${stateMode}, owner=app-context, cachedTokens=${cachedTokens}`;
   }
 }

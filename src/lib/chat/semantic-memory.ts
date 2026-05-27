@@ -307,6 +307,9 @@ function enqueueSemanticMemoryWrite<T>(scopeKey: string, task: () => Promise<T>)
 }
 
 function cosineSimilarity(a: number[], b: number[]) {
+  if (a.length !== b.length) {
+    return 0;
+  }
   const length = Math.min(a.length, b.length);
   if (length === 0) {
     return 0;

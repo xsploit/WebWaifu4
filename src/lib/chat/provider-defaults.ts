@@ -1,8 +1,5 @@
 import {
-  DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_AI_GATEWAY_MODEL,
-  DEFAULT_DEEPSEEK_MODEL,
-  DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
 } from './defaults';
 import type { AiSettings, LlmProvider } from './types';
@@ -21,26 +18,10 @@ export function getAiProviderSwitchDefaults(llmProvider: LlmProvider): AiProvide
       openAiStateMode: 'stateless',
     };
   }
-  if (llmProvider === 'vercel-gateway') {
-    return {
-      aiTransportMode: 'http-stream',
-      memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
-      model: DEFAULT_AI_GATEWAY_MODEL,
-      openAiStateMode: 'stateless',
-    };
-  }
-  if (llmProvider === 'deepseek') {
-    return {
-      aiTransportMode: 'http-stream',
-      memoryAgentModel: DEFAULT_DEEPSEEK_MODEL,
-      model: DEFAULT_DEEPSEEK_MODEL,
-      openAiStateMode: 'stateless',
-    };
-  }
   return {
     aiTransportMode: 'http-stream',
-    memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
-    model: DEFAULT_OPENAI_MODEL,
+    memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
+    model: DEFAULT_AI_GATEWAY_MODEL,
     openAiStateMode: 'stateless',
   };
 }
@@ -97,31 +78,20 @@ function pickProviderModel(llmProvider: LlmProvider, value: string, fallback: st
 }
 
 export function normalizeLlmProviderCompatibility(settings: AiSettings): AiSettings {
-  const defaults = getAiProviderSwitchDefaults(settings.llmProvider);
-  const model = pickProviderModel(settings.llmProvider, settings.model, defaults.model);
+  const llmProvider =
+    settings.llmProvider === 'openrouter-responses' ? 'openrouter-responses' : 'vercel-gateway';
+  const defaults = getAiProviderSwitchDefaults(llmProvider);
+  const model = pickProviderModel(llmProvider, settings.model, defaults.model);
   const memoryAgentModel = pickProviderModel(
-    settings.llmProvider,
+    llmProvider,
     settings.memoryAgentModel,
     defaults.memoryAgentModel,
   );
 
-  if (
-    settings.llmProvider === 'openrouter-responses' ||
-    settings.llmProvider === 'vercel-gateway' ||
-    settings.llmProvider === 'deepseek'
-  ) {
-    return {
-      ...settings,
-      aiTransportMode: defaults.aiTransportMode,
-      memoryAgentModel,
-      model,
-      openAiStateMode: defaults.openAiStateMode,
-    };
-  }
-
   return {
     ...settings,
     aiTransportMode: defaults.aiTransportMode,
+    llmProvider,
     memoryAgentModel,
     model,
     openAiStateMode: defaults.openAiStateMode,
@@ -132,13 +102,15 @@ export function applyLlmProviderSwitchDefaults(
   current: AiSettings,
   llmProvider: LlmProvider,
 ): AiSettings {
-  if (current.llmProvider === llmProvider) {
+  const safeProvider =
+    llmProvider === 'openrouter-responses' ? 'openrouter-responses' : 'vercel-gateway';
+  if (current.llmProvider === safeProvider) {
     return normalizeLlmProviderCompatibility(current);
   }
 
   return {
     ...current,
-    ...getAiProviderSwitchDefaults(llmProvider),
-    llmProvider,
+    ...getAiProviderSwitchDefaults(safeProvider),
+    llmProvider: safeProvider,
   };
 }

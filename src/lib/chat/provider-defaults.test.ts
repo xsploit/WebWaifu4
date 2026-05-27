@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_AI_GATEWAY_MODEL,
-  DEFAULT_DEEPSEEK_MODEL,
-  DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   createDefaultAiSettings,
 } from './defaults';
@@ -36,7 +33,7 @@ describe('LLM provider defaults', () => {
     });
   });
 
-  it('switches OpenRouter settings back to OpenAI HTTP stateless defaults', () => {
+  it('normalizes legacy direct-provider settings back to Vercel AI Gateway defaults', () => {
     const current = {
       ...createDefaultAiSettings(),
       aiTransportMode: 'http-stream' as const,
@@ -50,9 +47,9 @@ describe('LLM provider defaults', () => {
 
     expect(next).toMatchObject({
       aiTransportMode: 'http-stream',
-      llmProvider: 'openai-responses',
-      memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
-      model: DEFAULT_OPENAI_MODEL,
+      llmProvider: 'vercel-gateway',
+      memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
+      model: DEFAULT_AI_GATEWAY_MODEL,
       openAiStateMode: 'stateless',
     });
   });
@@ -69,14 +66,14 @@ describe('LLM provider defaults', () => {
     });
   });
 
-  it('switches to DeepSeek direct HTTP app-owned defaults', () => {
+  it('normalizes legacy DeepSeek direct to Vercel AI Gateway defaults', () => {
     const next = applyLlmProviderSwitchDefaults(createDefaultAiSettings(), 'deepseek');
 
     expect(next).toMatchObject({
       aiTransportMode: 'http-stream',
-      llmProvider: 'deepseek',
-      memoryAgentModel: DEFAULT_DEEPSEEK_MODEL,
-      model: DEFAULT_DEEPSEEK_MODEL,
+      llmProvider: 'vercel-gateway',
+      memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
+      model: DEFAULT_AI_GATEWAY_MODEL,
       openAiStateMode: 'stateless',
     });
   });
@@ -119,12 +116,9 @@ describe('LLM provider defaults', () => {
 
   it('exposes fallback model ids for provider model pickers', () => {
     expect(getProviderFallbackModels('openrouter-responses')).toEqual([DEFAULT_OPENROUTER_MODEL]);
-    expect(getProviderFallbackModels('openai-responses')).toEqual([
-      DEFAULT_OPENAI_MODEL,
-      DEFAULT_MEMORY_AGENT_MODEL,
-    ]);
+    expect(getProviderFallbackModels('openai-responses')).toEqual([DEFAULT_AI_GATEWAY_MODEL]);
     expect(getProviderFallbackModels('vercel-gateway')).toEqual([DEFAULT_AI_GATEWAY_MODEL]);
-    expect(getProviderFallbackModels('deepseek')).toEqual([DEFAULT_DEEPSEEK_MODEL]);
+    expect(getProviderFallbackModels('deepseek')).toEqual([DEFAULT_AI_GATEWAY_MODEL]);
   });
 
   it('blocks known high-cost model ids from persisted settings and model pickers', () => {
@@ -136,7 +130,7 @@ describe('LLM provider defaults', () => {
     expect(isPremiumCostModelId('google/gemini-2.5-pro')).toBe(false);
     expect(isPremiumCostModelId('anthropic/claude-3-opus')).toBe(false);
     expect(isPremiumCostModelId('gpt-5_5-2026-04-23')).toBe(false);
-    expect(isPremiumCostModelId(DEFAULT_OPENAI_MODEL)).toBe(false);
+    expect(isPremiumCostModelId(DEFAULT_AI_GATEWAY_MODEL)).toBe(false);
 
     const next = normalizeLlmProviderCompatibility({
       ...createDefaultAiSettings(),
@@ -144,8 +138,8 @@ describe('LLM provider defaults', () => {
       model: 'o1-pro-2025-03-19',
     });
 
-    expect(next.model).toBe(DEFAULT_OPENAI_MODEL);
-    expect(next.memoryAgentModel).toBe(DEFAULT_MEMORY_AGENT_MODEL);
+    expect(next.model).toBe(DEFAULT_AI_GATEWAY_MODEL);
+    expect(next.memoryAgentModel).toBe(DEFAULT_AI_GATEWAY_MODEL);
     expect(
       filterSafeProviderModels([
         'gpt-5.4-nano',

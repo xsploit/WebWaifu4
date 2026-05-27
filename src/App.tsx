@@ -7,11 +7,9 @@ import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
 import {
   DEFAULT_AI_GATEWAY_MODEL,
-  DEFAULT_DEEPSEEK_MODEL,
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   DEFAULT_PERSONA,
-  DEFAULT_OPENAI_MODEL,
   createDefaultAiSettings,
   createDefaultPersonaVoiceBindings,
   createDefaultRelationshipMemory,
@@ -100,6 +98,7 @@ import {
   clearSemanticMemory,
   findSemanticMemoryMatches,
 } from './lib/chat/semantic-memory';
+import { requestLocalTextEmbedding } from './lib/chat/local-embeddings';
 import {
   clearScopedRelationshipMemoryState,
   commitScopedRelationshipMemoryState,
@@ -451,7 +450,7 @@ function mergeModels(...sources: Array<readonly string[]>) {
 function pickAvailableModel(
   preferredModel: string | undefined,
   availableModels: readonly string[],
-  fallbackModel: string = DEFAULT_OPENAI_MODEL,
+  fallbackModel: string = DEFAULT_AI_GATEWAY_MODEL,
 ) {
   const safeAvailableModels = filterSafeProviderModels(availableModels);
   const normalizedPreferred = preferredModel?.trim();
@@ -572,12 +571,10 @@ function getAiModelsUrl(llmProvider: AiSettings['llmProvider']) {
 
 function getAiHealthUrl({
   model,
-  openAiStateMode,
   stateKey,
   transportMode,
 }: {
   model?: string;
-  openAiStateMode?: AiSettings['openAiStateMode'];
   stateKey?: string;
   transportMode?: AiSettings['aiTransportMode'];
 } = {}) {
@@ -595,19 +592,6 @@ function getAiHealthUrl({
   if (transportMode && transportMode !== 'server-default') {
     url.searchParams.set('transportMode', transportMode);
   }
-  if (openAiStateMode && openAiStateMode !== 'server-default') {
-    url.searchParams.set('openAiStateMode', openAiStateMode);
-  }
-  return url.toString();
-}
-
-function getAiStateResetUrl() {
-  const url = new URL(getAiProxyUrl());
-  url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/ai/state/reset');
-  if (!/\/ai\/state\/reset\/?$/.test(url.pathname)) {
-    url.pathname = `${url.pathname.replace(/\/+$/, '')}/ai/state/reset`;
-  }
-  url.search = '';
   return url.toString();
 }
 
@@ -684,13 +668,6 @@ async function getBrowserProviderApiKey({
 }
 
 function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
-  if (llmProvider === 'vercel-gateway') {
-    return {
-      keyName: 'aiGateway.apiKey',
-      label: 'Vercel AI Gateway',
-      provider: 'custom' as const,
-    };
-  }
   if (llmProvider === 'openrouter-responses') {
     return {
       keyName: 'openrouter.apiKey',
@@ -698,17 +675,17 @@ function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
       provider: 'openrouter' as const,
     };
   }
-  if (llmProvider === 'deepseek') {
+  if (llmProvider === 'openai-responses') {
     return {
-      keyName: 'deepseek.apiKey',
-      label: 'DeepSeek',
-      provider: 'deepseek' as const,
+      keyName: 'openai.apiKey',
+      label: 'OpenAI',
+      provider: 'openai' as const,
     };
   }
   return {
-    keyName: 'openai.apiKey',
-    label: 'OpenAI',
-    provider: 'openai' as const,
+    keyName: 'aiGateway.apiKey',
+    label: 'Vercel AI Gateway',
+    provider: 'custom' as const,
   };
 }
 
@@ -754,8 +731,7 @@ async function buildBackendProviderHeaders({
   }
   if (
     llmProvider === 'vercel-gateway' ||
-    llmProvider === 'openrouter-responses' ||
-    llmProvider === 'deepseek'
+    llmProvider === 'openrouter-responses'
   ) {
     const openAiByokApiKey = await getBrowserProviderApiKey({
       keyName: 'openai.apiKey',
@@ -923,10 +899,9 @@ async function requestChatCompletion({
   messages,
   mode = 'direct',
   model,
-  llmProvider = 'openai-responses',
+  llmProvider = 'vercel-gateway',
   onAudioChunk,
   onTextDelta,
-  openAiStateMode,
   responseFormat,
   stateKey,
   stateScope = 'chat',
@@ -947,7 +922,6 @@ async function requestChatCompletion({
   llmProvider?: AiSettings['llmProvider'];
   onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
   onTextDelta?: (delta: string) => void;
-  openAiStateMode?: AiSettings['openAiStateMode'];
   responseFormat?: AppCompletionResponseFormat;
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
@@ -975,7 +949,7 @@ async function requestChatCompletion({
     messages,
     mode,
     model: safeModel,
-    openAiStateMode: openAiStateMode === 'server-default' ? undefined : openAiStateMode,
+    openAiStateMode: 'stateless',
     responseFormat,
     stateKey,
     stateScope,
@@ -1038,46 +1012,10 @@ async function requestChatCompletion({
   };
 }
 
-async function resetAiProviderConversationState({
-  llmProvider,
-  model,
-  providerKeyVaultWorkspaceId,
-  ttsBridge,
-}: {
-  llmProvider: AiSettings['llmProvider'];
-  model: string;
-  providerKeyVaultWorkspaceId?: string;
-  ttsBridge?: RemoteTtsRequest;
-}) {
-  const providerDefaults = getAiProviderSwitchDefaults(llmProvider);
-  const safeModel = isPremiumCostModelId(model) ? providerDefaults.model : model;
-  const headers = await buildBackendProviderHeaders({
-    llmProvider,
-    model: safeModel,
-    providerKeyVaultWorkspaceId,
-    ttsBridge,
-  });
-  const response = await fetch(getAiStateResetUrl(), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      llmProvider,
-      model: safeModel,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`AI provider state reset failed with HTTP ${response.status}.`);
-  }
-  const data = (await response.json()) as { ok?: boolean; error?: string };
-  if (!data.ok) {
-    throw new Error(data.error ?? 'AI provider state reset failed.');
-  }
-}
-
 async function requestTextEmbedding(
   input: string,
   providerKeyVaultWorkspaceId?: string,
-  llmProvider: AiSettings['llmProvider'] = 'openai-responses',
+  llmProvider: AiSettings['llmProvider'] = 'vercel-gateway',
   operation: MemoryEmbeddingDebugSnapshot['operation'] = 'prompt-recall',
   onDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
 ): Promise<number[] | null> {
@@ -1086,11 +1024,38 @@ async function requestTextEmbedding(
     onDebug?.({
       inputChars: 0,
       operation,
-      provider: llmProvider,
+      provider: 'transformers-local',
       status: 'skipped-empty',
       updatedAt: Date.now(),
     });
     return null;
+  }
+
+  try {
+    const localEmbedding = await requestLocalTextEmbedding(
+      text,
+      operation === 'prompt-recall' || operation === 'worker-search' ? 2500 : 6000,
+    );
+    if (localEmbedding?.length) {
+      onDebug?.({
+        inputChars: text.length,
+        operation,
+        provider: 'transformers-local',
+        status: 'ok',
+        updatedAt: Date.now(),
+        vectorDims: localEmbedding.length,
+      });
+      return localEmbedding;
+    }
+  } catch (error) {
+    onDebug?.({
+      error: error instanceof Error ? error.message : String(error),
+      inputChars: text.length,
+      operation,
+      provider: 'transformers-local',
+      status: 'failed',
+      updatedAt: Date.now(),
+    });
   }
 
   const controller = new AbortController();
@@ -1108,9 +1073,7 @@ async function requestTextEmbedding(
         input: text.slice(0, 4000),
         llmProvider,
         model:
-          llmProvider === 'openrouter-responses' ||
-          llmProvider === 'vercel-gateway' ||
-          llmProvider === 'deepseek'
+          llmProvider === 'openrouter-responses' || llmProvider === 'vercel-gateway'
             ? DEFAULT_OPENROUTER_EMBEDDING_MODEL
             : undefined,
       }),
@@ -1274,7 +1237,7 @@ async function getSemanticMemoryContext(
   scopeKey: string,
   query: string,
   providerKeyVaultWorkspaceId?: string,
-  llmProvider: AiSettings['llmProvider'] = 'openai-responses',
+  llmProvider: AiSettings['llmProvider'] = 'vercel-gateway',
   onEmbeddingDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
 ) {
   const embedding = await requestTextEmbedding(
@@ -1293,7 +1256,7 @@ async function rememberSemanticTurn(
   assistantText: string,
   persona: PersonaProfile | null,
   providerKeyVaultWorkspaceId?: string,
-  llmProvider: AiSettings['llmProvider'] = 'openai-responses',
+  llmProvider: AiSettings['llmProvider'] = 'vercel-gateway',
   onEmbeddingDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
   operation: MemoryEmbeddingDebugSnapshot['operation'] = 'semantic-save',
 ) {
@@ -2345,7 +2308,6 @@ function App() {
       const response = await fetch(
         getAiHealthUrl({
           model: aiSettingsRef.current.model,
-          openAiStateMode: aiSettingsRef.current.openAiStateMode,
           stateKey: activeRelationshipStateKeyRef.current,
           transportMode: aiSettingsRef.current.aiTransportMode,
         }),
@@ -4070,47 +4032,23 @@ function App() {
     syncMemoryAgentPendingCounts,
   ]);
 
-  const handleResetAiProviderState = useCallback(async () => {
-    const settings = aiSettingsRef.current;
-    await resetAiProviderConversationState({
-      llmProvider: settings.llmProvider,
-      model: settings.model,
-      providerKeyVaultWorkspaceId,
-    });
-    await refreshAiProxyHealth();
-  }, [providerKeyVaultWorkspaceId, refreshAiProxyHealth]);
-
   const handleResetContext = useCallback(() => {
     cancelAssistantPresentation(true);
     setChatGenerating(false);
     setChatInput('');
     setChatHistory([]);
-    const relationshipClear = clearScopedRelationshipMemory(activeRelationshipStateKey);
-    const grilloClear = clearGrilloMemoryStateAsync(activeRelationshipStateKey);
-    const semanticClear = clearSemanticMemory(activeRelationshipStateKey);
-    setGrilloMemoryState(createDefaultGrilloMemoryState(activeRelationshipStateKey));
+    twitchContextRef.current = [];
+    twitchAiQueueRef.current = [];
+    twitchBatchRef.current = [];
     clearMemoryAgentPendingChatTurns(
       memoryAgentPendingChatTurnCountsRef.current,
       activeRelationshipStateKey,
     );
     syncMemoryAgentPendingCounts();
-    setMemoryAgentStatus(
-      'Context and memory cleared for current scope; rotating provider conversation state.',
-    );
-    void Promise.allSettled([
-      relationshipClear,
-      grilloClear,
-      semanticClear,
-      handleResetAiProviderState(),
-    ]).then(() => {
-      void refreshMemoryBackendStatus();
-    });
+    setMemoryAgentStatus('Local chat context reset. Durable memory was kept.');
   }, [
     activeRelationshipStateKey,
     cancelAssistantPresentation,
-    clearScopedRelationshipMemory,
-    handleResetAiProviderState,
-    refreshMemoryBackendStatus,
     syncMemoryAgentPendingCounts,
   ]);
 
@@ -5187,11 +5125,7 @@ function App() {
         providerModels,
         settings.llmProvider === 'openrouter-responses'
           ? DEFAULT_OPENROUTER_MODEL
-          : settings.llmProvider === 'vercel-gateway'
-            ? DEFAULT_AI_GATEWAY_MODEL
-            : settings.llmProvider === 'deepseek'
-              ? DEFAULT_DEEPSEEK_MODEL
-              : DEFAULT_OPENAI_MODEL,
+          : DEFAULT_AI_GATEWAY_MODEL,
       );
       const targetMessage = job.messages[0];
       const prompt = buildChatAiPrompt(
@@ -5337,7 +5271,6 @@ function App() {
           messages: promptMessages,
           maxTokens: settings.maxTokens,
           maxToolRounds: settings.maxToolRounds,
-          openAiStateMode: settings.openAiStateMode,
           stateKey,
           stateScope: 'chat',
           onAudioChunk: speechPlayer.pushAudioChunk,
@@ -6259,15 +6192,6 @@ function App() {
               }}
               onRefreshAiProxyHealth={() => {
                 void refreshAiProxyHealth();
-              }}
-              onResetAiProviderState={() => {
-                void handleResetAiProviderState().catch((error) => {
-                  appendSystemMessage(
-                    `[AI] Provider state reset failed: ${
-                      error instanceof Error ? error.message : 'unknown error'
-                    }`,
-                  );
-                });
               }}
               onApplyPersonaVoice={handleApplyPersonaVoice}
               onCreateVoiceLabProviderVoice={handleCreateVoiceLabProviderVoice}

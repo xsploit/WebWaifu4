@@ -17,7 +17,6 @@ type AiTabProps = {
   modelsLoading: boolean;
   onRefreshAiProxyHealth: () => void;
   onRefreshModels: () => void;
-  onResetAiProviderState: () => void;
   setAiSettings: Dispatch<SetStateAction<AiSettings>>;
 };
 
@@ -35,29 +34,10 @@ function formatProviderTransport(providerState: AiProxyHealth['providerState']) 
   return providerState?.transport === 'http-stream' ? 'HTTP stream' : 'unknown';
 }
 
-function formatProviderStateId(providerState: AiProxyHealth['providerState']) {
-  const activeState = providerState?.activeState;
-  const id =
-    providerState?.stateMode === 'conversation'
-      ? (activeState?.conversationId ?? providerState.conversationId)
-      : (activeState?.previousResponseId ?? providerState?.previousResponseId);
-  if (!id) {
-    return 'not created yet';
-  }
-  return `${id.slice(0, 14)}...`;
-}
-
 function describeProviderState(providerState: AiProxyHealth['providerState']) {
-  switch (providerState?.stateMode) {
-    case 'conversation':
-      return 'Conversation mode creates an OpenAI conversation after the first stateful reply for this channel/persona. Fresh POML instructions still go with each turn.';
-    case 'previous-response':
-      return 'Previous-response mode tracks the latest response id per channel/persona when the backend can chain it.';
-    case 'stateless':
-      return 'Stateless mode does not keep provider-side state, but the app still sends diary, semantic memory, and current transcript context.';
-    default:
-      return 'The backend reports the active provider state after transport refresh.';
-  }
+  return providerState?.stateMode === 'stateless'
+    ? 'Provider calls are stateless. Conversation continuity is Web Waifu-owned: recent turns, diary, relationship memory, semantic recall, tools, and stream context are rendered into each request.'
+    : 'The backend reports provider transport state after refresh.';
 }
 
 export function AiTab({
@@ -70,7 +50,6 @@ export function AiTab({
   modelsLoading,
   onRefreshAiProxyHealth,
   onRefreshModels,
-  onResetAiProviderState,
   setAiSettings,
 }: AiTabProps) {
   const selectedModel = aiSettings.model.trim();
@@ -91,15 +70,12 @@ export function AiTab({
           }}
           value={aiSettings.llmProvider}
         >
-          <option value="openai-responses">OpenAI Responses</option>
-          <option value="openrouter-responses">OpenRouter Responses (App Memory)</option>
           <option value="vercel-gateway">Vercel AI Gateway</option>
-          <option value="deepseek">DeepSeek Direct</option>
+          <option value="openrouter-responses">OpenRouter</option>
         </select>
         <div className="field-hint">
-          HTTP streaming keeps Web Waifu 4-owned history, diary, semantic memory, tools, and TTS
-          handoff in the same app pipeline. OpenRouter and Vercel AI Gateway use stateless app-owned
-          context.
+          Vercel AI Gateway and OpenRouter are aggregator providers. Pick any returned language
+          model ID from either catalog; Web Waifu owns the conversation context locally.
         </div>
       </div>
 
@@ -107,11 +83,7 @@ export function AiTab({
         <div className="control-label">
           {aiSettings.llmProvider === 'openrouter-responses'
             ? 'OpenRouter Model'
-            : aiSettings.llmProvider === 'vercel-gateway'
-              ? 'AI Gateway Model'
-              : aiSettings.llmProvider === 'deepseek'
-                ? 'DeepSeek Model'
-              : 'OpenAI GPT Model'}
+            : 'AI Gateway Model'}
         </div>
         <select
           className="select-tech"
@@ -136,8 +108,8 @@ export function AiTab({
           ) : null}
         </select>
         <div className="field-hint">
-          Models are loaded directly from the selected provider API through the backend. OpenAI o1
-          and OpenAI pro models are hidden by default.
+          Models are loaded directly from the selected aggregator API through the backend. Image,
+          video, embedding, OpenAI o1, and OpenAI pro models are hidden from chat model pickers.
         </div>
         <button className="btn-tech secondary" onClick={onRefreshModels} type="button">
           {modelsLoading ? 'Refreshing...' : 'Refresh Models'}
@@ -157,36 +129,17 @@ export function AiTab({
           value={aiSettings.aiTransportMode}
         >
           <option value="server-default">Server Default</option>
-          <option value="http-stream">Responses HTTP Stream</option>
+          <option value="http-stream">AI SDK HTTP Stream</option>
         </select>
-        <select
-          className="select-tech"
-          onChange={(event) =>
-            updateAiSettings(setAiSettings, {
-              openAiStateMode: event.target.value as AiSettings['openAiStateMode'],
-            })
-          }
-          value={aiSettings.openAiStateMode}
-        >
-          <option value="server-default">Server Default State</option>
-          <option value="conversation">Conversations API</option>
-          <option value="previous-response">Previous Response ID</option>
-          <option value="stateless">Stateless</option>
-        </select>
-        {aiSettings.llmProvider === 'openrouter-responses' ||
-        aiSettings.llmProvider === 'vercel-gateway' ||
-        aiSettings.llmProvider === 'deepseek' ? (
-          <div className="status-copy">
-            Routed-provider state: <strong>app-owned</strong>. The request is sent stateless with
-            the rendered POML, current transcript, diary, and memory context.
-          </div>
-        ) : null}
+        <div className="status-copy">
+          Conversation state: <strong>app-owned</strong>. The provider request is stateless with
+          rendered POML, recent transcript, diary, semantic memory, and Twitch/local context.
+        </div>
         <div className="status-copy">
           Provider: <strong>{aiProxyHealth?.aiProvider ?? 'unknown'}</strong>
         </div>
         <div className="status-copy">
-          State: <strong>{providerState?.stateMode ?? 'unknown'}</strong> / id:{' '}
-          <strong>{formatProviderStateId(providerState)}</strong>
+          State: <strong>{providerState?.stateMode ?? 'stateless'}</strong>
         </div>
         <div className="status-copy">
           Active state:{' '}
@@ -247,9 +200,6 @@ export function AiTab({
         </div>
         <button className="btn-tech secondary" onClick={onRefreshAiProxyHealth} type="button">
           Refresh Transport
-        </button>
-        <button className="btn-tech secondary" onClick={onResetAiProviderState} type="button">
-          Rotate Conversation State
         </button>
         {aiProxyHealthError ? <div className="status-copy">{aiProxyHealthError}</div> : null}
       </div>
