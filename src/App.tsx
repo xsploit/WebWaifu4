@@ -6,6 +6,7 @@ import { VrmStage } from './components/VrmStage';
 import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
 import {
+  DEFAULT_AI_GATEWAY_MODEL,
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   DEFAULT_PERSONA,
@@ -336,7 +337,7 @@ function getPresetPersonaVoiceBinding(preset: PersonaScenePreset): PersonaVoiceB
 const PERSIST_DEBOUNCE_MS = 900;
 const MEMORY_AGENT_DELAY_MS = 2500;
 const AI_CHAT_HARD_TIMEOUT_MS = 120000;
-const AI_CHAT_STREAM_IDLE_TIMEOUT_MS = 25000;
+const AI_CHAT_STREAM_IDLE_TIMEOUT_MS = 90000;
 const OVERLAY_RECONNECT_MS = 3000;
 const DIRECT_TWITCH_CHANNEL = (import.meta.env['VITE_TWITCH_CHANNEL'] || 'subsect').trim();
 const DIRECT_TWITCH_CHAT_ENABLED = import.meta.env['VITE_DIRECT_TWITCH_CHAT'] !== 'false';
@@ -702,6 +703,13 @@ async function getBrowserProviderApiKey({
 }
 
 function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
+  if (llmProvider === 'vercel-gateway') {
+    return {
+      keyName: 'aiGateway.apiKey',
+      label: 'Vercel AI Gateway',
+      provider: 'custom' as const,
+    };
+  }
   if (llmProvider === 'openrouter-responses') {
     return {
       keyName: 'openrouter.apiKey',
@@ -755,6 +763,16 @@ async function buildBackendProviderHeaders({
   headers['x-yourwifey-llm-provider'] = llmProvider;
   if (apiKey) {
     headers['x-yourwifey-llm-provider-key'] = apiKey;
+  }
+  if (llmProvider === 'vercel-gateway') {
+    const openAiByokApiKey = await getBrowserProviderApiKey({
+      keyName: 'openai.apiKey',
+      provider: 'openai',
+      providerKeyVaultWorkspaceId,
+    });
+    if (openAiByokApiKey) {
+      headers['x-yourwifey-openai-byok-key'] = openAiByokApiKey;
+    }
   }
 
   const tavilyApiKey = await getBrowserProviderApiKey({
@@ -1328,7 +1346,9 @@ async function requestTextEmbedding(
         input: text.slice(0, 4000),
         llmProvider,
         model:
-          llmProvider === 'openrouter-responses' ? DEFAULT_OPENROUTER_EMBEDDING_MODEL : undefined,
+          llmProvider === 'openrouter-responses' || llmProvider === 'vercel-gateway'
+            ? DEFAULT_OPENROUTER_EMBEDDING_MODEL
+            : undefined,
       }),
     });
     if (!response.ok) {
@@ -5403,6 +5423,8 @@ function App() {
         providerModels,
         settings.llmProvider === 'openrouter-responses'
           ? DEFAULT_OPENROUTER_MODEL
+          : settings.llmProvider === 'vercel-gateway'
+            ? DEFAULT_AI_GATEWAY_MODEL
           : DEFAULT_OPENAI_MODEL,
       );
       const targetMessage = job.messages[0];
@@ -5565,10 +5587,7 @@ function App() {
         if (response.meta) {
           setAiProxyHealth((current) => ({
             ...(current ?? {}),
-            aiProvider:
-              settings.llmProvider === 'openrouter-responses'
-                ? 'openrouter-responses'
-                : (current?.aiProvider ?? settings.llmProvider),
+            aiProvider: settings.llmProvider,
             model: selectedModel,
             providerState: {
               ...(current?.providerState ?? {}),

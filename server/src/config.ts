@@ -25,7 +25,8 @@ export type StreamBotConfig = {
     | 'openai-compatible'
     | 'openai-responses'
     | 'openai-responses-ws'
-    | 'openrouter-responses';
+    | 'openrouter-responses'
+    | 'vercel-gateway';
   aiApiBaseUrl: string;
   aiApiKey: string;
   aiModel: string;
@@ -37,6 +38,7 @@ export type StreamBotConfig = {
   openAiPromptCacheRetention: '' | 'in_memory' | '24h';
   openAiReasoningEffort: OpenAiReasoningEffort;
   openAiSafetyIdentifier: string;
+  aiGatewayByokOpenAiApiKey: string;
   tavilyApiKey: string;
   tavilySearchDepth: 'basic' | 'advanced';
   tavilyMaxResults: number;
@@ -99,9 +101,13 @@ function parseAiProvider(): StreamBotConfig['aiProvider'] {
     raw === 'openai-compatible' ||
     raw === 'openai-responses' ||
     raw === 'openai-responses-ws' ||
-    raw === 'openrouter-responses'
+    raw === 'openrouter-responses' ||
+    raw === 'vercel-gateway'
   ) {
     return raw;
+  }
+  if (process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()) {
+    return 'vercel-gateway';
   }
   if (
     process.env.OPENROUTER_API_KEY?.trim() &&
@@ -229,6 +235,7 @@ export function loadConfig(): StreamBotConfig {
   const isOpenAiResponsesProvider =
     aiProvider === 'openai-responses' || aiProvider === 'openai-responses-ws';
   const isOpenRouterProvider = aiProvider === 'openrouter-responses';
+  const isVercelGatewayProvider = aiProvider === 'vercel-gateway';
   const isResponsesProvider = isOpenAiResponsesProvider || isOpenRouterProvider;
 
   return {
@@ -258,20 +265,28 @@ export function loadConfig(): StreamBotConfig {
     commandAllowMods: booleanFromEnv('COMMAND_ALLOW_MODS', true),
     botAliases: aliasesFromEnv(twitchBotUsername),
     aiProvider,
-    aiApiBaseUrl: isOpenRouterProvider
-      ? process.env.OPENROUTER_BASE_URL?.trim().replace(/\/+$/, '') ||
-        'https://openrouter.ai/api/v1'
-      : process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-        process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-        (isOpenAiResponsesProvider ? 'https://api.openai.com/v1' : 'http://127.0.0.1:1234/v1'),
-    aiApiKey: isOpenRouterProvider
-      ? process.env.OPENROUTER_API_KEY?.trim() || ''
-      : process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || '',
+    aiApiBaseUrl: isVercelGatewayProvider
+      ? 'https://ai-gateway.vercel.sh/v1'
+      : isOpenRouterProvider
+        ? process.env.OPENROUTER_BASE_URL?.trim().replace(/\/+$/, '') ||
+          'https://openrouter.ai/api/v1'
+        : process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
+          process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
+          (isOpenAiResponsesProvider ? 'https://api.openai.com/v1' : 'http://127.0.0.1:1234/v1'),
+    aiApiKey: isVercelGatewayProvider
+      ? process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim() || ''
+      : isOpenRouterProvider
+        ? process.env.OPENROUTER_API_KEY?.trim() || ''
+        : process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || '',
     aiModel:
-      (isOpenRouterProvider
+      (isVercelGatewayProvider
+        ? process.env.AI_GATEWAY_MODEL?.trim() || process.env.AI_MODEL?.trim()
+        : isOpenRouterProvider
         ? process.env.OPENROUTER_MODEL?.trim() || process.env.AI_MODEL?.trim()
         : process.env.OPENAI_MODEL?.trim() || process.env.AI_MODEL?.trim()) ||
-      (isOpenRouterProvider
+      (isVercelGatewayProvider
+        ? 'openai/gpt-5-nano'
+        : isOpenRouterProvider
         ? 'openai/gpt-4o-mini'
         : isResponsesProvider
           ? 'gpt-5-nano'
@@ -286,6 +301,11 @@ export function loadConfig(): StreamBotConfig {
     openAiPromptCacheRetention: parsePromptCacheRetention(),
     openAiReasoningEffort: parseReasoningEffort(),
     openAiSafetyIdentifier: process.env.OPENAI_SAFETY_IDENTIFIER?.trim() ?? '',
+    aiGatewayByokOpenAiApiKey:
+      process.env.AI_GATEWAY_BYOK_OPENAI_API_KEY?.trim() ||
+      process.env.OPENAI_API_KEY?.trim() ||
+      process.env.AI_API_KEY?.trim() ||
+      '',
     tavilyApiKey: process.env.TAVILY_API_KEY?.trim() ?? '',
     tavilySearchDepth: parseTavilySearchDepth(),
     tavilyMaxResults: numberFromEnv('TAVILY_MAX_RESULTS', 5),

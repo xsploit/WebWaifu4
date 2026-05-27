@@ -67,6 +67,7 @@ export const BYOK_STACK_DECISION = LOCAL_STACK_DECISION;
 const LOCAL_SECRET_SETTING_KEYS = new Set([
   'openai.apikey',
   'openrouter.apikey',
+  'aigateway.apikey',
   'fishspeech.apikey',
   'inworld.apikey',
   'tavily.apikey',

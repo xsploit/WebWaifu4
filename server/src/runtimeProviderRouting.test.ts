@@ -5,6 +5,7 @@ import {
   OPENAI_BASE_URL,
   OPENROUTER_BASE_URL,
   resolveRuntimeLlmProvider,
+  VERCEL_AI_GATEWAY_BASE_URL,
 } from './runtimeProviderRouting.js';
 
 describe('runtimeProviderRouting', () => {
@@ -18,6 +19,9 @@ describe('runtimeProviderRouting', () => {
     expect(resolveRuntimeLlmProvider('openai-responses', 'openrouter-responses')).toBe(
       'openai-responses',
     );
+    expect(resolveRuntimeLlmProvider('vercel-gateway', 'openai-responses')).toBe(
+      'vercel-gateway',
+    );
     expect(resolveRuntimeLlmProvider('bad-provider')).toBe('openai-responses');
   });
 
@@ -27,6 +31,15 @@ describe('runtimeProviderRouting', () => {
     );
     expect(getRuntimeProviderBaseUrl('openrouter-responses', OPENAI_BASE_URL)).toBe(
       OPENROUTER_BASE_URL,
+    );
+  });
+
+  it('routes Vercel AI Gateway through gateway model and embedding namespaces', () => {
+    expect(getProviderEmbeddingModel('vercel-gateway', 'text-embedding-3-small')).toBe(
+      'openai/text-embedding-3-small',
+    );
+    expect(getRuntimeProviderBaseUrl('vercel-gateway', OPENAI_BASE_URL)).toBe(
+      VERCEL_AI_GATEWAY_BASE_URL,
     );
   });
 

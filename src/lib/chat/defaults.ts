@@ -30,6 +30,7 @@ export const STORAGE_KEYS = {
 export const DEFAULT_OPENAI_MODEL = 'gpt-5-nano';
 export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-4.1-mini';
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
+export const DEFAULT_AI_GATEWAY_MODEL = 'openai/gpt-5-nano';
 export const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 
 export const RIKO_PERSONA: PersonaProfile = {
@@ -97,8 +98,8 @@ export function createDefaultAiSettings(): AiSettings {
     model: DEFAULT_OPENAI_MODEL,
     memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
     memoryAgentIntervalMessages: 7,
-    aiTransportMode: 'websocket',
-    openAiStateMode: 'conversation',
+    aiTransportMode: 'http-stream',
+    openAiStateMode: 'stateless',
     toolChoiceMode: 'auto',
     maxToolRounds: 15,
     replyLength: 'balanced',

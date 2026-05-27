@@ -23,6 +23,7 @@ describe('local product contracts', () => {
   it('keeps provider keys classified as local secrets', () => {
     expect(classifyLocalSetting('openai.apiKey')).toBe('local-secret');
     expect(classifyLocalSetting('openrouter.apiKey')).toBe('local-secret');
+    expect(classifyLocalSetting('aiGateway.apiKey')).toBe('local-secret');
     expect(classifyLocalSetting('fishSpeech.apiKey')).toBe('local-secret');
     expect(classifyLocalSetting('inworld.apiKey')).toBe('local-secret');
     expect(classifyLocalSetting('tavily.apiKey')).toBe('local-secret');

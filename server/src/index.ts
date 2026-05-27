@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
+import { AiSdkGatewayProvider } from './ai/AiSdkGatewayProvider.js';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
 import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
@@ -144,13 +145,14 @@ type AiLiveServerEvent =
   | { type: 'error'; ok: false; requestId: string; error: string };
 
 const CORS_REQUEST_HEADERS =
-  'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
+  'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-openai-byok-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
 const AI_LIVE_SOCKET_PATH = '/ai/live';
 const AI_LIVE_MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
 const AI_LIVE_MAX_QUEUED_MESSAGES = 3;
 const AI_LIVE_ALLOWED_HEADERS = new Set([
   'x-yourwifey-llm-provider',
   'x-yourwifey-llm-provider-key',
+  'x-yourwifey-openai-byok-key',
   'x-yourwifey-tts-provider-key',
   'x-yourwifey-tavily-provider-key',
 ]);
@@ -277,16 +279,37 @@ function createProvider(
   if (
     config.aiProvider === 'openai-responses' ||
     config.aiProvider === 'openai-responses-ws' ||
-    config.aiProvider === 'openrouter-responses'
+    config.aiProvider === 'openrouter-responses' ||
+    config.aiProvider === 'vercel-gateway'
   ) {
     if (!config.aiApiKey) {
       throw new Error(
         `${config.aiProvider} requires ${
-          config.aiProvider === 'openrouter-responses'
+          config.aiProvider === 'vercel-gateway'
+            ? 'AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN'
+            : config.aiProvider === 'openrouter-responses'
             ? 'OPENROUTER_API_KEY'
             : 'OPENAI_API_KEY or AI_API_KEY'
         }.`,
       );
+    }
+    if (config.aiProvider === 'vercel-gateway') {
+      return new AiSdkGatewayProvider({
+        apiKey: config.aiApiKey,
+        byokOpenAiApiKey: config.aiGatewayByokOpenAiApiKey,
+        model: config.aiModel,
+        maxTokens: 180,
+        tavilyTools: config.tavilyApiKey
+          ? {
+              apiKey: config.tavilyApiKey,
+              searchDepth: config.tavilySearchDepth,
+              maxResults: config.tavilyMaxResults,
+              crawlLimit: config.tavilyCrawlLimit,
+              timeoutMs: config.tavilyTimeoutMs,
+            }
+          : undefined,
+        temperature: 0.7,
+      });
     }
     const isOpenRouter = config.aiProvider === 'openrouter-responses';
     return new OpenAiResponsesProvider({
@@ -300,7 +323,12 @@ function createProvider(
       conversationId: isOpenRouter ? undefined : config.openAiConversationId || undefined,
       promptCacheKey: config.openAiPromptCacheKey || undefined,
       promptCacheRetention: config.openAiPromptCacheRetention || undefined,
-      providerName: options.providerName ?? (isOpenRouter ? 'openrouter-responses' : undefined),
+      providerName:
+        options.providerName === 'openrouter-responses' || options.providerName === 'openai-responses'
+          ? options.providerName
+          : isOpenRouter
+            ? 'openrouter-responses'
+            : undefined,
       reasoningEffort: config.openAiReasoningEffort,
       safetyIdentifier: config.openAiSafetyIdentifier || undefined,
       store: isOpenRouter ? false : config.openAiStore,
@@ -663,6 +691,9 @@ function normalizeRuntimeTtsApiKey(providerName: RemoteTtsProvider, value: strin
 }
 
 function getConfiguredModelForProvider(providerName: RuntimeLlmProvider, config: StreamBotConfig) {
+  if (providerName === 'vercel-gateway') {
+    return process.env.AI_GATEWAY_MODEL?.trim() || 'openai/gpt-5-nano';
+  }
   if (providerName === 'openrouter-responses') {
     return process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4o-mini';
   }
@@ -670,13 +701,20 @@ function getConfiguredModelForProvider(providerName: RuntimeLlmProvider, config:
 }
 
 function getDefaultModelForProvider(providerName: RuntimeLlmProvider) {
+  if (providerName === 'vercel-gateway') {
+    return 'openai/gpt-5-nano';
+  }
   return providerName === 'openrouter-responses' ? 'openai/gpt-4o-mini' : 'gpt-5-nano';
 }
 
 function getAllowlistEnvNamesForProvider(providerName: RuntimeLlmProvider) {
-  return providerName === 'openrouter-responses'
-    ? ['OPENROUTER_MODEL_ALLOWLIST', 'OPENROUTER_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST']
-    : ['OPENAI_MODEL_ALLOWLIST', 'OPENAI_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
+  if (providerName === 'openrouter-responses') {
+    return ['OPENROUTER_MODEL_ALLOWLIST', 'OPENROUTER_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
+  }
+  if (providerName === 'vercel-gateway') {
+    return ['AI_GATEWAY_MODEL_ALLOWLIST', 'AI_GATEWAY_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
+  }
+  return ['OPENAI_MODEL_ALLOWLIST', 'OPENAI_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
 }
 
 function getRuntimeTavilyApiKeyWithAuth(
@@ -702,6 +740,7 @@ function getRuntimeChatProvider(
     getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
   );
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
+  const aiGatewayByokOpenAiApiKey = getHeaderSecret(request, 'x-yourwifey-openai-byok-key');
   const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerKeys);
   const serverApiKey =
     providerName === 'openai-responses' ? baseConfig.aiApiKey : getProviderEnvApiKey(providerName);
@@ -721,6 +760,10 @@ function getRuntimeChatProvider(
       ? getDefaultModelForProvider(providerName)
       : model?.trim() || baseConfig.aiModel,
     aiProvider: providerName,
+    aiGatewayByokOpenAiApiKey:
+      providerName === 'vercel-gateway'
+        ? aiGatewayByokOpenAiApiKey || baseConfig.aiGatewayByokOpenAiApiKey
+        : baseConfig.aiGatewayByokOpenAiApiKey,
     tavilyApiKey,
     openAiStateMode: appOwnedState ? 'stateless' : baseConfig.openAiStateMode,
     openAiStore: appOwnedState ? false : baseConfig.openAiStore,

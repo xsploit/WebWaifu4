@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_MEMORY_AGENT_MODEL,
+  DEFAULT_AI_GATEWAY_MODEL,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   createDefaultAiSettings,
@@ -34,7 +35,7 @@ describe('LLM provider defaults', () => {
     });
   });
 
-  it('switches OpenRouter settings back to OpenAI websocket conversation defaults', () => {
+  it('switches OpenRouter settings back to OpenAI HTTP stateless defaults', () => {
     const current = {
       ...createDefaultAiSettings(),
       aiTransportMode: 'http-stream' as const,
@@ -47,11 +48,23 @@ describe('LLM provider defaults', () => {
     const next = applyLlmProviderSwitchDefaults(current, 'openai-responses');
 
     expect(next).toMatchObject({
-      aiTransportMode: 'websocket',
+      aiTransportMode: 'http-stream',
       llmProvider: 'openai-responses',
       memoryAgentModel: DEFAULT_MEMORY_AGENT_MODEL,
       model: DEFAULT_OPENAI_MODEL,
-      openAiStateMode: 'conversation',
+      openAiStateMode: 'stateless',
+    });
+  });
+
+  it('switches to Vercel AI Gateway HTTP app-owned defaults', () => {
+    const next = applyLlmProviderSwitchDefaults(createDefaultAiSettings(), 'vercel-gateway');
+
+    expect(next).toMatchObject({
+      aiTransportMode: 'http-stream',
+      llmProvider: 'vercel-gateway',
+      memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
+      model: DEFAULT_AI_GATEWAY_MODEL,
+      openAiStateMode: 'stateless',
     });
   });
 
@@ -97,6 +110,7 @@ describe('LLM provider defaults', () => {
       DEFAULT_OPENAI_MODEL,
       DEFAULT_MEMORY_AGENT_MODEL,
     ]);
+    expect(getProviderFallbackModels('vercel-gateway')).toEqual([DEFAULT_AI_GATEWAY_MODEL]);
   });
 
   it('blocks known high-cost model ids from persisted settings and model pickers', () => {

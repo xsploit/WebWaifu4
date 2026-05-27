@@ -17,6 +17,7 @@ type LocalProviderKeyConfig = {
 const LOCAL_PROVIDER_KEYS: LocalProviderKeyConfig[] = [
   { provider: 'openai', keyName: 'openai.apiKey', label: 'OpenAI' },
   { provider: 'openrouter', keyName: 'openrouter.apiKey', label: 'OpenRouter' },
+  { provider: 'custom', keyName: 'aiGateway.apiKey', label: 'Vercel AI Gateway' },
   { provider: 'fish_speech', keyName: 'fishSpeech.apiKey', label: 'Fish Speech' },
   { provider: 'inworld', keyName: 'inworld.apiKey', label: 'Inworld' },
   { provider: 'tavily', keyName: 'tavily.apiKey', label: 'Tavily' },
