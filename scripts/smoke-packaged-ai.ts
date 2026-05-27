@@ -69,18 +69,28 @@ function readBackup(path: string): LocalBackup {
   return JSON.parse(fs.readFileSync(path, 'utf8')) as LocalBackup;
 }
 
-function getSecret(backup: LocalBackup, provider: string) {
+export function getSmokeBackupSecret(backup: LocalBackup, provider: string, keyName?: string) {
   return (
-    backup.providerSecrets?.find((entry) => entry.provider === provider)?.secret?.trim() ?? ''
+    backup.providerSecrets
+      ?.find(
+        (entry) =>
+          entry.provider === provider &&
+          (!keyName || entry.keyName?.toLowerCase() === keyName.toLowerCase()),
+      )
+      ?.secret?.trim() ?? ''
   );
 }
 
 function requireSecret(backup: LocalBackup, provider: string, flagName: string) {
-  const secret = getSecret(backup, provider);
+  const secret = getSmokeBackupSecret(backup, provider);
   if (!secret) {
     throw new Error(`Backup is missing ${provider} key; pass ${flagName} to skip that smoke.`);
   }
   return secret;
+}
+
+function getSecretArgOrBackup(flagName: string, backup: LocalBackup, provider: string, keyName?: string) {
+  return getArg(flagName) || getSmokeBackupSecret(backup, provider, keyName);
 }
 
 function parseSseEvents(text: string) {
@@ -329,6 +339,36 @@ async function runToolSmoke({
   };
 }
 
+async function runByokToolSmoke({
+  baseUrl,
+  byokOpenAiKey,
+  headers,
+  llmProvider,
+  model,
+  name,
+  transportMode,
+}: {
+  baseUrl: string;
+  byokOpenAiKey?: string;
+  headers: Record<string, string>;
+  llmProvider: string;
+  model: string;
+  name: string;
+  transportMode: string;
+}) {
+  return runToolSmoke({
+    baseUrl,
+    headers: {
+      ...headers,
+      ...(byokOpenAiKey ? { 'x-yourwifey-openai-byok-key': byokOpenAiKey } : {}),
+    },
+    llmProvider,
+    model,
+    name,
+    transportMode,
+  });
+}
+
 async function runStructuredTtsSmoke({
   baseUrl,
   backup,
@@ -425,9 +465,13 @@ async function main() {
   const baseUrl = getArg('--base-url', 'http://127.0.0.1:8797');
   const openAiModel = getArg('--openai-model', 'gpt-5-nano');
   const openRouterModel = getArg('--openrouter-model', 'openai/gpt-5-nano');
+  const gatewayModel = getArg('--gateway-model', 'openai/gpt-5-nano');
+  const deepSeekModel = getArg('--deepseek-model', 'deepseek-chat');
   const backup = readBackup(backupPath);
   const skipOpenAi = hasFlag('--skip-openai');
   const skipOpenRouter = hasFlag('--skip-openrouter');
+  const skipGateway = hasFlag('--skip-gateway');
+  const skipDeepSeek = hasFlag('--skip-deepseek');
   const skipTts = hasFlag('--skip-tts');
   if (skipOpenAi && skipOpenRouter) {
     throw new Error(
@@ -438,9 +482,15 @@ async function main() {
   const openRouterKey = skipOpenRouter
     ? ''
     : requireSecret(backup, 'openrouter', '--skip-openrouter');
+  const gatewayKey = skipGateway
+    ? ''
+    : getSecretArgOrBackup('--gateway-key', backup, 'custom', 'aiGateway.apiKey');
+  const deepSeekKey = skipDeepSeek
+    ? ''
+    : getSecretArgOrBackup('--deepseek-key', backup, 'deepseek', 'deepseek.apiKey');
   const fishKey =
     skipTts || skipOpenAi ? '' : requireSecret(backup, 'fish_speech', '--skip-tts');
-  const tavilyKey = getSecret(backup, 'tavily');
+  const tavilyKey = getSmokeBackupSecret(backup, 'tavily');
   if (!tavilyKey) {
     throw new Error('Backup is missing Tavily key; tool smokes cannot prove web_search.');
   }
@@ -491,19 +541,61 @@ async function main() {
     }
   }
   if (openRouterKey) {
+    const openRouterHeaders = {
+      'content-type': 'application/json',
+      'x-yourwifey-llm-provider': 'openrouter-responses',
+      'x-yourwifey-llm-provider-key': openRouterKey,
+      'x-yourwifey-tavily-provider-key': tavilyKey,
+    };
     results.push(
       await runSmokeStep('openrouter-tools', () =>
-        runToolSmoke({
+        runByokToolSmoke({
           baseUrl,
-          headers: {
-            'content-type': 'application/json',
-            'x-yourwifey-llm-provider': 'openrouter-responses',
-            'x-yourwifey-llm-provider-key': openRouterKey,
-            'x-yourwifey-tavily-provider-key': tavilyKey,
-          },
+          byokOpenAiKey: openAiKey,
+          headers: openRouterHeaders,
           llmProvider: 'openrouter-responses',
           model: openRouterModel,
           name: 'openrouter-tools',
+          transportMode: 'http-stream',
+        }),
+      ),
+    );
+  }
+  if (gatewayKey) {
+    results.push(
+      await runSmokeStep('gateway-tools', () =>
+        runByokToolSmoke({
+          baseUrl,
+          byokOpenAiKey: openAiKey,
+          headers: {
+            'content-type': 'application/json',
+            'x-yourwifey-llm-provider': 'vercel-gateway',
+            'x-yourwifey-llm-provider-key': gatewayKey,
+            'x-yourwifey-tavily-provider-key': tavilyKey,
+          },
+          llmProvider: 'vercel-gateway',
+          model: gatewayModel,
+          name: 'gateway-tools',
+          transportMode: 'http-stream',
+        }),
+      ),
+    );
+  }
+  if (deepSeekKey) {
+    results.push(
+      await runSmokeStep('deepseek-tools', () =>
+        runByokToolSmoke({
+          baseUrl,
+          byokOpenAiKey: openAiKey,
+          headers: {
+            'content-type': 'application/json',
+            'x-yourwifey-llm-provider': 'deepseek',
+            'x-yourwifey-llm-provider-key': deepSeekKey,
+            'x-yourwifey-tavily-provider-key': tavilyKey,
+          },
+          llmProvider: 'deepseek',
+          model: deepSeekModel,
+          name: 'deepseek-tools',
           transportMode: 'http-stream',
         }),
       ),
