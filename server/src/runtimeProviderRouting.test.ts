@@ -3,7 +3,6 @@ import {
   getProviderEmbeddingModel,
   getRuntimeProviderBaseUrl,
   providerModelsCanBeListedWithoutKey,
-  DEEPSEEK_BASE_URL,
   OPENAI_BASE_URL,
   OPENROUTER_BASE_URL,
   resolveRuntimeLlmProvider,
@@ -19,13 +18,13 @@ describe('runtimeProviderRouting', () => {
       'openrouter-responses',
     );
     expect(resolveRuntimeLlmProvider('openai-responses', 'openrouter-responses')).toBe(
-      'openai-responses',
+      'openrouter-responses',
     );
     expect(resolveRuntimeLlmProvider('vercel-gateway', 'openai-responses')).toBe(
       'vercel-gateway',
     );
-    expect(resolveRuntimeLlmProvider('deepseek', 'openai-responses')).toBe('deepseek');
-    expect(resolveRuntimeLlmProvider('bad-provider')).toBe('openai-responses');
+    expect(resolveRuntimeLlmProvider('deepseek', 'openai-responses')).toBe('vercel-gateway');
+    expect(resolveRuntimeLlmProvider('bad-provider')).toBe('vercel-gateway');
   });
 
   it('keeps OpenRouter embeddings on the OpenRouter-compatible model namespace', () => {
@@ -47,16 +46,9 @@ describe('runtimeProviderRouting', () => {
     expect(providerModelsCanBeListedWithoutKey('vercel-gateway')).toBe(true);
   });
 
-  it('routes DeepSeek direct chat through its own base URL but keeps embeddings on OpenAI-compatible vectors', () => {
-    expect(getRuntimeProviderBaseUrl('deepseek', OPENAI_BASE_URL)).toBe(DEEPSEEK_BASE_URL);
-    expect(getProviderEmbeddingModel('deepseek', 'text-embedding-3-small')).toBe(
-      'openai/text-embedding-3-small',
-    );
-  });
-
-  it('does not let the old local-compatible fallback leak into OpenAI Responses requests', () => {
-    expect(getRuntimeProviderBaseUrl('openai-responses', 'http://127.0.0.1:1234/v1')).toBe(
-      OPENAI_BASE_URL,
-    );
+  it('does not let old direct provider names leak into runtime chat routing', () => {
+    expect(resolveRuntimeLlmProvider('openai-responses')).toBe('vercel-gateway');
+    expect(resolveRuntimeLlmProvider('openai-compatible')).toBe('vercel-gateway');
+    expect(resolveRuntimeLlmProvider('deepseek')).toBe('vercel-gateway');
   });
 });

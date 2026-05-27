@@ -39,7 +39,7 @@ describe('ContextTab', () => {
         memoryEmbeddingDebug={{
           inputChars: 42,
           operation: 'prompt-recall',
-          provider: 'openai-responses',
+          provider: 'vercel-gateway',
           status: 'ok',
           updatedAt: Date.parse('2026-05-25T12:00:00.000Z'),
           vectorDims: 1536,

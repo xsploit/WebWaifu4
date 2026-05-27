@@ -20,9 +20,6 @@ export type StreamBotConfig = {
   botAliases: string[];
   aiProvider:
     | 'mock'
-    | 'deepseek'
-    | 'openai-compatible'
-    | 'openai-responses'
     | 'openrouter-responses'
     | 'vercel-gateway';
   aiApiBaseUrl: string;
@@ -94,37 +91,14 @@ function aliasesFromEnv(botUsername: string) {
 
 function parseAiProvider(): StreamBotConfig['aiProvider'] {
   const raw = process.env.AI_PROVIDER?.trim().toLowerCase();
-  if (
-    raw === 'openai-compatible' ||
-    raw === 'deepseek' ||
-    raw === 'openai-responses' ||
-    raw === 'openrouter-responses' ||
-    raw === 'vercel-gateway'
-  ) {
+  if (raw === 'openrouter-responses' || raw === 'vercel-gateway') {
     return raw;
   }
   if (process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()) {
     return 'vercel-gateway';
   }
-  if (
-    process.env.DEEPSEEK_API_KEY?.trim() &&
-    !process.env.AI_GATEWAY_API_KEY?.trim() &&
-    !process.env.VERCEL_OIDC_TOKEN?.trim() &&
-    !process.env.OPENROUTER_API_KEY?.trim() &&
-    !process.env.OPENAI_API_KEY?.trim() &&
-    !process.env.AI_API_KEY?.trim()
-  ) {
-    return 'deepseek';
-  }
-  if (
-    process.env.OPENROUTER_API_KEY?.trim() &&
-    !process.env.OPENAI_API_KEY?.trim() &&
-    !process.env.AI_API_KEY?.trim()
-  ) {
+  if (process.env.OPENROUTER_API_KEY?.trim()) {
     return 'openrouter-responses';
-  }
-  if (process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim()) {
-    return 'openai-responses';
   }
   return 'mock';
 }
@@ -235,11 +209,9 @@ export function loadConfig(): StreamBotConfig {
   const twitchBotUsername = process.env.TWITCH_BOT_USERNAME?.trim() ?? '';
   const twitchOauthToken = process.env.TWITCH_OAUTH_TOKEN?.trim() ?? '';
   const aiProvider = parseAiProvider();
-  const isOpenAiResponsesProvider = aiProvider === 'openai-responses';
   const isOpenRouterProvider = aiProvider === 'openrouter-responses';
   const isVercelGatewayProvider = aiProvider === 'vercel-gateway';
-  const isDeepSeekProvider = aiProvider === 'deepseek';
-  const isResponsesProvider = isOpenAiResponsesProvider || isOpenRouterProvider;
+  const isAggregatorProvider = isVercelGatewayProvider || isOpenRouterProvider;
 
   return {
     twitchChannel: process.env.TWITCH_CHANNEL?.trim() || 'subsect',
@@ -270,45 +242,32 @@ export function loadConfig(): StreamBotConfig {
     aiProvider,
     aiApiBaseUrl: isVercelGatewayProvider
       ? 'https://ai-gateway.vercel.sh/v1'
-      : isDeepSeekProvider
-        ? process.env.DEEPSEEK_BASE_URL?.trim().replace(/\/+$/, '') ||
-          'https://api.deepseek.com/v1'
       : isOpenRouterProvider
         ? process.env.OPENROUTER_BASE_URL?.trim().replace(/\/+$/, '') ||
           'https://openrouter.ai/api/v1'
-        : process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-          process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, '') ||
-          (isOpenAiResponsesProvider ? 'https://api.openai.com/v1' : 'http://127.0.0.1:1234/v1'),
+        : '',
     aiApiKey: isVercelGatewayProvider
       ? process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim() || ''
-      : isDeepSeekProvider
-        ? process.env.DEEPSEEK_API_KEY?.trim() || ''
       : isOpenRouterProvider
         ? process.env.OPENROUTER_API_KEY?.trim() || ''
-        : process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || '',
+        : '',
     aiModel:
       (isVercelGatewayProvider
         ? process.env.AI_GATEWAY_MODEL?.trim() || process.env.AI_MODEL?.trim()
-        : isDeepSeekProvider
-        ? process.env.DEEPSEEK_MODEL?.trim() || process.env.AI_MODEL?.trim()
         : isOpenRouterProvider
         ? process.env.OPENROUTER_MODEL?.trim() || process.env.AI_MODEL?.trim()
-        : process.env.OPENAI_MODEL?.trim() || process.env.AI_MODEL?.trim()) ||
+        : '') ||
       (isVercelGatewayProvider
         ? 'openai/gpt-5-nano'
-        : isDeepSeekProvider
-        ? 'deepseek-chat'
         : isOpenRouterProvider
         ? 'openai/gpt-4o-mini'
-        : isResponsesProvider
-          ? 'gpt-5-nano'
-          : 'local-model'),
+        : 'local-model'),
     openAiStateMode: parseOpenAiStateMode(),
     openAiConversationId: process.env.OPENAI_CONVERSATION_ID?.trim() ?? '',
     openAiStore: booleanFromEnv('OPENAI_STORE', false),
     openAiPromptCacheKey:
       process.env.OPENAI_PROMPT_CACHE_KEY?.trim() ||
-      (isResponsesProvider ? 'yourwifey-stream' : ''),
+      (isAggregatorProvider ? 'webwaifu4-stream' : ''),
     openAiPromptCacheRetention: parsePromptCacheRetention(),
     openAiReasoningEffort: parseReasoningEffort(),
     openAiSafetyIdentifier: process.env.OPENAI_SAFETY_IDENTIFIER?.trim() ?? '',

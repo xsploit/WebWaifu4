@@ -15,7 +15,7 @@ type LocalProviderKeyConfig = {
 };
 
 const LOCAL_PROVIDER_KEYS: LocalProviderKeyConfig[] = [
-  { provider: 'openai', keyName: 'openai.apiKey', label: 'OpenAI' },
+  { provider: 'openai', keyName: 'openai.apiKey', label: 'OpenAI Utility' },
   { provider: 'openrouter', keyName: 'openrouter.apiKey', label: 'OpenRouter' },
   { provider: 'custom', keyName: 'aiGateway.apiKey', label: 'Vercel AI Gateway' },
   { provider: 'fish_speech', keyName: 'fishSpeech.apiKey', label: 'Fish Speech' },
@@ -132,9 +132,9 @@ export function AccountTab({
       <div className="control-group">
         <div className="control-label">Browser Provider Keys</div>
         <div className="field-hint">
-          Keys are stored locally in this browser and sent only to the local backend for the current
-          request. They are included in local transfer exports so another streaming PC can be cloned
-          1:1.
+          Main chat uses Vercel AI Gateway or OpenRouter. The OpenAI utility key is only for
+          OpenAI-specific helpers such as Whisper/transcription and Gateway BYOK; provider keys are
+          sent only to the local backend for the current request.
         </div>
         <div className="provider-key-list">
           {LOCAL_PROVIDER_KEYS.map((config) => {

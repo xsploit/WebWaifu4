@@ -225,25 +225,13 @@ function createProvider(config: StreamBotConfig): ChatProvider {
   if (!config.providerProxyEnabled) {
     return new MockChatProvider();
   }
-  if (
-    config.aiProvider === 'openai-responses' ||
-    config.aiProvider === 'openrouter-responses' ||
-    config.aiProvider === 'deepseek' ||
-    config.aiProvider === 'openai-compatible' ||
-    config.aiProvider === 'vercel-gateway'
-  ) {
+  if (config.aiProvider === 'openrouter-responses' || config.aiProvider === 'vercel-gateway') {
     if (!config.aiApiKey) {
       throw new Error(
         `${config.aiProvider} requires ${
           config.aiProvider === 'vercel-gateway'
             ? 'AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN'
-            : config.aiProvider === 'deepseek'
-            ? 'DEEPSEEK_API_KEY'
-            : config.aiProvider === 'openai-compatible'
-            ? 'AI_API_KEY'
-            : config.aiProvider === 'openrouter-responses'
-            ? 'OPENROUTER_API_KEY'
-            : 'OPENAI_API_KEY or AI_API_KEY'
+            : 'OPENROUTER_API_KEY'
         }.`,
       );
     }
@@ -577,9 +565,6 @@ function getConfiguredModelForProvider(providerName: RuntimeLlmProvider, config:
   if (providerName === 'openrouter-responses') {
     return process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4o-mini';
   }
-  if (providerName === 'deepseek') {
-    return process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat';
-  }
   return config.aiModel;
 }
 
@@ -590,7 +575,7 @@ function getDefaultModelForProvider(providerName: RuntimeLlmProvider) {
   if (providerName === 'openrouter-responses') {
     return 'openai/gpt-4o-mini';
   }
-  return providerName === 'deepseek' ? 'deepseek-chat' : 'gpt-5-nano';
+  return 'openai/gpt-5-nano';
 }
 
 function getAllowlistEnvNamesForProvider(providerName: RuntimeLlmProvider) {
@@ -600,10 +585,7 @@ function getAllowlistEnvNamesForProvider(providerName: RuntimeLlmProvider) {
   if (providerName === 'vercel-gateway') {
     return ['AI_GATEWAY_MODEL_ALLOWLIST', 'AI_GATEWAY_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
   }
-  if (providerName === 'deepseek') {
-    return ['DEEPSEEK_MODEL_ALLOWLIST', 'DEEPSEEK_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
-  }
-  return ['OPENAI_MODEL_ALLOWLIST', 'OPENAI_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
+  return ['AI_GATEWAY_MODEL_ALLOWLIST', 'AI_GATEWAY_SERVER_PROVIDER_PROXY_MODEL_ALLOWLIST'];
 }
 
 function getRuntimeTavilyApiKeyWithAuth(
@@ -631,8 +613,7 @@ function getRuntimeChatProvider(
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
   const aiGatewayByokOpenAiApiKey = getHeaderSecret(request, 'x-yourwifey-openai-byok-key');
   const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerKeys);
-  const serverApiKey =
-    providerName === 'openai-responses' ? baseConfig.aiApiKey : getProviderEnvApiKey(providerName);
+  const serverApiKey = getProviderEnvApiKey(providerName);
   const effectiveApiKey = apiKey || (allowServerKeys ? serverApiKey : '');
   if (
     !effectiveApiKey ||
@@ -650,9 +631,9 @@ function getRuntimeChatProvider(
       : model?.trim() || baseConfig.aiModel,
     aiProvider: providerName,
     aiGatewayByokOpenAiApiKey:
-      providerName === 'vercel-gateway'
+      providerName === 'vercel-gateway' || providerName === 'openrouter-responses'
         ? aiGatewayByokOpenAiApiKey || baseConfig.aiGatewayByokOpenAiApiKey
-        : baseConfig.aiGatewayByokOpenAiApiKey,
+        : '',
     tavilyApiKey,
     openAiStateMode: appOwnedState ? 'stateless' : baseConfig.openAiStateMode,
     openAiStore: appOwnedState ? false : baseConfig.openAiStore,
@@ -660,27 +641,21 @@ function getRuntimeChatProvider(
     openAiPromptCacheRetention: baseConfig.openAiPromptCacheRetention,
     providerProxyEnabled: true,
   };
-  if (providerName === 'openai-responses') {
-    const now = Date.now();
-    pruneRuntimeChatProviderCache(now);
-    const cacheKey = buildRuntimeChatProviderCacheKey(runtimeConfig, providerName);
-    const cached = runtimeChatProviderCache.get(cacheKey);
-    if (cached) {
-      cached.lastUsedAt = now;
-      return cached.provider;
-    }
-    const runtimeProvider = createProvider(runtimeConfig);
-    runtimeChatProviderCache.set(cacheKey, {
-      key: cacheKey,
-      lastUsedAt: now,
-      provider: runtimeProvider,
-    });
-    pruneRuntimeChatProviderCache(now);
-    return runtimeProvider;
+  const now = Date.now();
+  pruneRuntimeChatProviderCache(now);
+  const cacheKey = buildRuntimeChatProviderCacheKey(runtimeConfig, providerName);
+  const cached = runtimeChatProviderCache.get(cacheKey);
+  if (cached) {
+    cached.lastUsedAt = now;
+    return cached.provider;
   }
-
   const runtimeProvider = createProvider(runtimeConfig);
-  runtimeProvider.setModel?.(runtimeConfig.aiModel);
+  runtimeChatProviderCache.set(cacheKey, {
+    key: cacheKey,
+    lastUsedAt: now,
+    provider: runtimeProvider,
+  });
+  pruneRuntimeChatProviderCache(now);
   return runtimeProvider;
 }
 
@@ -695,29 +670,7 @@ function getRuntimeEmbeddingConfig(
     getHeaderValue(request, 'x-yourwifey-llm-provider'),
     llmProvider,
   );
-  const openAiByokApiKey = getHeaderSecret(request, 'x-yourwifey-openai-byok-key');
-  if (providerName === 'deepseek' && openAiByokApiKey) {
-    return {
-      ...baseConfig,
-      aiApiBaseUrl: getRuntimeProviderBaseUrl('openai-responses', baseConfig.aiApiBaseUrl),
-      aiApiKey: openAiByokApiKey,
-      providerProxyEnabled: true,
-    };
-  }
-  if (providerName === 'deepseek') {
-    const serverOpenAiApiKey = getProviderEnvApiKey('openai-responses');
-    if (!allowServerProxy || !baseConfig.providerProxyEnabled || !serverOpenAiApiKey) {
-      return null;
-    }
-    return {
-      ...baseConfig,
-      aiApiBaseUrl: getRuntimeProviderBaseUrl('openai-responses', baseConfig.aiApiBaseUrl),
-      aiApiKey: serverOpenAiApiKey,
-      providerProxyEnabled: true,
-    };
-  }
-  const serverApiKey =
-    providerName === 'openai-responses' ? baseConfig.aiApiKey : getProviderEnvApiKey(providerName);
+  const serverApiKey = getProviderEnvApiKey(providerName);
   if (!apiKey && (!allowServerProxy || !baseConfig.providerProxyEnabled || !serverApiKey)) {
     return null;
   }
@@ -740,7 +693,9 @@ function getRuntimeProviderConfig(
     getHeaderValue(request, 'x-yourwifey-llm-provider'),
     llmProvider,
   );
-  if (!apiKey && providerModelsCanBeListedWithoutKey(providerName)) {
+  const serverApiKey =
+    allowServerProxy && baseConfig.providerProxyEnabled ? getProviderEnvApiKey(providerName) : '';
+  if (!apiKey && !serverApiKey && providerModelsCanBeListedWithoutKey(providerName)) {
     return {
       ...baseConfig,
       aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
@@ -748,20 +703,36 @@ function getRuntimeProviderConfig(
       providerProxyEnabled: true,
     };
   }
-  if (!apiKey && (!allowServerProxy || !baseConfig.providerProxyEnabled)) {
+  if (!apiKey && !serverApiKey) {
     return null;
   }
 
   return {
     ...baseConfig,
     aiApiBaseUrl: getRuntimeProviderBaseUrl(providerName, baseConfig.aiApiBaseUrl),
-    aiApiKey:
-      apiKey ||
-      (allowServerProxy && baseConfig.providerProxyEnabled
-        ? providerName === 'openai-responses'
-          ? baseConfig.aiApiKey
-          : getProviderEnvApiKey(providerName)
-        : ''),
+    aiApiKey: apiKey || serverApiKey,
+    providerProxyEnabled: true,
+  };
+}
+
+function getOpenAiUtilityProviderConfig(
+  baseConfig: StreamBotConfig,
+  request: IncomingMessage,
+  allowServerProxy = false,
+) {
+  const apiKey =
+    getHeaderSecret(request, 'x-yourwifey-openai-byok-key') ||
+    (allowServerProxy && baseConfig.providerProxyEnabled
+      ? process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim() || ''
+      : '');
+  if (!apiKey) {
+    return null;
+  }
+  return {
+    ...baseConfig,
+    aiApiBaseUrl:
+      process.env.OPENAI_API_BASE_URL?.trim().replace(/\/+$/, '') || 'https://api.openai.com/v1',
+    aiApiKey: apiKey,
     providerProxyEnabled: true,
   };
 }
@@ -1931,10 +1902,9 @@ const httpServer = createServer(async (request, response) => {
         typeof body.sampleSeconds === 'number' && Number.isFinite(body.sampleSeconds)
           ? body.sampleSeconds
           : 15;
-      const providerConfig = getRuntimeProviderConfig(
+      const providerConfig = getOpenAiUtilityProviderConfig(
         config,
         request,
-        'openai-responses',
         allowServerProviderProxy,
       );
       if (!providerConfig?.aiApiKey) {

@@ -26,8 +26,10 @@ export function getAiProviderSwitchDefaults(llmProvider: LlmProvider): AiProvide
   };
 }
 
-export function getProviderFallbackModels(llmProvider: LlmProvider): string[] {
-  const defaults = getAiProviderSwitchDefaults(llmProvider);
+export function getProviderFallbackModels(llmProvider: unknown): string[] {
+  const safeProvider =
+    llmProvider === 'openrouter-responses' ? 'openrouter-responses' : 'vercel-gateway';
+  const defaults = getAiProviderSwitchDefaults(safeProvider);
   return Array.from(new Set([defaults.model, defaults.memoryAgentModel])).filter(Boolean);
 }
 
@@ -100,7 +102,7 @@ export function normalizeLlmProviderCompatibility(settings: AiSettings): AiSetti
 
 export function applyLlmProviderSwitchDefaults(
   current: AiSettings,
-  llmProvider: LlmProvider,
+  llmProvider: unknown,
 ): AiSettings {
   const safeProvider =
     llmProvider === 'openrouter-responses' ? 'openrouter-responses' : 'vercel-gateway';

@@ -128,7 +128,6 @@ export function AiTab({
           }
           value={aiSettings.aiTransportMode}
         >
-          <option value="server-default">Server Default</option>
           <option value="http-stream">AI SDK HTTP Stream</option>
         </select>
         <div className="status-copy">

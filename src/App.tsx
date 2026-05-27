@@ -675,13 +675,6 @@ function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
       provider: 'openrouter' as const,
     };
   }
-  if (llmProvider === 'openai-responses') {
-    return {
-      keyName: 'openai.apiKey',
-      label: 'OpenAI',
-      provider: 'openai' as const,
-    };
-  }
   return {
     keyName: 'aiGateway.apiKey',
     label: 'Vercel AI Gateway',
@@ -729,18 +722,13 @@ async function buildBackendProviderHeaders({
   if (apiKey) {
     headers['x-yourwifey-llm-provider-key'] = apiKey;
   }
-  if (
-    llmProvider === 'vercel-gateway' ||
-    llmProvider === 'openrouter-responses'
-  ) {
-    const openAiByokApiKey = await getBrowserProviderApiKey({
-      keyName: 'openai.apiKey',
-      provider: 'openai',
-      providerKeyVaultWorkspaceId,
-    });
-    if (openAiByokApiKey) {
-      headers['x-yourwifey-openai-byok-key'] = openAiByokApiKey;
-    }
+  const openAiByokApiKey = await getBrowserProviderApiKey({
+    keyName: 'openai.apiKey',
+    provider: 'openai',
+    providerKeyVaultWorkspaceId,
+  });
+  if (openAiByokApiKey) {
+    headers['x-yourwifey-openai-byok-key'] = openAiByokApiKey;
   }
 
   const tavilyApiKey = await getBrowserProviderApiKey({
@@ -762,6 +750,19 @@ async function buildBackendProviderHeaders({
     }
   }
 
+  return headers;
+}
+
+async function buildOpenAiUtilityHeaders(providerKeyVaultWorkspaceId?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const openAiByokApiKey = await getBrowserProviderApiKey({
+    keyName: 'openai.apiKey',
+    provider: 'openai',
+    providerKeyVaultWorkspaceId,
+  });
+  if (openAiByokApiKey) {
+    headers['x-yourwifey-openai-byok-key'] = openAiByokApiKey;
+  }
   return headers;
 }
 
@@ -1119,7 +1120,6 @@ async function requestTextEmbedding(
 
 async function requestTwitchStreamTranscript(input: {
   channel: string;
-  llmProvider: AiSettings['llmProvider'];
   model: string;
   providerKeyVaultWorkspaceId?: string;
   sampleSeconds: number;
@@ -1131,11 +1131,7 @@ async function requestTwitchStreamTranscript(input: {
       model,
       sampleSeconds: input.sampleSeconds,
     }),
-    headers: await buildBackendProviderHeaders({
-      llmProvider: input.llmProvider,
-      model,
-      providerKeyVaultWorkspaceId: input.providerKeyVaultWorkspaceId,
-    }),
+    headers: await buildOpenAiUtilityHeaders(input.providerKeyVaultWorkspaceId),
     method: 'POST',
   });
   const data = (await response.json().catch(() => ({}))) as TwitchStreamTranscriptionResponse;
@@ -2056,7 +2052,6 @@ function App() {
     try {
       const transcript = await requestTwitchStreamTranscript({
         channel,
-        llmProvider: 'openai-responses',
         model: currentTwitchSettings.streamTranscriptionModel || 'whisper-1',
         providerKeyVaultWorkspaceId,
         sampleSeconds: currentTwitchSettings.streamTranscriptionSampleSeconds,

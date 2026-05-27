@@ -11,7 +11,6 @@ export type ProviderKeyMode = 'local-indexeddb';
 export type ProviderKind =
   | 'openai'
   | 'openrouter'
-  | 'deepseek'
   | 'fish_speech'
   | 'inworld'
   | 'tavily'
@@ -47,7 +46,6 @@ export type ProviderSecretDescriptor = {
 export const PROVIDER_SECRET_ENV_NAMES: Record<ProviderKind, readonly string[]> = {
   openai: ['OPENAI_API_KEY'],
   openrouter: ['OPENROUTER_API_KEY'],
-  deepseek: ['DEEPSEEK_API_KEY'],
   fish_speech: ['FISH_AUDIO_API_KEY', 'FISH_SPEECH_API_KEY'],
   inworld: ['INWORLD_API_KEY'],
   tavily: ['TAVILY_API_KEY'],
@@ -69,7 +67,6 @@ export const BYOK_STACK_DECISION = LOCAL_STACK_DECISION;
 const LOCAL_SECRET_SETTING_KEYS = new Set([
   'openai.apikey',
   'openrouter.apikey',
-  'deepseek.apikey',
   'aigateway.apikey',
   'fishspeech.apikey',
   'inworld.apikey',

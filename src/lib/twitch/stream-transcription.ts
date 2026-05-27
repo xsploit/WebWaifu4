@@ -67,7 +67,7 @@ export function formatTwitchStreamTranscriptContext(
   ].join('\n');
 }
 
-export function isLikelyVisionModel(provider: string, model: string) {
+export function isLikelyVisionModel(_provider: string, model: string) {
   const normalized = model.trim().toLowerCase();
   if (!normalized) {
     return false;
@@ -83,9 +83,6 @@ export function isLikelyVisionModel(provider: string, model: string) {
     normalized.startsWith('gpt-5') ||
     normalized.startsWith('o3') ||
     normalized.startsWith('o4');
-  if (provider === 'openai-responses') {
-    return openAiVision;
-  }
   return (
     openAiVision ||
     normalized.includes('vision') ||

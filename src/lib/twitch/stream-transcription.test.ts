@@ -10,10 +10,10 @@ describe('stream transcription helpers', () => {
   });
 
   it('blocks OpenAI o1 and pro models from stream-frame vision only', () => {
-    expect(isLikelyVisionModel('openai-responses', 'o1')).toBe(false);
-    expect(isLikelyVisionModel('openai-responses', 'openai/o1-pro-2025-03-19')).toBe(false);
-    expect(isLikelyVisionModel('openai-responses', 'gpt-5_4-pro-2026-03-05')).toBe(false);
-    expect(isLikelyVisionModel('openai-responses', 'gpt-5_5-2026-04-23')).toBe(true);
+    expect(isLikelyVisionModel('vercel-gateway', 'o1')).toBe(false);
+    expect(isLikelyVisionModel('vercel-gateway', 'openai/o1-pro-2025-03-19')).toBe(false);
+    expect(isLikelyVisionModel('vercel-gateway', 'gpt-5_4-pro-2026-03-05')).toBe(false);
+    expect(isLikelyVisionModel('vercel-gateway', 'gpt-5_5-2026-04-23')).toBe(true);
     expect(isLikelyVisionModel('openrouter-responses', 'google/gemini-2.5-pro')).toBe(true);
   });
 });

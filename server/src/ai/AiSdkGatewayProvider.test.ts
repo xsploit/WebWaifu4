@@ -3,7 +3,6 @@ import type { ChatProviderRequest } from './ChatProvider.js';
 
 const streamTextMock = vi.hoisted(() => vi.fn());
 const createGatewayMock = vi.hoisted(() => vi.fn());
-const createOpenAICompatibleMock = vi.hoisted(() => vi.fn());
 const createOpenRouterMock = vi.hoisted(() => vi.fn());
 
 vi.mock('ai', () => ({
@@ -19,16 +18,6 @@ vi.mock('ai', () => ({
 
 vi.mock('@ai-sdk/gateway', () => ({
   createGateway: createGatewayMock,
-}));
-
-vi.mock('@ai-sdk/openai', () => ({
-  createOpenAI: vi.fn(() => ({
-    responses: vi.fn((model: string) => ({ provider: 'openai-responses', model })),
-  })),
-}));
-
-vi.mock('@ai-sdk/openai-compatible', () => ({
-  createOpenAICompatible: createOpenAICompatibleMock,
 }));
 
 vi.mock('@openrouter/ai-sdk-provider', () => ({
@@ -56,9 +45,10 @@ function createRequest(overrides: Partial<ChatProviderRequest> = {}): ChatProvid
 function createProvider() {
   return new AiSdkGatewayProvider({
     apiKey: 'test-key',
+    apiBaseUrl: 'https://openrouter.ai/api/v1',
     maxTokens: 180,
-    model: 'gpt-5-nano',
-    provider: 'openai-responses',
+    model: 'openai/gpt-5-nano',
+    provider: 'openrouter-responses',
     tavilyTools: {
       apiKey: 'tavily-key',
       crawlLimit: 8,
@@ -74,10 +64,6 @@ describe('AiSdkGatewayProvider', () => {
   beforeEach(() => {
     createGatewayMock.mockReset();
     createGatewayMock.mockReturnValue(vi.fn((model: string) => ({ provider: 'gateway', model })));
-    createOpenAICompatibleMock.mockReset();
-    createOpenAICompatibleMock.mockReturnValue({
-      chatModel: vi.fn((model: string) => ({ provider: 'openai-compatible', model })),
-    });
     createOpenRouterMock.mockReset();
     createOpenRouterMock.mockReturnValue(
       vi.fn((model: string) => ({ provider: 'openrouter', model })),
@@ -121,32 +107,6 @@ describe('AiSdkGatewayProvider', () => {
     expect(call.tools).toBeUndefined();
     expect(call.toolChoice).toBe('auto');
     expect(call.messages[0].content).not.toContain('You may call these tools directly');
-  });
-
-  it('runs DeepSeek direct through the AI SDK OpenAI-compatible HTTP provider path', async () => {
-    const provider = new AiSdkGatewayProvider({
-      apiBaseUrl: 'https://api.deepseek.com/v1',
-      apiKey: 'deepseek-key',
-      maxTokens: 180,
-      model: 'deepseek-chat',
-      provider: 'deepseek',
-      temperature: 0.7,
-    });
-
-    await provider.completeStream(createRequest({ toolChoiceMode: 'auto' }));
-
-    const call = streamTextMock.mock.calls[0]?.[0];
-    expect(call).toMatchObject({
-      model: { provider: 'openai-compatible', model: 'deepseek-chat' },
-      stopWhen: { kind: 'step-count', rounds: 15 },
-      toolChoice: 'auto',
-    });
-    expect(createOpenAICompatibleMock).toHaveBeenCalledWith({
-      apiKey: 'deepseek-key',
-      baseURL: 'https://api.deepseek.com/v1',
-      name: 'deepseek',
-      supportsStructuredOutputs: true,
-    });
   });
 
   it('passes request-scoped OpenAI BYOK through Vercel AI Gateway provider options', async () => {

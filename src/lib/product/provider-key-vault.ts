@@ -140,7 +140,6 @@ function normalizeProviderKind(provider: unknown): ProviderKind {
   switch (provider) {
     case 'openai':
     case 'openrouter':
-    case 'deepseek':
     case 'fish_speech':
     case 'inworld':
     case 'tavily':
