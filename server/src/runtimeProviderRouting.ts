@@ -55,7 +55,7 @@ export function providerUsesAppOwnedState(provider: RuntimeLlmProvider) {
 }
 
 export function providerModelsCanBeListedWithoutKey(provider: RuntimeLlmProvider) {
-  return provider === 'openrouter-responses';
+  return provider === 'openrouter-responses' || provider === 'vercel-gateway';
 }
 
 export function getProviderEnvApiKey(

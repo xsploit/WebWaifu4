@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getProviderEmbeddingModel,
   getRuntimeProviderBaseUrl,
+  providerModelsCanBeListedWithoutKey,
   DEEPSEEK_BASE_URL,
   OPENAI_BASE_URL,
   OPENROUTER_BASE_URL,
@@ -43,6 +44,7 @@ describe('runtimeProviderRouting', () => {
     expect(getRuntimeProviderBaseUrl('vercel-gateway', OPENAI_BASE_URL)).toBe(
       VERCEL_AI_GATEWAY_BASE_URL,
     );
+    expect(providerModelsCanBeListedWithoutKey('vercel-gateway')).toBe(true);
   });
 
   it('routes DeepSeek direct chat through its own base URL but keeps embeddings on OpenAI-compatible vectors', () => {
