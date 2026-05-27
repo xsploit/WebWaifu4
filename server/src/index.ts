@@ -3,7 +3,6 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AiSdkGatewayProvider } from './ai/AiSdkGatewayProvider.js';
 import { MockChatProvider } from './ai/MockChatProvider.js';
-import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
 import { TAVILY_OPENAI_TOOLS } from './ai/TavilyTools.js';
 import { createAiVisibleDeltaFilter, getSafeFinalVisibleText } from './ai/VisibleDeltaFilter.js';
 import type {
@@ -229,6 +228,7 @@ function createProvider(config: StreamBotConfig): ChatProvider {
     config.aiProvider === 'openai-responses' ||
     config.aiProvider === 'openrouter-responses' ||
     config.aiProvider === 'deepseek' ||
+    config.aiProvider === 'openai-compatible' ||
     config.aiProvider === 'vercel-gateway'
   ) {
     if (!config.aiApiKey) {
@@ -238,6 +238,8 @@ function createProvider(config: StreamBotConfig): ChatProvider {
             ? 'AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN'
             : config.aiProvider === 'deepseek'
             ? 'DEEPSEEK_API_KEY'
+            : config.aiProvider === 'openai-compatible'
+            ? 'AI_API_KEY'
             : config.aiProvider === 'openrouter-responses'
             ? 'OPENROUTER_API_KEY'
             : 'OPENAI_API_KEY or AI_API_KEY'
@@ -254,28 +256,6 @@ function createProvider(config: StreamBotConfig): ChatProvider {
       model: config.aiModel,
       maxTokens: 180,
       provider: config.aiProvider,
-      tavilyTools: config.tavilyApiKey
-        ? {
-            apiKey: config.tavilyApiKey,
-            searchDepth: config.tavilySearchDepth,
-            maxResults: config.tavilyMaxResults,
-            crawlLimit: config.tavilyCrawlLimit,
-            timeoutMs: config.tavilyTimeoutMs,
-          }
-        : undefined,
-      temperature: 0.7,
-    });
-  }
-
-  if (config.aiProvider === 'openai-compatible') {
-    if (!config.aiApiKey) {
-      throw new Error('AI_PROVIDER=openai-compatible requires AI_API_KEY.');
-    }
-    return new OpenAiCompatibleProvider({
-      apiBaseUrl: config.aiApiBaseUrl,
-      apiKey: config.aiApiKey,
-      model: config.aiModel,
-      maxTokens: 120,
       tavilyTools: config.tavilyApiKey
         ? {
             apiKey: config.tavilyApiKey,

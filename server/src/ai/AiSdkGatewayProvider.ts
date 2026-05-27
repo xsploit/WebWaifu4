@@ -25,7 +25,12 @@ export type AiSdkGatewayProviderOptions = {
   byokOpenAiApiKey?: string;
   maxTokens: number;
   model: string;
-  provider: 'deepseek' | 'openai-responses' | 'openrouter-responses' | 'vercel-gateway';
+  provider:
+    | 'deepseek'
+    | 'openai-compatible'
+    | 'openai-responses'
+    | 'openrouter-responses'
+    | 'vercel-gateway';
   tavilyTools?: TavilyToolOptions;
   temperature: number;
 };
@@ -220,6 +225,14 @@ export class AiSdkGatewayProvider implements ChatProvider {
         apiKey: this.options.apiKey,
         baseURL: this.options.apiBaseUrl || 'https://api.deepseek.com/v1',
         name: 'deepseek',
+        supportsStructuredOutputs: true,
+      }).chatModel(this.model);
+    }
+    if (this.options.provider === 'openai-compatible') {
+      return createOpenAICompatible({
+        apiKey: this.options.apiKey,
+        baseURL: this.options.apiBaseUrl || 'http://127.0.0.1:1234/v1',
+        name: 'openai-compatible',
         supportsStructuredOutputs: true,
       }).chatModel(this.model);
     }
