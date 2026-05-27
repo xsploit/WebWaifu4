@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatProviderRequest } from './ChatProvider.js';
 
 const streamTextMock = vi.hoisted(() => vi.fn());
+const createGatewayMock = vi.hoisted(() => vi.fn());
+const createOpenAICompatibleMock = vi.hoisted(() => vi.fn());
+const createOpenRouterMock = vi.hoisted(() => vi.fn());
 
 vi.mock('ai', () => ({
   Output: {
@@ -15,7 +18,7 @@ vi.mock('ai', () => ({
 }));
 
 vi.mock('@ai-sdk/gateway', () => ({
-  createGateway: vi.fn(() => vi.fn((model: string) => ({ provider: 'gateway', model }))),
+  createGateway: createGatewayMock,
 }));
 
 vi.mock('@ai-sdk/openai', () => ({
@@ -25,13 +28,11 @@ vi.mock('@ai-sdk/openai', () => ({
 }));
 
 vi.mock('@ai-sdk/openai-compatible', () => ({
-  createOpenAICompatible: vi.fn(() => ({
-    chatModel: vi.fn((model: string) => ({ provider: 'openai-compatible', model })),
-  })),
+  createOpenAICompatible: createOpenAICompatibleMock,
 }));
 
 vi.mock('@openrouter/ai-sdk-provider', () => ({
-  createOpenRouter: vi.fn(() => vi.fn((model: string) => ({ provider: 'openrouter', model }))),
+  createOpenRouter: createOpenRouterMock,
 }));
 
 const { AiSdkGatewayProvider } = await import('./AiSdkGatewayProvider.js');
@@ -71,6 +72,16 @@ function createProvider() {
 
 describe('AiSdkGatewayProvider', () => {
   beforeEach(() => {
+    createGatewayMock.mockReset();
+    createGatewayMock.mockReturnValue(vi.fn((model: string) => ({ provider: 'gateway', model })));
+    createOpenAICompatibleMock.mockReset();
+    createOpenAICompatibleMock.mockReturnValue({
+      chatModel: vi.fn((model: string) => ({ provider: 'openai-compatible', model })),
+    });
+    createOpenRouterMock.mockReset();
+    createOpenRouterMock.mockReturnValue(
+      vi.fn((model: string) => ({ provider: 'openrouter', model })),
+    );
     streamTextMock.mockReset();
     streamTextMock.mockReturnValue({
       text: Promise.resolve('tool-backed answer'),
@@ -123,6 +134,60 @@ describe('AiSdkGatewayProvider', () => {
       model: { provider: 'openai-compatible', model: 'deepseek-chat' },
       stopWhen: { kind: 'step-count', rounds: 15 },
       toolChoice: 'auto',
+    });
+    expect(createOpenAICompatibleMock).toHaveBeenCalledWith({
+      apiKey: 'deepseek-key',
+      baseURL: 'https://api.deepseek.com/v1',
+      name: 'deepseek',
+      supportsStructuredOutputs: true,
+    });
+  });
+
+  it('passes request-scoped OpenAI BYOK through Vercel AI Gateway provider options', async () => {
+    const provider = new AiSdkGatewayProvider({
+      apiKey: 'gateway-key',
+      byokOpenAiApiKey: 'sk-openai-byok',
+      maxTokens: 180,
+      model: 'openai/gpt-5-nano',
+      provider: 'vercel-gateway',
+      temperature: 0.7,
+    });
+
+    await provider.completeStream(createRequest({ toolChoiceMode: 'auto' }));
+
+    const call = streamTextMock.mock.calls[0]?.[0];
+    expect(createGatewayMock).toHaveBeenCalledWith({ apiKey: 'gateway-key' });
+    expect(call).toMatchObject({
+      model: { provider: 'gateway', model: 'openai/gpt-5-nano' },
+      providerOptions: {
+        gateway: {
+          byok: {
+            openai: [{ apiKey: 'sk-openai-byok' }],
+          },
+        },
+      },
+      stopWhen: { kind: 'step-count', rounds: 15 },
+      toolChoice: 'auto',
+    });
+  });
+
+  it('passes request-scoped OpenAI BYOK through OpenRouter provider API keys', async () => {
+    const provider = new AiSdkGatewayProvider({
+      apiKey: 'openrouter-key',
+      apiBaseUrl: 'https://openrouter.ai/api/v1',
+      byokOpenAiApiKey: 'sk-openai-byok',
+      maxTokens: 180,
+      model: 'openai/gpt-5-nano',
+      provider: 'openrouter-responses',
+      temperature: 0.7,
+    });
+
+    await provider.completeStream(createRequest({ toolChoiceMode: 'auto' }));
+
+    expect(createOpenRouterMock).toHaveBeenCalledWith({
+      apiKey: 'openrouter-key',
+      api_keys: { openai: 'sk-openai-byok' },
+      baseURL: 'https://openrouter.ai/api/v1',
     });
   });
 });
