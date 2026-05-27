@@ -752,7 +752,11 @@ async function buildBackendProviderHeaders({
   if (apiKey) {
     headers['x-yourwifey-llm-provider-key'] = apiKey;
   }
-  if (llmProvider === 'vercel-gateway' || llmProvider === 'deepseek') {
+  if (
+    llmProvider === 'vercel-gateway' ||
+    llmProvider === 'openrouter-responses' ||
+    llmProvider === 'deepseek'
+  ) {
     const openAiByokApiKey = await getBrowserProviderApiKey({
       keyName: 'openai.apiKey',
       provider: 'openai',
