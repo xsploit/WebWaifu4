@@ -32,7 +32,7 @@ export type ChatProviderRequest = {
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
   transportMode?: 'http-stream';
-  openAiStateMode?: 'conversation' | 'previous-response' | 'stateless';
+  openAiStateMode?: 'stateless';
   toolChoiceMode?: 'auto' | 'required';
   maxToolRounds?: number;
   target?: TwitchChatMessage;

@@ -86,7 +86,7 @@ describe('LLM provider defaults', () => {
       memoryAgentModel: 'gpt-5.4-mini',
       model: 'gpt-5.4-nano',
       openAiStateMode: 'conversation',
-    });
+    } as any);
 
     expect(next).toMatchObject({
       aiTransportMode: 'http-stream',
@@ -104,7 +104,7 @@ describe('LLM provider defaults', () => {
       memoryAgentModel: 'anthropic/claude-3.5-haiku',
       model: 'anthropic/claude-3.5-haiku',
       openAiStateMode: 'conversation',
-    });
+    } as any);
 
     expect(next).toMatchObject({
       aiTransportMode: 'http-stream',

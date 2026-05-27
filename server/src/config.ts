@@ -2,7 +2,7 @@ import { config as loadDotenv } from 'dotenv';
 loadDotenv({ path: '.env.local' });
 loadDotenv({ path: '.env' });
 
-export type OpenAiResponsesStateMode = 'stateless' | 'previous-response' | 'conversation';
+export type OpenAiResponsesStateMode = 'stateless';
 export type OpenAiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 export type StreamBotConfig = {
@@ -26,8 +26,6 @@ export type StreamBotConfig = {
   aiApiKey: string;
   aiModel: string;
   openAiStateMode: OpenAiResponsesStateMode;
-  openAiConversationId: string;
-  openAiStore: boolean;
   openAiPromptCacheKey: string;
   openAiPromptCacheRetention: '' | 'in_memory' | '24h';
   openAiReasoningEffort: OpenAiReasoningEffort;
@@ -263,8 +261,6 @@ export function loadConfig(): StreamBotConfig {
         ? 'openai/gpt-4o-mini'
         : 'local-model'),
     openAiStateMode: parseOpenAiStateMode(),
-    openAiConversationId: process.env.OPENAI_CONVERSATION_ID?.trim() ?? '',
-    openAiStore: booleanFromEnv('OPENAI_STORE', false),
     openAiPromptCacheKey:
       process.env.OPENAI_PROMPT_CACHE_KEY?.trim() ||
       (isAggregatorProvider ? 'webwaifu4-stream' : ''),

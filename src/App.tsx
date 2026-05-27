@@ -589,7 +589,7 @@ function getAiHealthUrl({
   if (model?.trim()) {
     url.searchParams.set('model', model.trim());
   }
-  if (transportMode && transportMode !== 'server-default') {
+  if (transportMode) {
     url.searchParams.set('transportMode', transportMode);
   }
   return url.toString();
@@ -957,7 +957,7 @@ async function requestChatCompletion({
     stream: Boolean(onTextDelta),
     temperature,
     toolChoiceMode,
-    transportMode: transportMode === 'server-default' ? undefined : transportMode,
+    transportMode,
     ttsBridge,
   };
 
