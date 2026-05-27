@@ -1105,23 +1105,14 @@ async function requestChatCompletionLiveWs({
   });
 }
 
-function shouldUseAiLiveWs({
-  llmProvider,
-  onTextDelta,
-  transportMode,
-  ttsBridge,
-}: {
+function shouldUseAiLiveWs(_options: {
   llmProvider: AiSettings['llmProvider'];
   onTextDelta?: (delta: string) => void;
   transportMode?: AiSettings['aiTransportMode'];
   ttsBridge?: RemoteTtsRequest;
 }) {
   return (
-    Boolean(onTextDelta) &&
-    llmProvider === 'openai-responses' &&
-    transportMode === 'websocket' &&
-    ttsBridge?.provider === 'fish-speech' &&
-    ttsBridge.streamingMode === 'live-bridge'
+    false
   );
 }
 

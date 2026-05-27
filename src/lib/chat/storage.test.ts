@@ -321,7 +321,7 @@ describe('chat settings persistence', () => {
       STORAGE_KEYS.aiSettings,
       JSON.stringify({
         ...createDefaultAiSettings(),
-        aiTransportMode: 'websocket',
+        aiTransportMode: 'server-default',
         llmProvider: 'openrouter-responses',
         memoryAgentModel: 'gpt-5.4-mini',
         model: 'gpt-5.4-nano',

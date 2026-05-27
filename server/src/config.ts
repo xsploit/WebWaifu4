@@ -24,7 +24,6 @@ export type StreamBotConfig = {
     | 'mock'
     | 'openai-compatible'
     | 'openai-responses'
-    | 'openai-responses-ws'
     | 'openrouter-responses'
     | 'vercel-gateway';
   aiApiBaseUrl: string;
@@ -100,11 +99,13 @@ function parseAiProvider(): StreamBotConfig['aiProvider'] {
   if (
     raw === 'openai-compatible' ||
     raw === 'openai-responses' ||
-    raw === 'openai-responses-ws' ||
     raw === 'openrouter-responses' ||
     raw === 'vercel-gateway'
   ) {
     return raw;
+  }
+  if (raw === 'openai-responses-ws') {
+    return 'openai-responses';
   }
   if (process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()) {
     return 'vercel-gateway';
@@ -232,8 +233,7 @@ export function loadConfig(): StreamBotConfig {
   const twitchBotUsername = process.env.TWITCH_BOT_USERNAME?.trim() ?? '';
   const twitchOauthToken = process.env.TWITCH_OAUTH_TOKEN?.trim() ?? '';
   const aiProvider = parseAiProvider();
-  const isOpenAiResponsesProvider =
-    aiProvider === 'openai-responses' || aiProvider === 'openai-responses-ws';
+  const isOpenAiResponsesProvider = aiProvider === 'openai-responses';
   const isOpenRouterProvider = aiProvider === 'openrouter-responses';
   const isVercelGatewayProvider = aiProvider === 'vercel-gateway';
   const isResponsesProvider = isOpenAiResponsesProvider || isOpenRouterProvider;

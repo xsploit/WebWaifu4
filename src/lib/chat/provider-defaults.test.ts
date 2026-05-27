@@ -71,7 +71,7 @@ describe('LLM provider defaults', () => {
   it('repairs legacy OpenAI model ids saved under OpenRouter', () => {
     const next = normalizeLlmProviderCompatibility({
       ...createDefaultAiSettings(),
-      aiTransportMode: 'websocket',
+      aiTransportMode: 'server-default',
       llmProvider: 'openrouter-responses',
       memoryAgentModel: 'gpt-5.4-mini',
       model: 'gpt-5.4-nano',
@@ -89,7 +89,7 @@ describe('LLM provider defaults', () => {
   it('preserves explicit OpenRouter model ids', () => {
     const next = normalizeLlmProviderCompatibility({
       ...createDefaultAiSettings(),
-      aiTransportMode: 'websocket',
+      aiTransportMode: 'server-default',
       llmProvider: 'openrouter-responses',
       memoryAgentModel: 'anthropic/claude-3.5-haiku',
       model: 'anthropic/claude-3.5-haiku',

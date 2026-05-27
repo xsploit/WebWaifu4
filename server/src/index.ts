@@ -278,7 +278,6 @@ function createProvider(
   }
   if (
     config.aiProvider === 'openai-responses' ||
-    config.aiProvider === 'openai-responses-ws' ||
     config.aiProvider === 'openrouter-responses' ||
     config.aiProvider === 'vercel-gateway'
   ) {
@@ -293,12 +292,21 @@ function createProvider(
         }.`,
       );
     }
-    if (config.aiProvider === 'vercel-gateway') {
+    if (
+      config.aiProvider === 'vercel-gateway' ||
+      config.aiProvider === 'openai-responses' ||
+      config.aiProvider === 'openrouter-responses'
+    ) {
       return new AiSdkGatewayProvider({
         apiKey: config.aiApiKey,
-        byokOpenAiApiKey: config.aiGatewayByokOpenAiApiKey,
+        apiBaseUrl: config.aiApiBaseUrl,
+        byokOpenAiApiKey:
+          config.aiProvider === 'vercel-gateway' || config.aiProvider === 'openrouter-responses'
+            ? config.aiGatewayByokOpenAiApiKey
+            : undefined,
         model: config.aiModel,
         maxTokens: 180,
+        provider: config.aiProvider,
         tavilyTools: config.tavilyApiKey
           ? {
               apiKey: config.tavilyApiKey,
@@ -341,7 +349,7 @@ function createProvider(
             timeoutMs: config.tavilyTimeoutMs,
           }
         : undefined,
-      useWebSocket: isOpenRouter ? false : config.aiProvider === 'openai-responses-ws',
+      useWebSocket: false,
       webSocketUrl: isOpenRouter ? undefined : config.openAiWebSocketUrl || undefined,
     });
   }
@@ -1235,7 +1243,7 @@ function normalizeFishVoiceScope(value: unknown) {
 }
 
 function normalizeAiTransportMode(value: unknown): ChatProviderRequest['transportMode'] {
-  return value === 'websocket' || value === 'http-stream' ? value : undefined;
+  return value === 'http-stream' ? value : undefined;
 }
 
 function normalizeOpenAiStateMode(value: unknown): ChatProviderRequest['openAiStateMode'] {

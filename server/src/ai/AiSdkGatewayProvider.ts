@@ -1,5 +1,6 @@
 import {
   jsonSchema,
+  Output as aiOutput,
   stepCountIs,
   streamText,
   tool,
@@ -7,6 +8,8 @@ import {
   type ToolSet,
 } from 'ai';
 import { createGateway, type GatewayProviderOptions } from '@ai-sdk/gateway';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { ChatProvider, ChatProviderRequest, ChatProviderResponse } from './ChatProvider.js';
 import {
   TAVILY_OPENAI_TOOLS,
@@ -17,9 +20,11 @@ import {
 
 export type AiSdkGatewayProviderOptions = {
   apiKey: string;
+  apiBaseUrl?: string;
   byokOpenAiApiKey?: string;
   maxTokens: number;
   model: string;
+  provider: 'openai-responses' | 'openrouter-responses' | 'vercel-gateway';
   tavilyTools?: TavilyToolOptions;
   temperature: number;
 };
@@ -101,6 +106,19 @@ function createGatewayProviderOptions(options: AiSdkGatewayProviderOptions): Rec
   return Object.keys(gatewayOptions).length > 0 ? { gateway: gatewayOptions } : undefined;
 }
 
+function createStructuredOutput(request: ChatProviderRequest) {
+  if (request.responseFormat?.type === 'json_schema') {
+    return aiOutput.object({
+      name: request.responseFormat.name,
+      schema: jsonSchema(request.responseFormat.schema),
+    });
+  }
+  if (request.responseFormat?.type === 'json_object') {
+    return aiOutput.json();
+  }
+  return undefined;
+}
+
 export class AiSdkGatewayProvider implements ChatProvider {
   private model: string;
 
@@ -118,7 +136,7 @@ export class AiSdkGatewayProvider implements ChatProvider {
 
   getState() {
     return {
-      provider: 'vercel-gateway',
+      provider: this.options.provider,
       transport: 'http-stream',
       websocketConfigured: false,
       websocketConnected: false,
@@ -140,18 +158,20 @@ export class AiSdkGatewayProvider implements ChatProvider {
     const toolsAvailable = request.stateScope !== 'memory' && Boolean(this.options.tavilyTools);
     const tools = createTavilyToolSet(toolsAvailable ? this.options.tavilyTools : undefined);
     const toolsUsed: string[] = [];
-    const gateway = createGateway({ apiKey: this.options.apiKey });
+    const model = this.createModel();
+    const structuredOutput = createStructuredOutput(request);
     const result = streamText({
       abortSignal: request.signal,
       allowSystemInMessages: true,
       maxOutputTokens: request.maxTokens ?? this.options.maxTokens,
       messages: toAiSdkMessages(request, toolsAvailable),
-      model: gateway(this.model),
+      model,
       onChunk: ({ chunk }) => {
         if (chunk.type === 'text-delta') {
           handlers.onTextDelta?.(chunk.text);
         }
       },
+      output: structuredOutput,
       experimental_onToolCallStart: ({ toolCall }) => {
         toolsUsed.push(toolCall.toolName);
       },
@@ -162,14 +182,16 @@ export class AiSdkGatewayProvider implements ChatProvider {
       tools,
     });
 
-    const text = (await result.text).trim();
+    const text = structuredOutput
+      ? JSON.stringify(await result.output)
+      : (await result.text).trim();
     if (!text) {
       throw new Error('AI Gateway returned an empty response.');
     }
 
     return {
       meta: {
-        provider: 'vercel-gateway',
+        provider: this.options.provider,
         toolNames: toolsAvailable ? TAVILY_OPENAI_TOOLS.map((item) => item.name) : [],
         toolsAvailable,
         toolsUsed,
@@ -177,5 +199,25 @@ export class AiSdkGatewayProvider implements ChatProvider {
       },
       text,
     };
+  }
+
+  private createModel() {
+    if (this.options.provider === 'vercel-gateway') {
+      return createGateway({ apiKey: this.options.apiKey })(this.model);
+    }
+    if (this.options.provider === 'openrouter-responses') {
+      return createOpenRouter({
+        apiKey: this.options.apiKey,
+        ...(this.options.apiBaseUrl ? { baseURL: this.options.apiBaseUrl } : {}),
+        ...(this.options.byokOpenAiApiKey?.trim()
+          ? { api_keys: { openai: this.options.byokOpenAiApiKey.trim() } }
+          : {}),
+      })(this.model);
+    }
+    const openai = createOpenAI({
+      apiKey: this.options.apiKey,
+      ...(this.options.apiBaseUrl ? { baseURL: this.options.apiBaseUrl } : {}),
+    });
+    return openai.responses(this.model);
   }
 }

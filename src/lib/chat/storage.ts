@@ -317,7 +317,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
       ? Math.max(1, Math.min(100, Math.round(source.memoryAgentIntervalMessages)))
       : defaults.memoryAgentIntervalMessages;
   const aiTransportMode =
-    source.aiTransportMode === 'http-stream' || source.aiTransportMode === 'websocket'
+    source.aiTransportMode === 'http-stream'
       ? source.aiTransportMode
       : defaults.aiTransportMode;
   const openAiStateMode =
