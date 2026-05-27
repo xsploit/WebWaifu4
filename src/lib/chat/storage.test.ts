@@ -293,10 +293,10 @@ describe('chat settings persistence', () => {
     });
   });
 
-  it('defaults new installs to required runtime tool mode with a 15-round agentic loop', async () => {
+  it('defaults new installs to auto runtime tool mode with a 15-round agentic loop', async () => {
     const defaults = createDefaultAiSettings();
 
-    expect(defaults.toolChoiceMode).toBe('required');
+    expect(defaults.toolChoiceMode).toBe('auto');
     expect(defaults.maxToolRounds).toBe(15);
   });
 

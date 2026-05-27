@@ -102,14 +102,33 @@ function createTavilyToolSet(options?: TavilyToolOptions): ToolSet | undefined {
   ) as ToolSet;
 }
 
-function createGatewayProviderOptions(options: AiSdkGatewayProviderOptions): Record<string, any> | undefined {
+function isOpenAiGpt5Model(model: string) {
+  const normalized = model.trim().toLowerCase();
+  const provider = normalized.includes('/') ? normalized.split('/')[0] : 'openai';
+  const leaf = (normalized.split('/').pop() ?? normalized).replace(/[_ .]+/g, '-');
+  return provider === 'openai' && leaf.startsWith('gpt-5');
+}
+
+function createProviderOptions(options: AiSdkGatewayProviderOptions): Record<string, any> | undefined {
+  const providerOptions: Record<string, any> = {};
+  if (isOpenAiGpt5Model(options.model)) {
+    providerOptions.openai = {
+      reasoningEffort: 'minimal',
+      reasoningSummary: 'auto',
+    };
+  }
+
   const gatewayOptions: GatewayProviderOptions = {};
   if (options.byokOpenAiApiKey?.trim()) {
     gatewayOptions.byok = {
       openai: [{ apiKey: options.byokOpenAiApiKey.trim() }],
     };
   }
-  return Object.keys(gatewayOptions).length > 0 ? { gateway: gatewayOptions } : undefined;
+  if (Object.keys(gatewayOptions).length > 0) {
+    providerOptions.gateway = gatewayOptions;
+  }
+
+  return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
 }
 
 function createStructuredOutput(request: ChatProviderRequest) {
@@ -181,7 +200,7 @@ export class AiSdkGatewayProvider implements ChatProvider {
       experimental_onToolCallStart: ({ toolCall }) => {
         toolsUsed.push(toolCall.toolName);
       },
-      providerOptions: createGatewayProviderOptions(this.options),
+      providerOptions: createProviderOptions({ ...this.options, model: this.model }),
       stopWhen: stepCountIs(normalizeMaxToolRounds(request.maxToolRounds)),
       temperature: request.temperature ?? this.options.temperature,
       toolChoice: toolsAvailable && request.toolChoiceMode === 'required' ? 'required' : 'auto',

@@ -227,8 +227,8 @@ export function AiTab({
           <option value="required">Tool Calls: Required</option>
         </select>
         <div className="field-hint">
-          Required tells the provider to call at least one configured runtime tool whenever tools are
-          available for the turn.
+          Auto exposes tools from the first turn and lets the prompt decide. Required forces provider
+          tool choice and can loop on normal chat, so use it only for tool-call diagnostics.
         </div>
         <Slider
           label={`Max tool rounds ${aiSettings.maxToolRounds}`}

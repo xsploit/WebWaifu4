@@ -1146,7 +1146,7 @@ function normalizeOpenAiStateMode(value: unknown): ChatProviderRequest['openAiSt
 }
 
 function normalizeToolChoiceMode(value: unknown): ChatProviderRequest['toolChoiceMode'] {
-  return value === 'auto' ? 'auto' : 'required';
+  return value === 'required' ? 'required' : 'auto';
 }
 
 function normalizeMaxToolRounds(value: unknown) {

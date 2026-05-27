@@ -464,7 +464,7 @@ async function main() {
   const backupPath = requireArg('--backup', process.env['WEBWAIFU_RELEASE_BACKUP'] ?? '');
   const baseUrl = getArg('--base-url', 'http://127.0.0.1:8797');
   const openAiModel = getArg('--openai-model', 'gpt-5-nano');
-  const openRouterModel = getArg('--openrouter-model', 'openai/gpt-5-nano');
+  const openRouterModel = getArg('--openrouter-model', 'openai/gpt-4o-mini');
   const gatewayModel = getArg('--gateway-model', 'openai/gpt-5-nano');
   const deepSeekModel = getArg('--deepseek-model', 'deepseek-chat');
   const backup = readBackup(backupPath);

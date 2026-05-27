@@ -104,6 +104,12 @@ describe('AiSdkGatewayProvider', () => {
       role: 'system',
       content: expect.stringContaining('You may call these tools directly'),
     });
+    expect(call.providerOptions).toMatchObject({
+      openai: {
+        reasoningEffort: 'minimal',
+        reasoningSummary: 'auto',
+      },
+    });
   });
 
   it('keeps runtime search tools out of memory worker scoped requests', async () => {
@@ -165,6 +171,10 @@ describe('AiSdkGatewayProvider', () => {
             openai: [{ apiKey: 'sk-openai-byok' }],
           },
         },
+        openai: {
+          reasoningEffort: 'minimal',
+          reasoningSummary: 'auto',
+        },
       },
       stopWhen: { kind: 'step-count', rounds: 15 },
       toolChoice: 'auto',
@@ -184,6 +194,13 @@ describe('AiSdkGatewayProvider', () => {
 
     await provider.completeStream(createRequest({ toolChoiceMode: 'auto' }));
 
+    const call = streamTextMock.mock.calls[0]?.[0];
+    expect(call.providerOptions).toMatchObject({
+      openai: {
+        reasoningEffort: 'minimal',
+        reasoningSummary: 'auto',
+      },
+    });
     expect(createOpenRouterMock).toHaveBeenCalledWith({
       apiKey: 'openrouter-key',
       api_keys: { openai: 'sk-openai-byok' },
