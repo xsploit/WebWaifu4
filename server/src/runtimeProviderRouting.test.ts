@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getProviderEmbeddingModel,
   getRuntimeProviderBaseUrl,
+  DEEPSEEK_BASE_URL,
   OPENAI_BASE_URL,
   OPENROUTER_BASE_URL,
   resolveRuntimeLlmProvider,
@@ -22,6 +23,7 @@ describe('runtimeProviderRouting', () => {
     expect(resolveRuntimeLlmProvider('vercel-gateway', 'openai-responses')).toBe(
       'vercel-gateway',
     );
+    expect(resolveRuntimeLlmProvider('deepseek', 'openai-responses')).toBe('deepseek');
     expect(resolveRuntimeLlmProvider('bad-provider')).toBe('openai-responses');
   });
 
@@ -40,6 +42,13 @@ describe('runtimeProviderRouting', () => {
     );
     expect(getRuntimeProviderBaseUrl('vercel-gateway', OPENAI_BASE_URL)).toBe(
       VERCEL_AI_GATEWAY_BASE_URL,
+    );
+  });
+
+  it('routes DeepSeek direct chat through its own base URL but keeps embeddings on OpenAI-compatible vectors', () => {
+    expect(getRuntimeProviderBaseUrl('deepseek', OPENAI_BASE_URL)).toBe(DEEPSEEK_BASE_URL);
+    expect(getProviderEmbeddingModel('deepseek', 'text-embedding-3-small')).toBe(
+      'openai/text-embedding-3-small',
     );
   });
 

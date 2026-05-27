@@ -7,6 +7,7 @@ import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
 import {
   DEFAULT_AI_GATEWAY_MODEL,
+  DEFAULT_DEEPSEEK_MODEL,
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   DEFAULT_PERSONA,
@@ -697,6 +698,13 @@ function getBrowserLlmProviderConfig(llmProvider: AiSettings['llmProvider']) {
       provider: 'openrouter' as const,
     };
   }
+  if (llmProvider === 'deepseek') {
+    return {
+      keyName: 'deepseek.apiKey',
+      label: 'DeepSeek',
+      provider: 'deepseek' as const,
+    };
+  }
   return {
     keyName: 'openai.apiKey',
     label: 'OpenAI',
@@ -744,7 +752,7 @@ async function buildBackendProviderHeaders({
   if (apiKey) {
     headers['x-yourwifey-llm-provider-key'] = apiKey;
   }
-  if (llmProvider === 'vercel-gateway') {
+  if (llmProvider === 'vercel-gateway' || llmProvider === 'deepseek') {
     const openAiByokApiKey = await getBrowserProviderApiKey({
       keyName: 'openai.apiKey',
       provider: 'openai',
@@ -1096,7 +1104,9 @@ async function requestTextEmbedding(
         input: text.slice(0, 4000),
         llmProvider,
         model:
-          llmProvider === 'openrouter-responses' || llmProvider === 'vercel-gateway'
+          llmProvider === 'openrouter-responses' ||
+          llmProvider === 'vercel-gateway' ||
+          llmProvider === 'deepseek'
             ? DEFAULT_OPENROUTER_EMBEDDING_MODEL
             : undefined,
       }),
@@ -5175,7 +5185,9 @@ function App() {
           ? DEFAULT_OPENROUTER_MODEL
           : settings.llmProvider === 'vercel-gateway'
             ? DEFAULT_AI_GATEWAY_MODEL
-          : DEFAULT_OPENAI_MODEL,
+            : settings.llmProvider === 'deepseek'
+              ? DEFAULT_DEEPSEEK_MODEL
+              : DEFAULT_OPENAI_MODEL,
       );
       const targetMessage = job.messages[0];
       const prompt = buildChatAiPrompt(

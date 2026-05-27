@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_AI_GATEWAY_MODEL,
+  DEFAULT_DEEPSEEK_MODEL,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   createDefaultAiSettings,
@@ -68,6 +69,18 @@ describe('LLM provider defaults', () => {
     });
   });
 
+  it('switches to DeepSeek direct HTTP app-owned defaults', () => {
+    const next = applyLlmProviderSwitchDefaults(createDefaultAiSettings(), 'deepseek');
+
+    expect(next).toMatchObject({
+      aiTransportMode: 'http-stream',
+      llmProvider: 'deepseek',
+      memoryAgentModel: DEFAULT_DEEPSEEK_MODEL,
+      model: DEFAULT_DEEPSEEK_MODEL,
+      openAiStateMode: 'stateless',
+    });
+  });
+
   it('repairs legacy OpenAI model ids saved under OpenRouter', () => {
     const next = normalizeLlmProviderCompatibility({
       ...createDefaultAiSettings(),
@@ -111,6 +124,7 @@ describe('LLM provider defaults', () => {
       DEFAULT_MEMORY_AGENT_MODEL,
     ]);
     expect(getProviderFallbackModels('vercel-gateway')).toEqual([DEFAULT_AI_GATEWAY_MODEL]);
+    expect(getProviderFallbackModels('deepseek')).toEqual([DEFAULT_DEEPSEEK_MODEL]);
   });
 
   it('blocks known high-cost model ids from persisted settings and model pickers', () => {

@@ -299,7 +299,9 @@ function normalizeAiSettings(value: unknown): AiSettings {
 
   const source = value as Partial<AiSettings>;
   const llmProvider =
-    source.llmProvider === 'openrouter-responses' || source.llmProvider === 'vercel-gateway'
+    source.llmProvider === 'openrouter-responses' ||
+    source.llmProvider === 'vercel-gateway' ||
+    source.llmProvider === 'deepseek'
       ? source.llmProvider
       : defaults.llmProvider;
   const requestedModel = String(source.model ?? defaults.model);

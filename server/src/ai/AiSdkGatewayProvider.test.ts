@@ -24,6 +24,12 @@ vi.mock('@ai-sdk/openai', () => ({
   })),
 }));
 
+vi.mock('@ai-sdk/openai-compatible', () => ({
+  createOpenAICompatible: vi.fn(() => ({
+    chatModel: vi.fn((model: string) => ({ provider: 'openai-compatible', model })),
+  })),
+}));
+
 vi.mock('@openrouter/ai-sdk-provider', () => ({
   createOpenRouter: vi.fn(() => vi.fn((model: string) => ({ provider: 'openrouter', model }))),
 }));
@@ -98,5 +104,25 @@ describe('AiSdkGatewayProvider', () => {
     expect(call.tools).toBeUndefined();
     expect(call.toolChoice).toBe('required');
     expect(call.messages[0].content).not.toContain('You may call these tools directly');
+  });
+
+  it('runs DeepSeek direct through the AI SDK OpenAI-compatible HTTP provider path', async () => {
+    const provider = new AiSdkGatewayProvider({
+      apiBaseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'deepseek-key',
+      maxTokens: 180,
+      model: 'deepseek-chat',
+      provider: 'deepseek',
+      temperature: 0.7,
+    });
+
+    await provider.completeStream(createRequest({ toolChoiceMode: 'auto' }));
+
+    const call = streamTextMock.mock.calls[0]?.[0];
+    expect(call).toMatchObject({
+      model: { provider: 'openai-compatible', model: 'deepseek-chat' },
+      stopWhen: { kind: 'step-count', rounds: 15 },
+      toolChoice: 'auto',
+    });
   });
 });

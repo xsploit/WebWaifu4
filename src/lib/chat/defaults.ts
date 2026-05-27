@@ -31,6 +31,7 @@ export const DEFAULT_OPENAI_MODEL = 'gpt-5-nano';
 export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-4.1-mini';
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
 export const DEFAULT_AI_GATEWAY_MODEL = 'openai/gpt-5-nano';
+export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
 export const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 
 export const RIKO_PERSONA: PersonaProfile = {

@@ -31,7 +31,7 @@ export type ChatProviderRequest = {
   responseFormat?: ChatProviderResponseFormat;
   stateKey?: string;
   stateScope?: 'chat' | 'memory';
-  transportMode?: 'http-stream' | 'websocket';
+  transportMode?: 'http-stream';
   openAiStateMode?: 'conversation' | 'previous-response' | 'stateless';
   toolChoiceMode?: 'auto' | 'required';
   maxToolRounds?: number;

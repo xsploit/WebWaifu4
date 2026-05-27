@@ -26,7 +26,11 @@ export type RemoteTtsMode = 'live-bridge' | 'full-response' | 'sentence-chunks';
 export type FishSpeechVoiceScope = 'all' | 'mine' | 'public';
 export type FishSpeechLatency = 'balanced' | 'normal';
 export type InworldDeliveryMode = 'STABLE' | 'BALANCED' | 'CREATIVE';
-export type LlmProvider = 'openai-responses' | 'openrouter-responses' | 'vercel-gateway';
+export type LlmProvider =
+  | 'deepseek'
+  | 'openai-responses'
+  | 'openrouter-responses'
+  | 'vercel-gateway';
 export type AiTransportMode = 'server-default' | 'http-stream';
 export type OpenAiStateMode = 'server-default' | 'conversation' | 'previous-response' | 'stateless';
 export type ReplyLengthMode = 'short' | 'balanced' | 'yap';

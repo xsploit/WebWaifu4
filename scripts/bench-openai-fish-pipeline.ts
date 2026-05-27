@@ -1,12 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
-import { WebSocket, type RawData } from 'ws';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { loadConfig, type StreamBotConfig } from '../server/src/config.js';
-import {
-  OpenAiResponsesProvider,
-  type OpenAiReasoningEffort,
-} from '../server/src/ai/OpenAiResponsesProvider.js';
+import { loadConfig, type OpenAiReasoningEffort, type StreamBotConfig } from '../server/src/config.js';
+import { AiSdkGatewayProvider } from '../server/src/ai/AiSdkGatewayProvider.js';
 import {
   streamFishSpeechTextStream,
   type FishSpeechLatency,
@@ -17,15 +13,11 @@ import {
 type Mode =
   | 'fish'
   | 'llm-http'
-  | 'llm-ws'
   | 'pipeline-http'
-  | 'pipeline-ws'
   | 'direct-http'
-  | 'direct-ws'
   | 'gemini-live'
   | 'gemini-stream'
   | 'route-http'
-  | 'route-ws'
   | 'all';
 
 type BenchOptions = {
@@ -119,15 +111,11 @@ function parseMode(value: string): Mode {
   if (
     value === 'fish' ||
     value === 'llm-http' ||
-    value === 'llm-ws' ||
     value === 'pipeline-http' ||
-    value === 'pipeline-ws' ||
     value === 'direct-http' ||
-    value === 'direct-ws' ||
     value === 'gemini-live' ||
     value === 'gemini-stream' ||
     value === 'route-http' ||
-    value === 'route-ws' ||
     value === 'all'
   ) {
     return value;
@@ -201,16 +189,12 @@ Usage:
 
 Modes:
   fish           Fish Speech websocket only
-  llm-http       OpenAI Responses HTTP stream only
-  llm-ws         OpenAI Responses WebSocket only
+  llm-http       OpenAI Responses via AI SDK HTTP stream only
   pipeline-http  OpenAI HTTP deltas into Fish live bridge
-  pipeline-ws    OpenAI WebSocket deltas into Fish live bridge
   direct-http    Raw OpenAI HTTP stream into one Fish realtime stream, no app backend route
-  direct-ws      Raw persistent OpenAI WS into one Fish realtime stream, no app backend route
   gemini-live    Gemini Live API direct session, default native audio output
   gemini-stream  Gemini Flash LLM text stream into one Fish realtime stream
   route-http     Exact /ai/chat SSE route with HTTP-stream transport + Fish bridge
-  route-ws       Exact /ai/chat SSE route with WebSocket transport + Fish bridge
   all            Run every mode above
 
 Options:
@@ -220,7 +204,7 @@ Options:
   --llm-model gpt-5-nano       OpenAI model, default gpt-5-nano
   --max-output-tokens 120      LLM output cap, default 120
   --reasoning minimal          Reasoning effort for reasoning models, default minimal
-  --openai-warmup true         Warm direct-ws with one tiny generated turn before timing
+  --openai-warmup true         Retained for old command compatibility; no LLM WebSocket warmup is used
   --fish-warmup true           Warm Fish with one tiny realtime request before timing
   --fish-model s2              Fish backend/model, default env/backup/config
   --gemini-model gemini-2.5-flash
@@ -472,28 +456,18 @@ function createFishConfig(baseConfig: StreamBotConfig, options: BenchOptions): S
   };
 }
 
-function createOpenAiProvider(
-  config: StreamBotConfig,
-  options: BenchOptions,
-  useWebSocket: boolean,
-) {
-  return new OpenAiResponsesProvider({
+function createOpenAiProvider(config: StreamBotConfig, options: BenchOptions) {
+  return new AiSdkGatewayProvider({
     apiBaseUrl: 'https://api.openai.com/v1',
     apiKey: config.aiApiKey,
-    closeWebSocketAfterRequest: true,
-    maxOutputTokens: options.llmMaxOutputTokens,
+    maxTokens: options.llmMaxOutputTokens,
     model: options.llmModel,
-    reasoningEffort: options.openAiReasoningEffort,
-    requestTimeoutMs: Math.max(options.hardTimeoutMs || 45000, 15000),
-    safetyIdentifier: '',
-    stateMode: 'stateless',
-    store: false,
+    provider: 'openai-responses',
     temperature: 0.4,
-    useWebSocket,
   });
 }
 
-function createOpenAiRequest(options: BenchOptions, useWebSocket: boolean) {
+function createOpenAiRequest(options: BenchOptions) {
   return {
     activeChatters: 1,
     disableState: true,
@@ -509,7 +483,7 @@ function createOpenAiRequest(options: BenchOptions, useWebSocket: boolean) {
     mode: 'direct' as const,
     openAiStateMode: 'stateless' as const,
     sourceMessages: [],
-    transportMode: useWebSocket ? ('websocket' as const) : ('http-stream' as const),
+    transportMode: 'http-stream' as const,
   };
 }
 
@@ -564,7 +538,7 @@ function createDirectOpenAiPayload(options: BenchOptions, prompt = options.promp
 
 function handleDirectOpenAiEvent(event: DirectOpenAiEvent, onTextDelta: (delta: string) => void) {
   if (event.type === 'error' || event.type === 'response.failed') {
-    throw new Error(event.error?.message ?? `OpenAI Responses WS event ${event.type}.`);
+    throw new Error(event.error?.message ?? `OpenAI Responses event ${event.type}.`);
   }
   if (typeof event.delta === 'string' && event.delta) {
     onTextDelta(event.delta);
@@ -577,146 +551,6 @@ function handleDirectOpenAiEvent(event: DirectOpenAiEvent, onTextDelta: (delta: 
     throw new Error(`OpenAI Responses API returned an incomplete response: ${reason}.`);
   }
   return 'continue' as const;
-}
-
-class DirectOpenAiWsSession {
-  private queue = Promise.resolve();
-  private socket: WebSocket | null = null;
-  private socketReady: Promise<WebSocket> | null = null;
-
-  constructor(
-    private readonly config: StreamBotConfig,
-    private readonly options: BenchOptions,
-  ) {}
-
-  dispose() {
-    if (
-      this.socket &&
-      (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)
-    ) {
-      this.socket.close();
-    }
-    this.socket = null;
-    this.socketReady = null;
-  }
-
-  warmup() {
-    return this.complete('Say ready.', () => undefined);
-  }
-
-  complete(prompt: string, onTextDelta: (delta: string) => void) {
-    const run = () => this.completeNow(prompt, onTextDelta);
-    const result = this.queue.then(run, run);
-    this.queue = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }
-
-  private async completeNow(prompt: string, onTextDelta: (delta: string) => void) {
-    const socket = await this.getSocket();
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const timeout = setTimeout(() => {
-        fail(new Error(`Direct OpenAI WS timed out after ${this.options.hardTimeoutMs}ms.`), true);
-      }, this.options.hardTimeoutMs);
-
-      const cleanup = () => {
-        settled = true;
-        clearTimeout(timeout);
-        socket.off('message', onMessage);
-        socket.off('close', onClose);
-        socket.off('error', onError);
-      };
-
-      const finish = () => {
-        cleanup();
-        resolve();
-      };
-
-      const fail = (error: Error, closeSocket = false) => {
-        cleanup();
-        if (closeSocket) {
-          this.dispose();
-        }
-        reject(error);
-      };
-
-      const onMessage = (raw: RawData) => {
-        if (settled) {
-          return;
-        }
-        try {
-          const event = JSON.parse(raw.toString()) as DirectOpenAiEvent;
-          if (handleDirectOpenAiEvent(event, onTextDelta) === 'completed') {
-            finish();
-          }
-        } catch (error) {
-          fail(error instanceof Error ? error : new Error(String(error)), true);
-        }
-      };
-
-      const onClose = (code: number, reason: Buffer) => {
-        if (!settled) {
-          fail(
-            new Error(
-              `Direct OpenAI WS closed before completion: ${code}${reason.length ? ` ${reason.toString()}` : ''}.`,
-            ),
-          );
-        }
-      };
-
-      const onError = (error: Error) => {
-        if (!settled) {
-          fail(error, true);
-        }
-      };
-
-      socket.on('message', onMessage);
-      socket.on('close', onClose);
-      socket.on('error', onError);
-      socket.send(
-        JSON.stringify({
-          type: 'response.create',
-          ...createDirectOpenAiPayload(this.options, prompt),
-        }),
-      );
-    });
-  }
-
-  private async getSocket() {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      return this.socket;
-    }
-    if (this.socketReady) {
-      return this.socketReady;
-    }
-    this.socketReady = new Promise<WebSocket>((resolve, reject) => {
-      const socket = new WebSocket('wss://api.openai.com/v1/responses', {
-        headers: {
-          Authorization: `Bearer ${this.config.aiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      socket.once('open', () => {
-        this.socket = socket;
-        resolve(socket);
-      });
-      socket.once('error', (error) => {
-        this.socket = null;
-        this.socketReady = null;
-        reject(error);
-      });
-      socket.once('close', () => {
-        if (this.socket === socket) {
-          this.socket = null;
-          this.socketReady = null;
-        }
-      });
-    });
-    return this.socketReady;
-  }
 }
 
 async function streamDirectOpenAiHttp(
@@ -898,16 +732,15 @@ async function runLlmOnly(
   config: StreamBotConfig,
   options: BenchOptions,
   run: number,
-  useWebSocket: boolean,
 ): Promise<ResultRow> {
   const startedAt = performance.now();
-  const provider = createOpenAiProvider(config, options, useWebSocket);
+  const provider = createOpenAiProvider(config, options);
   let firstDeltaAt: number | null = null;
   let deltaCount = 0;
   let deltaChars = 0;
   try {
-    await withHardTimeout(options, useWebSocket ? 'llm-ws' : 'llm-http', async () => {
-      await provider.completeStream(createOpenAiRequest(options, useWebSocket), {
+    await withHardTimeout(options, 'llm-http', async () => {
+      await provider.completeStream(createOpenAiRequest(options), {
         onTextDelta(delta) {
           const now = performance.now();
           firstDeltaAt ??= now;
@@ -915,21 +748,20 @@ async function runLlmOnly(
           deltaChars += delta.length;
           if (options.progress) {
             console.log(
-              `[${useWebSocket ? 'llm-ws' : 'llm-http'} run ${run}] delta ${deltaCount} ${Math.round(now - startedAt)}ms chars=${delta.length}`,
+              `[llm-http run ${run}] delta ${deltaCount} ${Math.round(now - startedAt)}ms chars=${delta.length}`,
             );
           }
         },
       });
     });
   } finally {
-    provider.dispose();
   }
 
   return {
     deltaChars,
     deltaCount,
     firstDeltaMs: firstDeltaAt === null ? null : firstDeltaAt - startedAt,
-    mode: useWebSocket ? 'llm-ws' : 'llm-http',
+    mode: 'llm-http',
     run,
     totalMs: performance.now() - startedAt,
   };
@@ -939,10 +771,9 @@ async function runPipeline(
   config: StreamBotConfig,
   options: BenchOptions,
   run: number,
-  useWebSocket: boolean,
 ): Promise<ResultRow> {
   const startedAt = performance.now();
-  const provider = createOpenAiProvider(config, options, useWebSocket);
+  const provider = createOpenAiProvider(config, options);
   let firstDeltaAt: number | null = null;
   let firstTextAt: number | null = null;
   let firstAudioAt: number | null = null;
@@ -952,7 +783,7 @@ async function runPipeline(
   let textChunks = 0;
   let audioChunks = 0;
   let audioBytes = 0;
-  const mode: ResultRow['mode'] = useWebSocket ? 'pipeline-ws' : 'pipeline-http';
+  const mode: ResultRow['mode'] = 'pipeline-http';
   const bridge = createLiveSpeechTextBridge((chunk) => {
     firstTextAt ??= performance.now();
     textChunks += 1;
@@ -992,7 +823,7 @@ async function runPipeline(
         },
       );
       try {
-        await provider.completeStream(createOpenAiRequest(options, useWebSocket), {
+        await provider.completeStream(createOpenAiRequest(options), {
           onTextDelta(delta) {
             const now = performance.now();
             firstDeltaAt ??= now;
@@ -1012,13 +843,10 @@ async function runPipeline(
         bridge.fail(error instanceof Error ? error : new Error(String(error)));
         await fishDone.catch(() => undefined);
         throw error;
-      } finally {
-        provider.dispose();
       }
     },
     () => {
       bridge.fail(new Error(`${mode} timed out`));
-      provider.dispose();
     },
   );
 
@@ -1043,8 +871,6 @@ async function runDirectPipeline(
   config: StreamBotConfig,
   options: BenchOptions,
   run: number,
-  transport: 'http' | 'ws',
-  wsSession?: DirectOpenAiWsSession,
 ): Promise<ResultRow> {
   const startedAt = performance.now();
   let firstDeltaAt: number | null = null;
@@ -1056,7 +882,7 @@ async function runDirectPipeline(
   let textChunks = 0;
   let audioChunks = 0;
   let audioBytes = 0;
-  const mode: ResultRow['mode'] = transport === 'ws' ? 'direct-ws' : 'direct-http';
+  const mode: ResultRow['mode'] = 'direct-http';
   const bridge = createLiveSpeechTextBridge((chunk) => {
     firstTextAt ??= performance.now();
     textChunks += 1;
@@ -1110,14 +936,7 @@ async function runDirectPipeline(
       };
 
       try {
-        if (transport === 'ws') {
-          if (!wsSession) {
-            throw new Error('Missing direct OpenAI WS session.');
-          }
-          await wsSession.complete(options.prompt, onDelta);
-        } else {
-          await streamDirectOpenAiHttp(config, options, onDelta);
-        }
+        await streamDirectOpenAiHttp(config, options, onDelta);
         bridge.close();
         await fishDone;
       } catch (error) {
@@ -1421,7 +1240,7 @@ function createRouteHeaders(config: StreamBotConfig) {
   return headers;
 }
 
-function createRouteBody(options: BenchOptions, useWebSocket: boolean) {
+function createRouteBody(options: BenchOptions) {
   return {
     activeChatters: 1,
     disableState: options.routeStateMode === 'stateless',
@@ -1438,11 +1257,11 @@ function createRouteBody(options: BenchOptions, useWebSocket: boolean) {
     mode: 'direct',
     model: options.llmModel,
     openAiStateMode: options.routeStateMode,
-    stateKey: `${options.routeStateKey}:${useWebSocket ? 'ws' : 'http'}`,
+    stateKey: `${options.routeStateKey}:http`,
     stateScope: 'chat',
     stream: true,
     temperature: 0.4,
-    transportMode: useWebSocket ? 'websocket' : 'http-stream',
+    transportMode: 'http-stream',
     ttsBridge: createRouteTtsBridge(options),
   };
 }
@@ -1550,10 +1369,9 @@ async function runRoutePipeline(
   config: StreamBotConfig,
   options: BenchOptions,
   run: number,
-  useWebSocket: boolean,
 ): Promise<ResultRow> {
   const startedAt = performance.now();
-  const mode: ResultRow['mode'] = useWebSocket ? 'route-ws' : 'route-http';
+  const mode: ResultRow['mode'] = 'route-http';
   const controller = new AbortController();
   const stats = {
     audioBytes: 0,
@@ -1572,7 +1390,7 @@ async function runRoutePipeline(
     mode,
     async () => {
       const response = await fetch(`${options.routeServerUrl.replace(/\/$/, '')}/ai/chat`, {
-        body: JSON.stringify(createRouteBody(options, useWebSocket)),
+        body: JSON.stringify(createRouteBody(options)),
         headers: createRouteHeaders(config),
         method: 'POST',
         signal: controller.signal,
@@ -1609,15 +1427,11 @@ function modesToRun(mode: Mode): Array<Exclude<Mode, 'all'>> {
     return [
       'fish',
       'llm-http',
-      'llm-ws',
       'pipeline-http',
-      'pipeline-ws',
       'direct-http',
-      'direct-ws',
       'gemini-live',
       'gemini-stream',
       'route-http',
-      'route-ws',
     ];
   }
   return [mode];
@@ -1647,7 +1461,7 @@ function printResults(options: BenchOptions, results: ResultRow[]) {
   console.log(`reasoning=${options.openAiReasoningEffort}`);
   console.log(`openai_warmup=${options.openAiWarmup}`);
   console.log(`fish_warmup=${options.fishWarmup}`);
-  if (options.mode === 'route-http' || options.mode === 'route-ws' || options.mode === 'all') {
+  if (options.mode === 'route-http' || options.mode === 'all') {
     console.log(
       `bridge_chunking=${options.routeBridgeChunkingStrategy} min=${options.routeBridgeMinChars} max=${options.routeBridgeMaxChars} soft=${options.routeBridgeSoftChars}`,
     );
@@ -1750,14 +1564,9 @@ async function main() {
 
   const results: ResultRow[] = [];
   for (const mode of modes) {
-    const directWsSession =
-      mode === 'direct-ws' ? new DirectOpenAiWsSession(config, options) : null;
     try {
-      if (directWsSession && options.openAiWarmup) {
-        await directWsSession.warmup();
-      }
       if (
-        (mode === 'direct-http' || mode === 'direct-ws' || mode === 'gemini-stream') &&
+        (mode === 'direct-http' || mode === 'gemini-stream') &&
         options.fishWarmup
       ) {
         await warmFish(config, options);
@@ -1767,27 +1576,17 @@ async function main() {
           if (mode === 'fish') {
             results.push(await runFishOnly(config, options, run));
           } else if (mode === 'llm-http') {
-            results.push(await runLlmOnly(config, options, run, false));
-          } else if (mode === 'llm-ws') {
-            results.push(await runLlmOnly(config, options, run, true));
+            results.push(await runLlmOnly(config, options, run));
           } else if (mode === 'pipeline-http') {
-            results.push(await runPipeline(config, options, run, false));
-          } else if (mode === 'pipeline-ws') {
-            results.push(await runPipeline(config, options, run, true));
+            results.push(await runPipeline(config, options, run));
           } else if (mode === 'direct-http') {
-            results.push(await runDirectPipeline(config, options, run, 'http'));
-          } else if (mode === 'direct-ws') {
-            results.push(
-              await runDirectPipeline(config, options, run, 'ws', directWsSession ?? undefined),
-            );
+            results.push(await runDirectPipeline(config, options, run));
           } else if (mode === 'gemini-live') {
             results.push(await runGeminiLive(options, run));
           } else if (mode === 'gemini-stream') {
             results.push(await runGeminiStreamPipeline(config, options, run));
-          } else if (mode === 'route-http') {
-            results.push(await runRoutePipeline(config, options, run, false));
           } else {
-            results.push(await runRoutePipeline(config, options, run, true));
+            results.push(await runRoutePipeline(config, options, run));
           }
         } catch (error) {
           results.push({
@@ -1799,7 +1598,7 @@ async function main() {
         }
       }
     } finally {
-      directWsSession?.dispose();
+      // No persistent LLM socket state remains in the benchmark.
     }
   }
 

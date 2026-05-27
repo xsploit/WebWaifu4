@@ -114,6 +114,7 @@ export function AiTab({
           <option value="openai-responses">OpenAI Responses</option>
           <option value="openrouter-responses">OpenRouter Responses (App Memory)</option>
           <option value="vercel-gateway">Vercel AI Gateway</option>
+          <option value="deepseek">DeepSeek Direct</option>
         </select>
         <div className="field-hint">
           HTTP streaming keeps Web Waifu 4-owned history, diary, semantic memory, tools, and TTS
@@ -128,6 +129,8 @@ export function AiTab({
             ? 'OpenRouter Model'
             : aiSettings.llmProvider === 'vercel-gateway'
               ? 'AI Gateway Model'
+              : aiSettings.llmProvider === 'deepseek'
+                ? 'DeepSeek Model'
               : 'OpenAI GPT Model'}
         </div>
         <select
@@ -191,7 +194,8 @@ export function AiTab({
           <option value="stateless">Stateless</option>
         </select>
         {aiSettings.llmProvider === 'openrouter-responses' ||
-        aiSettings.llmProvider === 'vercel-gateway' ? (
+        aiSettings.llmProvider === 'vercel-gateway' ||
+        aiSettings.llmProvider === 'deepseek' ? (
           <div className="status-copy">
             Routed-provider state: <strong>app-owned</strong>. The request is sent stateless with
             the rendered POML, current transcript, diary, and memory context.

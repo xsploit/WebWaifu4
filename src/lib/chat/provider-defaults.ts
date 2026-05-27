@@ -1,6 +1,7 @@
 import {
   DEFAULT_MEMORY_AGENT_MODEL,
   DEFAULT_AI_GATEWAY_MODEL,
+  DEFAULT_DEEPSEEK_MODEL,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENROUTER_MODEL,
 } from './defaults';
@@ -25,6 +26,14 @@ export function getAiProviderSwitchDefaults(llmProvider: LlmProvider): AiProvide
       aiTransportMode: 'http-stream',
       memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
       model: DEFAULT_AI_GATEWAY_MODEL,
+      openAiStateMode: 'stateless',
+    };
+  }
+  if (llmProvider === 'deepseek') {
+    return {
+      aiTransportMode: 'http-stream',
+      memoryAgentModel: DEFAULT_DEEPSEEK_MODEL,
+      model: DEFAULT_DEEPSEEK_MODEL,
       openAiStateMode: 'stateless',
     };
   }
@@ -96,7 +105,11 @@ export function normalizeLlmProviderCompatibility(settings: AiSettings): AiSetti
     defaults.memoryAgentModel,
   );
 
-  if (settings.llmProvider === 'openrouter-responses' || settings.llmProvider === 'vercel-gateway') {
+  if (
+    settings.llmProvider === 'openrouter-responses' ||
+    settings.llmProvider === 'vercel-gateway' ||
+    settings.llmProvider === 'deepseek'
+  ) {
     return {
       ...settings,
       aiTransportMode: defaults.aiTransportMode,
