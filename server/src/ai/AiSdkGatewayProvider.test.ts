@@ -102,7 +102,7 @@ describe('AiSdkGatewayProvider', () => {
 
     const call = streamTextMock.mock.calls[0]?.[0];
     expect(call.tools).toBeUndefined();
-    expect(call.toolChoice).toBe('required');
+    expect(call.toolChoice).toBe('auto');
     expect(call.messages[0].content).not.toContain('You may call these tools directly');
   });
 

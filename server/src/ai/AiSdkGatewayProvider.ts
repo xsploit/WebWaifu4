@@ -184,7 +184,7 @@ export class AiSdkGatewayProvider implements ChatProvider {
       providerOptions: createGatewayProviderOptions(this.options),
       stopWhen: stepCountIs(normalizeMaxToolRounds(request.maxToolRounds)),
       temperature: request.temperature ?? this.options.temperature,
-      toolChoice: request.toolChoiceMode === 'required' ? 'required' : 'auto',
+      toolChoice: toolsAvailable && request.toolChoiceMode === 'required' ? 'required' : 'auto',
       tools,
     });
 

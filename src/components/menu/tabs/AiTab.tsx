@@ -32,27 +32,7 @@ function updateAiSettings(
 }
 
 function formatProviderTransport(providerState: AiProxyHealth['providerState']) {
-  const transport =
-    providerState?.transport === 'websocket'
-      ? 'Responses WebSocket'
-      : providerState?.transport === 'http-stream'
-        ? 'HTTP stream'
-        : 'unknown';
-  if (providerState?.websocketLifecycle === 'request-scoped') {
-    return `${transport} (opens per reply)`;
-  }
-  return transport;
-}
-
-function formatProviderSocket(providerState: AiProxyHealth['providerState']) {
-  if (!providerState?.websocketConfigured) {
-    return 'disabled';
-  }
-  const status = providerState.websocketStatus ?? 'idle';
-  if (providerState.websocketLifecycle === 'request-scoped' && status === 'idle') {
-    return 'idle between replies';
-  }
-  return status;
+  return providerState?.transport === 'http-stream' ? 'HTTP stream' : 'unknown';
 }
 
 function formatProviderStateId(providerState: AiProxyHealth['providerState']) {
@@ -219,9 +199,6 @@ export function AiTab({
         </div>
         <div className="status-copy">
           Transport: <strong>{formatProviderTransport(providerState)}</strong>
-        </div>
-        <div className="status-copy">
-          Socket: <strong>{formatProviderSocket(providerState)}</strong>
         </div>
         <div className="status-copy">
           Prompt cache: <strong>{providerState?.promptCacheKey ?? 'none'}</strong> / last cached
