@@ -60,6 +60,7 @@ describe('chat settings persistence', () => {
       replyLength: 'yap',
       remoteTtsMode: 'sentence-chunks',
       temperature: 1.1,
+      toolChoiceMode: 'auto',
       ttsAutoSpeak: false,
       ttsEnabled: true,
       ttsExpressionTagsEnabled: true,
@@ -290,6 +291,13 @@ describe('chat settings persistence', () => {
       provider: 'inworld',
       providerVoiceId: 'inworld-custom-neuro',
     });
+  });
+
+  it('defaults new installs to required runtime tool mode with a 15-round agentic loop', async () => {
+    const defaults = createDefaultAiSettings();
+
+    expect(defaults.toolChoiceMode).toBe('required');
+    expect(defaults.maxToolRounds).toBe(15);
   });
 
   it('ignores retired post-processing settings from older saved state', async () => {

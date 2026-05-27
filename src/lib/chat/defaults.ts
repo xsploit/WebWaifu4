@@ -101,7 +101,7 @@ export function createDefaultAiSettings(): AiSettings {
     memoryAgentIntervalMessages: 7,
     aiTransportMode: 'http-stream',
     openAiStateMode: 'stateless',
-    toolChoiceMode: 'auto',
+    toolChoiceMode: 'required',
     maxToolRounds: 15,
     replyLength: 'balanced',
     temperature: 0.85,

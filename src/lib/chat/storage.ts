@@ -329,7 +329,9 @@ function normalizeAiSettings(value: unknown): AiSettings {
       ? source.openAiStateMode
       : defaults.openAiStateMode;
   const toolChoiceMode =
-    source.toolChoiceMode === 'required' ? source.toolChoiceMode : defaults.toolChoiceMode;
+    source.toolChoiceMode === 'required' || source.toolChoiceMode === 'auto'
+      ? source.toolChoiceMode
+      : defaults.toolChoiceMode;
   const maxToolRounds =
     typeof source.maxToolRounds === 'number' && Number.isFinite(source.maxToolRounds)
       ? Math.max(1, Math.min(30, Math.round(source.maxToolRounds)))
