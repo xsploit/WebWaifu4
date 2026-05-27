@@ -408,16 +408,6 @@ type AiProxyStreamEvent = {
   text?: string;
 };
 
-type AiLivePendingRequest = {
-  finalMeta?: AiProxyHealth['providerState'];
-  markServerResponded: () => void;
-  onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
-  onTextDelta?: (delta: string) => void;
-  reject: (error: Error) => void;
-  resolve: (response: AppCompletionResponse) => void;
-  streamedText: string;
-};
-
 type AppEmbeddingResponse = {
   embedding?: number[];
   error?: string;
@@ -539,16 +529,6 @@ function getAiProxyUrl() {
   }
 
   const url = new URL('/api/ai/chat', window.location.href);
-  return url.toString();
-}
-
-function getAiLiveWsUrl() {
-  const url = new URL(getAiProxyUrl());
-  url.pathname = url.pathname.replace(/\/ai\/chat\/?$/, '/ai/live');
-  if (!/\/ai\/live\/?$/.test(url.pathname)) {
-    url.pathname = `${url.pathname.replace(/\/+$/, '')}/live`;
-  }
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
 }
 
@@ -923,199 +903,6 @@ function readStreamChunkWithIdleTimeout(
   });
 }
 
-let aiLiveSocket: WebSocket | null = null;
-let aiLiveSocketReady: Promise<WebSocket> | null = null;
-const aiLivePendingRequests = new Map<string, AiLivePendingRequest>();
-
-function rejectAiLivePending(error: Error) {
-  for (const pending of aiLivePendingRequests.values()) {
-    pending.reject(error);
-  }
-  aiLivePendingRequests.clear();
-}
-
-function handleAiLiveSocketMessage(message: MessageEvent) {
-  if (typeof message.data !== 'string') {
-    return;
-  }
-
-  let event: AiProxyStreamEvent & { requestId?: string };
-  try {
-    event = JSON.parse(message.data) as AiProxyStreamEvent & { requestId?: string };
-  } catch (error) {
-    console.warn('[AI] Ignoring malformed live websocket event.', error);
-    return;
-  }
-  const requestId = event.requestId;
-  if (!requestId) {
-    return;
-  }
-
-  const pending = aiLivePendingRequests.get(requestId);
-  if (!pending) {
-    return;
-  }
-
-  pending.markServerResponded();
-  if (event.type === 'error' || event.ok === false) {
-    aiLivePendingRequests.delete(requestId);
-    pending.reject(new Error(event.error ?? 'AI live websocket request failed.'));
-    return;
-  }
-  if (event.type === 'tts-error') {
-    console.warn('[TTS] Live bridge failed:', event.error);
-    aiLivePendingRequests.delete(requestId);
-    pending.reject(new Error(event.error ?? 'Live TTS bridge failed.'));
-    return;
-  }
-  if (event.type === 'audio') {
-    const chunk = decodeAiProxyAudioEvent(event);
-    if (chunk) {
-      pending.onAudioChunk?.(chunk);
-    }
-    return;
-  }
-  if (event.type === 'delta' && event.delta) {
-    pending.streamedText += event.delta;
-    pending.onTextDelta?.(event.delta);
-    return;
-  }
-  if (event.type === 'done') {
-    aiLivePendingRequests.delete(requestId);
-    const text = event.text?.trim() || pending.streamedText.trim();
-    if (!text) {
-      pending.reject(new Error('AI live websocket returned an empty response.'));
-      return;
-    }
-    pending.resolve({
-      choices: [
-        {
-          message: {
-            content: text,
-          },
-        },
-      ],
-      meta: event.meta ?? pending.finalMeta,
-    });
-  }
-}
-
-function getAiLiveSocket() {
-  if (aiLiveSocket?.readyState === WebSocket.OPEN) {
-    return Promise.resolve(aiLiveSocket);
-  }
-  if (aiLiveSocket?.readyState === WebSocket.CONNECTING && aiLiveSocketReady) {
-    return aiLiveSocketReady;
-  }
-
-  const socket = new WebSocket(getAiLiveWsUrl());
-  aiLiveSocket = socket;
-  aiLiveSocketReady = new Promise<WebSocket>((resolve, reject) => {
-    socket.onopen = () => resolve(socket);
-    socket.onmessage = handleAiLiveSocketMessage;
-    socket.onerror = () => {
-      const error = new Error('AI live websocket connection failed.');
-      if (aiLiveSocket === socket) {
-        reject(error);
-        rejectAiLivePending(error);
-      }
-    };
-    socket.onclose = () => {
-      if (aiLiveSocket === socket) {
-        aiLiveSocket = null;
-        aiLiveSocketReady = null;
-        rejectAiLivePending(new Error('AI live websocket closed.'));
-      }
-    };
-  });
-  return aiLiveSocketReady;
-}
-
-async function requestChatCompletionLiveWs({
-  body,
-  headers,
-  onAudioChunk,
-  onServerEvent,
-  onTextDelta,
-  signal,
-}: {
-  body: Record<string, unknown>;
-  headers: Record<string, string>;
-  onAudioChunk?: (chunk: RemoteTtsAudioChunk) => void;
-  onServerEvent: () => void;
-  onTextDelta?: (delta: string) => void;
-  signal?: AbortSignal;
-}): Promise<AppCompletionResponse> {
-  const socket = await getAiLiveSocket();
-  if (signal?.aborted) {
-    throw new DOMException('AI live websocket request aborted.', 'AbortError');
-  }
-
-  const requestId = `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return new Promise<AppCompletionResponse>((resolve, reject) => {
-    const cleanup = () => {
-      aiLivePendingRequests.delete(requestId);
-      signal?.removeEventListener('abort', onAbort);
-    };
-    const onAbort = () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(
-          JSON.stringify({
-            type: 'cancel',
-            requestId,
-          }),
-        );
-      }
-      cleanup();
-      reject(new DOMException('AI live websocket request aborted.', 'AbortError'));
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-    aiLivePendingRequests.set(requestId, {
-      markServerResponded: onServerEvent,
-      onAudioChunk,
-      onTextDelta,
-      reject: (error) => {
-        cleanup();
-        reject(error);
-      },
-      resolve: (response) => {
-        cleanup();
-        resolve(response);
-      },
-      streamedText: '',
-    });
-
-    try {
-      socket.send(
-        JSON.stringify({
-          type: 'chat.create',
-          requestId,
-          headers: Object.fromEntries(
-            Object.entries(headers).filter(([name]) =>
-              name.toLowerCase().startsWith('x-yourwifey-'),
-            ),
-          ),
-          body,
-        }),
-      );
-    } catch (error) {
-      cleanup();
-      reject(error instanceof Error ? error : new Error('AI live websocket send failed.'));
-    }
-  });
-}
-
-function shouldUseAiLiveWs(_options: {
-  llmProvider: AiSettings['llmProvider'];
-  onTextDelta?: (delta: string) => void;
-  transportMode?: AiSettings['aiTransportMode'];
-  ttsBridge?: RemoteTtsRequest;
-}) {
-  return (
-    false
-  );
-}
-
 async function requestChatCompletion({
   activeChatters = 1,
   disableState,
@@ -1186,34 +973,6 @@ async function requestChatCompletion({
     transportMode: transportMode === 'server-default' ? undefined : transportMode,
     ttsBridge,
   };
-
-  if (
-    shouldUseAiLiveWs({
-      llmProvider,
-      onTextDelta,
-      transportMode,
-      ttsBridge,
-    })
-  ) {
-    let liveServerResponded = false;
-    try {
-      return await requestChatCompletionLiveWs({
-        body: requestBody,
-        headers,
-        onAudioChunk,
-        onServerEvent: () => {
-          liveServerResponded = true;
-        },
-        onTextDelta,
-        signal,
-      });
-    } catch (error) {
-      if (liveServerResponded || signal?.aborted) {
-        throw error;
-      }
-      console.warn('[AI] Live websocket path unavailable; falling back to /ai/chat.', error);
-    }
-  }
 
   const response = await fetch(getAiProxyUrl(), {
     method: 'POST',

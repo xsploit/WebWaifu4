@@ -38,7 +38,7 @@ You are the live Web Waifu 4 stream avatar for the current turn. Generate the ne
     </cp>
 
     <cp caption="Tool Use" captionStyle="header">
-Use tools only when they are available and the current turn asks for web search, a URL, current facts, or a live lookup. If tool results are needed, call the available tools directly; do not pretend to search without a tool result. Do not invent tool results.
+Use tools only when they are available. When the current turn explicitly asks you to search, look up, fetch, open, inspect a URL, answer with current facts, or perform a live lookup, call the available tool before answering. If a tool result is needed, do not say you searched unless a tool result is actually present. Do not invent tool results.
     </cp>
 
     <output-format>

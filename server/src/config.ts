@@ -1,11 +1,9 @@
 import { config as loadDotenv } from 'dotenv';
-import type {
-  OpenAiReasoningEffort,
-  OpenAiResponsesStateMode,
-} from './ai/OpenAiResponsesProvider.js';
-
 loadDotenv({ path: '.env.local' });
 loadDotenv({ path: '.env' });
+
+export type OpenAiResponsesStateMode = 'stateless' | 'previous-response' | 'conversation';
+export type OpenAiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 export type StreamBotConfig = {
   twitchChannel: string;
@@ -29,7 +27,6 @@ export type StreamBotConfig = {
   aiApiBaseUrl: string;
   aiApiKey: string;
   aiModel: string;
-  openAiWebSocketUrl: string;
   openAiStateMode: OpenAiResponsesStateMode;
   openAiConversationId: string;
   openAiStore: boolean;
@@ -291,7 +288,6 @@ export function loadConfig(): StreamBotConfig {
         : isResponsesProvider
           ? 'gpt-5-nano'
           : 'local-model'),
-    openAiWebSocketUrl: process.env.OPENAI_WS_URL?.trim() ?? '',
     openAiStateMode: parseOpenAiStateMode(),
     openAiConversationId: process.env.OPENAI_CONVERSATION_ID?.trim() ?? '',
     openAiStore: booleanFromEnv('OPENAI_STORE', false),

@@ -1,13 +1,9 @@
 import { createHash } from 'node:crypto';
-import { Buffer } from 'node:buffer';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Duplex } from 'node:stream';
-import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { AiSdkGatewayProvider } from './ai/AiSdkGatewayProvider.js';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { OpenAiCompatibleProvider } from './ai/OpenAiCompatibleProvider.js';
-import { OpenAiResponsesProvider } from './ai/OpenAiResponsesProvider.js';
 import { TAVILY_OPENAI_TOOLS } from './ai/TavilyTools.js';
 import { createAiVisibleDeltaFilter, getSafeFinalVisibleText } from './ai/VisibleDeltaFilter.js';
 import type {
@@ -126,36 +122,8 @@ type AiChatStreamEvent =
   | { type: 'audio'; audio: string; mimeType: string; sampleRate?: number }
   | { type: 'tts-error'; ok: false; error: string };
 
-type AiLiveClientMessage = {
-  type?: 'cancel' | 'chat.create' | 'ping' | string;
-  requestId?: string;
-  body?: AiChatRequestBody;
-  headers?: Record<string, unknown>;
-};
-
-type AiLiveServerEvent =
-  | (AiChatStreamEvent & { requestId: string })
-  | {
-      type: 'done';
-      ok: true;
-      requestId: string;
-      text: string;
-      meta: unknown;
-    }
-  | { type: 'error'; ok: false; requestId: string; error: string };
-
 const CORS_REQUEST_HEADERS =
   'accept,authorization,content-type,x-requested-with,x-yourwifey-llm-provider,x-yourwifey-llm-provider-key,x-yourwifey-openai-byok-key,x-yourwifey-tts-provider-key,x-yourwifey-tavily-provider-key';
-const AI_LIVE_SOCKET_PATH = '/ai/live';
-const AI_LIVE_MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
-const AI_LIVE_MAX_QUEUED_MESSAGES = 3;
-const AI_LIVE_ALLOWED_HEADERS = new Set([
-  'x-yourwifey-llm-provider',
-  'x-yourwifey-llm-provider-key',
-  'x-yourwifey-openai-byok-key',
-  'x-yourwifey-tts-provider-key',
-  'x-yourwifey-tavily-provider-key',
-]);
 const LIVE_TTS_BRIDGE_FINAL_WAIT_MS = 15000;
 const RUNTIME_CHAT_PROVIDER_CACHE_TTL_MS = 10 * 60 * 1000;
 const RUNTIME_CHAT_PROVIDER_CACHE_MAX = 8;
@@ -234,19 +202,6 @@ function writeCorsPreflight(request: IncomingMessage, response: ServerResponse) 
   response.end();
 }
 
-function rejectWebSocketUpgrade(socket: Duplex, statusCode: number, message: string) {
-  const body = `${message}\n`;
-  socket.write(
-    `HTTP/1.1 ${statusCode} ${message}\r\n` +
-      'Connection: close\r\n' +
-      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
-      'Content-Type: text/plain; charset=utf-8\r\n' +
-      '\r\n' +
-      body,
-    () => socket.destroy(),
-  );
-}
-
 function waitForLiveTtsBridge(done: Promise<void>, onTimeout: () => void) {
   return new Promise<boolean>((resolve) => {
     const timeout = setTimeout(() => {
@@ -266,13 +221,7 @@ function waitForLiveTtsBridge(done: Promise<void>, onTimeout: () => void) {
   });
 }
 
-function createProvider(
-  config: StreamBotConfig,
-  options: {
-    closeWebSocketAfterRequest?: boolean;
-    providerName?: RuntimeLlmProvider;
-  } = {},
-): ChatProvider {
+function createProvider(config: StreamBotConfig): ChatProvider {
   if (!config.providerProxyEnabled) {
     return new MockChatProvider();
   }
@@ -292,54 +241,16 @@ function createProvider(
         }.`,
       );
     }
-    if (
-      config.aiProvider === 'vercel-gateway' ||
-      config.aiProvider === 'openai-responses' ||
-      config.aiProvider === 'openrouter-responses'
-    ) {
-      return new AiSdkGatewayProvider({
-        apiKey: config.aiApiKey,
-        apiBaseUrl: config.aiApiBaseUrl,
-        byokOpenAiApiKey:
-          config.aiProvider === 'vercel-gateway' || config.aiProvider === 'openrouter-responses'
-            ? config.aiGatewayByokOpenAiApiKey
-            : undefined,
-        model: config.aiModel,
-        maxTokens: 180,
-        provider: config.aiProvider,
-        tavilyTools: config.tavilyApiKey
-          ? {
-              apiKey: config.tavilyApiKey,
-              searchDepth: config.tavilySearchDepth,
-              maxResults: config.tavilyMaxResults,
-              crawlLimit: config.tavilyCrawlLimit,
-              timeoutMs: config.tavilyTimeoutMs,
-            }
-          : undefined,
-        temperature: 0.7,
-      });
-    }
-    const isOpenRouter = config.aiProvider === 'openrouter-responses';
-    return new OpenAiResponsesProvider({
-      apiBaseUrl: config.aiApiBaseUrl,
+    return new AiSdkGatewayProvider({
       apiKey: config.aiApiKey,
-      closeWebSocketAfterRequest: options.closeWebSocketAfterRequest,
+      apiBaseUrl: config.aiApiBaseUrl,
+      byokOpenAiApiKey:
+        config.aiProvider === 'vercel-gateway' || config.aiProvider === 'openrouter-responses'
+          ? config.aiGatewayByokOpenAiApiKey
+          : undefined,
       model: config.aiModel,
-      maxOutputTokens: 180,
-      temperature: 0.7,
-      stateMode: isOpenRouter ? 'stateless' : config.openAiStateMode,
-      conversationId: isOpenRouter ? undefined : config.openAiConversationId || undefined,
-      promptCacheKey: config.openAiPromptCacheKey || undefined,
-      promptCacheRetention: config.openAiPromptCacheRetention || undefined,
-      providerName:
-        options.providerName === 'openrouter-responses' || options.providerName === 'openai-responses'
-          ? options.providerName
-          : isOpenRouter
-            ? 'openrouter-responses'
-            : undefined,
-      reasoningEffort: config.openAiReasoningEffort,
-      safetyIdentifier: config.openAiSafetyIdentifier || undefined,
-      store: isOpenRouter ? false : config.openAiStore,
+      maxTokens: 180,
+      provider: config.aiProvider,
       tavilyTools: config.tavilyApiKey
         ? {
             apiKey: config.tavilyApiKey,
@@ -349,8 +260,7 @@ function createProvider(
             timeoutMs: config.tavilyTimeoutMs,
           }
         : undefined,
-      useWebSocket: false,
-      webSocketUrl: isOpenRouter ? undefined : config.openAiWebSocketUrl || undefined,
+      temperature: 0.7,
     });
   }
 
@@ -401,7 +311,6 @@ function buildRuntimeChatProviderCacheKey(
     runtimeConfig.openAiStore ? 'store' : 'nostore',
     runtimeConfig.openAiPromptCacheKey,
     runtimeConfig.openAiPromptCacheRetention,
-    runtimeConfig.openAiWebSocketUrl,
     runtimeConfig.openAiReasoningEffort,
     runtimeConfig.openAiSafetyIdentifier,
   ].join('|');
@@ -666,28 +575,6 @@ function getHeaderSecret(request: IncomingMessage, name: string) {
   return getHeaderValue(request, name)?.trim() ?? '';
 }
 
-function createAiLiveRuntimeRequest(
-  request: IncomingMessage,
-  headers: AiLiveClientMessage['headers'],
-) {
-  const mergedHeaders: IncomingMessage['headers'] = { ...request.headers };
-  for (const [rawName, rawValue] of Object.entries(headers ?? {})) {
-    const name = rawName.toLowerCase();
-    if (!AI_LIVE_ALLOWED_HEADERS.has(name) || typeof rawValue !== 'string') {
-      continue;
-    }
-    const value = rawValue.trim();
-    if (value) {
-      mergedHeaders[name] = value;
-    }
-  }
-
-  return {
-    ...request,
-    headers: mergedHeaders,
-  } as IncomingMessage;
-}
-
 function stripAuthScheme(value: string, scheme: 'bearer' | 'basic') {
   return value.replace(AUTH_SCHEME_PATTERNS[scheme], '').trim();
 }
@@ -777,7 +664,6 @@ function getRuntimeChatProvider(
     openAiStore: appOwnedState ? false : baseConfig.openAiStore,
     openAiPromptCacheKey: baseConfig.openAiPromptCacheKey,
     openAiPromptCacheRetention: baseConfig.openAiPromptCacheRetention,
-    openAiWebSocketUrl: appOwnedState ? '' : baseConfig.openAiWebSocketUrl,
     providerProxyEnabled: true,
   };
   if (providerName === 'openai-responses') {
@@ -789,10 +675,7 @@ function getRuntimeChatProvider(
       cached.lastUsedAt = now;
       return cached.provider;
     }
-    const runtimeProvider = createProvider(runtimeConfig, {
-      closeWebSocketAfterRequest: false,
-      providerName,
-    });
+    const runtimeProvider = createProvider(runtimeConfig);
     runtimeChatProviderCache.set(cacheKey, {
       key: cacheKey,
       lastUsedAt: now,
@@ -802,10 +685,7 @@ function getRuntimeChatProvider(
     return runtimeProvider;
   }
 
-  const runtimeProvider = createProvider(runtimeConfig, {
-    closeWebSocketAfterRequest: true,
-    providerName,
-  });
+  const runtimeProvider = createProvider(runtimeConfig);
   runtimeProvider.setModel?.(runtimeConfig.aiModel);
   return runtimeProvider;
 }
@@ -2276,189 +2156,6 @@ const httpServer = createServer(async (request, response) => {
   writeJson(response, 404, { ok: false, error: 'Not found.' });
 });
 
-function rawDataToUtf8(raw: RawData) {
-  if (Array.isArray(raw)) {
-    return Buffer.concat(raw).toString('utf8');
-  }
-  if (raw instanceof ArrayBuffer) {
-    return Buffer.from(raw).toString('utf8');
-  }
-  return raw.toString('utf8');
-}
-
-function sendAiLiveEvent(socket: WebSocket, event: AiLiveServerEvent) {
-  if (socket.readyState !== WebSocket.OPEN) {
-    return false;
-  }
-  if (socket.bufferedAmount > AI_LIVE_MAX_BUFFERED_BYTES) {
-    socket.close(1013, 'AI live socket backpressure limit exceeded.');
-    return false;
-  }
-  socket.send(JSON.stringify(event), (error) => {
-    if (error && socket.readyState === WebSocket.OPEN) {
-      socket.close(1011, 'AI live socket send failed.');
-    }
-  });
-  return true;
-}
-
-async function handleAiLiveMessage(
-  socket: WebSocket,
-  request: IncomingMessage,
-  raw: RawData,
-  signal?: AbortSignal,
-) {
-  let message: AiLiveClientMessage;
-  try {
-    message = JSON.parse(rawDataToUtf8(raw)) as AiLiveClientMessage;
-  } catch {
-    sendAiLiveEvent(socket, {
-      type: 'error',
-      ok: false,
-      requestId: 'unknown',
-      error: 'Invalid AI live websocket JSON.',
-    });
-    return;
-  }
-
-  const requestId =
-    typeof message.requestId === 'string' && message.requestId.trim()
-      ? message.requestId.trim().slice(0, 120)
-      : `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-  if (signal?.aborted) {
-    sendAiLiveEvent(socket, {
-      type: 'error',
-      ok: false,
-      requestId,
-      error: 'AI live websocket request aborted.',
-    });
-    return;
-  }
-
-  if (message.type === 'ping') {
-    sendAiLiveEvent(socket, { type: 'done', ok: true, requestId, text: '', meta: null });
-    return;
-  }
-
-  if (message.type !== 'chat.create' || !message.body || typeof message.body !== 'object') {
-    sendAiLiveEvent(socket, {
-      type: 'error',
-      ok: false,
-      requestId,
-      error: 'Expected chat.create with a body.',
-    });
-    return;
-  }
-
-  try {
-    const runtimeRequest = createAiLiveRuntimeRequest(request, message.headers);
-    const providerResponse = await runAiChatRequest({
-      allowServerProviderProxy: config.providerProxyEnabled,
-      body: { ...message.body, stream: true },
-      request: runtimeRequest,
-      signal,
-      streamEvent: (event) => {
-        sendAiLiveEvent(socket, { ...event, requestId });
-      },
-    });
-    sendAiLiveEvent(socket, {
-      type: 'done',
-      ok: true,
-      requestId,
-      text: providerResponse.text,
-      meta: providerResponse.meta ?? null,
-    });
-  } catch (error) {
-    sendAiLiveEvent(socket, {
-      type: 'error',
-      ok: false,
-      requestId,
-      error: error instanceof Error ? error.message : 'AI live websocket request failed.',
-    });
-  }
-}
-
-const aiLiveSocket = new WebSocketServer({
-  noServer: true,
-  perMessageDeflate: false,
-});
-
-httpServer.on('upgrade', (request, socket, head) => {
-  const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
-  if (getRuntimeApiPath(url.pathname) !== AI_LIVE_SOCKET_PATH) {
-    return;
-  }
-  if (!isAllowedCorsOrigin(request)) {
-    rejectWebSocketUpgrade(socket, 403, 'Forbidden');
-    return;
-  }
-  aiLiveSocket.handleUpgrade(request, socket, head, (webSocket) => {
-    aiLiveSocket.emit('connection', webSocket, request);
-  });
-});
-
-aiLiveSocket.on('connection', (socket, request) => {
-  let queue = Promise.resolve();
-  let queuedMessages = 0;
-  const activeControllers = new Map<string, AbortController>();
-  const onMessage = (raw: RawData) => {
-    if (socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-    let message: AiLiveClientMessage | null = null;
-    try {
-      message = JSON.parse(rawDataToUtf8(raw)) as AiLiveClientMessage;
-    } catch {
-      // Let the queued request handler emit the normal protocol error.
-    }
-    const requestId =
-      typeof message?.requestId === 'string' && message.requestId.trim()
-        ? message.requestId.trim().slice(0, 120)
-        : `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    if (message?.type === 'cancel') {
-      activeControllers.get(requestId)?.abort();
-      return;
-    }
-    if (queuedMessages >= AI_LIVE_MAX_QUEUED_MESSAGES) {
-      for (const controller of activeControllers.values()) {
-        controller.abort();
-      }
-      socket.close(1013, 'AI live websocket queue limit exceeded.');
-      return;
-    }
-    const controller = new AbortController();
-    activeControllers.set(requestId, controller);
-    queuedMessages += 1;
-    queue = queue.then(
-      () =>
-        handleAiLiveMessage(socket, request, raw, controller.signal).finally(() => {
-          activeControllers.delete(requestId);
-          queuedMessages = Math.max(0, queuedMessages - 1);
-        }),
-      () =>
-        handleAiLiveMessage(socket, request, raw, controller.signal).finally(() => {
-          activeControllers.delete(requestId);
-          queuedMessages = Math.max(0, queuedMessages - 1);
-        }),
-    );
-    void queue.catch(() => {});
-  };
-  const cleanup = () => {
-    for (const controller of activeControllers.values()) {
-      controller.abort();
-    }
-    activeControllers.clear();
-    socket.off('message', onMessage);
-    socket.off('close', cleanup);
-    socket.off('error', cleanup);
-  };
-
-  socket.on('message', onMessage);
-  socket.once('close', cleanup);
-  socket.once('error', cleanup);
-});
-
 const overlaySocket = new OverlaySocket(httpServer, (event: OverlayClientEvent) => {
   if (event.type === 'manual:prompt') {
     const text = event.payload?.text?.trim();
@@ -2546,7 +2243,6 @@ export async function shutdownStreamBot() {
   disposeChatProvider(provider);
   await closeLadybugMemoryService();
   chatSource.stop();
-  aiLiveSocket.close();
   overlaySocket.close();
   await new Promise<void>((resolve) => {
     if (!httpServer.listening) {
@@ -2571,7 +2267,6 @@ function formatHostForUrl(host: string) {
 httpServer.listen(config.botPort, config.botHost, () => {
   const urlHost = formatHostForUrl(config.botHost);
   console.log(`Web Waifu 4 stream bot listening on http://${urlHost}:${config.botPort}`);
-  console.log(`AI Live WebSocket path: ws://${urlHost}:${config.botPort}${AI_LIVE_SOCKET_PATH}`);
   console.log(`Overlay WebSocket path: ws://${urlHost}:${config.botPort}/ws`);
   console.log(`Twitch chat mode: ${serverTwitchMode} (#${chatSource.channel})`);
   chatSource.start();

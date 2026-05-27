@@ -440,7 +440,7 @@ async function runStructuredTtsSmoke({
     stateKey: 'local:smoke:structured-tts',
     stateScope: 'chat',
     stream: true,
-    transportMode: 'websocket',
+    transportMode: 'http-stream',
     ttsBridge: {
       chunkLength: 160,
       chunkingStrategy: 'sentence',
@@ -837,9 +837,6 @@ async function main() {
   await assertBackendHealthy(baseUrl);
 
   const results: SmokeResult[] = [];
-  results.push(
-    await runSmokeStep('ai-live-origin-guard', () => runAiLiveOriginGuardSmoke(baseUrl)),
-  );
   results.push(await runSmokeStep('poml-memory-render', () => runPomlMemorySmoke(baseUrl)));
   if (openAiKey) {
     const openAiHeaders = {
@@ -854,18 +851,6 @@ async function main() {
       ),
     );
     results.push(
-      await runSmokeStep('openai-ws-tools', () =>
-        runToolSmoke({
-          baseUrl,
-          headers: openAiHeaders,
-          llmProvider: 'openai-responses',
-          model: openAiModel,
-          name: 'openai-ws-tools',
-          transportMode: 'websocket',
-        }),
-      ),
-    );
-    results.push(
       await runSmokeStep('openai-http-tools', () =>
         runToolSmoke({
           baseUrl,
@@ -877,15 +862,6 @@ async function main() {
         }),
       ),
     );
-    results.push(
-      await runSmokeStep('ai-live-cancel', () =>
-        runAiLiveCancelSmoke({
-          baseUrl,
-          headers: openAiHeaders,
-          model: openAiModel,
-        }),
-      ),
-    );
     if (fishKey) {
       const ttsHeaders = {
         ...openAiHeaders,
@@ -894,26 +870,6 @@ async function main() {
       results.push(
         await runSmokeStep('structured-tts', () =>
           runStructuredTtsSmoke({
-            backup,
-            baseUrl,
-            headers: ttsHeaders,
-            model: openAiModel,
-          }),
-        ),
-      );
-      results.push(
-        await runSmokeStep('ai-live-structured-tts', () =>
-          runLiveWsStructuredTtsSmoke({
-            backup,
-            baseUrl,
-            headers: ttsHeaders,
-            model: openAiModel,
-          }),
-        ),
-      );
-      results.push(
-        await runSmokeStep('ai-live-tools-tts', () =>
-          runLiveWsToolTtsSmoke({
             backup,
             baseUrl,
             headers: ttsHeaders,

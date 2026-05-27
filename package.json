@@ -36,7 +36,6 @@
     "smoke:desktop-relaunch": "node scripts/smoke-desktop-relaunch.mjs",
     "probe:ladybug-memory": "tsx scripts/probe-ladybug-memory.ts",
     "verify:release": "node scripts/verify-release.mjs",
-    "test:structured-ws": "tsx scripts/test-openai-ws-structured-reply.ts",
     "sync:silly-tavern": "node scripts/sync-silly-tavern.mjs",
     "test": "vitest",
     "deploy": "npm run build",
