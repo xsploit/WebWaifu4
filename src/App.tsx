@@ -54,11 +54,14 @@ import {
 import {
   deleteLadybugRelationshipMemory,
   loadLadybugGrilloContextPacket,
+  loadLadybugGrilloRuntimeStatus,
   loadLadybugMemoryGraph,
   loadLadybugMemoryStatus,
   loadLadybugRelationshipMemories,
+  runLadybugGrilloTick,
   saveLadybugGrilloTurnPair,
   saveLadybugRelationshipMemories,
+  type LadybugGrilloRuntimeStatus,
   type LadybugGrilloTurnPairInput,
   type LadybugMemoryGraphSummary,
   type LadybugMemoryStatus,
@@ -1812,6 +1815,9 @@ function App() {
   const [memoryAgentBusy, setMemoryAgentBusy] = useState(false);
   const [memoryAgentStatus, setMemoryAgentStatus] = useState('Memory worker idle.');
   const [memoryBackendStatus, setMemoryBackendStatus] = useState<LadybugMemoryStatus | null>(null);
+  const [grilloRuntimeStatus, setGrilloRuntimeStatus] =
+    useState<LadybugGrilloRuntimeStatus | null>(null);
+  const [backendGrilloTickBusy, setBackendGrilloTickBusy] = useState(false);
   const [memoryGraphSummary, setMemoryGraphSummary] = useState<LadybugMemoryGraphSummary | null>(
     null,
   );
@@ -1986,15 +1992,21 @@ function App() {
   }, []);
 
   const refreshMemoryBackendStatus = useCallback(() => {
-    return Promise.all([loadLadybugMemoryStatus(), loadLadybugMemoryGraph()])
-      .then(([status, graph]) => {
+    return Promise.all([
+      loadLadybugMemoryStatus(),
+      loadLadybugMemoryGraph(),
+      loadLadybugGrilloRuntimeStatus(),
+    ])
+      .then(([status, graph, runtime]) => {
         setMemoryBackendStatus(status?.ok ? status : null);
         setMemoryGraphSummary(graph);
+        setGrilloRuntimeStatus(runtime);
       })
       .catch((error) => {
         console.warn('[App] Failed to refresh Ladybug memory backend status', error);
         setMemoryBackendStatus(null);
         setMemoryGraphSummary(null);
+        setGrilloRuntimeStatus(null);
       });
   }, []);
 
@@ -4465,6 +4477,35 @@ function App() {
     );
   }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
+  const handleRunBackendGrilloTick = useCallback(() => {
+    if (backendGrilloTickBusy) {
+      return;
+    }
+    const stateKey = activeRelationshipStateKeyRef.current;
+    setBackendGrilloTickBusy(true);
+    setMemoryAgentStatus('Running backend GRILLO tick.');
+    void runLadybugGrilloTick({ reason: 'manual_ui', scopeKey: stateKey })
+      .then((result) => {
+        if (!result) {
+          setMemoryAgentStatus('Backend GRILLO tick did not return a result.');
+          return;
+        }
+        setMemoryAgentStatus(
+          result.noOpReason
+            ? `Backend GRILLO tick no-op: ${result.noOpReason}.`
+            : `Backend GRILLO tick wrote ${result.writes} update${result.writes === 1 ? '' : 's'}.`,
+        );
+      })
+      .catch((error) => {
+        console.warn('[App] Backend GRILLO tick failed', error);
+        setMemoryAgentStatus('Backend GRILLO tick failed.');
+      })
+      .finally(() => {
+        setBackendGrilloTickBusy(false);
+        void refreshMemoryBackendStatus();
+      });
+  }, [backendGrilloTickBusy, refreshMemoryBackendStatus]);
+
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
     if (!metadata) {
       return;
@@ -6316,6 +6357,7 @@ function App() {
                 twitchKnownUsersRef.current.clear();
                 appendSystemMessage('Twitch AI queue reset.');
               }}
+              onRunBackendGrilloTick={handleRunBackendGrilloTick}
               onRunMemoryAgent={handleRunMemoryAgentNow}
               onSavePersona={handleSavePersona}
               onSaveVoiceLabVoice={handleSaveVoiceLabVoice}
@@ -6340,7 +6382,9 @@ function App() {
               personas={personas}
               savedVrmModels={savedVrmModels}
               savedVrmStatus={savedVrmStatus}
+              backendGrilloTickBusy={backendGrilloTickBusy}
               grilloMemoryState={grilloMemoryState}
+              grilloRuntimeStatus={grilloRuntimeStatus}
               relationshipMemory={relationshipMemory}
               memoryAgentBusy={memoryAgentBusy}
               memoryAgentStatus={memoryAgentStatus}

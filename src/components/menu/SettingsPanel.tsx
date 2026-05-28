@@ -33,6 +33,7 @@ import type {
 import { DEFAULT_PERSONA } from '../../lib/chat/defaults';
 import type { GrilloMemoryState } from '../../lib/chat/grillo-memory';
 import type {
+  LadybugGrilloRuntimeStatus,
   LadybugMemoryGraphSummary,
   LadybugMemoryStatus,
 } from '../../lib/chat/ladybug-memory-client';
@@ -92,6 +93,7 @@ type SettingsPanelProps = {
   onDeleteVoiceLabVoice: (voiceId: string) => void;
   onResetContext: () => void;
   onResetTwitchState: () => void;
+  onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
   onSavePersona: (draft: PersonaDraft, personaId?: string) => void;
   onSaveVoiceLabVoice: (voice: VoiceLabVoice) => void;
@@ -108,7 +110,9 @@ type SettingsPanelProps = {
   personas: PersonaProfile[];
   savedVrmModels: SavedVrmModelSummary[];
   savedVrmStatus: string;
+  backendGrilloTickBusy: boolean;
   grilloMemoryState: GrilloMemoryState;
+  grilloRuntimeStatus: LadybugGrilloRuntimeStatus | null;
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
   memoryAgentPendingCounts: Record<string, number>;
@@ -204,6 +208,7 @@ export function SettingsPanel({
   onDeleteVoiceLabVoice,
   onResetContext,
   onResetTwitchState,
+  onRunBackendGrilloTick,
   onRunMemoryAgent,
   onSavePersona,
   onSaveVoiceLabVoice,
@@ -220,7 +225,9 @@ export function SettingsPanel({
   personas,
   savedVrmModels,
   savedVrmStatus,
+  backendGrilloTickBusy,
   grilloMemoryState,
+  grilloRuntimeStatus,
   relationshipMemory,
   memoryAgentBusy,
   memoryAgentPendingCounts,
@@ -341,6 +348,7 @@ export function SettingsPanel({
       <ContextTab
         aiSettings={aiSettings}
         availableModels={availableModels}
+        backendGrilloTickBusy={backendGrilloTickBusy}
         chatDraftLength={chatDraftLength}
         messageCount={messageCount}
         onClearChat={onClearChat}
@@ -348,8 +356,10 @@ export function SettingsPanel({
         onClearMemory={onClearMemory}
         onRefreshModels={onRefreshModels}
         onResetContext={onResetContext}
+        onRunBackendGrilloTick={onRunBackendGrilloTick}
         onRunMemoryAgent={onRunMemoryAgent}
         grilloMemoryState={grilloMemoryState}
+        grilloRuntimeStatus={grilloRuntimeStatus}
         relationshipMemory={relationshipMemory}
         memoryAgentBusy={memoryAgentBusy}
         memoryAgentPendingCounts={memoryAgentPendingCounts}

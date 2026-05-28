@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { DEFAULT_OPENROUTER_EMBEDDING_MODEL } from '../../../lib/chat/defaults';
 import type { GrilloMemoryState } from '../../../lib/chat/grillo-memory';
 import type {
+  LadybugGrilloRuntimeStatus,
   LadybugMemoryGraphSummary,
   LadybugMemoryStatus,
 } from '../../../lib/chat/ladybug-memory-client';
@@ -16,6 +17,7 @@ import type { AiSettings, RelationshipMemory } from '../../../lib/chat/types';
 type ContextTabProps = {
   aiSettings: AiSettings;
   availableModels: string[];
+  backendGrilloTickBusy: boolean;
   chatDraftLength: number;
   messageCount: number;
   onClearChat: () => void;
@@ -23,7 +25,9 @@ type ContextTabProps = {
   onClearMemory: () => void;
   onRefreshModels: () => void;
   onResetContext: () => void;
+  onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
+  grilloRuntimeStatus: LadybugGrilloRuntimeStatus | null;
   grilloMemoryState: GrilloMemoryState;
   relationshipMemory: RelationshipMemory;
   memoryAgentBusy: boolean;
@@ -42,6 +46,7 @@ type ContextTabProps = {
 export function ContextTab({
   aiSettings,
   availableModels,
+  backendGrilloTickBusy,
   chatDraftLength,
   messageCount,
   onClearChat,
@@ -49,7 +54,9 @@ export function ContextTab({
   onClearMemory,
   onRefreshModels,
   onResetContext,
+  onRunBackendGrilloTick,
   onRunMemoryAgent,
+  grilloRuntimeStatus,
   grilloMemoryState,
   relationshipMemory,
   memoryAgentBusy,
@@ -92,6 +99,14 @@ export function ContextTab({
   const lastEmbeddingDebugAt =
     memoryEmbeddingDebug && memoryEmbeddingDebug.updatedAt > 0
       ? new Date(memoryEmbeddingDebug.updatedAt).toLocaleTimeString()
+      : '';
+  const grilloRuntimeStartedAt =
+    grilloRuntimeStatus && grilloRuntimeStatus.startedAt > 0
+      ? new Date(grilloRuntimeStatus.startedAt).toLocaleTimeString()
+      : '';
+  const grilloRuntimeLastTickAt =
+    grilloRuntimeStatus && grilloRuntimeStatus.lastTickAt > 0
+      ? new Date(grilloRuntimeStatus.lastTickAt).toLocaleTimeString()
       : '';
   const selectedMemoryModel = aiSettings.memoryAgentModel.trim();
   const memoryModelOptions = filterSafeProviderModels(
@@ -195,8 +210,39 @@ export function ContextTab({
           >
             {memoryAgentBusy ? 'Running...' : 'Run Memory Worker'}
           </button>
+          <button
+            className="btn-tech secondary"
+            disabled={backendGrilloTickBusy}
+            onClick={onRunBackendGrilloTick}
+            type="button"
+          >
+            {backendGrilloTickBusy ? 'Ticking...' : 'Run Backend GRILLO Tick'}
+          </button>
         </div>
         <div className="status-copy">{memoryAgentStatus}</div>
+        {grilloRuntimeStatus ? (
+          <div className="memory-entry">
+            <div className="memory-entry-header">
+              <strong>Backend GRILLO runtime</strong>
+              <span>{grilloRuntimeStatus.running ? 'running' : 'idle'}</span>
+            </div>
+            <p>
+              {grilloRuntimeStatus.started ? 'started' : 'stopped'} /{' '}
+              {grilloRuntimeStatus.enabled ? 'auto enabled' : 'manual only'} / interval{' '}
+              {Math.round(grilloRuntimeStatus.intervalMs / 1000)}s
+            </p>
+            <div className="status-copy">
+              Started: {grilloRuntimeStartedAt || 'not yet'} / Last tick:{' '}
+              {grilloRuntimeLastTickAt || 'not yet'}
+            </div>
+            <div className="status-copy">
+              Last result:{' '}
+              {grilloRuntimeStatus.lastNoOpReason
+                ? grilloRuntimeStatus.lastNoOpReason
+                : `${grilloRuntimeStatus.lastTickDurationMs}ms`}
+            </div>
+          </div>
+        ) : null}
         <div className="memory-kv-grid">
           <div className="status-copy">
             Pending current scope: <strong>{currentPendingWorkerTurns}</strong>

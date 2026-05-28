@@ -10,7 +10,20 @@ describe('ContextTab', () => {
       <ContextTab
         aiSettings={createDefaultAiSettings()}
         availableModels={['gpt-5-nano']}
+        backendGrilloTickBusy={false}
         chatDraftLength={0}
+        grilloRuntimeStatus={{
+          enabled: false,
+          intervalMs: 60000,
+          lastNoOpReason: 'worker_tasks_not_wired',
+          lastTickAt: Date.parse('2026-05-25T12:00:06.000Z'),
+          lastTickDurationMs: 0,
+          lastTickId: 'tick-1',
+          lastTickReason: 'manual_ui',
+          running: false,
+          started: true,
+          startedAt: Date.parse('2026-05-25T12:00:00.000Z'),
+        }}
         grilloMemoryState={createDefaultGrilloMemoryState('local:persona:hikari-context')}
         memoryAgentBusy={false}
         memoryAgentPendingCounts={{ 'local:persona:hikari-context': 2 }}
@@ -227,6 +240,7 @@ describe('ContextTab', () => {
         onClearMemory={vi.fn()}
         onRefreshModels={vi.fn()}
         onResetContext={vi.fn()}
+        onRunBackendGrilloTick={vi.fn()}
         onRunMemoryAgent={vi.fn()}
         relationshipMemory={{
           ...createDefaultRelationshipMemory(),
@@ -245,6 +259,9 @@ describe('ContextTab', () => {
     expect(html).toContain('ladybug');
     expect(html).toContain('Database path:');
     expect(html).toContain('C:/tmp/webwaifu4-memory.db');
+    expect(html).toContain('Backend GRILLO runtime');
+    expect(html).toContain('manual only');
+    expect(html).toContain('worker_tasks_not_wired');
     expect(html).toContain('Grillo scopes:');
     expect(html).toContain('Semantic scopes:');
     expect(html).toContain('Turn events:');
@@ -289,7 +306,9 @@ describe('ContextTab', () => {
           memoryAgentModel: 'gpt-5-nano',
         }}
         availableModels={['gpt-5-mini', 'o1-pro-2025-03-19']}
+        backendGrilloTickBusy={false}
         chatDraftLength={0}
+        grilloRuntimeStatus={null}
         grilloMemoryState={createDefaultGrilloMemoryState('local:persona:hikari-context')}
         memoryAgentBusy={false}
         memoryAgentPendingCounts={{}}
@@ -307,6 +326,7 @@ describe('ContextTab', () => {
         onClearMemory={vi.fn()}
         onRefreshModels={vi.fn()}
         onResetContext={vi.fn()}
+        onRunBackendGrilloTick={vi.fn()}
         onRunMemoryAgent={vi.fn()}
         relationshipMemory={createDefaultRelationshipMemory()}
         setAiSettings={vi.fn()}

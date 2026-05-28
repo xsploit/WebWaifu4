@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   canUseLadybugMemoryBackend,
   loadLadybugGrilloContextPacket,
+  loadLadybugGrilloRuntimeStatus,
   loadLadybugMemoryStatus,
+  runLadybugGrilloTick,
   saveLadybugGrilloTurnPair,
 } from './ladybug-memory-client';
 
@@ -175,5 +177,74 @@ describe('Ladybug memory client routing', () => {
     expect(fetchCalls[0]).toBe(
       'http://localhost:5173/api/memory/grillo/context?scopeKey=local%3Apersona%3Ahikari-chan&query=memory&participantKey=local%3Alocal%3Asubsect',
     );
+  });
+
+  it('loads runtime status and posts manual backend GRILLO ticks', async () => {
+    installWindow('', 'http://localhost:5173/editor');
+    const fetchCalls: Array<{ body: string | null; input: string; method?: string }> = [];
+    globalThis.fetch = (async (input, init) => {
+      fetchCalls.push({
+        body: typeof init?.body === 'string' ? init.body : null,
+        input: String(input),
+        method: init?.method,
+      });
+      if (String(input).endsWith('/memory/grillo/runtime')) {
+        return Response.json({
+          ok: true,
+          runtime: {
+            enabled: false,
+            intervalMs: 60000,
+            lastNoOpReason: 'disabled',
+            lastTickAt: 0,
+            lastTickDurationMs: 0,
+            lastTickId: '',
+            lastTickReason: '',
+            running: false,
+            started: true,
+            startedAt: 1770000000000,
+          },
+        });
+      }
+      return Response.json({
+        ok: true,
+        result: {
+          durationMs: 0,
+          noOpReason: 'worker_tasks_not_wired',
+          ok: true,
+          reason: 'manual_ui',
+          running: false,
+          scopeKey: 'local:persona:hikari-chan',
+          tickId: 'tick-1',
+          writes: 0,
+        },
+      });
+    }) as typeof fetch;
+
+    await expect(loadLadybugGrilloRuntimeStatus()).resolves.toMatchObject({
+      lastNoOpReason: 'disabled',
+      started: true,
+    });
+    await expect(
+      runLadybugGrilloTick({
+        reason: 'manual_ui',
+        scopeKey: 'local:persona:hikari-chan',
+      }),
+    ).resolves.toMatchObject({
+      noOpReason: 'worker_tasks_not_wired',
+      tickId: 'tick-1',
+    });
+
+    expect(fetchCalls[0]).toMatchObject({
+      input: 'http://localhost:5173/api/memory/grillo/runtime',
+      method: undefined,
+    });
+    expect(fetchCalls[1]).toMatchObject({
+      input: 'http://localhost:5173/api/memory/grillo/run/tick',
+      method: 'POST',
+    });
+    expect(JSON.parse(fetchCalls[1]?.body ?? '{}')).toMatchObject({
+      reason: 'manual_ui',
+      scopeKey: 'local:persona:hikari-chan',
+    });
   });
 });

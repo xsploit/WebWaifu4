@@ -139,6 +139,30 @@ export type LadybugGrilloContextPacket = {
   thoughts: string[];
 };
 
+export type LadybugGrilloRuntimeStatus = {
+  enabled: boolean;
+  intervalMs: number;
+  lastNoOpReason: string;
+  lastTickAt: number;
+  lastTickDurationMs: number;
+  lastTickId: string;
+  lastTickReason: string;
+  running: boolean;
+  started: boolean;
+  startedAt: number;
+};
+
+export type LadybugGrilloTickResult = {
+  durationMs: number;
+  noOpReason: string;
+  ok: boolean;
+  reason: string;
+  running: boolean;
+  scopeKey: string;
+  tickId: string;
+  writes: number;
+};
+
 type LadybugResponse<T> = T & {
   backend?: string;
   error?: string;
@@ -207,6 +231,40 @@ export async function loadLadybugGrilloContextPacket(
     `/memory/grillo/context?${params.toString()}`,
   );
   return response?.ok === true ? response.packet : null;
+}
+
+export async function loadLadybugGrilloRuntimeStatus() {
+  const response = await requestLadybugMemory<{ runtime: LadybugGrilloRuntimeStatus }>(
+    '/memory/grillo/runtime',
+  );
+  return response?.ok === true ? response.runtime : null;
+}
+
+export async function updateLadybugGrilloRuntime(options: {
+  enabled: boolean;
+  intervalMs?: number;
+}) {
+  const response = await requestLadybugMemory<{ runtime: LadybugGrilloRuntimeStatus }>(
+    '/memory/grillo/runtime',
+    {
+      body: JSON.stringify(options),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    },
+  );
+  return response?.ok === true ? response.runtime : null;
+}
+
+export async function runLadybugGrilloTick(options: { reason?: string; scopeKey: string }) {
+  const response = await requestLadybugMemory<{ result: LadybugGrilloTickResult }>(
+    '/memory/grillo/run/tick',
+    {
+      body: JSON.stringify(options),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    },
+  );
+  return response?.ok === true ? response.result : null;
 }
 
 export async function loadLadybugSemanticMemory(scopeKey: string) {

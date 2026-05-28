@@ -27,16 +27,11 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 ## Immediate Next Slice
 
-Do this before wiring the real autonomous worker prompt:
+Do this before replacing the old React memory worker:
 
-1. Add backend GRILLO runtime lifecycle:
-   - start with the backend
-   - stop on backend shutdown
-   - expose runtime status
-   - expose a manual tick endpoint
-   - guard against overlapping ticks
-2. Persist worker runtime state in Ladybug.
-3. Record no-op tick activity so the UI/API can explain why nothing happened.
+1. Surface backend GRILLO runtime status in the Memory UI.
+2. Add a manual backend tick button so runtime/tick behavior is inspectable without React owning the worker loop.
+3. Refresh runtime status with the existing memory backend polling path.
 4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 5. Commit only the intended files.
 
@@ -83,6 +78,7 @@ Progress note:
 - 2026-05-28: Added `/memory/grillo/context` for canonical Ladybug GRILLO context packets and threaded that packet into the POML-rendered chat prompt. The Memory UI now shows the exact last injected native packet.
 - 2026-05-28: Added a backend worker-tool foundation for read/search/list, candidate writes, diary writes, memory slot/block writes, profile patches, and archival semantic inserts. Tool telemetry is recorded in GRILLO activity rows, and focused service tests prove tool writes feed the context packet.
 - 2026-05-28: Added backend GRILLO runtime lifecycle, `/memory/grillo/runtime`, `/memory/grillo/run/tick`, Ladybug `memory_worker_state`, shutdown cleanup, no-op tick activity, and overlap guarding.
+- 2026-05-28: Wired backend GRILLO runtime status and manual tick control into the Memory UI, refreshed through the same backend polling path as Ladybug status and graph state.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -183,15 +179,15 @@ Progress note:
 
 - [ ] Rename/rework Memory Worker panel into G.R.I.L.L.O.
 - [ ] Show:
-  - [ ] enabled state
+  - [x] enabled state
   - [ ] current mode
-  - [ ] backend status
+  - [x] backend status
   - [ ] lane provider/model values
-  - [ ] beat interval
+  - [x] beat interval
   - [ ] turn cadence
-  - [ ] last run
+  - [x] last run
   - [ ] last beat type
-  - [ ] last run reason/no-op reason
+  - [x] last run reason/no-op reason
   - [ ] last tool calls
   - [ ] last worker prompt
   - [ ] last worker output
