@@ -118,6 +118,7 @@ Progress note:
 - 2026-05-28: Extended Electron backend warmup and packaged UI smoke coverage to require `/memory/grillo/runtime` in addition to `/health`. The packaged smoke now proves the renderer sees the backend port, backend health responds, GRILLO runtime responds, and the backend port closes after Electron exits.
 - 2026-05-28: Tightened the desktop port-fallback smoke. It now blocks the preferred port, expects Electron to choose the next port, verifies `/health`, `/memory/status`, and `/memory/grillo/runtime`, inspects the renderer bridge over CDP to prove the fallback port reached the frontend, and verifies the fallback backend closes after Electron exits.
 - 2026-05-28: Made Electron backend ownership explicit in the desktop runtime bridge. Packaged smokes now assert `backendOwner=owned`, while dev external-backend mode remains a separate explicit path.
+- 2026-05-28: Hardened backend shutdown by tracking HTTP sockets and draining/destroying remaining keep-alive or streaming connections after GRILLO, provider cache, Twitch source, overlay sockets, and Ladybug shutdown.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -251,7 +252,7 @@ Progress note:
 - [ ] If port is busy:
   - [ ] reuse only if it is our owned compatible backend
   - [x] otherwise choose a new port and pass it to frontend
-- [ ] Ensure app exit shuts down backend, GRILLO timers, TTS bridges, and sockets.
+- [x] Ensure app exit shuts down backend, GRILLO timers, TTS bridges, and sockets.
 - [x] Add packaged app smoke test for backend health and GRILLO status.
 - [x] Compile the EXE after each meaningful implementation slice.
 

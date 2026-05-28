@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Socket } from 'node:net';
 import { AiSdkGatewayProvider } from './ai/AiSdkGatewayProvider.js';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { TAVILY_OPENAI_TOOLS } from './ai/TavilyTools.js';
@@ -1390,6 +1391,7 @@ const serverTwitchMode = config.twitchMock ? 'client-direct' : 'server-irc';
 let mockSource: MockTwitchChatSource | null = null;
 let chatSource: TwitchChatSource;
 let commandRouter: CommandRouter;
+const httpSockets = new Set<Socket>();
 
 const httpServer = createServer(async (request, response) => {
   responseRequestMap.set(response, request);
@@ -2393,6 +2395,13 @@ const httpServer = createServer(async (request, response) => {
   writeJson(response, 404, { ok: false, error: 'Not found.' });
 });
 
+httpServer.on('connection', (socket) => {
+  httpSockets.add(socket);
+  socket.once('close', () => {
+    httpSockets.delete(socket);
+  });
+});
+
 const overlaySocket = new OverlaySocket(httpServer, (event: OverlayClientEvent) => {
   if (event.type === 'manual:prompt') {
     const text = event.payload?.text?.trim();
@@ -2482,6 +2491,20 @@ export async function shutdownStreamBot() {
   await closeLadybugMemoryService();
   chatSource.stop();
   overlaySocket.close();
+  await closeHttpServerAndSockets();
+}
+
+async function closeHttpServerAndSockets() {
+  const forceCloseTimer = setTimeout(() => {
+    for (const socket of httpSockets) {
+      socket.destroy();
+    }
+  }, 1500);
+
+  for (const socket of httpSockets) {
+    socket.end();
+  }
+
   await new Promise<void>((resolve) => {
     if (!httpServer.listening) {
       resolve();
@@ -2489,6 +2512,7 @@ export async function shutdownStreamBot() {
     }
     httpServer.close(() => resolve());
   });
+  clearTimeout(forceCloseTimer);
 }
 
 function shutdownAndExit() {
