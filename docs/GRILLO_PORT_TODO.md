@@ -109,6 +109,7 @@ Progress note:
 - 2026-05-28: Added backend semantic indexing as a GRILLO beat. It embeds completed GRILLO turn pairs through the embedding lane, writes Ladybug semantic records/vectors, records typed indexing traces, and persists indexed turn ids for retry-safe follow-up runs. Focused service, client, and build gates pass.
 - 2026-05-28: Added graph lineage edges from memory blocks/slots back to source candidates and optional relationship participant edges alongside existing persona links. Focused Ladybug graph tests prove the new relations.
 - 2026-05-28: Reworked the Memory Worker operator panel as G.R.I.L.L.O. trace inspection. The graph summary now exposes worker prompt/system prompt and activity prompt/output text, and the UI renders latest worker prompt/output plus graph-backed memory rows.
+- 2026-05-28: Renamed reset controls to explicit `Clear GRILLO Memory` and `Reset Chat Context` actions. The UI now states that chat-context reset keeps durable memory while GRILLO clear removes the current scope's relationship, diary, GRILLO, and semantic recall.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -232,8 +233,8 @@ Progress note:
   - [x] Run Beat
   - [x] Run Consolidation
   - [x] Run Compaction
-  - [ ] Clear GRILLO Memory
-  - [ ] Reset Chat Context
+  - [x] Clear GRILLO Memory
+  - [x] Reset Chat Context
 
 ## Phase 8 - Backend/Electron Lifecycle
 

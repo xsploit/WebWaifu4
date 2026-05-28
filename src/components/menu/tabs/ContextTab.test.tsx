@@ -279,6 +279,9 @@ describe('ContextTab', () => {
     expect(html).toContain('New messages to process for Hikari.');
     expect(html).toContain('Last worker output');
     expect(html).toContain('Reflect on the latest memory turn.');
+    expect(html).toContain('Clear GRILLO Memory');
+    expect(html).toContain('Reset Chat Context');
+    expect(html).toContain('current scope&#x27;s durable relationship');
     expect(html).toContain('Grillo scopes:');
     expect(html).toContain('Semantic scopes:');
     expect(html).toContain('Turn events:');
