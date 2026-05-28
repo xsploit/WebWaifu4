@@ -50,7 +50,7 @@ Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, GRILLO memo
 
 Current slice definition of done:
 
-- [ ] Electron startup has one clear backend owner path.
+- [x] Electron startup has one clear backend owner path.
 - [x] Renderer receives the actual backend URL/port.
 - [x] Busy preferred port path is deterministic and tested.
 - [x] App exit shuts down owned backend resources.
@@ -117,6 +117,7 @@ Progress note:
 - 2026-05-28: Added Local/Stream mode GRILLO intake gating. Twitch is local-only by default, Stream Mode must be enabled before IRC starts, raw Twitch turns only feed durable memory when they are mentions or trusted roles, and batch summaries can still feed GRILLO without storing every low-signal chat line.
 - 2026-05-28: Extended Electron backend warmup and packaged UI smoke coverage to require `/memory/grillo/runtime` in addition to `/health`. The packaged smoke now proves the renderer sees the backend port, backend health responds, GRILLO runtime responds, and the backend port closes after Electron exits.
 - 2026-05-28: Tightened the desktop port-fallback smoke. It now blocks the preferred port, expects Electron to choose the next port, verifies `/health`, `/memory/status`, and `/memory/grillo/runtime`, inspects the renderer bridge over CDP to prove the fallback port reached the frontend, and verifies the fallback backend closes after Electron exits.
+- 2026-05-28: Made Electron backend ownership explicit in the desktop runtime bridge. Packaged smokes now assert `backendOwner=owned`, while dev external-backend mode remains a separate explicit path.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -245,7 +246,7 @@ Progress note:
 
 ## Phase 8 - Backend/Electron Lifecycle
 
-- [ ] Ensure Electron starts exactly one backend.
+- [x] Ensure Electron starts exactly one backend.
 - [x] Ensure frontend receives the backend URL/port correctly.
 - [ ] If port is busy:
   - [ ] reuse only if it is our owned compatible backend

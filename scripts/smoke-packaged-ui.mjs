@@ -295,6 +295,7 @@ try {
       readyState: document.readyState,
       title: document.title,
       isDesktop: Boolean(window.webWaifuDesktop?.isDesktop),
+      backendOwner: window.webWaifuDesktop?.getBackendOwner?.() || window.webWaifuDesktop?.backendOwner || null,
       backendPort: window.webWaifuDesktop?.getBackendPort?.() || window.webWaifuDesktop?.backendPort || null,
       mode: document.documentElement.dataset.webwaifuWindowMode || null,
       bodyText: document.body?.innerText?.slice(0, 2000) || '',
@@ -304,6 +305,10 @@ try {
     })`,
   ).then(JSON.parse);
   observedBackendPort = snapshot.backendPort;
+  const runtime = await evaluateJson(
+    cdp,
+    `window.webWaifuDesktop?.getRuntime?.().then((runtime) => JSON.stringify(runtime))`,
+  ).then(JSON.parse);
 
   const health = await evaluateJson(
     cdp,
@@ -326,6 +331,7 @@ try {
   console.table([
     {
       backendPort: snapshot.backendPort,
+      backendOwner: runtime?.backendOwner || snapshot.backendOwner,
       desktopBridge: snapshot.isDesktop,
       grilloRuntime: Boolean(grilloRuntime.ok),
       health: Boolean(health.ok),
@@ -339,6 +345,9 @@ try {
 
   if (!snapshot.isDesktop) {
     throw new Error('Renderer desktop bridge is missing.');
+  }
+  if (runtime?.backendOwner !== 'owned' || runtime?.backendOwned !== true) {
+    throw new Error(`Packaged renderer reported unexpected backend owner: ${JSON.stringify(runtime)}`);
   }
   if (!health.ok) {
     throw new Error('Renderer could not reach packaged backend health.');

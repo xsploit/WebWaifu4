@@ -244,14 +244,19 @@ async function main() {
     const renderer = await evaluateJson(
       cdp,
       `(async () => JSON.stringify({
+        backendOwner: window.webWaifuDesktop?.getBackendOwner?.() || window.webWaifuDesktop?.backendOwner || null,
         backendPort: window.webWaifuDesktop?.getBackendPort?.() || window.webWaifuDesktop?.backendPort || null,
         desktopBridge: Boolean(window.webWaifuDesktop?.isDesktop),
+        runtime: await window.webWaifuDesktop?.getRuntime?.(),
         health: await fetch('http://127.0.0.1:${expectedPort}/health').then((r) => r.json()).then((j) => j.ok === true),
         grilloRuntime: await fetch('http://127.0.0.1:${expectedPort}/memory/grillo/runtime').then((r) => r.json()).then((j) => j.ok === true)
       }))()`,
     );
     if (String(renderer.backendPort) !== String(expectedPort)) {
       throw new Error(`Renderer backend port ${renderer.backendPort} did not match ${expectedPort}.`);
+    }
+    if (renderer.backendOwner !== 'owned' || renderer.runtime?.backendOwned !== true) {
+      throw new Error(`Renderer backend owner was not packaged-owned: ${JSON.stringify(renderer)}`);
     }
     if (!renderer.desktopBridge || !renderer.health || !renderer.grilloRuntime) {
       throw new Error(`Renderer fallback backend checks failed: ${JSON.stringify(renderer)}`);

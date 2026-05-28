@@ -3,7 +3,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 const params = new URLSearchParams(globalThis.location.search);
 const initialMode = params.get('desktopMode') || 'editor';
 const initialBackendPort = params.get('botPort') || '8797';
+const initialBackendOwner = params.get('backendOwner') || 'owned';
 let currentBackendPort = initialBackendPort;
+let currentBackendOwner = initialBackendOwner;
 
 function applyDocumentFlags(mode = initialMode) {
   const root = document.documentElement;
@@ -20,9 +22,11 @@ if (document.documentElement) {
 globalThis.addEventListener('DOMContentLoaded', () => applyDocumentFlags(initialMode), { once: true });
 
 contextBridge.exposeInMainWorld('webWaifuDesktop', {
+  backendOwner: initialBackendOwner,
   backendPort: initialBackendPort,
   isDesktop: true,
   mode: initialMode,
+  getBackendOwner: () => currentBackendOwner,
   getBackendPort: () => currentBackendPort,
   getRuntime: () => ipcRenderer.invoke('desktop:get-runtime'),
   relaunchWindowMode: (mode) => ipcRenderer.invoke('desktop:relaunch-window-mode', mode),
@@ -34,6 +38,9 @@ contextBridge.exposeInMainWorld('webWaifuDesktop', {
       }
       if (runtime?.backendPort) {
         currentBackendPort = String(runtime.backendPort);
+      }
+      if (runtime?.backendOwner) {
+        currentBackendOwner = String(runtime.backendOwner);
       }
       callback(runtime);
     };

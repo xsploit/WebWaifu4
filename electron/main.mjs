@@ -381,12 +381,10 @@ function scheduleBackendRestartIfNeeded() {
   }
   if (backendEarlyExitCount >= BACKEND_MAX_EARLY_RESTARTS) {
     logDesktop(`backend restart limit reached after ${backendEarlyExitCount} early exits`);
-    mainWindow?.webContents.send('desktop-window-mode-changed', {
-      backendFailed: true,
-      backendPort,
-      clickThrough,
-      mode: windowMode,
-    });
+    mainWindow?.webContents.send(
+      'desktop-window-mode-changed',
+      getDesktopRuntime({ backendFailed: true }),
+    );
     return;
   }
   if (backendRestartTimer) {
@@ -396,11 +394,7 @@ function scheduleBackendRestartIfNeeded() {
     backendRestartTimer = null;
     startBackendIfNeeded()
       .then(() => {
-        mainWindow?.webContents.send('desktop-window-mode-changed', {
-          backendPort,
-          clickThrough,
-          mode: windowMode,
-        });
+        mainWindow?.webContents.send('desktop-window-mode-changed', getDesktopRuntime());
       })
       .catch((error) => {
         logDesktop(`backend restart failed: ${formatError(error)}`);
@@ -469,7 +463,24 @@ function buildRendererUrl(baseUrl) {
   url.searchParams.set('desktop', '1');
   url.searchParams.set('desktopMode', windowMode);
   url.searchParams.set('botPort', backendPort);
+  url.searchParams.set('backendOwner', getBackendOwnerMode());
   return url.toString();
+}
+
+function getBackendOwnerMode() {
+  return externalBackend ? 'external' : 'owned';
+}
+
+function getDesktopRuntime(extra = {}) {
+  return {
+    ...extra,
+    backendOwned: !externalBackend,
+    backendOwner: getBackendOwnerMode(),
+    backendPort,
+    backendUrl: `http://127.0.0.1:${backendPort}`,
+    clickThrough,
+    mode: windowMode,
+  };
 }
 
 async function createWindow() {
@@ -512,11 +523,7 @@ function applyLiveWindowOptions() {
   mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
   mainWindow.setAutoHideMenuBar(transparent);
   mainWindow.setMenuBarVisibility(!transparent);
-  mainWindow.webContents.send('desktop-window-mode-changed', {
-    backendPort,
-    clickThrough,
-    mode: windowMode,
-  });
+  mainWindow.webContents.send('desktop-window-mode-changed', getDesktopRuntime());
 }
 
 function relaunchWithMode(mode) {
@@ -669,16 +676,12 @@ function installMenu() {
   mainWindow?.setMenu(menu);
 }
 
-ipcMain.handle('desktop:get-runtime', () => ({
-  backendPort,
-  clickThrough,
-  mode: windowMode,
-}));
+ipcMain.handle('desktop:get-runtime', () => getDesktopRuntime());
 
 ipcMain.handle('desktop:set-click-through', (_event, enabled) => {
   clickThrough = Boolean(enabled);
   applyLiveWindowOptions();
-  return { backendPort, clickThrough, mode: windowMode };
+  return getDesktopRuntime();
 });
 
 ipcMain.handle('desktop:relaunch-window-mode', (_event, mode) => {
