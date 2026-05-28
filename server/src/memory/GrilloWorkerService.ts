@@ -121,6 +121,7 @@ type GrilloWorkerTickTask = (input: {
   scopeKey: string;
 }) => Promise<{
   noOpReason?: string;
+  statePatch?: Record<string, unknown>;
   writes?: number;
 }>;
 
@@ -144,10 +145,7 @@ export class GrilloWorkerService {
     private readonly memory: LadybugMemoryService,
     private readonly nowMs: () => number = () => Date.now(),
     private readonly idFactory: () => string = () => randomUUID(),
-    private readonly tickTask: GrilloWorkerTickTask = async () => ({
-      noOpReason: 'worker_tasks_not_wired',
-      writes: 0,
-    }),
+    private readonly tickTask?: GrilloWorkerTickTask,
   ) {}
 
   start(options: GrilloWorkerRuntimeOptions = {}) {
@@ -461,7 +459,9 @@ export class GrilloWorkerService {
     const reason = normalizeText(input.reason) || 'manual';
     const startedAt = this.nowMs();
     const tickId = this.idFactory();
-    const taskResult = await this.tickTask({ reason, scopeKey });
+    const taskResult = await (this.tickTask
+      ? this.tickTask({ reason, scopeKey })
+      : this.runExtractionTick({ reason, scopeKey }));
     const writes = clampInteger(taskResult.writes, 0, 100_000, 0);
     const noOpReason = writes > 0 ? '' : normalizeText(taskResult.noOpReason) || 'no_writes';
     const durationMs = Math.max(0, this.nowMs() - startedAt);
@@ -476,6 +476,7 @@ export class GrilloWorkerService {
     };
     await this.memory.setGrilloSingleton('memory_worker_state', {
       ...this.runtime,
+      ...(asRecord(taskResult.statePatch)),
       lastTickId: tickId,
       scopeKey,
       updatedAt: this.nowMs(),
@@ -501,6 +502,113 @@ export class GrilloWorkerService {
       running: false,
       scopeKey,
       tickId,
+      writes,
+    };
+  }
+
+  private async runExtractionTick(input: {
+    reason: string;
+    scopeKey: string;
+  }): Promise<{ noOpReason?: string; statePatch?: Record<string, unknown>; writes: number }> {
+    const previousState = asRecord(await this.memory.getGrilloSingleton('memory_worker_state'));
+    const processedTurnIds = new Set(readStringArray(previousState['processedTurnIds']));
+    const turns = (await this.memory.readGrilloRecords<Record<string, unknown>>('turn_events'))
+      .filter((record) => recordScopeKey(record) === input.scopeKey)
+      .sort((left, right) => recordTimestamp(left) - recordTimestamp(right));
+    if (turns.length === 0) {
+      return {
+        noOpReason: 'no_turns',
+        statePatch: { processedTurnIds: [] },
+        writes: 0,
+      };
+    }
+
+    const pairs = buildUnprocessedTurnPairs(turns, processedTurnIds).slice(0, 3);
+    if (pairs.length === 0) {
+      return {
+        noOpReason: 'no_new_turn_pairs',
+        statePatch: { processedTurnIds: [...processedTurnIds].slice(-2000) },
+        writes: 0,
+      };
+    }
+
+    const traceId = this.idFactory();
+    await this.memory.appendGrilloRecord('worker_context_traces', {
+      beat_type: 'extraction',
+      created_at: this.nowMs(),
+      model: 'native-extraction',
+      prompt: pairs.map(formatExtractionPairForTrace).join('\n\n'),
+      provider: 'backend',
+      scope_key: input.scopeKey,
+      system_prompt: 'Backend GRILLO extraction processes completed user/assistant turn pairs into candidate, diary, and slot memory writes.',
+      task_type: 'extraction',
+      trace_id: traceId,
+      user_id: input.scopeKey,
+    });
+
+    let writes = 0;
+    for (const pair of pairs) {
+      const participantKey = recordParticipantKey(pair.user) || defaultParticipantKey(input.scopeKey);
+      const userText = normalizeText(pair.user['content'] ?? pair.user['text']);
+      const assistantText = normalizeText(pair.assistant['content'] ?? pair.assistant['text']);
+      const author = normalizeText(pair.user['authorName'] ?? pair.user['author_name']) || 'User';
+      const summary = compactText(`${author} discussed: ${userText}`, 180);
+      const content = compactText(
+        `User: ${userText}\nAssistant: ${assistantText}`,
+        900,
+      );
+      const sourceTurnIds = [recordTurnId(pair.user), recordTurnId(pair.assistant)].filter(Boolean);
+      const candidate = await this.runWorkerTool({
+        args: {
+          confidence: 0.62,
+          content,
+          source_turn_ids: sourceTurnIds,
+          summary,
+          tags: ['extraction', inferSource(input.scopeKey)],
+          type: 'thread',
+        },
+        name: 'core.worker_candidate_write',
+        participantKey,
+        scopeKey: input.scopeKey,
+      });
+      const candidateId = normalizeText(asRecord(candidate.result)['candidate_id']);
+      await this.runWorkerTool({
+        args: {
+          beat_type: 'extraction',
+          personal_thought: compactText(`I should remember this recent exchange with ${author}: ${userText}`, 220),
+          source_turn_ids: sourceTurnIds,
+          summary: compactText(`Processed a recent exchange with ${author}.`, 160),
+          tags: ['extraction'],
+        },
+        name: 'core.worker_diary_write',
+        participantKey,
+        scopeKey: input.scopeKey,
+      });
+      await this.runWorkerTool({
+        args: {
+          block_name: 'open_threads',
+          items: [summary],
+          operation: 'merge',
+          reason: 'backend extraction tick',
+          source_candidate_ids: candidateId ? [candidateId] : [],
+        },
+        name: 'core.worker_memory_write',
+        participantKey,
+        scopeKey: input.scopeKey,
+      });
+      writes += 3;
+      for (const turnId of sourceTurnIds) {
+        processedTurnIds.add(turnId);
+      }
+    }
+
+    return {
+      statePatch: {
+        lastExtractionAt: this.nowMs(),
+        lastExtractionTurnCount: pairs.length,
+        lastExtractionTraceId: traceId,
+        processedTurnIds: [...processedTurnIds].slice(-2000),
+      },
       writes,
     };
   }
@@ -1005,6 +1113,14 @@ function recordParticipantKey(record: Record<string, unknown>) {
   return normalizeText(record['participantKey'] ?? record['participant_key']);
 }
 
+function recordTurnId(record: Record<string, unknown>) {
+  return normalizeText(record['turnId'] ?? record['turn_id'] ?? record['id']);
+}
+
+function recordRole(record: Record<string, unknown>) {
+  return normalizeText(record['role']).toLowerCase();
+}
+
 function workerParticipantMatches(record: Record<string, unknown>, participantKey: string) {
   const recordParticipant = recordParticipantKey(record);
   return !recordParticipant || !participantKey || recordParticipant === participantKey;
@@ -1092,6 +1208,51 @@ function normalizeSlotOperation(value: unknown): LadybugMemorySlotPatchRecord['o
     return normalized;
   }
   return 'merge';
+}
+
+function buildUnprocessedTurnPairs(
+  turns: Array<Record<string, unknown>>,
+  processedTurnIds: Set<string>,
+) {
+  const pairs: Array<{ assistant: Record<string, unknown>; user: Record<string, unknown> }> = [];
+  for (let index = 0; index < turns.length; index += 1) {
+    const user = turns[index];
+    if (!user) {
+      continue;
+    }
+    const userTurnId = recordTurnId(user);
+    if (recordRole(user) !== 'user' || !userTurnId || processedTurnIds.has(userTurnId)) {
+      continue;
+    }
+    const assistant = turns
+      .slice(index + 1)
+      .find((candidate) => recordRole(candidate) === 'assistant' && !processedTurnIds.has(recordTurnId(candidate)));
+    if (!assistant) {
+      continue;
+    }
+    pairs.push({ assistant, user });
+  }
+  return pairs;
+}
+
+function formatExtractionPairForTrace(pair: {
+  assistant: Record<string, unknown>;
+  user: Record<string, unknown>;
+}) {
+  const author = normalizeText(pair.user['authorName'] ?? pair.user['author_name']) || 'User';
+  const assistant = normalizeText(pair.assistant['authorName'] ?? pair.assistant['author_name']) || 'Assistant';
+  return [
+    `${author}: ${compactText(normalizeText(pair.user['content'] ?? pair.user['text']), 600)}`,
+    `${assistant}: ${compactText(normalizeText(pair.assistant['content'] ?? pair.assistant['text']), 600)}`,
+  ].join('\n');
+}
+
+function compactText(value: string, maxLength: number) {
+  const normalized = normalizeText(value);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
 }
 
 const WORKER_TOOL_NAMES = new Set<GrilloWorkerToolName>([

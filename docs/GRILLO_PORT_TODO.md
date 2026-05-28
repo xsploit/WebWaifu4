@@ -27,13 +27,17 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 ## Immediate Next Slice
 
-Do this before replacing the old React memory worker:
+Do this before removing the old React memory worker:
 
-1. Surface backend GRILLO runtime status in the Memory UI.
-2. Add a manual backend tick button so runtime/tick behavior is inspectable without React owning the worker loop.
-3. Refresh runtime status with the existing memory backend polling path.
-4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
-5. Commit only the intended files.
+1. Wire a real backend extraction tick:
+   - read native completed `TurnEvent` pairs
+   - skip already processed turn ids
+   - write candidate, diary, and memory slot/block updates through worker tools
+   - write an extraction trace
+   - persist processed turn ids in `memory_worker_state`
+2. Prove the resulting context packet includes the extracted candidate, diary thought, and slot memory.
+3. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
+4. Commit only the intended files.
 
 Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron transparency during this slice.
 
@@ -79,6 +83,7 @@ Progress note:
 - 2026-05-28: Added a backend worker-tool foundation for read/search/list, candidate writes, diary writes, memory slot/block writes, profile patches, and archival semantic inserts. Tool telemetry is recorded in GRILLO activity rows, and focused service tests prove tool writes feed the context packet.
 - 2026-05-28: Added backend GRILLO runtime lifecycle, `/memory/grillo/runtime`, `/memory/grillo/run/tick`, Ladybug `memory_worker_state`, shutdown cleanup, no-op tick activity, and overlap guarding.
 - 2026-05-28: Wired backend GRILLO runtime status and manual tick control into the Memory UI, refreshed through the same backend polling path as Ladybug status and graph state.
+- 2026-05-28: Replaced the default no-op backend tick with a native extraction pass over completed turn pairs. It writes candidates, diary thoughts, and open-thread slots through worker tools, records extraction traces, persists processed turn ids, and proves the context packet sees the extracted memory.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -93,7 +98,7 @@ Progress note:
 - [x] Implement worker state in Ladybug.
 - [x] Implement tick guard so only one GRILLO tick runs at a time.
 - [ ] Implement tasks:
-  - [ ] extraction
+  - [x] extraction
   - [ ] reflection beat
   - [ ] relationship beat
   - [ ] curiosity beat
@@ -225,7 +230,7 @@ Progress note:
   - [ ] POML injection
   - [ ] Twitch intake filtering
 - [ ] Integration tests:
-  - [ ] local chat -> extraction -> candidate/diary/slot
+  - [x] local chat -> extraction -> candidate/diary/slot
   - [ ] semantic recall -> context packet -> POML
   - [ ] manual beat -> trace visible in UI endpoint
   - [ ] stream mode does not ingest low-signal spam

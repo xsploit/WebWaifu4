@@ -298,6 +298,77 @@ describe('GrilloWorkerService', () => {
     }
   });
 
+  it('runs backend extraction ticks from native turn pairs into context-visible memory', async () => {
+    const { grillo, memory } = createServices();
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will keep the GRILLO backend thread visible.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'backend grillo extraction should remember this thread',
+      });
+
+      const firstTick = await grillo.runTick({
+        reason: 'manual_test',
+        scopeKey,
+      });
+
+      expect(firstTick).toMatchObject({
+        noOpReason: '',
+        ok: true,
+        reason: 'manual_test',
+        writes: 3,
+      });
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.traces[0]).toMatchObject({
+        model: 'native-extraction',
+        provider: 'backend',
+        taskType: 'extraction',
+      });
+      expect(graph.recent.candidates[0]?.summary).toContain(
+        'backend grillo extraction should remember this thread',
+      );
+      expect(graph.recent.diary[0]?.summary).toBe('Processed a recent exchange with Subsect.');
+      expect(graph.recent.slots[0]).toMatchObject({
+        itemCount: 1,
+        slotName: 'open_threads',
+      });
+      expect(graph.recent.activities.some((row) => row.beatType === 'worker_tick')).toBe(true);
+      expect(graph.recent.activities.filter((row) => row.beatType === 'worker_tool')).toHaveLength(
+        3,
+      );
+
+      const packet = await grillo.buildContextPacket({
+        participantKeys: [participantKey],
+        query: 'backend grillo extraction',
+        scopeKey,
+      });
+      expect(packet.recalled_memories.map((item) => item.text).join('\n')).toContain(
+        'backend grillo extraction should remember this thread',
+      );
+      expect(packet.relationship_memory.join('\n')).toContain('[slot:open_threads');
+      expect(packet.thoughts.join('\n')).toContain(
+        'I should remember this recent exchange with Subsect',
+      );
+
+      await expect(grillo.runTick({ reason: 'manual_test', scopeKey })).resolves.toMatchObject({
+        noOpReason: 'no_new_turn_pairs',
+        writes: 0,
+      });
+    } finally {
+      await memory.close();
+    }
+  });
+
   it('starts, stops, and guards backend worker ticks', async () => {
     const dbPath = join(tmpdir(), `webwaifu4-grillo-runtime-test-${process.pid}-${Date.now()}.db`);
     dbPaths.push(dbPath);
