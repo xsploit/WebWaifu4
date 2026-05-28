@@ -1573,6 +1573,26 @@ function buildBackendBeatPrompt({
             'Write a diary reflection only if the consolidation changes the private interpretation of the relationship or persona context.',
             'Do not delete raw records during consolidation.',
           ]
+        : beatType === 'curiosity'
+          ? [
+              'This is a curiosity beat.',
+              'Review recent channel_history, thoughts, recalled_memories, relationship_memory, and open threads.',
+              'Identify useful unresolved questions, interests, or follow-up threads that would improve future replies.',
+              'Use core.worker_memory_read or core.worker_memory_search before writing if useful.',
+              'Use core.worker_memory_write for grounded open_threads, ongoing_threads, or working_scratchpad updates.',
+              'Use core.worker_profile_patch for grounded active_threads only when the curiosity is tied to a participant or relationship.',
+              'Do not trigger external actions, messages, searches, or autonomous speech from this beat.',
+            ]
+          : beatType === 'tag_elaboration'
+            ? [
+                'This is a tag elaboration beat.',
+                'Review candidates, recalled_memories, slots, and recent channel_history for weakly organized memory.',
+                'Use core.worker_candidate_list to inspect candidate types and tags before writing if useful.',
+                'Write concise tag-organized summaries into durable slots or blocks when they improve future retrieval.',
+                'Use core.worker_candidate_write only for newly clarified grounded facts, preferences, goals, boundaries, bond signals, or threads.',
+                'Use core.worker_memory_write with operation="merge" for grouped preferences, boundaries, verified_facts, relationship_state, or ongoing_threads.',
+                'Do not invent tags or summaries that are not grounded in existing memory or recent turns.',
+              ]
         : beatType === 'compaction'
           ? [
               'This is a compaction beat.',
@@ -1948,12 +1968,14 @@ function normalizeSlotOperation(value: unknown): LadybugMemorySlotPatchRecord['o
 }
 
 function normalizeWorkerBeatType(value: unknown) {
-  const normalized = normalizeText(value).toLowerCase().replace(/\s+/g, '_');
+  const normalized = normalizeText(value).toLowerCase().replace(/[\s-]+/g, '_');
   if (
     normalized === 'reflection' ||
     normalized === 'relationship' ||
     normalized === 'consolidation' ||
-    normalized === 'compaction'
+    normalized === 'compaction' ||
+    normalized === 'curiosity' ||
+    normalized === 'tag_elaboration'
   ) {
     return normalized;
   }

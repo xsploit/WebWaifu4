@@ -105,6 +105,7 @@ Progress note:
 - 2026-05-28: Added backend debrief recovery for provider-backed extraction ticks. If the LLM-guided worker reaches `done` without candidate or diary writes, the backend runs one recovery prompt in the same `stateScope: memory` lane before marking source turns processed. Focused service tests prove recovered candidate/diary writes land in Ladybug and are tracked in worker state.
 - 2026-05-28: Added explicit backend reflection and relationship beats on the same memory lane. Manual backend ticks now accept a `beatType`, write traces with the beat task type, store last beat/tool-call status, and the Memory UI exposes separate Run Extraction and Run Beat controls plus last beat/tool count status. Focused service, client, and ContextTab tests pass.
 - 2026-05-28: Added explicit backend consolidation and compaction beats on the same memory lane. Both beats write typed worker traces, update runtime beat/tool-call status, and have Memory UI buttons. Focused service, client, ContextTab, build, package, and diff-check gates pass.
+- 2026-05-28: Added explicit backend curiosity and tag elaboration beats on the same memory lane. Both beats have dedicated worker prompts, typed traces, runtime beat/tool-call status, and focused service tests proving Ladybug writes. Focused service, client, build, and package gates pass.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -122,8 +123,8 @@ Progress note:
   - [x] extraction
   - [x] reflection beat
   - [x] relationship beat
-  - [ ] curiosity beat
-  - [ ] tag elaboration beat
+  - [x] curiosity beat
+  - [x] tag elaboration beat
   - [x] consolidation
   - [ ] semantic indexing
   - [x] compaction

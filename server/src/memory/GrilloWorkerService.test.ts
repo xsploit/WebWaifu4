@@ -904,6 +904,192 @@ describe('GrilloWorkerService', () => {
     }
   });
 
+  it('runs curiosity and tag elaboration beats through the backend memory lane', async () => {
+    const { grillo, memory } = createServices();
+    const requests: Array<{
+      beatType: string;
+      messages: Array<{ content: string; role: string }>;
+      stateScope: string;
+    }> = [];
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will keep curiosity and tag elaboration grounded in memory.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'grillo should track useful questions and organize tags',
+      });
+
+      const completion = async (request: GrilloWorkerCompletionRequest) => {
+        const prompt = request.messages[1]?.content ?? '';
+        const beatType = prompt.includes('tag elaboration beat')
+          ? 'tag_elaboration'
+          : prompt.includes('curiosity beat')
+            ? 'curiosity'
+            : 'unknown';
+        requests.push({
+          beatType,
+          messages: request.messages.map((message) => ({ ...message })),
+          stateScope: request.stateScope,
+        });
+        if (request.messages.length > 2) {
+          return JSON.stringify({
+            candidate: null,
+            diary: null,
+            done: true,
+            memory: null,
+            notes: `${beatType} done`,
+            relationship: null,
+            toolCalls: [],
+          });
+        }
+        if (beatType === 'curiosity') {
+          return {
+            meta: { model: 'openai/gpt-5-nano', provider: 'vercel-gateway' },
+            text: JSON.stringify({
+              candidate: null,
+              diary: null,
+              done: false,
+              memory: null,
+              notes: 'curiosity beat writes',
+              relationship: null,
+              toolCalls: [
+                {
+                  args: {
+                    block_name: 'working_scratchpad',
+                    items: ['Ask Subsect whether GRILLO should prioritize local-only chat or stream mode next.'],
+                    operation: 'merge',
+                    reason: 'curiosity beat',
+                  },
+                  name: 'core.worker_memory_write',
+                },
+                {
+                  args: {
+                    field: 'active_threads',
+                    operation: 'add',
+                    value: 'GRILLO local mode versus stream mode priority',
+                  },
+                  name: 'core.worker_profile_patch',
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          meta: { model: 'openai/gpt-5-nano', provider: 'vercel-gateway' },
+          text: JSON.stringify({
+            candidate: null,
+            diary: null,
+            done: false,
+            memory: null,
+            notes: 'tag elaboration writes',
+            relationship: null,
+            toolCalls: [
+              {
+                args: {
+                  confidence: 0.86,
+                  content: 'Subsect wants GRILLO memories organized by useful retrieval tags.',
+                  summary: 'Subsect wants tagged GRILLO memory organization.',
+                  tags: ['grillo', 'tags', 'retrieval'],
+                  type: 'goal',
+                },
+                name: 'core.worker_candidate_write',
+              },
+              {
+                args: {
+                  block_name: 'ongoing_threads',
+                  items: ['GRILLO memory organization should preserve useful retrieval tags.'],
+                  operation: 'merge',
+                  reason: 'tag elaboration beat',
+                },
+                name: 'core.worker_memory_write',
+              },
+            ],
+          }),
+        };
+      };
+
+      const curiosity = await grillo.runTickWithOptions(
+        {
+          beatType: 'curiosity',
+          reason: 'manual_curiosity',
+          scopeKey,
+        },
+        {
+          completion,
+          maxToolRounds: 15,
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+      const tagElaboration = await grillo.runTickWithOptions(
+        {
+          beatType: 'tag_elaboration',
+          reason: 'manual_tag_elaboration',
+          scopeKey,
+        },
+        {
+          completion,
+          maxToolRounds: 15,
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+
+      expect(curiosity).toMatchObject({
+        beatType: 'curiosity',
+        noOpReason: '',
+        writes: 2,
+      });
+      expect(tagElaboration).toMatchObject({
+        beatType: 'tag_elaboration',
+        noOpReason: '',
+        writes: 2,
+      });
+      expect(requests.every((request) => request.stateScope === 'memory')).toBe(true);
+      expect(requests[0]?.messages[1]?.content).toContain('This is a curiosity beat.');
+      expect(requests[2]?.messages[1]?.content).toContain('This is a tag elaboration beat.');
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.traces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ beatType: 'curiosity', taskType: 'curiosity' }),
+          expect.objectContaining({ beatType: 'tag_elaboration', taskType: 'tag_elaboration' }),
+        ]),
+      );
+      expect(graph.recent.candidates[0]?.summary).toBe(
+        'Subsect wants tagged GRILLO memory organization.',
+      );
+      expect(graph.recent.slots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ slotName: 'working_scratchpad' }),
+          expect.objectContaining({ slotName: 'ongoing_threads' }),
+        ]),
+      );
+
+      const state = await memory.getGrilloSingleton<Record<string, unknown>>('memory_worker_state');
+      const profiles = await memory.loadRelationshipProfiles();
+      expect(profiles[scopeKey]).toMatchObject({
+        active_threads: ['GRILLO local mode versus stream mode priority'],
+      });
+      expect(state).toMatchObject({
+        lastBeatModel: 'openai/gpt-5-nano',
+        lastBeatProvider: 'vercel-gateway',
+        lastBeatType: 'tag_elaboration',
+        lastToolCalls: 2,
+      });
+    } finally {
+      await memory.close();
+    }
+  });
+
   it('starts, stops, and guards backend worker ticks', async () => {
     const dbPath = join(tmpdir(), `webwaifu4-grillo-runtime-test-${process.pid}-${Date.now()}.db`);
     dbPaths.push(dbPath);
