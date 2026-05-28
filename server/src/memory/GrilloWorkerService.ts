@@ -3,6 +3,7 @@ import type {
   LadybugMemoryService,
   LadybugMemorySlotPatchRecord,
   LadybugMemorySlotRecord,
+  LadybugSemanticMemoryRecord,
 } from './LadybugMemoryService.js';
 import type {
   ChatProviderMessage,
@@ -118,8 +119,30 @@ export type GrilloWorkerCompletion = (
   request: GrilloWorkerCompletionRequest,
 ) => Promise<GrilloWorkerCompletionResult | string>;
 
+export type GrilloWorkerEmbeddingRequest = {
+  input: string;
+  model?: unknown;
+  provider?: unknown;
+};
+
+export type GrilloWorkerEmbeddingResult =
+  | {
+      embedding?: number[] | null;
+      model?: unknown;
+      provider?: unknown;
+    }
+  | number[]
+  | null;
+
+export type GrilloWorkerEmbedding = (
+  request: GrilloWorkerEmbeddingRequest,
+) => Promise<GrilloWorkerEmbeddingResult>;
+
 export type GrilloWorkerTickOptions = {
   completion?: GrilloWorkerCompletion;
+  embedding?: GrilloWorkerEmbedding;
+  embeddingModel?: unknown;
+  embeddingProvider?: unknown;
   maxRounds?: unknown;
   maxToolRounds?: unknown;
   model?: unknown;
@@ -516,7 +539,9 @@ export class GrilloWorkerService {
       ? this.tickTask({ reason, scopeKey })
       : beatType === 'extraction'
         ? this.runExtractionTick({ reason, scopeKey }, options)
-        : this.runMemoryBeatTick({ beatType, reason, scopeKey }, options));
+        : beatType === 'semantic_indexing'
+          ? this.runSemanticIndexingTick({ reason, scopeKey }, options)
+          : this.runMemoryBeatTick({ beatType, reason, scopeKey }, options));
     const writes = clampInteger(taskResult.writes, 0, 100_000, 0);
     const taskBeatType = normalizeWorkerBeatType(taskResult.beatType ?? beatType);
     const toolCalls = clampInteger(taskResult.toolCalls, 0, 100_000, 0);
@@ -993,6 +1018,142 @@ export class GrilloWorkerService {
         lastBeatType: input.beatType,
       },
       toolCalls,
+      writes,
+    };
+  }
+
+  private async runSemanticIndexingTick(
+    input: {
+      reason: string;
+      scopeKey: string;
+    },
+    options: GrilloWorkerTickOptions = {},
+  ): Promise<GrilloWorkerTaskResult> {
+    const embedding = options.embedding;
+    if (!embedding) {
+      return {
+        beatType: 'semantic_indexing',
+        noOpReason: 'semantic_indexing_requires_embedding',
+        writes: 0,
+      };
+    }
+
+    const previousState = asRecord(await this.memory.getGrilloSingleton('memory_worker_state'));
+    const indexedTurnIds = new Set(readStringArray(previousState['semanticIndexedTurnIds']));
+    const turns = (await this.memory.readGrilloRecords<Record<string, unknown>>('turn_events'))
+      .filter((record) => recordScopeKey(record) === input.scopeKey)
+      .sort((left, right) => recordTimestamp(left) - recordTimestamp(right));
+    if (turns.length === 0) {
+      return {
+        beatType: 'semantic_indexing',
+        noOpReason: 'no_turns',
+        statePatch: { semanticIndexedTurnIds: [] },
+        writes: 0,
+      };
+    }
+
+    const pairs = buildUnprocessedTurnPairs(turns, indexedTurnIds).slice(0, 4);
+    if (pairs.length === 0) {
+      return {
+        beatType: 'semantic_indexing',
+        noOpReason: 'no_new_turn_pairs',
+        statePatch: { semanticIndexedTurnIds: [...indexedTurnIds].slice(-2000) },
+        writes: 0,
+      };
+    }
+
+    const existingRecords = await this.memory.loadSemanticRecords(input.scopeKey);
+    const records = [...(existingRecords ?? [])];
+    const existingCount = records.length;
+    const seenTexts = new Set(records.map((record) => normalizeText(record.text)));
+    const indexedNow: string[] = [];
+    let lastModel = normalizeText(options.embeddingModel) || 'runtime-embedding-model';
+    let lastProvider =
+      normalizeText(options.embeddingProvider) || normalizeText(options.provider) || 'runtime-provider';
+    let attempted = 0;
+    let failed = 0;
+
+    for (const pair of pairs) {
+      const semanticText = formatSemanticIndexingPair(pair);
+      const sourceTurnIds = [recordTurnId(pair.user), recordTurnId(pair.assistant)].filter(Boolean);
+      if (!semanticText || seenTexts.has(semanticText)) {
+        indexedNow.push(...sourceTurnIds);
+        continue;
+      }
+      attempted += 1;
+      const result = await embedding({
+        input: semanticText,
+        model: options.embeddingModel,
+        provider: options.embeddingProvider ?? options.provider,
+      })
+        .then(normalizeEmbeddingResult)
+        .catch(() => {
+          failed += 1;
+          return { embedding: [], model: '', provider: '' };
+        });
+      lastModel = result.model || lastModel;
+      lastProvider = result.provider || lastProvider;
+      if (!result.embedding.length) {
+        failed += 1;
+        continue;
+      }
+      records.unshift({
+        assistantText: normalizeSemanticIndexText(pair.assistant, 1200),
+        createdAt: Math.max(recordTimestamp(pair.assistant), recordTimestamp(pair.user), this.nowMs()),
+        embedding: result.embedding,
+        id: this.idFactory(),
+        personaId: inferPersona(input.scopeKey),
+        scopeKey: input.scopeKey,
+        text: semanticText,
+        userText: normalizeSemanticIndexText(pair.user, 1200),
+      });
+      seenTexts.add(semanticText);
+      indexedNow.push(...sourceTurnIds);
+    }
+
+    for (const turnId of indexedNow) {
+      indexedTurnIds.add(turnId);
+    }
+    const nextRecords = records.slice(0, 160);
+    const writes = Math.max(0, nextRecords.length - existingCount);
+    if (writes > 0) {
+      await this.memory.saveSemanticRecords(input.scopeKey, nextRecords);
+    }
+
+    const traceId = this.idFactory();
+    await this.memory.appendGrilloRecord('worker_context_traces', {
+      beat_type: 'semantic_indexing',
+      created_at: this.nowMs(),
+      model: lastModel,
+      prompt: pairs.map(formatExtractionPairForTrace).join('\n\n'),
+      provider: lastProvider,
+      response_text: `indexed=${indexedNow.length} attempted=${attempted} failed=${failed}`,
+      round: 1,
+      scope_key: input.scopeKey,
+      system_prompt:
+        'Backend GRILLO semantic indexing embeds completed turn pairs into Ladybug semantic memory.',
+      task_type: 'semantic_indexing',
+      trace_id: traceId,
+      user_id: input.scopeKey,
+    });
+
+    return {
+      beatType: 'semantic_indexing',
+      noOpReason:
+        writes > 0 ? undefined : failed > 0 ? 'semantic_embedding_failed' : 'semantic_already_indexed',
+      statePatch: {
+        lastBeatAt: this.nowMs(),
+        lastBeatModel: lastModel,
+        lastBeatNotes: `semantic indexing attempted ${attempted}, failed ${failed}`,
+        lastBeatProvider: lastProvider,
+        lastBeatTraceId: traceId,
+        lastBeatType: 'semantic_indexing',
+        lastSemanticIndexingAt: this.nowMs(),
+        lastSemanticIndexingFailed: failed,
+        lastSemanticIndexingWrites: writes,
+        semanticIndexedTurnIds: [...indexedTurnIds].slice(-2000),
+      },
+      toolCalls: attempted,
       writes,
     };
   }
@@ -1975,7 +2136,8 @@ function normalizeWorkerBeatType(value: unknown) {
     normalized === 'consolidation' ||
     normalized === 'compaction' ||
     normalized === 'curiosity' ||
-    normalized === 'tag_elaboration'
+    normalized === 'tag_elaboration' ||
+    normalized === 'semantic_indexing'
   ) {
     return normalized;
   }
@@ -2017,6 +2179,46 @@ function formatExtractionPairForTrace(pair: {
     `${author}: ${compactText(normalizeText(pair.user['content'] ?? pair.user['text']), 600)}`,
     `${assistant}: ${compactText(normalizeText(pair.assistant['content'] ?? pair.assistant['text']), 600)}`,
   ].join('\n');
+}
+
+function formatSemanticIndexingPair(pair: {
+  assistant: Record<string, unknown>;
+  user: Record<string, unknown>;
+}) {
+  const assistant = normalizeText(pair.assistant['authorName'] ?? pair.assistant['author_name']) || 'Assistant';
+  return [
+    `User: ${normalizeSemanticIndexText(pair.user, 1200)}`,
+    `${assistant}: ${normalizeSemanticIndexText(pair.assistant, 1200)}`,
+  ]
+    .filter((line) => !line.endsWith(': '))
+    .join('\n')
+    .slice(0, 2400);
+}
+
+function normalizeSemanticIndexText(record: Record<string, unknown>, maxLength: number) {
+  return normalizeText(record['content'] ?? record['text']).slice(0, maxLength);
+}
+
+function normalizeEmbeddingResult(value: GrilloWorkerEmbeddingResult) {
+  if (Array.isArray(value)) {
+    return {
+      embedding: normalizeEmbeddingArray(value),
+      model: '',
+      provider: '',
+    };
+  }
+  const record = asRecord(value);
+  return {
+    embedding: normalizeEmbeddingArray(record['embedding']),
+    model: normalizeText(record['model']),
+    provider: normalizeText(record['provider']),
+  };
+}
+
+function normalizeEmbeddingArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+    : [];
 }
 
 function compactText(value: string, maxLength: number) {

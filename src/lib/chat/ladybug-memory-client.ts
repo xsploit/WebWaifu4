@@ -267,7 +267,9 @@ export async function runLadybugGrilloTick(
       | 'consolidation'
       | 'compaction'
       | 'curiosity'
-      | 'tag_elaboration';
+      | 'tag_elaboration'
+      | 'semantic_indexing';
+    embeddingModel?: string;
     llmProvider?: string;
     maxToolRounds?: number;
     model?: string;

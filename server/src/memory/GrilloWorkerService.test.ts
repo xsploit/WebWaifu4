@@ -1090,6 +1090,100 @@ describe('GrilloWorkerService', () => {
     }
   });
 
+  it('runs semantic indexing beats into Ladybug semantic vectors', async () => {
+    const { grillo, memory } = createServices();
+    const embeddingRequests: Array<{ input: string; model: unknown; provider: unknown }> = [];
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will index this exchange for semantic recall.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'semantic indexing should create a vector memory',
+      });
+
+      const tick = await grillo.runTickWithOptions(
+        {
+          beatType: 'semantic_indexing',
+          reason: 'manual_semantic_indexing',
+          scopeKey,
+        },
+        {
+          embedding: async (request) => {
+            embeddingRequests.push({
+              input: request.input,
+              model: request.model,
+              provider: request.provider,
+            });
+            return {
+              embedding: [1, 0, 0],
+              model: 'openai/text-embedding-3-small',
+              provider: 'vercel-gateway',
+            };
+          },
+          embeddingModel: 'openai/text-embedding-3-small',
+          embeddingProvider: 'vercel-gateway',
+        },
+      );
+
+      expect(tick).toMatchObject({
+        beatType: 'semantic_indexing',
+        noOpReason: '',
+        writes: 1,
+      });
+      expect(embeddingRequests).toEqual([
+        expect.objectContaining({
+          model: 'openai/text-embedding-3-small',
+          provider: 'vercel-gateway',
+        }),
+      ]);
+      expect(embeddingRequests[0]?.input).toContain('semantic indexing should create a vector memory');
+      expect(embeddingRequests[0]?.input).toContain('I will index this exchange for semantic recall.');
+
+      const records = await memory.loadSemanticRecords(scopeKey);
+      expect(records?.[0]).toMatchObject({
+        embedding: [1, 0, 0],
+        personaId: 'hikari-chan',
+        scopeKey,
+        userText: 'semantic indexing should create a vector memory',
+      });
+      const matches = await memory.querySemanticVectors(scopeKey, [1, 0, 0], 4);
+      expect(matches[0]?.text).toContain('semantic indexing should create a vector memory');
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.traces[0]).toMatchObject({
+        beatType: 'semantic_indexing',
+        model: 'openai/text-embedding-3-small',
+        provider: 'vercel-gateway',
+        taskType: 'semantic_indexing',
+      });
+      expect(graph.recent.semantic[0]?.text).toContain('semantic indexing should create a vector memory');
+      expect(graph.recent.vectors[0]?.text).toContain('semantic indexing should create a vector memory');
+
+      const state = await memory.getGrilloSingleton<Record<string, unknown>>('memory_worker_state');
+      expect(state).toMatchObject({
+        lastBeatModel: 'openai/text-embedding-3-small',
+        lastBeatProvider: 'vercel-gateway',
+        lastBeatType: 'semantic_indexing',
+        lastSemanticIndexingFailed: 0,
+        lastSemanticIndexingWrites: 1,
+      });
+      expect(await grillo.runTickWithOptions({ beatType: 'semantic_indexing', scopeKey })).toMatchObject({
+        noOpReason: 'semantic_indexing_requires_embedding',
+        writes: 0,
+      });
+    } finally {
+      await memory.close();
+    }
+  });
+
   it('starts, stops, and guards backend worker ticks', async () => {
     const dbPath = join(tmpdir(), `webwaifu4-grillo-runtime-test-${process.pid}-${Date.now()}.db`);
     dbPaths.push(dbPath);

@@ -4496,6 +4496,7 @@ function App() {
       return runLadybugGrilloTick(
         {
           beatType,
+          embeddingModel: settings.embeddingModel,
           llmProvider: settings.llmProvider,
           maxToolRounds: settings.maxToolRounds,
           model,
