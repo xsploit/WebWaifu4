@@ -31,31 +31,33 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 ## Immediate Next Slice
 
-Do this before removing the old React memory worker:
+Add backend-owned GRILLO emotion tools without touching chat/TTS streaming:
 
-1. Add consolidation and compaction beats on top of the backend memory lane.
-2. Add UI controls for Run Consolidation and Run Compaction.
-3. Keep the deterministic extraction fallback only for missing provider keys; provider-backed manual ticks should use the LLM-guided worker loop.
-4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
-5. Commit only the intended files.
-6. Push the commit to `origin main`.
+1. Inspect current Ladybug `EmotionState` storage and worker-tool dispatch.
+2. Add `core.worker_emotion_read` and `core.worker_emotion_update`.
+3. Persist emotion state through Ladybug with one canonical state per scope, not duplicate append rows.
+4. Mirror updated emotion state into the Ladybug graph.
+5. Add focused backend tests proving read/update, replacement behavior, telemetry, and graph visibility.
+6. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
+7. Commit only the intended files.
+8. Push the commit to `origin main`.
 
-Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron transparency during this slice.
+Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, Electron transparency, or public chat tools during this slice.
 
 Current slice definition of done:
 
-- [x] `consolidation` and `compaction` are accepted backend beat types.
-- [x] Both beats run through the provider-backed memory lane when a key is available.
-- [x] Both beats keep deterministic extraction as a missing-key fallback only.
-- [x] Both beats write `worker_context_traces` with the correct `beat_type` and `task_type`.
-- [x] Runtime status shows the last beat type and tool-call count after either beat.
-- [x] Memory UI has explicit `Run Consolidation` and `Run Compaction` buttons.
-- [x] Focused backend tests prove at least one consolidation or compaction write reaches Ladybug.
-- [x] Focused UI tests prove the new controls render and wire through props.
-- [x] `npm run build` passes.
-- [x] `npm run desktop:pack` rebuilds the EXE.
-- [x] `git diff --check` passes.
-- [x] Commit and push only the intended GRILLO files.
+- [ ] `core.worker_emotion_read` is accepted by the backend worker tool loop.
+- [ ] `core.worker_emotion_update` is accepted by the backend worker tool loop.
+- [ ] Emotion reads return the current scope state or a safe empty state.
+- [ ] Emotion updates replace the current scope state instead of creating duplicate active states.
+- [ ] Emotion updates write through Ladybug and appear in `/memory/graph`.
+- [ ] Worker telemetry records emotion tool name, args summary, result, duration, and errors.
+- [ ] Focused service tests prove emotion read/update through the worker path.
+- [ ] Focused Ladybug tests prove emotion graph replacement behavior.
+- [ ] `npm run build` passes.
+- [ ] `npm run desktop:pack` rebuilds the EXE.
+- [ ] `git diff --check` passes.
+- [ ] Commit and push only the intended GRILLO files.
 
 ## Phase 1 - Ladybug GRILLO Store
 
