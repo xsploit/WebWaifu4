@@ -123,6 +123,7 @@ Progress note:
 - 2026-05-28: Split the embedding lane into provider and browser/local model configuration. The local transformers.js worker accepts and caches per-model extractors, prompt recall/semantic save/worker memory paths thread the selected local model id, the Context tab exposes both fields plus a Run Semantic Indexing button, and the backend `/memory/grillo/run/tick` respects `embeddingMode` so `browser` mode no longer silently calls provider embeddings (existing `semantic_indexing_requires_embedding` no-op path covers it).
 - 2026-05-28: Added token-backed Electron/backend ownership reuse. Packaged Electron now reuses a busy preferred port only when `/health` proves a compatible WebWaifu backend with the same owner token, exposes `backendReused` to the renderer, and can shut down a reused owned backend through a token-protected local shutdown route. New packaged smoke coverage proves owned reuse, and existing fallback smoke still proves non-owned busy ports fall forward.
 - 2026-05-28: Added a G.R.I.L.L.O. lane snapshot to the Memory tab. It now shows current Local/Queue/Batch mode, chat lane provider/model/transport/state mode, GRILLO lane provider/model/tool-round cap, embedding lane source/provider/local models, and turn cadence across current/all scopes.
+- 2026-05-28: Added explicit Stream Mode GRILLO intake scoring. Twitch turns can enter durable memory for trusted roles, direct persona mentions, explicit durable-memory cues, emotional/relationship signals, stream-relevant badges/first-chat signals, or repeated batch topics; single low-signal Twitch chatter stays short-term. Focused intake tests cover all scoring categories.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -210,13 +211,13 @@ Progress note:
   - [x] direct mentions and high-signal turns feed GRILLO
   - [x] batch summaries can feed GRILLO
   - [x] low-signal chatter stays short-term only
-- [ ] Add Twitch memory intake scoring/filtering:
+- [x] Add Twitch memory intake scoring/filtering:
   - [x] direct mention
   - [x] broadcaster/mod/controller
-  - [ ] explicit preference/fact/goal/boundary
-  - [ ] repeated topic thread
-  - [ ] emotional/relationship signal
-  - [ ] stream event relevance
+  - [x] explicit preference/fact/goal/boundary
+  - [x] repeated topic thread
+  - [x] emotional/relationship signal
+  - [x] stream event relevance
 - [x] Add tests so Twitch spam does not create durable memory spam.
 
 ## Phase 7 - GRILLO Operator UI
@@ -268,7 +269,7 @@ Progress note:
   - [x] worker tools
   - [ ] context packet reduction
   - [ ] POML injection
-  - [ ] Twitch intake filtering
+  - [x] Twitch intake filtering
 - [ ] Integration tests:
   - [x] local chat -> extraction -> candidate/diary/slot
   - [ ] semantic recall -> context packet -> POML

@@ -3,6 +3,8 @@ import { createDefaultTwitchSettings, DEFAULT_PERSONA } from './defaults';
 import { createLocalChatTurn, createTwitchChatTurn } from './chat-turn';
 import {
   chatTextMentionsPersona,
+  scoreChatJobForGrilloIntake,
+  scoreChatTurnForGrilloIntake,
   shouldIngestChatJobToGrillo,
   shouldIngestChatTurnToGrillo,
 } from './grillo-intake';
@@ -61,13 +63,75 @@ describe('GRILLO intake gating', () => {
     expect(shouldIngestChatTurnToGrillo(modTurn, persona, settings)).toBe(true);
   });
 
-  it('allows Stream Mode batch summaries without ingesting every raw Twitch line', () => {
+  it('keeps low-signal Twitch chatter short-term even in Stream Mode batches', () => {
     const settings = { ...createDefaultTwitchSettings(), streamModeEnabled: true };
     const lowSignalTurn = createTwitchChatTurn(twitchMessage({ text: 'lol' }), 'subsect');
 
     expect(shouldIngestChatTurnToGrillo(lowSignalTurn, DEFAULT_PERSONA, settings)).toBe(false);
     expect(shouldIngestChatJobToGrillo('batch', [lowSignalTurn], DEFAULT_PERSONA, settings)).toBe(
-      true,
+      false,
     );
+  });
+
+  it('scores explicit preference, fact, goal, and boundary chat as durable Twitch memory', () => {
+    const settings = { ...createDefaultTwitchSettings(), streamModeEnabled: true };
+    const durableTurns = [
+      'I prefer cozy synthwave BGM on streams',
+      'I work nights and usually watch after midnight',
+      'My goal is to finish the overlay this week',
+      "Don't call me by my old handle anymore",
+    ].map((text, index) =>
+      createTwitchChatTurn(twitchMessage({ id: `durable-${index}`, text }), 'subsect'),
+    );
+
+    for (const turn of durableTurns) {
+      const score = scoreChatTurnForGrilloIntake(turn, DEFAULT_PERSONA, settings);
+      expect(score.shouldIngest).toBe(true);
+      expect(score.signals).toContain('explicit_memory_cue');
+    }
+  });
+
+  it('scores emotional relationship signals and stream-relevant badges as durable Twitch memory', () => {
+    const settings = { ...createDefaultTwitchSettings(), streamModeEnabled: true };
+    const emotionalTurn = createTwitchChatTurn(
+      twitchMessage({ id: 'emotion', text: 'Thank you for helping me feel welcome here' }),
+      'subsect',
+    );
+    const subscriberTurn = createTwitchChatTurn(
+      twitchMessage({ badges: ['subscriber/12'], id: 'subscriber', text: 'renewed for the year' }),
+      'subsect',
+    );
+
+    expect(scoreChatTurnForGrilloIntake(emotionalTurn, DEFAULT_PERSONA, settings)).toMatchObject({
+      shouldIngest: true,
+      signals: ['emotional_relationship_signal'],
+    });
+    expect(scoreChatTurnForGrilloIntake(subscriberTurn, DEFAULT_PERSONA, settings)).toMatchObject({
+      shouldIngest: true,
+      signals: ['stream_event_relevance'],
+    });
+  });
+
+  it('lets repeated Twitch topic threads feed batch GRILLO without requiring every line', () => {
+    const settings = { ...createDefaultTwitchSettings(), streamModeEnabled: true };
+    const turns = [
+      createTwitchChatTurn(
+        twitchMessage({ id: 'thread-1', text: 'overlay captions are lagging again', user: 'a' }),
+        'subsect',
+      ),
+      createTwitchChatTurn(
+        twitchMessage({
+          id: 'thread-2',
+          text: 'yeah the overlay captions need delay tuning',
+          user: 'b',
+        }),
+        'subsect',
+      ),
+      createTwitchChatTurn(twitchMessage({ id: 'thread-3', text: 'lol', user: 'c' }), 'subsect'),
+    ];
+    const score = scoreChatJobForGrilloIntake('batch', turns, DEFAULT_PERSONA, settings);
+
+    expect(score.shouldIngest).toBe(true);
+    expect(score.signals).toContain('repeated_topic_thread');
   });
 });
