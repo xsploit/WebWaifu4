@@ -2,6 +2,7 @@ import { pipeline } from '@huggingface/transformers';
 
 type LocalEmbeddingRequest = {
   id: number;
+  model?: string;
   text: string;
 };
 
@@ -17,24 +18,29 @@ type LocalEmbeddingResponse =
       ok: false;
     };
 
-const LOCAL_EMBEDDING_MODEL = 'onnx-community/all-MiniLM-L6-v2-ONNX';
+const DEFAULT_LOCAL_EMBEDDING_MODEL = 'onnx-community/all-MiniLM-L6-v2-ONNX';
 
-let extractorPromise: ReturnType<typeof pipeline<'feature-extraction'>> | null = null;
+const extractorPromises = new Map<string, ReturnType<typeof pipeline<'feature-extraction'>>>();
 
-function getExtractor() {
-  extractorPromise ??= pipeline('feature-extraction', LOCAL_EMBEDDING_MODEL);
+function getExtractor(model = DEFAULT_LOCAL_EMBEDDING_MODEL) {
+  const modelId = model.trim() || DEFAULT_LOCAL_EMBEDDING_MODEL;
+  let extractorPromise = extractorPromises.get(modelId);
+  if (!extractorPromise) {
+    extractorPromise = pipeline('feature-extraction', modelId);
+    extractorPromises.set(modelId, extractorPromise);
+  }
   return extractorPromise;
 }
 
-async function createEmbedding(text: string) {
-  const extractor = await getExtractor();
+async function createEmbedding(text: string, model?: string) {
+  const extractor = await getExtractor(model);
   const output = await extractor(text, { normalize: true, pooling: 'mean' });
   return Array.from(output.data, (value) => Number(value));
 }
 
 self.onmessage = (event: MessageEvent<LocalEmbeddingRequest>) => {
-  const { id, text } = event.data;
-  void createEmbedding(text).then(
+  const { id, model, text } = event.data;
+  void createEmbedding(text, model).then(
     (embedding) => {
       self.postMessage({ embedding, id, ok: true } satisfies LocalEmbeddingResponse);
     },

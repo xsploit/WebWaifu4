@@ -39,6 +39,7 @@ export type AiSettings = {
   memoryAgentModel: string;
   memoryAgentIntervalMessages: number;
   embeddingMode: EmbeddingMode;
+  embeddingLocalModel: string;
   embeddingModel: string;
   aiTransportMode: AiTransportMode;
   openAiStateMode: OpenAiStateMode;

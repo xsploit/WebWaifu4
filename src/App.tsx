@@ -7,6 +7,7 @@ import { MenuFab } from './components/menu/MenuFab';
 import { SettingsPanel } from './components/menu/SettingsPanel';
 import {
   DEFAULT_AI_GATEWAY_MODEL,
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_EMBEDDING_MODEL,
   DEFAULT_OPENROUTER_MODEL,
   DEFAULT_PERSONA,
@@ -1018,6 +1019,7 @@ async function requestTextEmbedding(
   onDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
   embeddingMode: AiSettings['embeddingMode'] = 'browser',
   embeddingModel = DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+  embeddingLocalModel = DEFAULT_LOCAL_EMBEDDING_MODEL,
 ): Promise<number[] | null> {
   const text = input.trim();
   if (!text) {
@@ -1036,6 +1038,7 @@ async function requestTextEmbedding(
       const localEmbedding = await requestLocalTextEmbedding(
         text,
         operation === 'prompt-recall' || operation === 'worker-search' ? 2500 : 6000,
+        embeddingLocalModel,
       );
       if (localEmbedding?.length) {
         onDebug?.({
@@ -1252,6 +1255,7 @@ async function getSemanticMemoryContext(
   onEmbeddingDebug?: (debug: MemoryEmbeddingDebugSnapshot) => void,
   embeddingMode: AiSettings['embeddingMode'] = 'browser',
   embeddingModel = DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+  embeddingLocalModel = DEFAULT_LOCAL_EMBEDDING_MODEL,
 ) {
   const embedding = await requestTextEmbedding(
     query,
@@ -1261,6 +1265,7 @@ async function getSemanticMemoryContext(
     onEmbeddingDebug,
     embeddingMode,
     embeddingModel,
+    embeddingLocalModel,
   );
   return buildSemanticMemoryContext(await findSemanticMemoryMatches(scopeKey, query, embedding));
 }
@@ -1276,6 +1281,7 @@ async function rememberSemanticTurn(
   operation: MemoryEmbeddingDebugSnapshot['operation'] = 'semantic-save',
   embeddingMode: AiSettings['embeddingMode'] = 'browser',
   embeddingModel = DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+  embeddingLocalModel = DEFAULT_LOCAL_EMBEDDING_MODEL,
 ) {
   const embedding = await requestTextEmbedding(
     `${userText}\n${assistantText}`,
@@ -1285,6 +1291,7 @@ async function rememberSemanticTurn(
     onEmbeddingDebug,
     embeddingMode,
     embeddingModel,
+    embeddingLocalModel,
   );
   return addSemanticMemoryTurn({
     assistantText,
@@ -4206,6 +4213,7 @@ function App() {
                     'worker-insert',
                     aiSettings.embeddingMode,
                     aiSettings.embeddingModel,
+                    aiSettings.embeddingLocalModel,
                   );
                   return {
                     id: write?.record.id,
@@ -4223,6 +4231,7 @@ function App() {
                     setMemoryEmbeddingDebug,
                     aiSettings.embeddingMode,
                     aiSettings.embeddingModel,
+                    aiSettings.embeddingLocalModel,
                   );
                   return (await findSemanticMemoryMatches(stateKey, query, embedding, limit)).map(
                     (match) => ({
@@ -4484,7 +4493,7 @@ function App() {
   }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
   const runBackendGrilloTask = useCallback((
-    beatType: 'extraction' | 'reflection' | 'consolidation' | 'compaction',
+    beatType: 'extraction' | 'reflection' | 'consolidation' | 'compaction' | 'semantic_indexing',
   ) => {
     if (backendGrilloTickBusy) {
       return;
@@ -4502,6 +4511,7 @@ function App() {
       return runLadybugGrilloTick(
         {
           beatType,
+          embeddingMode: settings.embeddingMode,
           embeddingModel: settings.embeddingModel,
           llmProvider: settings.llmProvider,
           maxToolRounds: settings.maxToolRounds,
@@ -4513,7 +4523,9 @@ function App() {
                 ? 'manual_ui_consolidation'
                 : beatType === 'compaction'
                   ? 'manual_ui_compaction'
-                  : 'manual_ui',
+                  : beatType === 'semantic_indexing'
+                    ? 'manual_ui_semantic_indexing'
+                    : 'manual_ui',
           scopeKey: stateKey,
         },
         { headers },
@@ -4554,6 +4566,10 @@ function App() {
 
   const handleRunBackendGrilloCompaction = useCallback(() => {
     runBackendGrilloTask('compaction');
+  }, [runBackendGrilloTask]);
+
+  const handleRunBackendGrilloSemanticIndexing = useCallback(() => {
+    runBackendGrilloTask('semantic_indexing');
   }, [runBackendGrilloTask]);
 
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
@@ -5338,6 +5354,7 @@ function App() {
           setMemoryEmbeddingDebug,
           settings.embeddingMode,
           settings.embeddingModel,
+          settings.embeddingLocalModel,
         );
         const participantKeys = job.messages.map(getGrilloParticipantKey);
         const grilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
@@ -5523,6 +5540,7 @@ function App() {
             'semantic-save',
             settings.embeddingMode,
             settings.embeddingModel,
+            settings.embeddingLocalModel,
           )
             .then(() => {
               void refreshMemoryBackendStatus();
@@ -6427,6 +6445,7 @@ function App() {
               onRunBackendGrilloBeat={handleRunBackendGrilloBeat}
               onRunBackendGrilloCompaction={handleRunBackendGrilloCompaction}
               onRunBackendGrilloConsolidation={handleRunBackendGrilloConsolidation}
+              onRunBackendGrilloSemanticIndexing={handleRunBackendGrilloSemanticIndexing}
               onRunBackendGrilloTick={handleRunBackendGrilloTick}
               onRunMemoryAgent={handleRunMemoryAgentNow}
               onSavePersona={handleSavePersona}

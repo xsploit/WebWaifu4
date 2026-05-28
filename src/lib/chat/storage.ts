@@ -1,5 +1,6 @@
 import {
   DEFAULT_PERSONA,
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
   HIKARI_PERSONA,
   createDefaultAiSettings,
   createDefaultPersonaVoiceBindings,
@@ -333,6 +334,10 @@ function normalizeAiSettings(value: unknown): AiSettings {
     !isPremiumCostModelId(source.embeddingModel)
       ? source.embeddingModel.trim().slice(0, 160)
       : defaults.embeddingModel;
+  const embeddingLocalModel =
+    typeof source.embeddingLocalModel === 'string' && source.embeddingLocalModel.trim()
+      ? source.embeddingLocalModel.trim().slice(0, 220)
+      : defaults.embeddingLocalModel || DEFAULT_LOCAL_EMBEDDING_MODEL;
   const aiTransportMode =
     source.aiTransportMode === 'http-stream' ? source.aiTransportMode : defaults.aiTransportMode;
   const openAiStateMode = defaults.openAiStateMode;
@@ -403,6 +408,7 @@ function normalizeAiSettings(value: unknown): AiSettings {
     memoryAgentModel: normalizedMemoryAgentModel || defaults.memoryAgentModel,
     memoryAgentIntervalMessages,
     embeddingMode,
+    embeddingLocalModel,
     embeddingModel,
     aiTransportMode,
     openAiStateMode,

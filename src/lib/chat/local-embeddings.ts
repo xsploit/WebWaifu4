@@ -51,7 +51,7 @@ function getLocalEmbeddingWorker() {
   return worker;
 }
 
-export function requestLocalTextEmbedding(text: string, timeoutMs: number) {
+export function requestLocalTextEmbedding(text: string, timeoutMs: number, model?: string) {
   const normalizedText = text.trim().slice(0, 4000);
   if (!normalizedText) {
     return Promise.resolve<number[] | null>(null);
@@ -67,6 +67,6 @@ export function requestLocalTextEmbedding(text: string, timeoutMs: number) {
       reject(new Error('Local embedding worker timed out.'));
     }, timeoutMs);
     pendingEmbeddings.set(id, { reject, resolve, timer });
-    getLocalEmbeddingWorker().postMessage({ id, text: normalizedText });
+    getLocalEmbeddingWorker().postMessage({ id, model, text: normalizedText });
   });
 }

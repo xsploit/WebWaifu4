@@ -1,5 +1,8 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { DEFAULT_OPENROUTER_EMBEDDING_MODEL } from '../../../lib/chat/defaults';
+import {
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
+  DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+} from '../../../lib/chat/defaults';
 import type { GrilloMemoryState } from '../../../lib/chat/grillo-memory';
 import type {
   LadybugGrilloRuntimeStatus,
@@ -28,6 +31,7 @@ type ContextTabProps = {
   onRunBackendGrilloBeat: () => void;
   onRunBackendGrilloCompaction: () => void;
   onRunBackendGrilloConsolidation: () => void;
+  onRunBackendGrilloSemanticIndexing: () => void;
   onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
   grilloRuntimeStatus: LadybugGrilloRuntimeStatus | null;
@@ -60,6 +64,7 @@ export function ContextTab({
   onRunBackendGrilloBeat,
   onRunBackendGrilloCompaction,
   onRunBackendGrilloConsolidation,
+  onRunBackendGrilloSemanticIndexing,
   onRunBackendGrilloTick,
   onRunMemoryAgent,
   grilloRuntimeStatus,
@@ -172,7 +177,7 @@ export function ContextTab({
           </select>
         </label>
         <label className="setting-row">
-          <span>Embedding model</span>
+          <span>Embedding model (provider)</span>
           <input
             className="input-tech compact-input"
             onChange={(event) =>
@@ -186,6 +191,27 @@ export function ContextTab({
             value={aiSettings.embeddingModel}
           />
         </label>
+        <label className="setting-row">
+          <span>Embedding model (browser/local)</span>
+          <input
+            className="input-tech compact-input"
+            onChange={(event) =>
+              setAiSettings((current) => ({
+                ...current,
+                embeddingLocalModel:
+                  event.target.value.trim() || DEFAULT_LOCAL_EMBEDDING_MODEL,
+              }))
+            }
+            spellCheck={false}
+            type="text"
+            value={aiSettings.embeddingLocalModel}
+          />
+        </label>
+        <div className="field-hint">
+          Local model runs in the browser via transformers.js. Use a Hugging Face model id with ONNX
+          weights. Backend semantic indexing falls back to provider embeddings when this lane is
+          set to provider or auto.
+        </div>
         <label className="setting-row">
           <span>Auto-run every N chat messages</span>
           <input
@@ -249,6 +275,14 @@ export function ContextTab({
             type="button"
           >
             {backendGrilloTickBusy ? 'Ticking...' : 'Run Compaction'}
+          </button>
+          <button
+            className="btn-tech secondary"
+            disabled={backendGrilloTickBusy}
+            onClick={onRunBackendGrilloSemanticIndexing}
+            type="button"
+          >
+            {backendGrilloTickBusy ? 'Ticking...' : 'Run Semantic Indexing'}
           </button>
         </div>
         <div className="status-copy">{memoryAgentStatus}</div>

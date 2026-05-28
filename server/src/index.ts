@@ -105,6 +105,7 @@ type MemoryGrilloManualRunBody = {
 
 type MemoryGrilloRuntimeBody = {
   beatType?: unknown;
+  embeddingMode?: unknown;
   embeddingModel?: unknown;
   enabled?: unknown;
   intervalMs?: unknown;
@@ -1633,6 +1634,14 @@ const httpServer = createServer(async (request, response) => {
         throw new Error(modelDecision.error);
       }
       const useProviderLane = browserProviderKeyPresent || serverProviderKeyPresent;
+      const embeddingMode =
+        body.embeddingMode === 'browser' ||
+        body.embeddingMode === 'provider' ||
+        body.embeddingMode === 'auto'
+          ? body.embeddingMode
+          : 'provider';
+      const useProviderEmbeddingLane =
+        useProviderLane && (embeddingMode === 'provider' || embeddingMode === 'auto');
       const embeddingModel = normalizeEmbeddingModel(
         body.embeddingModel,
         getProviderEmbeddingModel(
@@ -1678,32 +1687,40 @@ const httpServer = createServer(async (request, response) => {
               maxToolRounds: body.maxToolRounds,
               model: modelDecision.model,
               provider: memoryProviderName,
-              embedding: async (embeddingRequest) => {
-                const embeddingConfig = getRuntimeEmbeddingConfig(
-                  config,
-                  request,
-                  memoryProviderName,
-                  allowServerProviderProxy,
-                );
-                if (!embeddingConfig?.aiApiKey) {
-                  return { embedding: null, model: embeddingModel, provider: memoryProviderName };
-                }
-                const requestedEmbeddingModel = normalizeEmbeddingModel(
-                  embeddingRequest.model ?? embeddingModel,
-                  embeddingModel,
-                );
-                return {
-                  embedding: await createOpenAiEmbedding(
-                    embeddingConfig,
-                    embeddingRequest.input,
-                    requestedEmbeddingModel,
-                  ),
-                  model: requestedEmbeddingModel,
-                  provider: memoryProviderName,
-                };
-              },
+              ...(useProviderEmbeddingLane
+                ? {
+                    embedding: async (embeddingRequest) => {
+                      const embeddingConfig = getRuntimeEmbeddingConfig(
+                        config,
+                        request,
+                        memoryProviderName,
+                        allowServerProviderProxy,
+                      );
+                      if (!embeddingConfig?.aiApiKey) {
+                        return {
+                          embedding: null,
+                          model: embeddingModel,
+                          provider: memoryProviderName,
+                        };
+                      }
+                      const requestedEmbeddingModel = normalizeEmbeddingModel(
+                        embeddingRequest.model ?? embeddingModel,
+                        embeddingModel,
+                      );
+                      return {
+                        embedding: await createOpenAiEmbedding(
+                          embeddingConfig,
+                          embeddingRequest.input,
+                          requestedEmbeddingModel,
+                        ),
+                        model: requestedEmbeddingModel,
+                        provider: memoryProviderName,
+                      };
+                    },
+                  }
+                : {}),
               embeddingModel,
-              embeddingProvider: memoryProviderName,
+              embeddingProvider: useProviderEmbeddingLane ? memoryProviderName : 'browser-local',
             }
           : {},
       );

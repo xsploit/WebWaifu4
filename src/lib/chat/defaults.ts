@@ -32,6 +32,7 @@ export const DEFAULT_MEMORY_AGENT_MODEL = 'gpt-4.1-mini';
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
 export const DEFAULT_AI_GATEWAY_MODEL = 'openai/gpt-5-nano';
 export const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
+export const DEFAULT_LOCAL_EMBEDDING_MODEL = 'onnx-community/all-MiniLM-L6-v2-ONNX';
 
 export const RIKO_PERSONA: PersonaProfile = {
   id: 'default-waifu',
@@ -99,6 +100,7 @@ export function createDefaultAiSettings(): AiSettings {
     memoryAgentModel: DEFAULT_AI_GATEWAY_MODEL,
     memoryAgentIntervalMessages: 7,
     embeddingMode: 'browser',
+    embeddingLocalModel: DEFAULT_LOCAL_EMBEDDING_MODEL,
     embeddingModel: DEFAULT_OPENROUTER_EMBEDDING_MODEL,
     aiTransportMode: 'http-stream',
     openAiStateMode: 'stateless',

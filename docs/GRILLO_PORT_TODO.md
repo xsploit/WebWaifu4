@@ -120,6 +120,7 @@ Progress note:
 - 2026-05-28: Made Electron backend ownership explicit in the desktop runtime bridge. Packaged smokes now assert `backendOwner=owned`, while dev external-backend mode remains a separate explicit path.
 - 2026-05-28: Hardened backend shutdown by tracking HTTP sockets and draining/destroying remaining keep-alive or streaming connections after GRILLO, provider cache, Twitch source, overlay sockets, and Ladybug shutdown.
 - 2026-05-28: Made the native Ladybug GRILLO context packet authoritative for prompt memory lanes. When the packet is present, old browser relationship memory, diary thoughts, semantic recall, and duplicate channel history are not appended into the POML memory block.
+- 2026-05-28: Split the embedding lane into provider and browser/local model configuration. The local transformers.js worker accepts and caches per-model extractors, prompt recall/semantic save/worker memory paths thread the selected local model id, the Context tab exposes both fields plus a Run Semantic Indexing button, and the backend `/memory/grillo/run/tick` respects `embeddingMode` so `browser` mode no longer silently calls provider embeddings (existing `semantic_indexing_requires_embedding` no-op path covers it).
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -171,12 +172,12 @@ Progress note:
 ## Phase 4 - Lanes And Providers
 
 - [ ] Keep same provider infrastructure.
-- [ ] Add/verify configurable lanes:
+- [x] Add/verify configurable lanes:
   - [x] chat lane
   - [x] GRILLO/reflection lane
-  - [ ] embedding lane
+  - [x] embedding lane
 - [x] Let reflection lane choose its own provider/model.
-- [ ] Let embedding lane choose browser local, local model, or provider-based when supported.
+- [x] Let embedding lane choose browser local, local model, or provider-based when supported.
 - [x] Ensure memory-scoped requests do not expose normal public chat tools.
 - [ ] Ensure OpenRouter and Vercel Gateway models work through the same lane shape.
 
@@ -243,6 +244,7 @@ Progress note:
   - [x] Run Beat
   - [x] Run Consolidation
   - [x] Run Compaction
+  - [x] Run Semantic Indexing
   - [x] Clear GRILLO Memory
   - [x] Reset Chat Context
 

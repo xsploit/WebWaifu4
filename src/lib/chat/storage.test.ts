@@ -299,6 +299,7 @@ describe('chat settings persistence', () => {
     expect(defaults.toolChoiceMode).toBe('auto');
     expect(defaults.maxToolRounds).toBe(15);
     expect(defaults.embeddingMode).toBe('browser');
+    expect(defaults.embeddingLocalModel).toBe('onnx-community/all-MiniLM-L6-v2-ONNX');
     expect(defaults.embeddingModel).toBe('openai/text-embedding-3-small');
   });
 

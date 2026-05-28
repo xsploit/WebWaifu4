@@ -96,6 +96,7 @@ type SettingsPanelProps = {
   onRunBackendGrilloBeat: () => void;
   onRunBackendGrilloCompaction: () => void;
   onRunBackendGrilloConsolidation: () => void;
+  onRunBackendGrilloSemanticIndexing: () => void;
   onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
   onSavePersona: (draft: PersonaDraft, personaId?: string) => void;
@@ -214,6 +215,7 @@ export function SettingsPanel({
   onRunBackendGrilloBeat,
   onRunBackendGrilloCompaction,
   onRunBackendGrilloConsolidation,
+  onRunBackendGrilloSemanticIndexing,
   onRunBackendGrilloTick,
   onRunMemoryAgent,
   onSavePersona,
@@ -365,6 +367,7 @@ export function SettingsPanel({
         onRunBackendGrilloBeat={onRunBackendGrilloBeat}
         onRunBackendGrilloCompaction={onRunBackendGrilloCompaction}
         onRunBackendGrilloConsolidation={onRunBackendGrilloConsolidation}
+        onRunBackendGrilloSemanticIndexing={onRunBackendGrilloSemanticIndexing}
         onRunBackendGrilloTick={onRunBackendGrilloTick}
         onRunMemoryAgent={onRunMemoryAgent}
         grilloMemoryState={grilloMemoryState}
