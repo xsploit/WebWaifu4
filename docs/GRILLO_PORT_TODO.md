@@ -8,6 +8,9 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 - Do not use `C:\Users\SUBSECT\Documents\New project 3` for this project.
 - Commit and push each passing implementation slice.
 - Rebuild the packaged EXE with `npm run desktop:pack` after each meaningful implementation slice.
+- `grillo_next` is a reference for core memory-worker behavior, not gospel.
+- Do not copy Discord-bot architecture, channel assumptions, framework glue, or autonomous posting behavior.
+- Port only the durable GRILLO concepts that fit WebWaifu: beats, worker tools, candidates, diary, relationship/profile state, recall, semantic indexing, context packet, and traceability.
 - LadybugDB is the canonical GRILLO database.
 - Clean slate is allowed. Do not design around old snapshot compatibility.
 - One backend process owns AI proxy, TTS, tools, POML render, Ladybug memory, and GRILLO.
@@ -25,6 +28,7 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 - Do not keep old relationship/semantic/diary lanes as competing prompt inputs once GRILLO packet injection is wired.
 - Do not run the real GRILLO worker in React.
 - Do not add Discord bot code.
+- Do not treat Discord thread/channel behavior as the default WebWaifu behavior.
 - Do not rely on OpenAI Conversations API for memory/context.
 - Do not add autonomous Twitch posting or unprompted speech by default.
 - Do not make regex keyword hacks for tool or memory behavior.
