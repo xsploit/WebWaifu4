@@ -137,6 +137,38 @@ describe('Grillo context packet', () => {
     expect(promptBlock).toContain('Use native Ladybug GRILLO context.');
   });
 
+  it('uses the native Ladybug GRILLO packet as the authoritative memory lanes', () => {
+    const sections = buildGrilloContextSections({
+      channelHistory: [createTurn({ text: 'legacy channel history should not duplicate' })],
+      diaryContext: 'legacy diary should not duplicate',
+      memoryAdditions: {
+        contextPacket: {
+          background_information: ['native background'],
+          channel_history: ['native channel history'],
+          output_description: ['native output'],
+          recalled_memories: [{ score: 0.9, text: 'native recall' }],
+          relationship_memory: ['native relationship'],
+          thoughts: ['native thought'],
+        },
+        diaryThoughts: ['legacy diary thought should not duplicate'],
+        recalledMemories: [{ score: 0.8, text: 'legacy recall should not duplicate' }],
+        relationshipMemory: ['legacy relationship should not duplicate'],
+      },
+      persona: { ...DEFAULT_PERSONA, name: 'Hikari', userNickname: 'Subby' },
+      relationshipMemory: {
+        ...createDefaultRelationshipMemory(),
+        facts: ['legacy relationship facts should not duplicate'],
+        summary: 'legacy relationship summary should not duplicate',
+      },
+      semanticMemoryContext: 'legacy semantic should not duplicate',
+    });
+
+    expect(sections.channel_history).toEqual(['native channel history']);
+    expect(sections.relationship_memory).toEqual(['native relationship']);
+    expect(sections.recalled_memories).toEqual([{ score: 0.9, text: 'native recall' }]);
+    expect(sections.thoughts).toEqual(['native thought']);
+  });
+
   it('drops low-scored recalled memories before trimming recent channel history', () => {
     const sections = buildGrilloContextSections({
       channelHistory: Array.from({ length: 8 }, (_, index) =>

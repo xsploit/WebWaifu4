@@ -119,6 +119,7 @@ Progress note:
 - 2026-05-28: Tightened the desktop port-fallback smoke. It now blocks the preferred port, expects Electron to choose the next port, verifies `/health`, `/memory/status`, and `/memory/grillo/runtime`, inspects the renderer bridge over CDP to prove the fallback port reached the frontend, and verifies the fallback backend closes after Electron exits.
 - 2026-05-28: Made Electron backend ownership explicit in the desktop runtime bridge. Packaged smokes now assert `backendOwner=owned`, while dev external-backend mode remains a separate explicit path.
 - 2026-05-28: Hardened backend shutdown by tracking HTTP sockets and draining/destroying remaining keep-alive or streaming connections after GRILLO, provider cache, Twitch source, overlay sockets, and Ladybug shutdown.
+- 2026-05-28: Made the native Ladybug GRILLO context packet authoritative for prompt memory lanes. When the packet is present, old browser relationship memory, diary thoughts, semantic recall, and duplicate channel history are not appended into the POML memory block.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -190,7 +191,7 @@ Progress note:
   - [x] `output_description`
 - [x] Budget and reduce context before POML render.
 - [x] Inject the canonical GRILLO packet into POML.
-- [ ] Remove duplicate old memory prompt inputs after packet is verified.
+- [x] Remove duplicate old memory prompt inputs after packet is verified.
 - [x] Show exact injected packet in the UI.
 - [x] Add tests proving POML receives memory slots, diary thoughts, semantic recall, and relationship state.
 

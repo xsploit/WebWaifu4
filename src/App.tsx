@@ -5352,10 +5352,14 @@ function App() {
           console.warn('[App] Failed to load native GRILLO context packet', error);
           return null;
         });
-        const grilloPromptMemory = {
-          ...grilloMemory,
-          contextPacket: grilloContextPacket,
-        };
+        const grilloPromptMemory = grilloContextPacket
+          ? {
+              contextPacket: grilloContextPacket,
+              diaryThoughts: [],
+              recalledMemories: [],
+              relationshipMemory: [],
+            }
+          : grilloMemory;
         setMemoryPromptDebug({
           grilloContextPacket: grilloContextPacket
             ? {

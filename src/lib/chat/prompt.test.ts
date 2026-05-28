@@ -156,13 +156,15 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).not.toContain('turns=9');
     expect(systemMessage.content).toContain('## relationship_memory');
     expect(systemMessage.content).toContain('[slot:ongoing_threads] Native packet is injected.');
-    expect(systemMessage.content).toContain('known_facts=["likes prompt templates"]');
+    expect(systemMessage.content).not.toContain('known_facts=["likes prompt templates"]');
     expect(systemMessage.content).toContain('## recalled_memories');
     expect(systemMessage.content).toContain('[candidate:goal] Native packet reaches POML.');
-    expect(systemMessage.content).toContain('Prior note: keep conversation state stable across turns.');
+    expect(systemMessage.content).not.toContain(
+      'Prior note: keep conversation state stable across turns.',
+    );
     expect(systemMessage.content).toContain('Subsect: prove native packet reaches POML');
     expect(systemMessage.content).toContain('[diary:reflection] Native packet arrived in system prompt.');
-    expect(systemMessage.content).toContain('# Semantic Memory Usage');
+    expect(systemMessage.content).not.toContain('# Semantic Memory Usage');
     expect(systemMessage.content).not.toContain('{{');
     expect(messages.slice(1)).toEqual([
       {

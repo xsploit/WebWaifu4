@@ -100,6 +100,7 @@ export function buildGrilloContextSections({
       ? `twitch/${normalizePathPart(channel)}`
       : `local/${normalizePathPart(currentSpeaker)}`;
   const packet = memoryAdditions?.contextPacket ?? null;
+  const useNativePacket = packet !== null;
 
   return {
     background_information: [
@@ -120,22 +121,22 @@ export function buildGrilloContextSections({
     ],
     channel_history: [
       ...(packet?.channel_history ?? []),
-      ...channelHistory.slice(-18).map(formatGrilloChatTurn),
+      ...(useNativePacket ? [] : channelHistory.slice(-18).map(formatGrilloChatTurn)),
     ],
     relationship_memory: [
       ...(packet?.relationship_memory ?? []),
-      ...buildRelationshipLane(relationshipMemory),
-      ...(memoryAdditions?.relationshipMemory ?? []),
+      ...(useNativePacket ? [] : buildRelationshipLane(relationshipMemory)),
+      ...(useNativePacket ? [] : (memoryAdditions?.relationshipMemory ?? [])),
     ],
     recalled_memories: [
       ...(packet?.recalled_memories ?? []),
-      ...buildRecalledMemoryLane(semanticMemoryContext),
-      ...(memoryAdditions?.recalledMemories ?? []),
+      ...(useNativePacket ? [] : buildRecalledMemoryLane(semanticMemoryContext)),
+      ...(useNativePacket ? [] : (memoryAdditions?.recalledMemories ?? [])),
     ],
     thoughts: [
       ...(packet?.thoughts ?? []),
-      ...buildThoughtLane(diaryContext),
-      ...(memoryAdditions?.diaryThoughts ?? []),
+      ...(useNativePacket ? [] : buildThoughtLane(diaryContext)),
+      ...(useNativePacket ? [] : (memoryAdditions?.diaryThoughts ?? [])),
     ],
     output_description: [
       ...(packet?.output_description ?? []),

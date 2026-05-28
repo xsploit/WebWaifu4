@@ -332,14 +332,17 @@ export async function buildChatCompletionMessages({
       content,
     }));
   const diaryContext = serializeDiaryContext(history, relationshipMemory, turnContext);
+  const hasNativeGrilloPacket = Boolean(grilloMemory?.contextPacket);
+  const legacyDiaryContext = hasNativeGrilloPacket ? '' : diaryContext;
+  const legacySemanticMemoryContext = hasNativeGrilloPacket ? '' : semanticMemoryContext;
   const grilloContext = buildGrilloContextPromptBlock({
     channelHistory,
     currentTurnText: currentTurnContext || readTurnContextValue(turnContext, 'currentTurnText'),
-    diaryContext,
+    diaryContext: legacyDiaryContext,
     memoryAdditions: grilloMemory,
     persona,
     relationshipMemory,
-    semanticMemoryContext,
+    semanticMemoryContext: legacySemanticMemoryContext,
     turnContext,
   });
 
@@ -349,10 +352,10 @@ export async function buildChatCompletionMessages({
     diaryContext: '',
     dynamicState: buildDynamicPromptState({
       animationCatalogContext,
-      diaryContext,
+      diaryContext: legacyDiaryContext,
       persona,
       relationshipMemory,
-      semanticMemoryContext,
+      semanticMemoryContext: legacySemanticMemoryContext,
       turnContext,
       ttsExpressionTagsEnabled,
       ttsProvider,
@@ -365,11 +368,11 @@ export async function buildChatCompletionMessages({
     replyMetadataInstruction: buildReplyMetadataInstruction(),
     semanticMemoryContext: '',
     turnMetadataContext: serializeTurnMetadataContext({
-      diaryContext,
+      diaryContext: legacyDiaryContext,
       history,
       persona,
       relationshipMemory,
-      semanticMemoryContext,
+      semanticMemoryContext: legacySemanticMemoryContext,
       turnContext,
       ttsExpressionTagsEnabled,
       ttsProvider,
