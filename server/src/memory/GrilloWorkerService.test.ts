@@ -369,6 +369,128 @@ describe('GrilloWorkerService', () => {
     }
   });
 
+  it('runs LLM-guided backend extraction ticks through the memory lane tool loop', async () => {
+    const { grillo, memory } = createServices();
+    const requests: Array<{
+      maxToolRounds: number;
+      messages: Array<{ content: string; role: string }>;
+      stateKey: string;
+      stateScope: string;
+      toolChoiceMode: string;
+    }> = [];
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will keep backend memory lane extraction grounded.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'remember that backend memory lane should use worker tools',
+      });
+
+      const tick = await grillo.runTickWithOptions(
+        {
+          reason: 'manual_test',
+          scopeKey,
+        },
+        {
+          completion: async (request) => {
+            requests.push(request);
+            if (requests.length === 1) {
+              return {
+                meta: { model: 'openai/gpt-5-nano', provider: 'vercel-gateway' },
+                text: JSON.stringify({
+                  candidate: null,
+                  diary: null,
+                  done: false,
+                  memory: null,
+                  notes: 'writing grounded worker memories',
+                  relationship: null,
+                  toolCalls: [
+                    {
+                      args: {
+                        confidence: 0.9,
+                        content: 'Subsect wants backend GRILLO extraction to use the memory lane and worker tools.',
+                        summary: 'Subsect wants backend memory-lane worker tools.',
+                        tags: ['grillo', 'memory-lane'],
+                        type: 'goal',
+                      },
+                      name: 'core.worker_candidate_write',
+                    },
+                    {
+                      args: {
+                        beat_type: 'extraction',
+                        personal_thought: 'I should use the backend memory lane and real worker tools for GRILLO extraction.',
+                        summary: 'Backend memory-lane extraction was requested.',
+                        tags: ['grillo', 'reflection'],
+                      },
+                      name: 'core.worker_diary_write',
+                    },
+                  ],
+                }),
+              };
+            }
+            return JSON.stringify({
+              candidate: null,
+              diary: null,
+              done: true,
+              memory: null,
+              notes: 'done',
+              relationship: null,
+              toolCalls: [],
+            });
+          },
+          maxToolRounds: 15,
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+
+      expect(tick).toMatchObject({
+        noOpReason: '',
+        ok: true,
+        writes: 2,
+      });
+      expect(requests[0]).toMatchObject({
+        maxToolRounds: 15,
+        stateKey: 'memory:local:persona:hikari-chan',
+        stateScope: 'memory',
+        toolChoiceMode: 'auto',
+      });
+      expect(requests[0]?.messages[0]?.content).toContain('Available tools:');
+      expect(requests[0]?.messages[1]?.content).toContain('source_turn_ids');
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.traces[0]).toMatchObject({
+        model: 'openai/gpt-5-nano',
+        provider: 'vercel-gateway',
+        taskType: 'extraction',
+      });
+      expect(graph.recent.candidates[0]?.summary).toBe(
+        'Subsect wants backend memory-lane worker tools.',
+      );
+      expect(graph.recent.diary[0]?.summary).toBe(
+        'Backend memory-lane extraction was requested.',
+      );
+      expect(graph.recent.activities.filter((row) => row.beatType === 'worker_tool')).toHaveLength(
+        2,
+      );
+
+      await expect(grillo.runTickWithOptions({ reason: 'manual_test', scopeKey })).resolves.toMatchObject({
+        noOpReason: 'no_new_turn_pairs',
+        writes: 0,
+      });
+    } finally {
+      await memory.close();
+    }
+  });
+
   it('starts, stops, and guards backend worker ticks', async () => {
     const dbPath = join(tmpdir(), `webwaifu4-grillo-runtime-test-${process.pid}-${Date.now()}.db`);
     dbPaths.push(dbPath);

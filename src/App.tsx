@@ -4483,8 +4483,25 @@ function App() {
     }
     const stateKey = activeRelationshipStateKeyRef.current;
     setBackendGrilloTickBusy(true);
-    setMemoryAgentStatus('Running backend GRILLO tick.');
-    void runLadybugGrilloTick({ reason: 'manual_ui', scopeKey: stateKey })
+    setMemoryAgentStatus('Running backend GRILLO tick through memory lane.');
+    void (async () => {
+      const settings = aiSettingsRef.current;
+      const model = settings.memoryAgentModel.trim() || settings.model;
+      const headers = await buildBackendProviderHeaders({
+        llmProvider: settings.llmProvider,
+        providerKeyVaultWorkspaceId,
+      });
+      return runLadybugGrilloTick(
+        {
+          llmProvider: settings.llmProvider,
+          maxToolRounds: settings.maxToolRounds,
+          model,
+          reason: 'manual_ui',
+          scopeKey: stateKey,
+        },
+        { headers },
+      );
+    })()
       .then((result) => {
         if (!result) {
           setMemoryAgentStatus('Backend GRILLO tick did not return a result.');
@@ -4504,7 +4521,7 @@ function App() {
         setBackendGrilloTickBusy(false);
         void refreshMemoryBackendStatus();
       });
-  }, [backendGrilloTickBusy, refreshMemoryBackendStatus]);
+  }, [backendGrilloTickBusy, providerKeyVaultWorkspaceId, refreshMemoryBackendStatus]);
 
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
     if (!metadata) {

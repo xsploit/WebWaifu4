@@ -105,6 +105,9 @@ type MemoryGrilloManualRunBody = {
 type MemoryGrilloRuntimeBody = {
   enabled?: unknown;
   intervalMs?: unknown;
+  llmProvider?: unknown;
+  maxToolRounds?: unknown;
+  model?: unknown;
   reason?: unknown;
   scopeKey?: unknown;
 };
@@ -1604,10 +1607,68 @@ const httpServer = createServer(async (request, response) => {
   if (request.method === 'POST' && runtimePath === '/memory/grillo/run/tick') {
     try {
       const body = await readRequestJson<MemoryGrilloRuntimeBody>(request, 128 * 1024);
-      const result = await getGrilloWorkerService().runTick({
-        reason: body.reason,
-        scopeKey: body.scopeKey,
+      const memoryProviderName = normalizeRuntimeLlmProvider(
+        getHeaderValue(request, 'x-yourwifey-llm-provider') || body.llmProvider,
+      );
+      const browserProviderKeyPresent = Boolean(
+        getHeaderSecret(request, 'x-yourwifey-llm-provider-key'),
+      );
+      const serverProviderKeyPresent = Boolean(
+        allowServerProviderProxy &&
+          config.providerProxyEnabled &&
+          getProviderEnvApiKey(memoryProviderName),
+      );
+      const modelDecision = resolveServerProviderProxyModel({
+        allowlistEnvNames: getAllowlistEnvNamesForProvider(memoryProviderName),
+        browserProviderKeyPresent,
+        configuredModel: getConfiguredModelForProvider(memoryProviderName, config),
+        defaultModel: getDefaultModelForProvider(memoryProviderName),
+        requestedModel: typeof body.model === 'string' ? body.model : '',
       });
+      if (!modelDecision.allowed) {
+        throw new Error(modelDecision.error);
+      }
+      const useProviderLane = browserProviderKeyPresent || serverProviderKeyPresent;
+      const result = await getGrilloWorkerService().runTickWithOptions(
+        {
+          reason: body.reason,
+          scopeKey: body.scopeKey,
+        },
+        useProviderLane
+          ? {
+              completion: async (workerRequest) => {
+                const providerResponse = await runAiChatRequest({
+                  allowServerProviderProxy,
+                  body: {
+                    activeChatters: 1,
+                    disableState: workerRequest.disableState,
+                    llmProvider: memoryProviderName,
+                    maxTokens: workerRequest.maxTokens,
+                    maxToolRounds: workerRequest.maxToolRounds,
+                    messages: workerRequest.messages,
+                    mode: 'direct',
+                    model: modelDecision.model,
+                    responseFormat: workerRequest.responseFormat,
+                    stateKey: workerRequest.stateKey,
+                    stateScope: workerRequest.stateScope,
+                    stream: false,
+                    temperature: workerRequest.temperature,
+                    toolChoiceMode: workerRequest.toolChoiceMode,
+                    transportMode: 'http-stream',
+                  },
+                  request,
+                });
+                return {
+                  meta: providerResponse.meta ?? null,
+                  text: providerResponse.text,
+                };
+              },
+              maxToolRounds: body.maxToolRounds,
+              model: modelDecision.model,
+              provider: memoryProviderName,
+            }
+          : {},
+      );
       writeJson(response, 200, {
         ok: true,
         backend: getLadybugMemoryService().getBackendLabel(),

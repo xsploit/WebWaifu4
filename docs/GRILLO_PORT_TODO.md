@@ -29,14 +29,11 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 Do this before removing the old React memory worker:
 
-1. Wire the backend reflection lane to the existing provider infrastructure:
-   - use `stateScope: memory`
-   - use the configured GRILLO/reflection provider/model
-   - pass worker tools only to the worker loop
-   - keep public chat/search tools out of memory scope
-2. Replace the deterministic extraction fallback with LLM-guided extraction once the lane is verified.
-3. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
-4. Commit only the intended files.
+1. Add backend debrief/recovery when the LLM-guided worker returns no candidate or diary writes.
+2. Add explicit reflection/relationship beat tasks on top of the same backend memory lane.
+3. Keep the deterministic extraction fallback only for missing provider keys; provider-backed manual ticks should use the LLM-guided worker loop.
+4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
+5. Commit only the intended files.
 
 Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron transparency during this slice.
 
@@ -84,6 +81,7 @@ Progress note:
 - 2026-05-28: Wired backend GRILLO runtime status and manual tick control into the Memory UI, refreshed through the same backend polling path as Ladybug status and graph state.
 - 2026-05-28: Replaced the default no-op backend tick with a native extraction pass over completed turn pairs. It writes candidates, diary thoughts, and open-thread slots through worker tools, records extraction traces, persists processed turn ids, and proves the context packet sees the extracted memory.
 - 2026-05-28: Verified the provider lane keeps public runtime search tools out of `stateScope: memory` requests while normal chat requests still receive Tavily tools and agentic loop controls. Focused `AiSdkGatewayProvider` tests pass.
+- 2026-05-28: Wired manual backend GRILLO ticks into the existing provider infrastructure. The Memory UI passes browser-vault provider headers plus the selected memory-worker model, the backend calls the same `/ai/chat` path with `stateScope: memory`, and `GrilloWorkerService` runs an LLM-guided JSON worker-tool loop against Ladybug worker tools. If no provider key is available, the existing deterministic backend extraction remains the fallback.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -136,10 +134,10 @@ Progress note:
 
 - [ ] Keep same provider infrastructure.
 - [ ] Add/verify configurable lanes:
-  - [ ] chat lane
-  - [ ] GRILLO/reflection lane
+  - [x] chat lane
+  - [x] GRILLO/reflection lane
   - [ ] embedding lane
-- [ ] Let reflection lane choose its own provider/model.
+- [x] Let reflection lane choose its own provider/model.
 - [ ] Let embedding lane choose browser local, local model, or provider-based when supported.
 - [x] Ensure memory-scoped requests do not expose normal public chat tools.
 - [ ] Ensure OpenRouter and Vercel Gateway models work through the same lane shape.

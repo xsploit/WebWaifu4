@@ -255,12 +255,27 @@ export async function updateLadybugGrilloRuntime(options: {
   return response?.ok === true ? response.runtime : null;
 }
 
-export async function runLadybugGrilloTick(options: { reason?: string; scopeKey: string }) {
+export async function runLadybugGrilloTick(
+  options: {
+    llmProvider?: string;
+    maxToolRounds?: number;
+    model?: string;
+    reason?: string;
+    scopeKey: string;
+  },
+  init?: Pick<RequestInit, 'headers'>,
+) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(init?.headers instanceof Headers
+      ? Object.fromEntries(init.headers.entries())
+      : (init?.headers as Record<string, string> | undefined)),
+  };
   const response = await requestLadybugMemory<{ result: LadybugGrilloTickResult }>(
     '/memory/grillo/run/tick',
     {
       body: JSON.stringify(options),
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       method: 'POST',
     },
   );

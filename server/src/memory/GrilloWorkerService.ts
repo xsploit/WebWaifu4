@@ -4,6 +4,10 @@ import type {
   LadybugMemorySlotPatchRecord,
   LadybugMemorySlotRecord,
 } from './LadybugMemoryService.js';
+import type {
+  ChatProviderMessage,
+  ChatProviderResponseFormat,
+} from '../ai/ChatProvider.js';
 
 export type GrilloTurnIngestInput = {
   assistantName?: unknown;
@@ -90,6 +94,35 @@ export type GrilloWorkerRuntimeOptions = {
 export type GrilloWorkerTickInput = {
   reason?: unknown;
   scopeKey?: unknown;
+};
+
+export type GrilloWorkerCompletionRequest = {
+  disableState: true;
+  maxTokens: number;
+  maxToolRounds: number;
+  messages: ChatProviderMessage[];
+  responseFormat: ChatProviderResponseFormat;
+  stateKey: string;
+  stateScope: 'memory';
+  temperature: number;
+  toolChoiceMode: 'auto';
+};
+
+export type GrilloWorkerCompletionResult = {
+  meta?: Record<string, unknown> | null;
+  text: string;
+};
+
+export type GrilloWorkerCompletion = (
+  request: GrilloWorkerCompletionRequest,
+) => Promise<GrilloWorkerCompletionResult | string>;
+
+export type GrilloWorkerTickOptions = {
+  completion?: GrilloWorkerCompletion;
+  maxRounds?: unknown;
+  maxToolRounds?: unknown;
+  model?: unknown;
+  provider?: unknown;
 };
 
 export type GrilloWorkerTickResult = {
@@ -185,6 +218,10 @@ export class GrilloWorkerService {
   }
 
   runTick(input: GrilloWorkerTickInput = {}) {
+    return this.runTickWithOptions(input);
+  }
+
+  runTickWithOptions(input: GrilloWorkerTickInput = {}, options: GrilloWorkerTickOptions = {}) {
     if (this.activeTickPromise) {
       const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
       const reason = normalizeText(input.reason) || 'manual';
@@ -199,7 +236,7 @@ export class GrilloWorkerService {
         writes: 0,
       } satisfies GrilloWorkerTickResult);
     }
-    this.activeTickPromise = this.runTickNow(input).finally(() => {
+    this.activeTickPromise = this.runTickNow(input, options).finally(() => {
       this.activeTickPromise = null;
       this.runtime.running = false;
     });
@@ -454,14 +491,17 @@ export class GrilloWorkerService {
     }
   }
 
-  private async runTickNow(input: GrilloWorkerTickInput): Promise<GrilloWorkerTickResult> {
+  private async runTickNow(
+    input: GrilloWorkerTickInput,
+    options: GrilloWorkerTickOptions = {},
+  ): Promise<GrilloWorkerTickResult> {
     const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
     const reason = normalizeText(input.reason) || 'manual';
     const startedAt = this.nowMs();
     const tickId = this.idFactory();
     const taskResult = await (this.tickTask
       ? this.tickTask({ reason, scopeKey })
-      : this.runExtractionTick({ reason, scopeKey }));
+      : this.runExtractionTick({ reason, scopeKey }, options));
     const writes = clampInteger(taskResult.writes, 0, 100_000, 0);
     const noOpReason = writes > 0 ? '' : normalizeText(taskResult.noOpReason) || 'no_writes';
     const durationMs = Math.max(0, this.nowMs() - startedAt);
@@ -509,7 +549,7 @@ export class GrilloWorkerService {
   private async runExtractionTick(input: {
     reason: string;
     scopeKey: string;
-  }): Promise<{ noOpReason?: string; statePatch?: Record<string, unknown>; writes: number }> {
+  }, options: GrilloWorkerTickOptions = {}): Promise<{ noOpReason?: string; statePatch?: Record<string, unknown>; writes: number }> {
     const previousState = asRecord(await this.memory.getGrilloSingleton('memory_worker_state'));
     const processedTurnIds = new Set(readStringArray(previousState['processedTurnIds']));
     const turns = (await this.memory.readGrilloRecords<Record<string, unknown>>('turn_events'))
@@ -530,6 +570,10 @@ export class GrilloWorkerService {
         statePatch: { processedTurnIds: [...processedTurnIds].slice(-2000) },
         writes: 0,
       };
+    }
+
+    if (options.completion) {
+      return this.runLlmExtractionTick(input, pairs, processedTurnIds, options);
     }
 
     const traceId = this.idFactory();
@@ -607,6 +651,142 @@ export class GrilloWorkerService {
         lastExtractionAt: this.nowMs(),
         lastExtractionTurnCount: pairs.length,
         lastExtractionTraceId: traceId,
+        processedTurnIds: [...processedTurnIds].slice(-2000),
+      },
+      writes,
+    };
+  }
+
+  private async runLlmExtractionTick(
+    input: {
+      reason: string;
+      scopeKey: string;
+    },
+    pairs: Array<{ assistant: Record<string, unknown>; user: Record<string, unknown> }>,
+    processedTurnIds: Set<string>,
+    options: GrilloWorkerTickOptions,
+  ): Promise<{ noOpReason?: string; statePatch?: Record<string, unknown>; writes: number }> {
+    const completion = options.completion;
+    if (!completion) {
+      return { noOpReason: 'missing_completion', writes: 0 };
+    }
+
+    const maxRounds = clampInteger(options.maxRounds, 1, 8, 4);
+    const maxToolRounds = clampInteger(options.maxToolRounds, 1, 30, 15);
+    const participantKey =
+      pairs.map((pair) => recordParticipantKey(pair.user)).find(Boolean) ||
+      defaultParticipantKey(input.scopeKey);
+    const sourceTurnIds = pairs.flatMap((pair) =>
+      [recordTurnId(pair.user), recordTurnId(pair.assistant)].filter(Boolean),
+    );
+    const systemPrompt = buildBackendWorkerSystemPrompt();
+    const userPrompt = buildBackendExtractionPrompt(input.scopeKey, pairs);
+    const messages: ChatProviderMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ];
+    let writes = 0;
+    let lastTraceId = '';
+    let lastProvider = normalizeText(options.provider) || 'runtime-provider';
+    let lastModel = normalizeText(options.model) || 'runtime-model';
+    let lastNotes = '';
+
+    for (let round = 1; round <= maxRounds; round += 1) {
+      const rawResult = await completion({
+        disableState: true,
+        maxTokens: 900,
+        maxToolRounds,
+        messages,
+        responseFormat: BACKEND_GRILLO_WORKER_RESPONSE_FORMAT,
+        stateKey: `memory:${input.scopeKey}`,
+        stateScope: 'memory',
+        temperature: 0.25,
+        toolChoiceMode: 'auto',
+      });
+      const result =
+        typeof rawResult === 'string'
+          ? { text: rawResult }
+          : { meta: rawResult.meta ?? null, text: rawResult.text };
+      const rawText = normalizeText(result.text);
+      const meta = asRecord(result.meta);
+      lastProvider = normalizeText(meta['provider']) || lastProvider;
+      lastModel = normalizeText(meta['model']) || lastModel;
+      lastTraceId = this.idFactory();
+      await this.memory.appendGrilloRecord('worker_context_traces', {
+        beat_type: 'extraction',
+        created_at: this.nowMs(),
+        model: lastModel,
+        prompt: userPrompt,
+        provider: lastProvider,
+        response_text: rawText,
+        round,
+        scope_key: input.scopeKey,
+        system_prompt: systemPrompt,
+        task_type: 'extraction',
+        trace_id: lastTraceId,
+        user_id: input.scopeKey,
+      });
+
+      const parsed = parseWorkerJson(rawText);
+      lastNotes = normalizeText(parsed['notes']);
+      const calls = normalizeWorkerToolCalls(parsed, sourceTurnIds);
+      if (calls.length === 0) {
+        if (parsed['done'] === true) {
+          for (const turnId of sourceTurnIds) {
+            processedTurnIds.add(turnId);
+          }
+          break;
+        }
+        return {
+          noOpReason: writes > 0 ? undefined : 'worker_no_tool_calls',
+          statePatch: {
+            lastExtractionTraceId: lastTraceId,
+            lastExtractionWorkerNotes: lastNotes,
+            processedTurnIds: [...processedTurnIds].slice(-2000),
+          },
+          writes,
+        };
+      }
+
+      messages.push({ role: 'assistant', content: rawText });
+      for (const call of calls) {
+        const execution = await this.runWorkerTool({
+          args: call.args,
+          name: call.name,
+          participantKey,
+          scopeKey: input.scopeKey,
+        });
+        if (execution.ok) {
+          writes += isWorkerWriteTool(call.name) ? 1 : 0;
+        }
+        messages.push({
+          role: 'user',
+          content: JSON.stringify({
+            ok: execution.ok,
+            result: execution.result,
+            tool: call.name,
+          }),
+        });
+      }
+      messages.push({
+        role: 'user',
+        content:
+          'Continue the GRILLO worker loop. Use more worker tools if needed. If complete, return JSON with done=true and toolCalls=[].',
+      });
+    }
+
+    for (const turnId of sourceTurnIds) {
+      processedTurnIds.add(turnId);
+    }
+    return {
+      noOpReason: writes > 0 ? undefined : 'worker_no_writes',
+      statePatch: {
+        lastExtractionAt: this.nowMs(),
+        lastExtractionModel: lastModel,
+        lastExtractionProvider: lastProvider,
+        lastExtractionTraceId: lastTraceId,
+        lastExtractionTurnCount: pairs.length,
+        lastExtractionWorkerNotes: lastNotes,
         processedTurnIds: [...processedTurnIds].slice(-2000),
       },
       writes,
@@ -1034,6 +1214,237 @@ export class GrilloWorkerService {
   }
 }
 
+type NormalizedWorkerToolCall = {
+  args: Record<string, unknown>;
+  name: GrilloWorkerToolName;
+};
+
+const WORKER_TOOL_NAME_VALUES: GrilloWorkerToolName[] = [
+  'core.worker_memory_read',
+  'core.worker_memory_search',
+  'core.worker_candidate_list',
+  'core.worker_candidate_write',
+  'core.worker_diary_write',
+  'core.worker_memory_write',
+  'core.worker_profile_patch',
+  'core.worker_memory_insert_archival',
+];
+
+const BACKEND_GRILLO_WORKER_RESPONSE_FORMAT: ChatProviderResponseFormat = {
+  name: 'grillo_backend_worker_loop',
+  schema: {
+    additionalProperties: false,
+    properties: {
+      candidate: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description: 'Optional candidate recovery object. Prefer toolCalls.',
+      },
+      diary: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description: 'Optional diary recovery object. Prefer toolCalls.',
+      },
+      done: {
+        description: 'True when the worker loop has finished this extraction pass.',
+        type: 'boolean',
+      },
+      memory: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description: 'Optional memory slot recovery object. Prefer toolCalls.',
+      },
+      notes: {
+        description: 'Short private worker status note.',
+        type: 'string',
+      },
+      relationship: {
+        anyOf: [{ additionalProperties: true, type: 'object' }, { type: 'null' }],
+        description: 'Optional relationship/profile patch object.',
+      },
+      toolCalls: {
+        items: {
+          additionalProperties: false,
+          properties: {
+            args: { additionalProperties: true, type: 'object' },
+            name: {
+              enum: WORKER_TOOL_NAME_VALUES,
+              type: 'string',
+            },
+          },
+          required: ['name', 'args'],
+          type: 'object',
+        },
+        type: 'array',
+      },
+      tool_calls: {
+        description: 'OpenAI-style compatibility array.',
+        items: { additionalProperties: true, type: 'object' },
+        type: 'array',
+      },
+    },
+    required: ['done', 'toolCalls', 'candidate', 'diary', 'relationship', 'memory', 'notes'],
+    type: 'object',
+  },
+  strict: false,
+  type: 'json_schema',
+};
+
+function buildBackendWorkerSystemPrompt() {
+  return [
+    'You are the private backend GRILLO memory worker for Web Waifu 4.',
+    'You are not writing a user-facing chat reply.',
+    'Return only JSON matching the schema.',
+    'Use worker tools by returning toolCalls. Do not claim a write happened unless you call a write tool.',
+    'Extract durable memory only when the transcript contains a preference, fact, goal, boundary, bond signal, or ongoing thread.',
+    'Write diary entries only when the exchange meaningfully changes mood, relationship, goals, or stream context.',
+    'Diary personal_thought is private first-person avatar reflection, not a mechanical receipt.',
+    'Use memory_write only for grounded consolidated slots such as open_threads, ongoing_threads, preferences, boundaries, verified_facts, or relationship_state.',
+    '',
+    'Available tools:',
+    '- core.worker_memory_read args: {"block_name"?: string}',
+    '- core.worker_memory_search args: {"query": string, "limit"?: number}',
+    '- core.worker_candidate_list args: {"limit"?: number, "type_filter"?: string}',
+    '- core.worker_candidate_write args: {"type": "preference|fact|goal|boundary|bond_signal|thread", "content": string, "summary": string, "confidence": number, "tags"?: string[], "source_turn_ids"?: string[]}',
+    '- core.worker_diary_write args: {"summary": string, "personal_thought": string, "tags"?: string[], "beat_type"?: string, "source_turn_ids"?: string[]}',
+    '- core.worker_memory_write args: {"block_name": string, "items": string[], "operation": "merge|replace", "reason"?: string, "source_candidate_ids"?: string[]}',
+    '- core.worker_profile_patch args: {"field": "tone_preferences|interaction_style|boundaries|active_threads", "operation": "add|remove", "value": string}',
+    '- core.worker_memory_insert_archival args: {"text": string}',
+    '',
+    'First read or search memory if needed. Then call write tools. When finished, return done=true and toolCalls=[].',
+  ].join('\n');
+}
+
+function buildBackendExtractionPrompt(
+  scopeKey: string,
+  pairs: Array<{ assistant: Record<string, unknown>; user: Record<string, unknown> }>,
+) {
+  const transcript = pairs
+    .map((pair, index) => {
+      const sourceTurnIds = [recordTurnId(pair.user), recordTurnId(pair.assistant)].filter(Boolean);
+      return [
+        `Pair ${index + 1}`,
+        `source_turn_ids: ${JSON.stringify(sourceTurnIds)}`,
+        `participant_key: ${recordParticipantKey(pair.user) || defaultParticipantKey(scopeKey)}`,
+        formatExtractionPairForTrace(pair),
+      ].join('\n');
+    })
+    .join('\n\n');
+  return [
+    `scopeKey: ${scopeKey}`,
+    `currentTimeMs: ${Date.now()}`,
+    '',
+    'Completed turn pairs to process:',
+    transcript,
+    '',
+    'Write only memories grounded in these turns. If nothing durable is present, return done=true with no tool calls.',
+  ].join('\n');
+}
+
+function parseWorkerJson(rawText: string): Record<string, unknown> {
+  const parsed = safeJsonParse(rawText);
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+  const start = rawText.indexOf('{');
+  const end = rawText.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    const objectText = rawText.slice(start, end + 1);
+    const objectParsed = safeJsonParse(objectText);
+    if (objectParsed && typeof objectParsed === 'object' && !Array.isArray(objectParsed)) {
+      return objectParsed as Record<string, unknown>;
+    }
+  }
+  return {};
+}
+
+function normalizeWorkerToolCalls(
+  parsed: Record<string, unknown>,
+  sourceTurnIds: string[],
+): NormalizedWorkerToolCall[] {
+  const calls: NormalizedWorkerToolCall[] = [];
+  for (const item of Array.isArray(parsed['toolCalls']) ? parsed['toolCalls'] : []) {
+    const record = asRecord(item);
+    const name = normalizeText(record['name']);
+    if (!isWorkerToolName(name)) {
+      continue;
+    }
+    calls.push({
+      args: withSourceTurnIds(name, asRecord(record['args']), sourceTurnIds),
+      name,
+    });
+  }
+
+  for (const item of Array.isArray(parsed['tool_calls']) ? parsed['tool_calls'] : []) {
+    const record = asRecord(item);
+    const fn = asRecord(record['function']);
+    const name = normalizeText(fn['name'] ?? record['name']);
+    if (!isWorkerToolName(name)) {
+      continue;
+    }
+    const rawArgs = fn['arguments'] ?? record['arguments'] ?? record['args'];
+    const args =
+      typeof rawArgs === 'string'
+        ? asRecord(safeJsonParse(rawArgs))
+        : asRecord(rawArgs);
+    calls.push({
+      args: withSourceTurnIds(name, args, sourceTurnIds),
+      name,
+    });
+  }
+
+  const candidate = asRecord(parsed['candidate']);
+  if (normalizeText(candidate['content']) && normalizeText(candidate['summary'])) {
+    calls.push({
+      args: withSourceTurnIds('core.worker_candidate_write', candidate, sourceTurnIds),
+      name: 'core.worker_candidate_write',
+    });
+  }
+
+  const diary = asRecord(parsed['diary']);
+  if (normalizeText(diary['summary']) && normalizeText(diary['personal_thought'] ?? diary['personalThought'])) {
+    calls.push({
+      args: withSourceTurnIds('core.worker_diary_write', diary, sourceTurnIds),
+      name: 'core.worker_diary_write',
+    });
+  }
+
+  const memory = asRecord(parsed['memory']);
+  if (normalizeText(memory['block_name']) && readStringArray(memory['items']).length > 0) {
+    calls.push({
+      args: memory,
+      name: 'core.worker_memory_write',
+    });
+  }
+
+  return calls.slice(0, 12);
+}
+
+function withSourceTurnIds(
+  name: GrilloWorkerToolName,
+  args: Record<string, unknown>,
+  sourceTurnIds: string[],
+) {
+  if (
+    (name === 'core.worker_candidate_write' || name === 'core.worker_diary_write') &&
+    readStringArray(args['source_turn_ids']).length === 0 &&
+    sourceTurnIds.length > 0
+  ) {
+    return {
+      ...args,
+      source_turn_ids: sourceTurnIds,
+    };
+  }
+  return args;
+}
+
+function isWorkerWriteTool(name: GrilloWorkerToolName) {
+  return (
+    name === 'core.worker_candidate_write' ||
+    name === 'core.worker_diary_write' ||
+    name === 'core.worker_memory_write' ||
+    name === 'core.worker_profile_patch' ||
+    name === 'core.worker_memory_insert_archival'
+  );
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1255,16 +1666,7 @@ function compactText(value: string, maxLength: number) {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
 }
 
-const WORKER_TOOL_NAMES = new Set<GrilloWorkerToolName>([
-  'core.worker_memory_read',
-  'core.worker_memory_search',
-  'core.worker_candidate_list',
-  'core.worker_candidate_write',
-  'core.worker_diary_write',
-  'core.worker_memory_write',
-  'core.worker_profile_patch',
-  'core.worker_memory_insert_archival',
-]);
+const WORKER_TOOL_NAMES = new Set<GrilloWorkerToolName>(WORKER_TOOL_NAME_VALUES);
 
 function isWorkerToolName(value: string): value is GrilloWorkerToolName {
   return WORKER_TOOL_NAMES.has(value as GrilloWorkerToolName);
