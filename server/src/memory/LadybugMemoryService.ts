@@ -237,7 +237,10 @@ export class LadybugMemoryService {
         hasVectorPersonaEdges,
         hasRelationshipEdges,
         hasRelationshipPersonaEdges,
+        hasRelationshipParticipantEdges,
         hasRelationshipFactEdges,
+        blockSourceCandidateEdges,
+        slotSourceCandidateEdges,
       ] = await Promise.all([
         this.scalarCount('MATCH (m:MemoryState) RETURN count(m) AS count'),
         this.scalarCount("MATCH (m:MemoryState) WHERE m.kind = 'grillo' RETURN count(m) AS count"),
@@ -307,7 +310,16 @@ export class LadybugMemoryService {
           'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count',
         ),
         this.scalarCount(
+          'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_WITH_PARTICIPANT]->(p:Participant) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
           'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:MemoryBlock)-[:BLOCK_FROM_CANDIDATE]->(c:MemoryCandidate) RETURN count(c) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:MemorySlot)-[:SLOT_FROM_CANDIDATE]->(c:MemoryCandidate) RETURN count(c) AS count',
         ),
       ]);
       const relationshipEdges =
@@ -326,7 +338,10 @@ export class LadybugMemoryService {
         hasVectorPersonaEdges +
         hasRelationshipEdges +
         hasRelationshipPersonaEdges +
-        hasRelationshipFactEdges;
+        hasRelationshipParticipantEdges +
+        hasRelationshipFactEdges +
+        blockSourceCandidateEdges +
+        slotSourceCandidateEdges;
       return {
         backend: 'ladybug',
         dbDir: this.dbDir,
@@ -656,7 +671,10 @@ export class LadybugMemoryService {
         vectorPersonaEdges,
         relationshipScopeEdges,
         relationshipPersonaEdges,
+        relationshipParticipantEdges,
         relationshipFactEdges,
+        blockSourceCandidateEdges,
+        slotSourceCandidateEdges,
         scopes,
         participants,
         personas,
@@ -739,7 +757,16 @@ export class LadybugMemoryService {
           'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count',
         ),
         this.scalarCount(
+          'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_WITH_PARTICIPANT]->(p:Participant) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
           'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:MemoryBlock)-[:BLOCK_FROM_CANDIDATE]->(c:MemoryCandidate) RETURN count(c) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:MemorySlot)-[:SLOT_FROM_CANDIDATE]->(c:MemoryCandidate) RETURN count(c) AS count',
         ),
         this.all(
           'MATCH (s:MemoryScope) RETURN s.id AS id, s.source AS source, s.channel AS channel, s.personaId AS personaId LIMIT 12',
@@ -815,7 +842,10 @@ export class LadybugMemoryService {
           { relation: 'VECTOR_FOR_PERSONA', count: vectorPersonaEdges },
           { relation: 'HAS_RELATIONSHIP', count: relationshipScopeEdges },
           { relation: 'RELATIONSHIP_AS_PERSONA', count: relationshipPersonaEdges },
+          { relation: 'RELATIONSHIP_WITH_PARTICIPANT', count: relationshipParticipantEdges },
           { relation: 'HAS_RELATIONSHIP_FACT', count: relationshipFactEdges },
+          { relation: 'BLOCK_FROM_CANDIDATE', count: blockSourceCandidateEdges },
+          { relation: 'SLOT_FROM_CANDIDATE', count: slotSourceCandidateEdges },
         ].filter((edge) => edge.count > 0),
         participants: participants.map((row) => ({
           channel: stringValue(row['channel']),
@@ -1279,6 +1309,12 @@ export class LadybugMemoryService {
     if (participantKey) {
       await this.createAboutRelation('BLOCK_ABOUT', 'MemoryBlock', id, participantKey);
     }
+    await this.createSourceCandidateRelations(
+      'BLOCK_FROM_CANDIDATE',
+      'MemoryBlock',
+      id,
+      readSourceCandidateIds(record),
+    );
   }
 
   private async createMemorySlotGraph(
@@ -1299,6 +1335,12 @@ export class LadybugMemoryService {
         `MATCH (m:MemorySlot), (p:Participant) WHERE m.id = ${q(id)} AND p.id = ${q(participantKey)} CREATE (m)-[:SLOT_ABOUT]->(p)`,
       );
     }
+    await this.createSourceCandidateRelations(
+      'SLOT_FROM_CANDIDATE',
+      'MemorySlot',
+      id,
+      readSourceCandidateIds(record),
+    );
   }
 
   private async createMemorySlotPatchGraph(
@@ -1322,6 +1364,7 @@ export class LadybugMemoryService {
     const profileId = stringValue(
       record['profile_id'] ?? record['id'] ?? relationshipProfileId(scopeKey),
     );
+    const participantKeys = getRelationshipParticipantKeys(record);
     await this.exec(
       `CREATE (:RelationshipProfile {id: ${q(profileId)}, scopeKey: ${q(scopeKey)}, personaId: ${q(parsedScope.personaId)}, relationshipStage: ${q(stringValue(record['relationship_stage'] ?? record['relationshipStage']))}, mood: ${q(stringValue(record['mood']))}, trust: ${intValue(record['trust'])}, attraction: ${intValue(record['attraction'])}, respect: ${intValue(record['respect'])}, irritation: ${intValue(record['irritation'])}, jealousy: ${intValue(record['jealousy'])}, guard: ${intValue(record['guard'])}, turnCount: ${intValue(record['turn_count'] ?? record['turnCount'])}, lastDiaryTurnCount: ${intValue(record['last_diary_turn_count'] ?? record['lastDiaryTurnCount'])}, lastSeenAt: ${intValue(record['last_seen_at'] ?? record['lastSeenAt'])}, lastActionTag: ${q(stringValue(record['last_action_tag'] ?? record['lastActionTag']))}, summary: ${q(stringValue(record['summary']))}, diaryEntry: ${q(stringValue(record['diary_entry'] ?? record['diaryEntry']))}, updatedAt: ${grilloRecordUpdatedAt(record)}})`,
     );
@@ -1332,6 +1375,12 @@ export class LadybugMemoryService {
     await this.exec(
       `MATCH (m:RelationshipProfile), (p:Persona) WHERE m.id = ${q(profileId)} AND p.id = ${q(parsedScope.personaId)} CREATE (m)-[:RELATIONSHIP_AS_PERSONA]->(p)`,
     );
+    for (const participantKey of participantKeys) {
+      await this.ensureParticipantNode(participantKey);
+      await this.exec(
+        `MATCH (m:RelationshipProfile), (p:Participant) WHERE m.id = ${q(profileId)} AND p.id = ${q(participantKey)} CREATE (m)-[:RELATIONSHIP_WITH_PARTICIPANT]->(p)`,
+      );
+    }
     for (const [index, fact] of getRelationshipFacts(record).entries()) {
       const factId = `${profileId}:fact:${index}`;
       await this.exec(
@@ -1736,6 +1785,16 @@ export class LadybugMemoryService {
       'FROM MemoryScope TO RelationshipProfile',
     );
     await this.ensureRelTable(connection, 'CANDIDATE_ABOUT', 'FROM MemoryCandidate TO Participant');
+    await this.ensureRelTable(
+      connection,
+      'BLOCK_FROM_CANDIDATE',
+      'FROM MemoryBlock TO MemoryCandidate',
+    );
+    await this.ensureRelTable(
+      connection,
+      'SLOT_FROM_CANDIDATE',
+      'FROM MemorySlot TO MemoryCandidate',
+    );
     await this.ensureRelTable(connection, 'TURN_BY', 'FROM TurnEvent TO Participant');
     await this.ensureRelTable(connection, 'BLOCK_ABOUT', 'FROM MemoryBlock TO Participant');
     await this.ensureRelTable(connection, 'SLOT_ABOUT', 'FROM MemorySlot TO Participant');
@@ -1746,6 +1805,11 @@ export class LadybugMemoryService {
       connection,
       'RELATIONSHIP_AS_PERSONA',
       'FROM RelationshipProfile TO Persona',
+    );
+    await this.ensureRelTable(
+      connection,
+      'RELATIONSHIP_WITH_PARTICIPANT',
+      'FROM RelationshipProfile TO Participant',
     );
     await this.ensureRelTable(
       connection,
@@ -1858,6 +1922,12 @@ export class LadybugMemoryService {
       );
       await this.createScopeRelation('HAS_BLOCK', 'MemoryBlock', normalizedScopeKey, id);
       await this.createAboutRelation('BLOCK_ABOUT', 'MemoryBlock', id, participantKey);
+      await this.createSourceCandidateRelations(
+        'BLOCK_FROM_CANDIDATE',
+        'MemoryBlock',
+        id,
+        readSourceCandidateIds(item),
+      );
     }
 
     for (const diaryEntry of diaryEntries.slice(-40)) {
@@ -1955,6 +2025,7 @@ export class LadybugMemoryService {
       const normalizedScopeKey = normalizeScopeKey(scopeKey);
       const parsedScope = parseScopeKey(normalizedScopeKey);
       const profileId = relationshipProfileId(normalizedScopeKey);
+      const participantKeys = getRelationshipParticipantKeys(profile);
       await this.ensureScopeNode(normalizedScopeKey);
       await this.ensurePersonaNode(parsedScope.personaId);
       await this.exec(
@@ -1966,6 +2037,12 @@ export class LadybugMemoryService {
       await this.exec(
         `MATCH (m:RelationshipProfile), (p:Persona) WHERE m.id = ${q(profileId)} AND p.id = ${q(parsedScope.personaId)} CREATE (m)-[:RELATIONSHIP_AS_PERSONA]->(p)`,
       );
+      for (const participantKey of participantKeys) {
+        await this.ensureParticipantNode(participantKey);
+        await this.exec(
+          `MATCH (m:RelationshipProfile), (p:Participant) WHERE m.id = ${q(profileId)} AND p.id = ${q(participantKey)} CREATE (m)-[:RELATIONSHIP_WITH_PARTICIPANT]->(p)`,
+        );
+      }
       const facts = arrayValue(profile['facts'])
         .map((value) => stringValue(value))
         .filter(Boolean)
@@ -1988,6 +2065,9 @@ export class LadybugMemoryService {
     ).catch(() => undefined);
     await this.exec(
       'MATCH (m:RelationshipProfile)-[r:RELATIONSHIP_AS_PERSONA]->(p:Persona) DELETE r',
+    ).catch(() => undefined);
+    await this.exec(
+      'MATCH (m:RelationshipProfile)-[r:RELATIONSHIP_WITH_PARTICIPANT]->(p:Participant) DELETE r',
     ).catch(() => undefined);
     await this.exec(
       'MATCH (s:MemoryScope)-[r:HAS_RELATIONSHIP]->(m:RelationshipProfile) DELETE r',
@@ -2057,6 +2137,12 @@ export class LadybugMemoryService {
       await this.exec(
         `MATCH (m:MemoryCandidate)-[r:CANDIDATE_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
       ).catch(() => undefined);
+      await this.exec(
+        `MATCH (b:MemoryBlock)-[r:BLOCK_FROM_CANDIDATE]->(m:MemoryCandidate) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (s:MemorySlot)-[r:SLOT_FROM_CANDIDATE]->(m:MemoryCandidate) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
     }
     if (labels.includes('MemoryBlock')) {
       await this.exec(
@@ -2065,6 +2151,9 @@ export class LadybugMemoryService {
       await this.exec(
         `MATCH (m:MemoryBlock)-[r:BLOCK_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
       ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:MemoryBlock)-[r:BLOCK_FROM_CANDIDATE]->(c:MemoryCandidate) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
     }
     if (labels.includes('MemorySlot')) {
       await this.exec(
@@ -2072,6 +2161,9 @@ export class LadybugMemoryService {
       ).catch(() => undefined);
       await this.exec(
         `MATCH (m:MemorySlot)-[r:SLOT_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:MemorySlot)-[r:SLOT_FROM_CANDIDATE]->(c:MemoryCandidate) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
       ).catch(() => undefined);
     }
     if (labels.includes('MemorySlotPatch')) {
@@ -2164,6 +2256,19 @@ export class LadybugMemoryService {
     await this.exec(
       `MATCH (m:${label}), (p:Participant) WHERE m.id = ${q(memoryId)} AND p.id = ${q(participantKey)} CREATE (m)-[:${relation}]->(p)`,
     );
+  }
+
+  private async createSourceCandidateRelations(
+    relation: 'BLOCK_FROM_CANDIDATE' | 'SLOT_FROM_CANDIDATE',
+    label: 'MemoryBlock' | 'MemorySlot',
+    memoryId: string,
+    candidateIds: string[],
+  ) {
+    for (const candidateId of dedupeStringValues(candidateIds)) {
+      await this.exec(
+        `MATCH (m:${label}), (c:MemoryCandidate) WHERE m.id = ${q(memoryId)} AND c.id = ${q(candidateId)} CREATE (m)-[:${relation}]->(c)`,
+      );
+    }
   }
 
   private async createSemanticPersonaRelation(memoryId: string, personaId: string) {
@@ -2416,9 +2521,30 @@ function readSourceCandidateIds(record: Record<string, unknown>) {
   return [
     ...arrayValue(record['sourceCandidateIds']),
     ...arrayValue(record['source_candidate_ids']),
+    ...jsonStringArrayValue(record['sourceCandidateIdsJson']),
+    ...jsonStringArrayValue(record['source_candidate_ids_json']),
   ]
     .map((value) => stringValue(value))
     .filter(Boolean);
+}
+
+function getRelationshipParticipantKeys(record: Record<string, unknown>) {
+  const rawKeys = dedupeStringValues([
+    record['participantKey'],
+    record['participant_key'],
+    ...arrayValue(record['participantKeys']),
+    ...arrayValue(record['participant_keys']),
+  ]);
+  return dedupeStringValues(rawKeys.map((value) => normalizeScopeKey(value)));
+}
+
+function jsonStringArrayValue(value: unknown) {
+  if (typeof value !== 'string') return [];
+  return arrayValue(safeJsonParse(value));
+}
+
+function dedupeStringValues(values: unknown[]) {
+  return Array.from(new Set(values.map((value) => stringValue(value)).filter(Boolean)));
 }
 
 function fallbackGrilloRecordsId(entity: LadybugGrilloRecordEntity) {

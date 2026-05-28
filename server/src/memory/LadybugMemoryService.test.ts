@@ -171,6 +171,7 @@ describe('LadybugMemoryService', () => {
           'HAS_DIARY',
           'HAS_SLOT',
           'HAS_SLOT_PATCH',
+          'SLOT_FROM_CANDIDATE',
           'HAS_ACTIVITY',
           'HAS_TRACE',
         ]),
@@ -259,6 +260,7 @@ describe('LadybugMemoryService', () => {
           lastDiaryTurnCount: 2,
           lastSeenAt: 7,
           mood: 'curious',
+          participantKeys: ['local:local:subby'],
           relationshipStage: 'familiar',
           respect: 5,
           summary: 'Subby is tuning a low-latency stream avatar.',
@@ -298,7 +300,7 @@ describe('LadybugMemoryService', () => {
       expect(status.semanticVectors).toBe(1);
       expect(status.relationshipProfiles).toBe(1);
       expect(status.relationshipFacts).toBe(1);
-      expect(status.relationshipEdges).toBe(11);
+      expect(status.relationshipEdges).toBe(13);
       expect(graph.scopes[0]?.id).toBe('local:persona:hikari-chan');
       expect(graph.participants[0]?.id).toBe('local:local:subby');
       expect(graph.personas[0]?.id).toBe('hikari-chan');
@@ -312,7 +314,10 @@ describe('LadybugMemoryService', () => {
           'HAS_SEMANTIC',
           'HAS_VECTOR',
           'HAS_RELATIONSHIP',
+          'RELATIONSHIP_AS_PERSONA',
+          'RELATIONSHIP_WITH_PARTICIPANT',
           'HAS_RELATIONSHIP_FACT',
+          'BLOCK_FROM_CANDIDATE',
           'VECTOR_FOR_PERSONA',
         ]),
       );

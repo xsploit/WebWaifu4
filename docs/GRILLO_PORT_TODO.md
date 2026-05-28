@@ -83,8 +83,8 @@ Current slice definition of done:
   - [x] candidate -> participant
   - [x] diary -> participant
   - [x] semantic/vector -> persona
-  - [ ] block/slot -> source candidates
-  - [ ] relationship -> persona/participant
+  - [x] block/slot -> source candidates
+  - [x] relationship -> persona/participant
 - [ ] Implement a Ladybug-backed repository matching the GRILLO storage contract.
 - [x] Add unit tests for append/read/replace/singleton/slot APIs.
 - [x] Add graph summary tests proving nodes and edges are real, not just JSON snapshots.
@@ -107,6 +107,7 @@ Progress note:
 - 2026-05-28: Added explicit backend consolidation and compaction beats on the same memory lane. Both beats write typed worker traces, update runtime beat/tool-call status, and have Memory UI buttons. Focused service, client, ContextTab, build, package, and diff-check gates pass.
 - 2026-05-28: Added explicit backend curiosity and tag elaboration beats on the same memory lane. Both beats have dedicated worker prompts, typed traces, runtime beat/tool-call status, and focused service tests proving Ladybug writes. Focused service, client, build, and package gates pass.
 - 2026-05-28: Added backend semantic indexing as a GRILLO beat. It embeds completed GRILLO turn pairs through the embedding lane, writes Ladybug semantic records/vectors, records typed indexing traces, and persists indexed turn ids for retry-safe follow-up runs. Focused service, client, and build gates pass.
+- 2026-05-28: Added graph lineage edges from memory blocks/slots back to source candidates and optional relationship participant edges alongside existing persona links. Focused Ladybug graph tests prove the new relations.
 
 ## Phase 2 - Backend GRILLO Service
 
