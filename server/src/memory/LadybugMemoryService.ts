@@ -61,6 +61,44 @@ export type LadybugMemoryGraphSummary = {
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
 };
 
+export type LadybugGrilloRecordEntity =
+  | 'turn_events'
+  | 'memory_candidates'
+  | 'diary_entries'
+  | 'memory_blocks'
+  | 'memory_slots'
+  | 'memory_slot_patches'
+  | 'relationship_profiles'
+  | 'emotion_states'
+  | 'grillo_activity_log'
+  | 'worker_context_traces'
+  | 'semantic_records'
+  | 'semantic_vectors';
+
+export type LadybugGrilloSingletonEntity = 'runtime_settings' | 'memory_worker_state';
+
+export type LadybugMemorySlotRecord = {
+  content_json: string;
+  schema_version: '1.0.0';
+  slot_id: string;
+  slot_name: string;
+  source_candidate_ids_json: string;
+  updated_at: string;
+  user_id: string;
+};
+
+export type LadybugMemorySlotPatchRecord = {
+  created_at: string;
+  operation: 'set' | 'merge' | 'remove';
+  patch_id: string;
+  patch_json: string;
+  schema_version: '1.0.0';
+  slot_id: string;
+  slot_name: string;
+  source_candidate_ids_json: string;
+  user_id: string;
+};
+
 type LadybugSnapshotKind = 'grillo' | 'relationships' | 'semantic';
 
 type LadybugSnapshot = {
@@ -87,7 +125,7 @@ type LadybugCoreModule = {
 };
 
 type FallbackSnapshot = {
-  kind: LadybugSnapshotKind;
+  kind: string;
   scopeKey: string;
   updatedAt: number;
   value: unknown;
@@ -122,33 +160,43 @@ export class LadybugMemoryService {
     try {
       const state = await this.open();
       const [
-      snapshots,
-      grilloScopes,
-      semanticScopes,
-      scopes,
-      participants,
-      personas,
-      candidates,
-      memoryBlocks,
-      diaryEntries,
-      emotionStates,
-      emotionIntensities,
-      semanticRecords,
-      semanticVectors,
-      relationshipProfiles,
-      relationshipFacts,
-      hasCandidateEdges,
-      hasBlockEdges,
-      hasDiaryEdges,
-      hasEmotionEdges,
-      hasEmotionIntensityEdges,
-      hasSemanticEdges,
-      hasVectorEdges,
-      hasVectorPersonaEdges,
-      hasRelationshipEdges,
-      hasRelationshipPersonaEdges,
-      hasRelationshipFactEdges,
-    ] = await Promise.all([
+        snapshots,
+        grilloScopes,
+        semanticScopes,
+        scopes,
+        participants,
+        personas,
+        turnEvents,
+        candidates,
+        memoryBlocks,
+        memorySlots,
+        memorySlotPatches,
+        diaryEntries,
+        grilloActivities,
+        workerContextTraces,
+        emotionStates,
+        emotionIntensities,
+        semanticRecords,
+        semanticVectors,
+        relationshipProfiles,
+        relationshipFacts,
+        hasCandidateEdges,
+        hasBlockEdges,
+        hasTurnEdges,
+        hasSlotEdges,
+        hasSlotPatchEdges,
+        hasDiaryEdges,
+        hasActivityEdges,
+        hasTraceEdges,
+        hasEmotionEdges,
+        hasEmotionIntensityEdges,
+        hasSemanticEdges,
+        hasVectorEdges,
+        hasVectorPersonaEdges,
+        hasRelationshipEdges,
+        hasRelationshipPersonaEdges,
+        hasRelationshipFactEdges,
+      ] = await Promise.all([
         this.scalarCount('MATCH (m:MemoryState) RETURN count(m) AS count'),
         this.scalarCount("MATCH (m:MemoryState) WHERE m.kind = 'grillo' RETURN count(m) AS count"),
         this.scalarCount(
@@ -157,59 +205,111 @@ export class LadybugMemoryService {
         this.scalarCount('MATCH (m:MemoryScope) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:Participant) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:Persona) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:TurnEvent) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:MemoryCandidate) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:MemoryBlock) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:MemorySlot) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:MemorySlotPatch) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:DiaryEntry) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:GrilloActivity) RETURN count(m) AS count'),
+        this.scalarCount('MATCH (m:WorkerContextTrace) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:EmotionState) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:EmotionIntensity) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:SemanticRecord) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:SemanticVector) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipProfile) RETURN count(m) AS count'),
         this.scalarCount('MATCH (m:RelationshipFact) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_EMOTION]->(m:EmotionState) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (m:EmotionState)-[:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) RETURN count(i) AS count'),
-        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_VECTOR]->(m:SemanticVector) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (m:SemanticVector)-[:VECTOR_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count'),
-        this.scalarCount('MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count'),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_TURN]->(m:TurnEvent) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_SLOT]->(m:MemorySlot) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_SLOT_PATCH]->(m:MemorySlotPatch) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_ACTIVITY]->(m:GrilloActivity) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_TRACE]->(m:WorkerContextTrace) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_EMOTION]->(m:EmotionState) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:EmotionState)-[:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) RETURN count(i) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_VECTOR]->(m:SemanticVector) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:SemanticVector)-[:VECTOR_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count',
+        ),
       ]);
-    const relationshipEdges =
-      hasCandidateEdges +
-      hasBlockEdges +
-      hasDiaryEdges +
-      hasEmotionEdges +
-      hasEmotionIntensityEdges +
-      hasSemanticEdges +
-      hasVectorEdges +
-      hasVectorPersonaEdges +
-      hasRelationshipEdges +
-      hasRelationshipPersonaEdges +
-      hasRelationshipFactEdges;
+      const relationshipEdges =
+        hasCandidateEdges +
+        hasBlockEdges +
+        hasTurnEdges +
+        hasSlotEdges +
+        hasSlotPatchEdges +
+        hasDiaryEdges +
+        hasActivityEdges +
+        hasTraceEdges +
+        hasEmotionEdges +
+        hasEmotionIntensityEdges +
+        hasSemanticEdges +
+        hasVectorEdges +
+        hasVectorPersonaEdges +
+        hasRelationshipEdges +
+        hasRelationshipPersonaEdges +
+        hasRelationshipFactEdges;
       return {
-      backend: 'ladybug',
-      dbDir: this.dbDir,
-      initialized: state.initialized,
-      snapshots,
-      grilloScopes,
-      semanticScopes,
-      scopes,
-      participants,
-      personas,
-      candidates,
-      memoryBlocks,
-      diaryEntries,
-      emotionStates,
-      emotionIntensities,
-      semanticRecords,
-      semanticVectors,
-      relationshipProfiles,
-      relationshipFacts,
-      relationshipEdges,
+        backend: 'ladybug',
+        dbDir: this.dbDir,
+        initialized: state.initialized,
+        snapshots,
+        grilloScopes,
+        semanticScopes,
+        scopes,
+        participants,
+        personas,
+        turnEvents,
+        candidates,
+        memoryBlocks,
+        memorySlots,
+        memorySlotPatches,
+        diaryEntries,
+        grilloActivities,
+        workerContextTraces,
+        emotionStates,
+        emotionIntensities,
+        semanticRecords,
+        semanticVectors,
+        relationshipProfiles,
+        relationshipFacts,
+        relationshipEdges,
       };
     } catch (error) {
       return this.getFallbackStatus(error);
@@ -238,13 +338,23 @@ export class LadybugMemoryService {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     try {
       await this.deleteSnapshot('grillo', normalizedScopeKey);
-      await this.deleteGraphRowsForScope(normalizedScopeKey, [
-        'MemoryCandidate',
-        'MemoryBlock',
-        'DiaryEntry',
-        'EmotionState',
-        'EmotionIntensity',
-      ], true);
+      await this.deleteGrilloRecordsForScope(normalizedScopeKey);
+      await this.deleteGraphRowsForScope(
+        normalizedScopeKey,
+        [
+          'TurnEvent',
+          'MemoryCandidate',
+          'MemoryBlock',
+          'MemorySlot',
+          'MemorySlotPatch',
+          'DiaryEntry',
+          'EmotionState',
+          'EmotionIntensity',
+          'GrilloActivity',
+          'WorkerContextTrace',
+        ],
+        true,
+      );
     } catch (error) {
       await this.deleteFallbackSnapshotValue('grillo', normalizedScopeKey, error);
     }
@@ -288,7 +398,12 @@ export class LadybugMemoryService {
       await this.open();
       await this.ensureSemanticVectorIndex(normalizedEmbedding.length).catch(() => undefined);
     } catch (error) {
-      return this.queryFallbackSemanticVectors(normalizedScopeKey, normalizedEmbedding, limit, error);
+      return this.queryFallbackSemanticVectors(
+        normalizedScopeKey,
+        normalizedEmbedding,
+        limit,
+        error,
+      );
     }
     const vectorTable = semanticVectorTableName(normalizedEmbedding.length);
     const vectorIndex = semanticVectorIndexName(normalizedEmbedding.length);
@@ -319,7 +434,11 @@ export class LadybugMemoryService {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     try {
       await this.deleteSnapshot('semantic', normalizedScopeKey);
-      await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector'], true);
+      await this.deleteGraphRowsForScope(
+        normalizedScopeKey,
+        ['SemanticRecord', 'SemanticVector'],
+        true,
+      );
     } catch (error) {
       await this.deleteFallbackSnapshotValue('semantic', normalizedScopeKey, error);
     }
@@ -365,198 +484,354 @@ export class LadybugMemoryService {
     }
   }
 
+  async appendGrilloRecord(entity: LadybugGrilloRecordEntity, record: Record<string, unknown>) {
+    const normalizedEntity = normalizeGrilloEntity(entity);
+    const normalizedRecord = normalizeGrilloRecord(normalizedEntity, record);
+    try {
+      await this.appendNativeGrilloRecord(normalizedEntity, normalizedRecord);
+    } catch (error) {
+      await this.appendFallbackGrilloRecord(normalizedEntity, normalizedRecord, error);
+    }
+  }
+
+  async readGrilloRecords<T = Record<string, unknown>>(
+    entity: LadybugGrilloRecordEntity,
+  ): Promise<T[]> {
+    const normalizedEntity = normalizeGrilloEntity(entity);
+    try {
+      await this.open();
+      const rows = await this.all(
+        `MATCH (m:GrilloRecord) WHERE m.entity = ${q(normalizedEntity)} RETURN m.json AS json, m.seq AS seq, m.id AS id`,
+      );
+      return rows
+        .map((row) => ({
+          id: stringValue(row['id']),
+          seq: numberValue(row['seq'], 0),
+          value: safeJsonParse(String(row['json'] ?? '')),
+        }))
+        .filter((row): row is { id: string; seq: number; value: T } => Boolean(row.value))
+        .sort((left, right) => left.seq - right.seq || left.id.localeCompare(right.id))
+        .map((row) => row.value);
+    } catch (error) {
+      return this.readFallbackGrilloRecords<T>(normalizedEntity, error);
+    }
+  }
+
+  async replaceGrilloRecords(
+    entity: LadybugGrilloRecordEntity,
+    records: Record<string, unknown>[],
+  ) {
+    const normalizedEntity = normalizeGrilloEntity(entity);
+    const normalizedRecords = records.map((record) =>
+      normalizeGrilloRecord(normalizedEntity, record),
+    );
+    try {
+      await this.deleteNativeGrilloEntity(normalizedEntity);
+      for (const record of normalizedRecords) {
+        await this.appendNativeGrilloRecord(normalizedEntity, record);
+      }
+    } catch (error) {
+      await this.replaceFallbackGrilloRecords(normalizedEntity, normalizedRecords, error);
+    }
+  }
+
+  async getGrilloSingleton<T = Record<string, unknown>>(
+    entity: LadybugGrilloSingletonEntity,
+  ): Promise<T | null> {
+    const normalizedEntity = normalizeGrilloSingletonEntity(entity);
+    try {
+      await this.open();
+      const rows = await this.all(
+        `MATCH (m:GrilloSingleton) WHERE m.entity = ${q(normalizedEntity)} RETURN m.json AS json`,
+      );
+      const parsed = safeJsonParse(String(rows[0]?.['json'] ?? ''));
+      return parsed ? (parsed as T) : null;
+    } catch (error) {
+      return this.readFallbackGrilloSingleton<T>(normalizedEntity, error);
+    }
+  }
+
+  async setGrilloSingleton(entity: LadybugGrilloSingletonEntity, value: Record<string, unknown>) {
+    const normalizedEntity = normalizeGrilloSingletonEntity(entity);
+    try {
+      await this.open();
+      await this.exec(`MATCH (m:GrilloSingleton) WHERE m.entity = ${q(normalizedEntity)} DELETE m`);
+      await this.exec(
+        `CREATE (:GrilloSingleton {entity: ${q(normalizedEntity)}, json: ${q(JSON.stringify(value))}, updatedAt: ${Date.now()}})`,
+      );
+    } catch (error) {
+      await this.writeFallbackGrilloSingleton(normalizedEntity, value, error);
+    }
+  }
+
+  async upsertGrilloMemorySlot(slot: LadybugMemorySlotRecord) {
+    await this.replaceOneGrilloRecord(
+      'memory_slots',
+      slot.slot_id,
+      slot as unknown as Record<string, unknown>,
+    );
+  }
+
+  async listGrilloMemorySlots(userId?: string): Promise<LadybugMemorySlotRecord[]> {
+    const rows = await this.readGrilloRecords<LadybugMemorySlotRecord>('memory_slots');
+    return userId ? rows.filter((row) => row.user_id === userId) : rows;
+  }
+
+  async appendGrilloMemorySlotPatch(patch: LadybugMemorySlotPatchRecord) {
+    await this.appendGrilloRecord(
+      'memory_slot_patches',
+      patch as unknown as Record<string, unknown>,
+    );
+  }
+
+  async listGrilloMemorySlotPatches(userId?: string): Promise<LadybugMemorySlotPatchRecord[]> {
+    const rows = await this.readGrilloRecords<LadybugMemorySlotPatchRecord>('memory_slot_patches');
+    return userId ? rows.filter((row) => row.user_id === userId) : rows;
+  }
+
   async getGraphSummary(): Promise<LadybugMemoryGraphSummary> {
     try {
       await this.open();
       const [
-      hasCandidateEdges,
-      hasBlockEdges,
-      hasDiaryEdges,
-      hasSemanticEdges,
-      candidateAboutEdges,
-      blockAboutEdges,
-      diaryAboutEdges,
-      emotionScopeEdges,
-      emotionIntensityEdges,
-      semanticForPersonaEdges,
-      vectorScopeEdges,
-      vectorPersonaEdges,
-      relationshipScopeEdges,
-      relationshipPersonaEdges,
-      relationshipFactEdges,
-      scopes,
-      participants,
-      personas,
-      candidates,
-      blocks,
-      diary,
-      emotions,
-      emotionIntensities,
-      relationships,
-      relationshipFacts,
-      semantic,
-      vectors,
-    ] = await Promise.all([
-      this.scalarCount(
-        'MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count',
-      ),
-      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count'),
-      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count'),
-      this.scalarCount(
-        'MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count',
-      ),
-      this.scalarCount(
-        'MATCH (m:MemoryCandidate)-[:CANDIDATE_ABOUT]->(p:Participant) RETURN count(m) AS count',
-      ),
-      this.scalarCount('MATCH (m:MemoryBlock)-[:BLOCK_ABOUT]->(p:Participant) RETURN count(m) AS count'),
-      this.scalarCount('MATCH (m:DiaryEntry)-[:DIARY_ABOUT]->(p:Participant) RETURN count(m) AS count'),
-      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_EMOTION]->(m:EmotionState) RETURN count(m) AS count'),
-      this.scalarCount('MATCH (m:EmotionState)-[:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) RETURN count(i) AS count'),
-      this.scalarCount(
-        'MATCH (m:SemanticRecord)-[:SEMANTIC_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
-      ),
-      this.scalarCount('MATCH (s:MemoryScope)-[:HAS_VECTOR]->(m:SemanticVector) RETURN count(m) AS count'),
-      this.scalarCount('MATCH (m:SemanticVector)-[:VECTOR_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count'),
-      this.scalarCount(
-        'MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count',
-      ),
-      this.scalarCount(
-        'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count',
-      ),
-      this.scalarCount(
-        'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count',
-      ),
-      this.all(
-        'MATCH (s:MemoryScope) RETURN s.id AS id, s.source AS source, s.channel AS channel, s.personaId AS personaId LIMIT 12',
-      ),
-      this.all(
-        'MATCH (p:Participant) RETURN p.id AS id, p.source AS source, p.channel AS channel, p.displayName AS displayName LIMIT 16',
-      ),
-      this.all('MATCH (p:Persona) RETURN p.id AS id, p.name AS name LIMIT 12'),
-      this.all(
-        'MATCH (m:MemoryCandidate) RETURN m.id AS id, m.participantKey AS participantKey, m.type AS type, m.summary AS summary LIMIT 8',
-      ),
-      this.all(
-        'MATCH (m:MemoryBlock) RETURN m.id AS id, m.scopeKey AS scopeKey, m.participantKey AS participantKey, m.blockName AS blockName, m.itemsJson AS itemsJson LIMIT 8',
-      ),
-      this.all(
-        'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
-      ),
-      this.all(
-        'MATCH (m:EmotionState) RETURN m.id AS id, m.scopeKey AS scopeKey, m.lastSignalSource AS lastSignalSource, m.updatedAt AS updatedAt LIMIT 8',
-      ),
-      this.all(
-        'MATCH (m:EmotionIntensity) RETURN m.id AS id, m.scopeKey AS scopeKey, m.emotionStateId AS emotionStateId, m.name AS name, m.intensity AS intensity, m.updatedAt AS updatedAt LIMIT 12',
-      ),
-      this.all(
-        'MATCH (m:RelationshipProfile) RETURN m.id AS id, m.scopeKey AS scopeKey, m.relationshipStage AS relationshipStage, m.mood AS mood, m.summary AS summary LIMIT 8',
-      ),
-      this.all(
-        'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN f.id AS id, m.scopeKey AS scopeKey, f.text AS text LIMIT 8',
-      ),
-      this.all(
-        'MATCH (m:SemanticRecord) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
-      ),
-      this.all(
-        'MATCH (m:SemanticVector) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
-      ),
-    ]);
+        hasCandidateEdges,
+        hasBlockEdges,
+        hasTurnEdges,
+        hasSlotEdges,
+        hasSlotPatchEdges,
+        hasDiaryEdges,
+        hasSemanticEdges,
+        candidateAboutEdges,
+        blockAboutEdges,
+        turnByEdges,
+        slotAboutEdges,
+        diaryAboutEdges,
+        activityEdges,
+        traceEdges,
+        emotionScopeEdges,
+        emotionIntensityEdges,
+        semanticForPersonaEdges,
+        vectorScopeEdges,
+        vectorPersonaEdges,
+        relationshipScopeEdges,
+        relationshipPersonaEdges,
+        relationshipFactEdges,
+        scopes,
+        participants,
+        personas,
+        candidates,
+        blocks,
+        diary,
+        emotions,
+        emotionIntensities,
+        relationships,
+        relationshipFacts,
+        semantic,
+        vectors,
+      ] = await Promise.all([
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_CANDIDATE]->(m:MemoryCandidate) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_BLOCK]->(m:MemoryBlock) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_TURN]->(m:TurnEvent) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_SLOT]->(m:MemorySlot) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_SLOT_PATCH]->(m:MemorySlotPatch) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_DIARY]->(m:DiaryEntry) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_SEMANTIC]->(m:SemanticRecord) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:MemoryCandidate)-[:CANDIDATE_ABOUT]->(p:Participant) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:MemoryBlock)-[:BLOCK_ABOUT]->(p:Participant) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:TurnEvent)-[:TURN_BY]->(p:Participant) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:MemorySlot)-[:SLOT_ABOUT]->(p:Participant) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:DiaryEntry)-[:DIARY_ABOUT]->(p:Participant) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_ACTIVITY]->(m:GrilloActivity) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_TRACE]->(m:WorkerContextTrace) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_EMOTION]->(m:EmotionState) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:EmotionState)-[:HAS_EMOTION_INTENSITY]->(i:EmotionIntensity) RETURN count(i) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:SemanticRecord)-[:SEMANTIC_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_VECTOR]->(m:SemanticVector) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:SemanticVector)-[:VECTOR_FOR_PERSONA]->(p:Persona) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (s:MemoryScope)-[:HAS_RELATIONSHIP]->(m:RelationshipProfile) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:RelationshipProfile)-[:RELATIONSHIP_AS_PERSONA]->(p:Persona) RETURN count(m) AS count',
+        ),
+        this.scalarCount(
+          'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN count(f) AS count',
+        ),
+        this.all(
+          'MATCH (s:MemoryScope) RETURN s.id AS id, s.source AS source, s.channel AS channel, s.personaId AS personaId LIMIT 12',
+        ),
+        this.all(
+          'MATCH (p:Participant) RETURN p.id AS id, p.source AS source, p.channel AS channel, p.displayName AS displayName LIMIT 16',
+        ),
+        this.all('MATCH (p:Persona) RETURN p.id AS id, p.name AS name LIMIT 12'),
+        this.all(
+          'MATCH (m:MemoryCandidate) RETURN m.id AS id, m.participantKey AS participantKey, m.type AS type, m.summary AS summary LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:MemoryBlock) RETURN m.id AS id, m.scopeKey AS scopeKey, m.participantKey AS participantKey, m.blockName AS blockName, m.itemsJson AS itemsJson LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:EmotionState) RETURN m.id AS id, m.scopeKey AS scopeKey, m.lastSignalSource AS lastSignalSource, m.updatedAt AS updatedAt LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:EmotionIntensity) RETURN m.id AS id, m.scopeKey AS scopeKey, m.emotionStateId AS emotionStateId, m.name AS name, m.intensity AS intensity, m.updatedAt AS updatedAt LIMIT 12',
+        ),
+        this.all(
+          'MATCH (m:RelationshipProfile) RETURN m.id AS id, m.scopeKey AS scopeKey, m.relationshipStage AS relationshipStage, m.mood AS mood, m.summary AS summary LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:RelationshipProfile)-[:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) RETURN f.id AS id, m.scopeKey AS scopeKey, f.text AS text LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:SemanticRecord) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:SemanticVector) RETURN m.id AS id, m.personaId AS personaId, m.text AS text LIMIT 8',
+        ),
+      ]);
 
       return {
-      edges: [
-        { relation: 'HAS_CANDIDATE', count: hasCandidateEdges },
-        { relation: 'HAS_BLOCK', count: hasBlockEdges },
-        { relation: 'HAS_DIARY', count: hasDiaryEdges },
-        { relation: 'HAS_SEMANTIC', count: hasSemanticEdges },
-        { relation: 'CANDIDATE_ABOUT', count: candidateAboutEdges },
-        { relation: 'BLOCK_ABOUT', count: blockAboutEdges },
-        { relation: 'DIARY_ABOUT', count: diaryAboutEdges },
-        { relation: 'HAS_EMOTION', count: emotionScopeEdges },
-        { relation: 'HAS_EMOTION_INTENSITY', count: emotionIntensityEdges },
-        { relation: 'SEMANTIC_FOR_PERSONA', count: semanticForPersonaEdges },
-        { relation: 'HAS_VECTOR', count: vectorScopeEdges },
-        { relation: 'VECTOR_FOR_PERSONA', count: vectorPersonaEdges },
-        { relation: 'HAS_RELATIONSHIP', count: relationshipScopeEdges },
-        { relation: 'RELATIONSHIP_AS_PERSONA', count: relationshipPersonaEdges },
-        { relation: 'HAS_RELATIONSHIP_FACT', count: relationshipFactEdges },
-      ].filter((edge) => edge.count > 0),
-      participants: participants.map((row) => ({
-        channel: stringValue(row['channel']),
-        displayName: stringValue(row['displayName']),
-        id: stringValue(row['id']),
-        source: stringValue(row['source']),
-      })),
-      personas: personas.map((row) => ({
-        id: stringValue(row['id']),
-        name: stringValue(row['name']),
-      })),
-      recent: {
-        blocks: blocks.map((row) => ({
-          blockName: stringValue(row['blockName']),
+        edges: [
+          { relation: 'HAS_CANDIDATE', count: hasCandidateEdges },
+          { relation: 'HAS_BLOCK', count: hasBlockEdges },
+          { relation: 'HAS_TURN', count: hasTurnEdges },
+          { relation: 'HAS_SLOT', count: hasSlotEdges },
+          { relation: 'HAS_SLOT_PATCH', count: hasSlotPatchEdges },
+          { relation: 'HAS_DIARY', count: hasDiaryEdges },
+          { relation: 'HAS_SEMANTIC', count: hasSemanticEdges },
+          { relation: 'CANDIDATE_ABOUT', count: candidateAboutEdges },
+          { relation: 'BLOCK_ABOUT', count: blockAboutEdges },
+          { relation: 'TURN_BY', count: turnByEdges },
+          { relation: 'SLOT_ABOUT', count: slotAboutEdges },
+          { relation: 'DIARY_ABOUT', count: diaryAboutEdges },
+          { relation: 'HAS_ACTIVITY', count: activityEdges },
+          { relation: 'HAS_TRACE', count: traceEdges },
+          { relation: 'HAS_EMOTION', count: emotionScopeEdges },
+          { relation: 'HAS_EMOTION_INTENSITY', count: emotionIntensityEdges },
+          { relation: 'SEMANTIC_FOR_PERSONA', count: semanticForPersonaEdges },
+          { relation: 'HAS_VECTOR', count: vectorScopeEdges },
+          { relation: 'VECTOR_FOR_PERSONA', count: vectorPersonaEdges },
+          { relation: 'HAS_RELATIONSHIP', count: relationshipScopeEdges },
+          { relation: 'RELATIONSHIP_AS_PERSONA', count: relationshipPersonaEdges },
+          { relation: 'HAS_RELATIONSHIP_FACT', count: relationshipFactEdges },
+        ].filter((edge) => edge.count > 0),
+        participants: participants.map((row) => ({
+          channel: stringValue(row['channel']),
+          displayName: stringValue(row['displayName']),
           id: stringValue(row['id']),
-          itemCount: arrayValue(safeJsonParse(stringValue(row['itemsJson']))).length,
-          items: arrayValue(safeJsonParse(stringValue(row['itemsJson'])))
-            .map((item) => stringValue(item))
-            .filter(Boolean)
-            .slice(0, 4),
-          participantKey: stringValue(row['participantKey']),
-          scopeKey: stringValue(row['scopeKey']),
+          source: stringValue(row['source']),
         })),
-        candidates: candidates.map((row) => ({
+        personas: personas.map((row) => ({
           id: stringValue(row['id']),
-          participantKey: stringValue(row['participantKey']),
-          summary: stringValue(row['summary']),
-          type: stringValue(row['type']),
-        })),
-        diary: diary.map((row) => ({
-          beatType: stringValue(row['beatType']),
-          id: stringValue(row['id']),
-          participantKey: stringValue(row['participantKey']),
-          summary: stringValue(row['summary']),
-        })),
-        emotions: emotions.map((row) => ({
-          id: stringValue(row['id']),
-          lastSignalSource: stringValue(row['lastSignalSource']),
-          scopeKey: stringValue(row['scopeKey']),
-          updatedAt: Number(row['updatedAt'] ?? 0),
-        })),
-        emotionIntensities: emotionIntensities.map((row) => ({
-          emotionStateId: stringValue(row['emotionStateId']),
-          id: stringValue(row['id']),
-          intensity: numberValue(row['intensity'], 0),
           name: stringValue(row['name']),
-          scopeKey: stringValue(row['scopeKey']),
-          updatedAt: Number(row['updatedAt'] ?? 0),
         })),
-        relationships: relationships.map((row) => ({
-          id: stringValue(row['id']),
-          mood: stringValue(row['mood']),
-          relationshipStage: stringValue(row['relationshipStage']),
-          scopeKey: stringValue(row['scopeKey']),
-          summary: stringValue(row['summary']),
-        })),
-        relationshipFacts: relationshipFacts.map((row) => ({
-          id: stringValue(row['id']),
-          scopeKey: stringValue(row['scopeKey']),
-          text: stringValue(row['text']),
-        })),
-        semantic: semantic.map((row) => ({
+        recent: {
+          blocks: blocks.map((row) => ({
+            blockName: stringValue(row['blockName']),
+            id: stringValue(row['id']),
+            itemCount: arrayValue(safeJsonParse(stringValue(row['itemsJson']))).length,
+            items: arrayValue(safeJsonParse(stringValue(row['itemsJson'])))
+              .map((item) => stringValue(item))
+              .filter(Boolean)
+              .slice(0, 4),
+            participantKey: stringValue(row['participantKey']),
+            scopeKey: stringValue(row['scopeKey']),
+          })),
+          candidates: candidates.map((row) => ({
+            id: stringValue(row['id']),
+            participantKey: stringValue(row['participantKey']),
+            summary: stringValue(row['summary']),
+            type: stringValue(row['type']),
+          })),
+          diary: diary.map((row) => ({
+            beatType: stringValue(row['beatType']),
+            id: stringValue(row['id']),
+            participantKey: stringValue(row['participantKey']),
+            summary: stringValue(row['summary']),
+          })),
+          emotions: emotions.map((row) => ({
+            id: stringValue(row['id']),
+            lastSignalSource: stringValue(row['lastSignalSource']),
+            scopeKey: stringValue(row['scopeKey']),
+            updatedAt: Number(row['updatedAt'] ?? 0),
+          })),
+          emotionIntensities: emotionIntensities.map((row) => ({
+            emotionStateId: stringValue(row['emotionStateId']),
+            id: stringValue(row['id']),
+            intensity: numberValue(row['intensity'], 0),
+            name: stringValue(row['name']),
+            scopeKey: stringValue(row['scopeKey']),
+            updatedAt: Number(row['updatedAt'] ?? 0),
+          })),
+          relationships: relationships.map((row) => ({
+            id: stringValue(row['id']),
+            mood: stringValue(row['mood']),
+            relationshipStage: stringValue(row['relationshipStage']),
+            scopeKey: stringValue(row['scopeKey']),
+            summary: stringValue(row['summary']),
+          })),
+          relationshipFacts: relationshipFacts.map((row) => ({
+            id: stringValue(row['id']),
+            scopeKey: stringValue(row['scopeKey']),
+            text: stringValue(row['text']),
+          })),
+          semantic: semantic.map((row) => ({
+            id: stringValue(row['id']),
+            personaId: stringValue(row['personaId']),
+            text: stringValue(row['text']),
+          })),
+          vectors: vectors.map((row) => ({
+            id: stringValue(row['id']),
+            personaId: stringValue(row['personaId']),
+            text: stringValue(row['text']),
+          })),
+        },
+        scopes: scopes.map((row) => ({
+          channel: stringValue(row['channel']),
           id: stringValue(row['id']),
           personaId: stringValue(row['personaId']),
-          text: stringValue(row['text']),
+          source: stringValue(row['source']),
         })),
-        vectors: vectors.map((row) => ({
-          id: stringValue(row['id']),
-          personaId: stringValue(row['personaId']),
-          text: stringValue(row['text']),
-        })),
-      },
-      scopes: scopes.map((row) => ({
-        channel: stringValue(row['channel']),
-        id: stringValue(row['id']),
-        personaId: stringValue(row['personaId']),
-        source: stringValue(row['source']),
-      })),
       };
     } catch (error) {
       return this.getFallbackGraphSummary(error);
@@ -572,9 +847,10 @@ export class LadybugMemoryService {
     const relationshipProfiles = getFallbackRelationshipProfiles(store);
     const grilloCounts = grilloStates.reduce(
       (counts, snapshot) => {
-        const value = snapshot.value && typeof snapshot.value === 'object'
-          ? (snapshot.value as Record<string, unknown>)
-          : {};
+        const value =
+          snapshot.value && typeof snapshot.value === 'object'
+            ? (snapshot.value as Record<string, unknown>)
+            : {};
         counts.candidates += arrayValue(value['candidates']).length;
         counts.memoryBlocks += arrayValue(value['blocks']).length;
         counts.diaryEntries += [
@@ -587,7 +863,8 @@ export class LadybugMemoryService {
     );
     const semanticRecords = semanticStates.reduce(
       (count, snapshot) =>
-        count + (Array.isArray(snapshot.value) ? normalizeSemanticRecords(snapshot.value).length : 0),
+        count +
+        (Array.isArray(snapshot.value) ? normalizeSemanticRecords(snapshot.value).length : 0),
       0,
     );
     return {
@@ -632,13 +909,16 @@ export class LadybugMemoryService {
     const recent = createEmptyGraphSummary().recent;
 
     for (const snapshot of grilloStates.slice(-8)) {
-      const value = snapshot.value && typeof snapshot.value === 'object'
-        ? (snapshot.value as Record<string, unknown>)
-        : {};
+      const value =
+        snapshot.value && typeof snapshot.value === 'object'
+          ? (snapshot.value as Record<string, unknown>)
+          : {};
       for (const block of arrayValue(value['blocks']).slice(-8)) {
         if (!block || typeof block !== 'object') continue;
         const row = block as Record<string, unknown>;
-        const items = arrayValue(row['items']).map((item) => stringValue(item)).filter(Boolean);
+        const items = arrayValue(row['items'])
+          .map((item) => stringValue(item))
+          .filter(Boolean);
         recent.blocks.push({
           blockName: stringValue(row['blockName'] ?? row['name']),
           id: stringValue(row['blockId'] ?? row['id']),
@@ -674,9 +954,8 @@ export class LadybugMemoryService {
     }
 
     for (const [scopeKey, rawProfile] of Object.entries(relationshipProfiles).slice(-8)) {
-      const profile = rawProfile && typeof rawProfile === 'object'
-        ? (rawProfile as Record<string, unknown>)
-        : {};
+      const profile =
+        rawProfile && typeof rawProfile === 'object' ? (rawProfile as Record<string, unknown>) : {};
       recent.relationships.push({
         id: `relationship:${scopeKey}`,
         mood: stringValue(profile['mood']),
@@ -725,6 +1004,369 @@ export class LadybugMemoryService {
         };
       }),
     };
+  }
+
+  private async replaceOneGrilloRecord(
+    entity: LadybugGrilloRecordEntity,
+    recordId: string,
+    record: Record<string, unknown>,
+  ) {
+    const normalizedEntity = normalizeGrilloEntity(entity);
+    const normalizedRecord = normalizeGrilloRecord(normalizedEntity, record);
+    try {
+      await this.deleteNativeGrilloRecord(normalizedEntity, recordId);
+      await this.appendNativeGrilloRecord(normalizedEntity, normalizedRecord);
+    } catch (error) {
+      const records = await this.readFallbackGrilloRecords<Record<string, unknown>>(
+        normalizedEntity,
+        error,
+      );
+      await this.replaceFallbackGrilloRecords(
+        normalizedEntity,
+        [
+          ...records.filter((row) => grilloRecordNaturalId(normalizedEntity, row) !== recordId),
+          normalizedRecord,
+        ],
+        error,
+      );
+    }
+  }
+
+  private async appendNativeGrilloRecord(
+    entity: LadybugGrilloRecordEntity,
+    record: Record<string, unknown>,
+  ) {
+    await this.open();
+    const id = grilloRecordRowId(entity, record);
+    const scopeKey = grilloRecordScopeKey(record);
+    const participantKey = grilloRecordParticipantKey(record);
+    const seq = grilloRecordTimestamp(record);
+    await this.ensureScopeNode(scopeKey);
+    await this.ensurePersonaNode(parseScopeKey(scopeKey).personaId);
+    if (participantKey) {
+      await this.ensureParticipantNode(participantKey);
+    }
+    await this.exec(
+      `CREATE (:GrilloRecord {id: ${q(id)}, entity: ${q(entity)}, recordId: ${q(grilloRecordNaturalId(entity, record))}, scopeKey: ${q(scopeKey)}, userId: ${q(grilloRecordUserId(record))}, json: ${q(JSON.stringify(record))}, seq: ${seq}, createdAt: ${Date.now()}})`,
+    );
+    await this.createNativeGrilloGraphMirror(entity, record, scopeKey, participantKey);
+  }
+
+  private async createNativeGrilloGraphMirror(
+    entity: LadybugGrilloRecordEntity,
+    record: Record<string, unknown>,
+    scopeKey: string,
+    participantKey: string,
+  ) {
+    if (entity === 'turn_events') {
+      await this.createTurnEventGraph(record, scopeKey, participantKey);
+      return;
+    }
+    if (entity === 'memory_candidates') {
+      await this.createCandidateGraph(record, scopeKey, participantKey);
+      return;
+    }
+    if (entity === 'diary_entries') {
+      await this.createDiaryGraph(record, scopeKey, participantKey);
+      return;
+    }
+    if (entity === 'memory_blocks') {
+      await this.createMemoryBlockGraph(record, scopeKey, participantKey);
+      return;
+    }
+    if (entity === 'memory_slots') {
+      await this.createMemorySlotGraph(record, scopeKey, participantKey);
+      return;
+    }
+    if (entity === 'memory_slot_patches') {
+      await this.createMemorySlotPatchGraph(record, scopeKey, participantKey);
+      return;
+    }
+    if (entity === 'relationship_profiles') {
+      await this.createRelationshipProfileGraph(record, scopeKey);
+      return;
+    }
+    if (entity === 'emotion_states') {
+      await this.createEmotionGraph(scopeKey, record);
+      return;
+    }
+    if (entity === 'grillo_activity_log') {
+      await this.createGrilloActivityGraph(record, scopeKey);
+      return;
+    }
+    if (entity === 'worker_context_traces') {
+      await this.createWorkerContextTraceGraph(record, scopeKey);
+    }
+  }
+
+  private async createTurnEventGraph(
+    record: Record<string, unknown>,
+    scopeKey: string,
+    participantKey: string,
+  ) {
+    const id = stringValue(
+      record['turn_id'] ?? record['turnId'] ?? grilloRecordNaturalId('turn_events', record),
+    );
+    await this.exec(
+      `CREATE (:TurnEvent {id: ${q(id)}, scopeKey: ${q(scopeKey)}, participantKey: ${q(participantKey)}, channelId: ${q(stringValue(record['channel_id'] ?? record['channelId']))}, interfacePath: ${q(stringValue(record['interface_path'] ?? record['interfacePath']))}, role: ${q(stringValue(record['role']))}, content: ${q(stringValue(record['content']))}, authorName: ${q(stringValue(record['author_name'] ?? record['authorName']))}, createdAt: ${grilloRecordTimestamp(record)}})`,
+    );
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:TurnEvent) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(id)} CREATE (s)-[:HAS_TURN]->(m)`,
+    );
+    if (participantKey) {
+      await this.exec(
+        `MATCH (m:TurnEvent), (p:Participant) WHERE m.id = ${q(id)} AND p.id = ${q(participantKey)} CREATE (m)-[:TURN_BY]->(p)`,
+      );
+    }
+  }
+
+  private async createCandidateGraph(
+    record: Record<string, unknown>,
+    scopeKey: string,
+    participantKey: string,
+  ) {
+    const id = stringValue(
+      record['candidate_id'] ??
+        record['candidateId'] ??
+        grilloRecordNaturalId('memory_candidates', record),
+    );
+    await this.exec(
+      `CREATE (:MemoryCandidate {id: ${q(id)}, scopeKey: ${q(scopeKey)}, participantKey: ${q(participantKey)}, type: ${q(stringValue(record['type']))}, summary: ${q(stringValue(record['summary']))}, content: ${q(stringValue(record['content']))}, confidence: ${numberValue(record['confidence'], 0)}, source: ${q(stringValue(record['source']))}, sourceTurnIdsJson: ${q(JSON.stringify(readSourceTurnIds(record)))}, createdAt: ${grilloRecordTimestamp(record)}})`,
+    );
+    await this.createScopeRelation('HAS_CANDIDATE', 'MemoryCandidate', scopeKey, id);
+    if (participantKey) {
+      await this.createAboutRelation('CANDIDATE_ABOUT', 'MemoryCandidate', id, participantKey);
+    }
+  }
+
+  private async createDiaryGraph(
+    record: Record<string, unknown>,
+    scopeKey: string,
+    participantKey: string,
+  ) {
+    const id = stringValue(
+      record['diary_id'] ?? record['diaryId'] ?? grilloRecordNaturalId('diary_entries', record),
+    );
+    await this.exec(
+      `CREATE (:DiaryEntry {id: ${q(id)}, scopeKey: ${q(scopeKey)}, participantKey: ${q(participantKey)}, beatType: ${q(stringValue(record['beat_type'] ?? record['beatType']))}, summary: ${q(stringValue(record['summary']))}, personalThought: ${q(stringValue(record['personal_thought'] ?? record['personalThought']))}, interactionSummary: ${q(stringValue(record['interaction_summary'] ?? record['interactionSummary']))}, userMessage: ${q(stringValue(record['user_message'] ?? record['userMessage']))}, emotionsJson: ${q(JSON.stringify(arrayValue(record['emotions'])))}, tagsJson: ${q(JSON.stringify(arrayValue(record['tags'])))}, sourceTurnIdsJson: ${q(JSON.stringify(readSourceTurnIds(record)))}, createdAt: ${grilloRecordTimestamp(record)}})`,
+    );
+    await this.createScopeRelation('HAS_DIARY', 'DiaryEntry', scopeKey, id);
+    if (participantKey) {
+      await this.createAboutRelation('DIARY_ABOUT', 'DiaryEntry', id, participantKey);
+    }
+  }
+
+  private async createMemoryBlockGraph(
+    record: Record<string, unknown>,
+    scopeKey: string,
+    participantKey: string,
+  ) {
+    const id = stringValue(
+      record['block_id'] ?? record['blockId'] ?? grilloRecordNaturalId('memory_blocks', record),
+    );
+    await this.exec(
+      `CREATE (:MemoryBlock {id: ${q(id)}, scopeKey: ${q(scopeKey)}, participantKey: ${q(participantKey)}, blockName: ${q(stringValue(record['block_name'] ?? record['blockName']))}, itemsJson: ${q(JSON.stringify(arrayValue(record['items'])))}, sourceCandidateIdsJson: ${q(JSON.stringify(readSourceCandidateIds(record)))}, createdAt: ${grilloRecordTimestamp(record)}, updatedAt: ${grilloRecordUpdatedAt(record)}})`,
+    );
+    await this.createScopeRelation('HAS_BLOCK', 'MemoryBlock', scopeKey, id);
+    if (participantKey) {
+      await this.createAboutRelation('BLOCK_ABOUT', 'MemoryBlock', id, participantKey);
+    }
+  }
+
+  private async createMemorySlotGraph(
+    record: Record<string, unknown>,
+    scopeKey: string,
+    participantKey: string,
+  ) {
+    const id = stringValue(record['slot_id'] ?? grilloRecordNaturalId('memory_slots', record));
+    const updatedAt = grilloRecordUpdatedAt(record);
+    await this.exec(
+      `CREATE (:MemorySlot {id: ${q(id)}, scopeKey: ${q(scopeKey)}, participantKey: ${q(participantKey)}, userId: ${q(grilloRecordUserId(record))}, slotName: ${q(stringValue(record['slot_name'] ?? record['slotName']))}, contentJson: ${q(stringValue(record['content_json'] ?? record['contentJson']))}, sourceCandidateIdsJson: ${q(stringValue(record['source_candidate_ids_json'] ?? record['sourceCandidateIdsJson']))}, updatedAt: ${updatedAt}})`,
+    );
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:MemorySlot) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(id)} CREATE (s)-[:HAS_SLOT]->(m)`,
+    );
+    if (participantKey) {
+      await this.exec(
+        `MATCH (m:MemorySlot), (p:Participant) WHERE m.id = ${q(id)} AND p.id = ${q(participantKey)} CREATE (m)-[:SLOT_ABOUT]->(p)`,
+      );
+    }
+  }
+
+  private async createMemorySlotPatchGraph(
+    record: Record<string, unknown>,
+    scopeKey: string,
+    participantKey: string,
+  ) {
+    const id = stringValue(
+      record['patch_id'] ?? grilloRecordNaturalId('memory_slot_patches', record),
+    );
+    await this.exec(
+      `CREATE (:MemorySlotPatch {id: ${q(id)}, scopeKey: ${q(scopeKey)}, participantKey: ${q(participantKey)}, slotId: ${q(stringValue(record['slot_id'] ?? record['slotId']))}, slotName: ${q(stringValue(record['slot_name'] ?? record['slotName']))}, operation: ${q(stringValue(record['operation']))}, patchJson: ${q(stringValue(record['patch_json'] ?? record['patchJson']))}, sourceCandidateIdsJson: ${q(stringValue(record['source_candidate_ids_json'] ?? record['sourceCandidateIdsJson']))}, createdAt: ${grilloRecordTimestamp(record)}})`,
+    );
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:MemorySlotPatch) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(id)} CREATE (s)-[:HAS_SLOT_PATCH]->(m)`,
+    );
+  }
+
+  private async createRelationshipProfileGraph(record: Record<string, unknown>, scopeKey: string) {
+    const parsedScope = parseScopeKey(scopeKey);
+    const profileId = stringValue(
+      record['profile_id'] ?? record['id'] ?? relationshipProfileId(scopeKey),
+    );
+    await this.exec(
+      `CREATE (:RelationshipProfile {id: ${q(profileId)}, scopeKey: ${q(scopeKey)}, personaId: ${q(parsedScope.personaId)}, relationshipStage: ${q(stringValue(record['relationship_stage'] ?? record['relationshipStage']))}, mood: ${q(stringValue(record['mood']))}, trust: ${intValue(record['trust'])}, attraction: ${intValue(record['attraction'])}, respect: ${intValue(record['respect'])}, irritation: ${intValue(record['irritation'])}, jealousy: ${intValue(record['jealousy'])}, guard: ${intValue(record['guard'])}, turnCount: ${intValue(record['turn_count'] ?? record['turnCount'])}, lastDiaryTurnCount: ${intValue(record['last_diary_turn_count'] ?? record['lastDiaryTurnCount'])}, lastSeenAt: ${intValue(record['last_seen_at'] ?? record['lastSeenAt'])}, lastActionTag: ${q(stringValue(record['last_action_tag'] ?? record['lastActionTag']))}, summary: ${q(stringValue(record['summary']))}, diaryEntry: ${q(stringValue(record['diary_entry'] ?? record['diaryEntry']))}, updatedAt: ${grilloRecordUpdatedAt(record)}})`,
+    );
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:RelationshipProfile) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(profileId)} CREATE (s)-[:HAS_RELATIONSHIP]->(m)`,
+    );
+    await this.ensurePersonaNode(parsedScope.personaId);
+    await this.exec(
+      `MATCH (m:RelationshipProfile), (p:Persona) WHERE m.id = ${q(profileId)} AND p.id = ${q(parsedScope.personaId)} CREATE (m)-[:RELATIONSHIP_AS_PERSONA]->(p)`,
+    );
+    for (const [index, fact] of getRelationshipFacts(record).entries()) {
+      const factId = `${profileId}:fact:${index}`;
+      await this.exec(
+        `CREATE (:RelationshipFact {id: ${q(factId)}, profileId: ${q(profileId)}, scopeKey: ${q(scopeKey)}, text: ${q(fact)}, updatedAt: ${grilloRecordUpdatedAt(record)}})`,
+      );
+      await this.exec(
+        `MATCH (m:RelationshipProfile), (f:RelationshipFact) WHERE m.id = ${q(profileId)} AND f.id = ${q(factId)} CREATE (m)-[:HAS_RELATIONSHIP_FACT]->(f)`,
+      );
+    }
+  }
+
+  private async createGrilloActivityGraph(record: Record<string, unknown>, scopeKey: string) {
+    const id = stringValue(
+      record['activity_id'] ?? record['id'] ?? grilloRecordNaturalId('grillo_activity_log', record),
+    );
+    await this.exec(
+      `CREATE (:GrilloActivity {id: ${q(id)}, scopeKey: ${q(scopeKey)}, beatType: ${q(stringValue(record['beat_type'] ?? record['beatType']))}, promptText: ${q(stringValue(record['prompt_text'] ?? record['promptText']))}, responseText: ${q(stringValue(record['response_text'] ?? record['responseText']))}, diaryEntryId: ${q(stringValue(record['diary_entry_id'] ?? record['diaryEntryId']))}, createdAt: ${grilloRecordTimestamp(record)}})`,
+    );
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:GrilloActivity) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(id)} CREATE (s)-[:HAS_ACTIVITY]->(m)`,
+    );
+  }
+
+  private async createWorkerContextTraceGraph(record: Record<string, unknown>, scopeKey: string) {
+    const id = stringValue(
+      record['trace_id'] ?? record['id'] ?? grilloRecordNaturalId('worker_context_traces', record),
+    );
+    await this.exec(
+      `CREATE (:WorkerContextTrace {id: ${q(id)}, scopeKey: ${q(scopeKey)}, taskType: ${q(stringValue(record['task_type'] ?? record['taskType']))}, beatType: ${q(stringValue(record['beat_type'] ?? record['beatType']))}, provider: ${q(stringValue(record['provider']))}, model: ${q(stringValue(record['model']))}, systemPrompt: ${q(stringValue(record['system_prompt'] ?? record['systemPrompt']))}, prompt: ${q(stringValue(record['prompt']))}, createdAt: ${grilloRecordTimestamp(record)}})`,
+    );
+    await this.exec(
+      `MATCH (s:MemoryScope), (m:WorkerContextTrace) WHERE s.id = ${q(scopeKey)} AND m.id = ${q(id)} CREATE (s)-[:HAS_TRACE]->(m)`,
+    );
+  }
+
+  private async deleteNativeGrilloRecord(entity: LadybugGrilloRecordEntity, recordId: string) {
+    await this.open();
+    await this.exec(
+      `MATCH (m:GrilloRecord) WHERE m.entity = ${q(entity)} AND m.recordId = ${q(recordId)} DELETE m`,
+    );
+    await this.deleteNativeGrilloGraphRows(entity, [recordId]);
+  }
+
+  private async deleteNativeGrilloEntity(entity: LadybugGrilloRecordEntity) {
+    await this.open();
+    const rows = await this.all(
+      `MATCH (m:GrilloRecord) WHERE m.entity = ${q(entity)} RETURN m.recordId AS recordId`,
+    ).catch(() => []);
+    const recordIds = rows.map((row) => stringValue(row['recordId'])).filter(Boolean);
+    await this.exec(`MATCH (m:GrilloRecord) WHERE m.entity = ${q(entity)} DELETE m`).catch(
+      () => undefined,
+    );
+    await this.deleteNativeGrilloGraphRows(entity, recordIds);
+  }
+
+  private async deleteGrilloRecordsForScope(scopeKey: string) {
+    await this.exec(`MATCH (m:GrilloRecord) WHERE m.scopeKey = ${q(scopeKey)} DELETE m`).catch(
+      () => undefined,
+    );
+  }
+
+  private async deleteNativeGrilloGraphRows(
+    entity: LadybugGrilloRecordEntity,
+    recordIds: string[],
+  ) {
+    const ids = recordIds.map((id) => q(id)).join(', ');
+    if (!ids.length) return;
+    const deleteRelations = async (label: string) => {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r]->(m:${label}) WHERE m.id IN [${ids}] DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(`MATCH (m:${label})-[r]->(n) WHERE m.id IN [${ids}] DELETE r`).catch(
+        () => undefined,
+      );
+      await this.exec(`MATCH (n)-[r]->(m:${label}) WHERE m.id IN [${ids}] DELETE r`).catch(
+        () => undefined,
+      );
+    };
+    const deleteByLabel = async (label: string) => {
+      await deleteRelations(label);
+      await this.exec(`MATCH (m:${label}) WHERE m.id IN [${ids}] DELETE m`).catch(() => undefined);
+    };
+    if (entity === 'turn_events') await deleteByLabel('TurnEvent');
+    if (entity === 'memory_candidates') await deleteByLabel('MemoryCandidate');
+    if (entity === 'diary_entries') await deleteByLabel('DiaryEntry');
+    if (entity === 'memory_blocks') await deleteByLabel('MemoryBlock');
+    if (entity === 'memory_slots') await deleteByLabel('MemorySlot');
+    if (entity === 'memory_slot_patches') await deleteByLabel('MemorySlotPatch');
+    if (entity === 'relationship_profiles') await deleteByLabel('RelationshipProfile');
+    if (entity === 'emotion_states') await deleteByLabel('EmotionState');
+    if (entity === 'grillo_activity_log') await deleteByLabel('GrilloActivity');
+    if (entity === 'worker_context_traces') await deleteByLabel('WorkerContextTrace');
+  }
+
+  private async appendFallbackGrilloRecord(
+    entity: LadybugGrilloRecordEntity,
+    record: Record<string, unknown>,
+    error: unknown,
+  ) {
+    const existing = await this.readFallbackGrilloRecords<Record<string, unknown>>(entity, error);
+    await this.replaceFallbackGrilloRecords(entity, [...existing, record], error);
+  }
+
+  private async readFallbackGrilloRecords<T>(
+    entity: LadybugGrilloRecordEntity,
+    error: unknown,
+  ): Promise<T[]> {
+    await this.enableFallback(error);
+    const store = await this.readFallbackStore();
+    const records = readFallbackGrilloBucket(store, entity);
+    return records as T[];
+  }
+
+  private async replaceFallbackGrilloRecords(
+    entity: LadybugGrilloRecordEntity,
+    records: Record<string, unknown>[],
+    error: unknown,
+  ) {
+    await this.enableFallback(error);
+    const store = await this.readFallbackStore();
+    writeFallbackGrilloBucket(store, entity, records);
+    await this.writeFallbackStore(store);
+  }
+
+  private async readFallbackGrilloSingleton<T>(
+    entity: LadybugGrilloSingletonEntity,
+    error: unknown,
+  ): Promise<T | null> {
+    await this.enableFallback(error);
+    const store = await this.readFallbackStore();
+    const value = readFallbackGrilloSingletonValue(store, entity);
+    return value ? (value as T) : null;
+  }
+
+  private async writeFallbackGrilloSingleton(
+    entity: LadybugGrilloSingletonEntity,
+    value: Record<string, unknown>,
+    error: unknown,
+  ) {
+    await this.enableFallback(error);
+    const store = await this.readFallbackStore();
+    writeFallbackGrilloSingletonValue(store, entity, value);
+    await this.writeFallbackStore(store);
   }
 
   private async loadFallbackSnapshotValue(
@@ -806,11 +1448,15 @@ export class LadybugMemoryService {
   private async readFallbackStore(): Promise<FallbackStore> {
     await mkdir(dirname(this.fallbackStorePath), { recursive: true });
     try {
-      const parsed = JSON.parse(await readFile(this.fallbackStorePath, 'utf8')) as Partial<FallbackStore>;
+      const parsed = JSON.parse(
+        await readFile(this.fallbackStorePath, 'utf8'),
+      ) as Partial<FallbackStore>;
       return {
         reason: typeof parsed.reason === 'string' ? parsed.reason : this.fallbackReason,
         snapshots:
-          parsed.snapshots && typeof parsed.snapshots === 'object' && !Array.isArray(parsed.snapshots)
+          parsed.snapshots &&
+          typeof parsed.snapshots === 'object' &&
+          !Array.isArray(parsed.snapshots)
             ? (parsed.snapshots as Record<string, FallbackSnapshot>)
             : {},
         updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now(),
@@ -869,6 +1515,16 @@ export class LadybugMemoryService {
     );
     await this.ensureNodeTable(
       connection,
+      'GrilloRecord',
+      'id STRING, entity STRING, recordId STRING, scopeKey STRING, userId STRING, json STRING, seq INT64, createdAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'GrilloSingleton',
+      'entity STRING, json STRING, updatedAt INT64, PRIMARY KEY(entity)',
+    );
+    await this.ensureNodeTable(
+      connection,
       'MemoryScope',
       'id STRING, source STRING, channel STRING, personaId STRING, updatedAt INT64, PRIMARY KEY(id)',
     );
@@ -884,6 +1540,11 @@ export class LadybugMemoryService {
     );
     await this.ensureNodeTable(
       connection,
+      'TurnEvent',
+      'id STRING, scopeKey STRING, participantKey STRING, channelId STRING, interfacePath STRING, role STRING, content STRING, authorName STRING, createdAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
       'MemoryCandidate',
       'id STRING, scopeKey STRING, participantKey STRING, type STRING, summary STRING, content STRING, confidence DOUBLE, source STRING, sourceTurnIdsJson STRING, createdAt INT64, PRIMARY KEY(id)',
     );
@@ -891,6 +1552,16 @@ export class LadybugMemoryService {
       connection,
       'MemoryBlock',
       'id STRING, scopeKey STRING, participantKey STRING, blockName STRING, itemsJson STRING, sourceCandidateIdsJson STRING, createdAt INT64, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'MemorySlot',
+      'id STRING, scopeKey STRING, participantKey STRING, userId STRING, slotName STRING, contentJson STRING, sourceCandidateIdsJson STRING, updatedAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'MemorySlotPatch',
+      'id STRING, scopeKey STRING, participantKey STRING, slotId STRING, slotName STRING, operation STRING, patchJson STRING, sourceCandidateIdsJson STRING, createdAt INT64, PRIMARY KEY(id)',
     );
     await this.ensureNodeTable(
       connection,
@@ -927,8 +1598,21 @@ export class LadybugMemoryService {
       'RelationshipFact',
       'id STRING, profileId STRING, scopeKey STRING, text STRING, updatedAt INT64, PRIMARY KEY(id)',
     );
+    await this.ensureNodeTable(
+      connection,
+      'GrilloActivity',
+      'id STRING, scopeKey STRING, beatType STRING, promptText STRING, responseText STRING, diaryEntryId STRING, createdAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureNodeTable(
+      connection,
+      'WorkerContextTrace',
+      'id STRING, scopeKey STRING, taskType STRING, beatType STRING, provider STRING, model STRING, systemPrompt STRING, prompt STRING, createdAt INT64, PRIMARY KEY(id)',
+    );
+    await this.ensureRelTable(connection, 'HAS_TURN', 'FROM MemoryScope TO TurnEvent');
     await this.ensureRelTable(connection, 'HAS_CANDIDATE', 'FROM MemoryScope TO MemoryCandidate');
     await this.ensureRelTable(connection, 'HAS_BLOCK', 'FROM MemoryScope TO MemoryBlock');
+    await this.ensureRelTable(connection, 'HAS_SLOT', 'FROM MemoryScope TO MemorySlot');
+    await this.ensureRelTable(connection, 'HAS_SLOT_PATCH', 'FROM MemoryScope TO MemorySlotPatch');
     await this.ensureRelTable(connection, 'HAS_DIARY', 'FROM MemoryScope TO DiaryEntry');
     await this.ensureRelTable(connection, 'HAS_EMOTION', 'FROM MemoryScope TO EmotionState');
     await this.ensureRelTable(
@@ -938,13 +1622,15 @@ export class LadybugMemoryService {
     );
     await this.ensureRelTable(connection, 'HAS_SEMANTIC', 'FROM MemoryScope TO SemanticRecord');
     await this.ensureRelTable(connection, 'HAS_VECTOR', 'FROM MemoryScope TO SemanticVector');
-    await this.ensureRelTable(connection, 'HAS_RELATIONSHIP', 'FROM MemoryScope TO RelationshipProfile');
     await this.ensureRelTable(
       connection,
-      'CANDIDATE_ABOUT',
-      'FROM MemoryCandidate TO Participant',
+      'HAS_RELATIONSHIP',
+      'FROM MemoryScope TO RelationshipProfile',
     );
+    await this.ensureRelTable(connection, 'CANDIDATE_ABOUT', 'FROM MemoryCandidate TO Participant');
+    await this.ensureRelTable(connection, 'TURN_BY', 'FROM TurnEvent TO Participant');
     await this.ensureRelTable(connection, 'BLOCK_ABOUT', 'FROM MemoryBlock TO Participant');
+    await this.ensureRelTable(connection, 'SLOT_ABOUT', 'FROM MemorySlot TO Participant');
     await this.ensureRelTable(connection, 'DIARY_ABOUT', 'FROM DiaryEntry TO Participant');
     await this.ensureRelTable(connection, 'SEMANTIC_FOR_PERSONA', 'FROM SemanticRecord TO Persona');
     await this.ensureRelTable(connection, 'VECTOR_FOR_PERSONA', 'FROM SemanticVector TO Persona');
@@ -958,6 +1644,8 @@ export class LadybugMemoryService {
       'HAS_RELATIONSHIP_FACT',
       'FROM RelationshipProfile TO RelationshipFact',
     );
+    await this.ensureRelTable(connection, 'HAS_ACTIVITY', 'FROM MemoryScope TO GrilloActivity');
+    await this.ensureRelTable(connection, 'HAS_TRACE', 'FROM MemoryScope TO WorkerContextTrace');
 
     state.initialized = true;
     return state;
@@ -965,7 +1653,11 @@ export class LadybugMemoryService {
 
   private async ensureNodeTable(connection: Connection, name: string, columns: string) {
     await connection.query(`CREATE NODE TABLE ${name}(${columns})`).catch((error) => {
-      if (!String(error instanceof Error ? error.message : error).toLowerCase().includes('exist')) {
+      if (
+        !String(error instanceof Error ? error.message : error)
+          .toLowerCase()
+          .includes('exist')
+      ) {
         throw error;
       }
     });
@@ -973,7 +1665,11 @@ export class LadybugMemoryService {
 
   private async ensureRelTable(connection: Connection, name: string, definition: string) {
     await connection.query(`CREATE REL TABLE ${name}(${definition})`).catch((error) => {
-      if (!String(error instanceof Error ? error.message : error).toLowerCase().includes('exist')) {
+      if (
+        !String(error instanceof Error ? error.message : error)
+          .toLowerCase()
+          .includes('exist')
+      ) {
         throw error;
       }
     });
@@ -1013,13 +1709,11 @@ export class LadybugMemoryService {
   private async replaceGrilloGraph(scopeKey: string, value: unknown) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     await this.ensureScopeNode(normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, [
-      'MemoryCandidate',
-      'MemoryBlock',
-      'DiaryEntry',
-      'EmotionState',
-      'EmotionIntensity',
-    ], false);
+    await this.deleteGraphRowsForScope(
+      normalizedScopeKey,
+      ['MemoryCandidate', 'MemoryBlock', 'DiaryEntry', 'EmotionState', 'EmotionIntensity'],
+      false,
+    );
     if (!value || typeof value !== 'object') {
       return;
     }
@@ -1105,19 +1799,25 @@ export class LadybugMemoryService {
     }
   }
 
-  private async replaceSemanticGraph(
-    scopeKey: string,
-    records: LadybugSemanticMemoryRecord[],
-  ) {
+  private async replaceSemanticGraph(scopeKey: string, records: LadybugSemanticMemoryRecord[]) {
     const normalizedScopeKey = normalizeScopeKey(scopeKey);
     await this.ensureScopeNode(normalizedScopeKey);
-    await this.deleteGraphRowsForScope(normalizedScopeKey, ['SemanticRecord', 'SemanticVector'], false);
+    await this.deleteGraphRowsForScope(
+      normalizedScopeKey,
+      ['SemanticRecord', 'SemanticVector'],
+      false,
+    );
     for (const record of records.slice(0, 160)) {
       await this.ensurePersonaNode(record.personaId);
       await this.exec(
         `CREATE (:SemanticRecord {id: ${q(record.id)}, scopeKey: ${q(normalizedScopeKey)}, personaId: ${q(record.personaId)}, text: ${q(record.text)}, userText: ${q(record.userText)}, assistantText: ${q(record.assistantText)}, embeddingJson: ${q(JSON.stringify(record.embedding ?? []))}, createdAt: ${intValue(record.createdAt)}})`,
       );
-      await this.createScopeRelation('HAS_SEMANTIC', 'SemanticRecord', normalizedScopeKey, record.id);
+      await this.createScopeRelation(
+        'HAS_SEMANTIC',
+        'SemanticRecord',
+        normalizedScopeKey,
+        record.id,
+      );
       await this.createSemanticPersonaRelation(record.id, record.personaId);
       const embedding = normalizeEmbeddingArray(record.embedding);
       if (embedding.length > 0) {
@@ -1129,7 +1829,12 @@ export class LadybugMemoryService {
         await this.exec(
           `CREATE (:${vectorTable} {id: ${q(record.id)}, scopeKey: ${q(normalizedScopeKey)}, personaId: ${q(record.personaId)}, text: ${q(record.text)}, userText: ${q(record.userText)}, assistantText: ${q(record.assistantText)}, embedding: ${vectorLiteral(embedding)}, createdAt: ${intValue(record.createdAt)}})`,
         );
-        await this.createScopeRelation('HAS_VECTOR', 'SemanticVector', normalizedScopeKey, record.id);
+        await this.createScopeRelation(
+          'HAS_VECTOR',
+          'SemanticVector',
+          normalizedScopeKey,
+          record.id,
+        );
         await this.createVectorPersonaRelation(record.id, record.personaId);
       }
     }
@@ -1170,14 +1875,24 @@ export class LadybugMemoryService {
   }
 
   private async deleteAllRelationshipGraphRows() {
-    await this.exec('MATCH (m:RelationshipProfile)-[r:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) DELETE r').catch(() => undefined);
-    await this.exec('MATCH (m:RelationshipProfile)-[r:RELATIONSHIP_AS_PERSONA]->(p:Persona) DELETE r').catch(() => undefined);
-    await this.exec('MATCH (s:MemoryScope)-[r:HAS_RELATIONSHIP]->(m:RelationshipProfile) DELETE r').catch(() => undefined);
+    await this.exec(
+      'MATCH (m:RelationshipProfile)-[r:HAS_RELATIONSHIP_FACT]->(f:RelationshipFact) DELETE r',
+    ).catch(() => undefined);
+    await this.exec(
+      'MATCH (m:RelationshipProfile)-[r:RELATIONSHIP_AS_PERSONA]->(p:Persona) DELETE r',
+    ).catch(() => undefined);
+    await this.exec(
+      'MATCH (s:MemoryScope)-[r:HAS_RELATIONSHIP]->(m:RelationshipProfile) DELETE r',
+    ).catch(() => undefined);
     await this.exec('MATCH (m:RelationshipFact) DELETE m').catch(() => undefined);
     await this.exec('MATCH (m:RelationshipProfile) DELETE m').catch(() => undefined);
   }
 
-  private async deleteGraphRowsForScope(scopeKey: string, labels: string[], deleteScopeWhenUnused = false) {
+  private async deleteGraphRowsForScope(
+    scopeKey: string,
+    labels: string[],
+    deleteScopeWhenUnused = false,
+  ) {
     if (labels.includes('SemanticVector')) {
       await this.deleteSemanticVectorRowsForScope(scopeKey);
     }
@@ -1203,11 +1918,9 @@ export class LadybugMemoryService {
   }
 
   private async deleteSemanticVectorRowsForScope(scopeKey: string) {
-    const rows = await this
-      .all(
-        `MATCH (m:SemanticVector) WHERE m.scopeKey = ${q(scopeKey)} RETURN m.id AS id, m.vectorTable AS vectorTable`,
-      )
-      .catch(() => []);
+    const rows = await this.all(
+      `MATCH (m:SemanticVector) WHERE m.scopeKey = ${q(scopeKey)} RETURN m.id AS id, m.vectorTable AS vectorTable`,
+    ).catch(() => []);
     for (const row of rows) {
       const id = stringValue(row['id']);
       const vectorTable = stringValue(row['vectorTable']);
@@ -1221,6 +1934,14 @@ export class LadybugMemoryService {
   }
 
   private async deleteGraphRelationsForScope(scopeKey: string, labels: string[]) {
+    if (labels.includes('TurnEvent')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_TURN]->(m:TurnEvent) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:TurnEvent)-[r:TURN_BY]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
     if (labels.includes('MemoryCandidate')) {
       await this.exec(
         `MATCH (s:MemoryScope)-[r:HAS_CANDIDATE]->(m:MemoryCandidate) WHERE s.id = ${q(scopeKey)} DELETE r`,
@@ -1235,6 +1956,19 @@ export class LadybugMemoryService {
       ).catch(() => undefined);
       await this.exec(
         `MATCH (m:MemoryBlock)-[r:BLOCK_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+    if (labels.includes('MemorySlot')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_SLOT]->(m:MemorySlot) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+      await this.exec(
+        `MATCH (m:MemorySlot)-[r:SLOT_ABOUT]->(p:Participant) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+    if (labels.includes('MemorySlotPatch')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_SLOT_PATCH]->(m:MemorySlotPatch) WHERE s.id = ${q(scopeKey)} DELETE r`,
       ).catch(() => undefined);
     }
     if (labels.includes('DiaryEntry')) {
@@ -1269,6 +2003,16 @@ export class LadybugMemoryService {
         `MATCH (m:SemanticVector)-[r:VECTOR_FOR_PERSONA]->(p:Persona) WHERE m.scopeKey = ${q(scopeKey)} DELETE r`,
       ).catch(() => undefined);
     }
+    if (labels.includes('GrilloActivity')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_ACTIVITY]->(m:GrilloActivity) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
+    if (labels.includes('WorkerContextTrace')) {
+      await this.exec(
+        `MATCH (s:MemoryScope)-[r:HAS_TRACE]->(m:WorkerContextTrace) WHERE s.id = ${q(scopeKey)} DELETE r`,
+      ).catch(() => undefined);
+    }
   }
 
   private async ensureScopeNode(scopeKey: string) {
@@ -1293,18 +2037,8 @@ export class LadybugMemoryService {
   }
 
   private async createScopeRelation(
-    relation:
-      | 'HAS_CANDIDATE'
-      | 'HAS_BLOCK'
-      | 'HAS_DIARY'
-      | 'HAS_SEMANTIC'
-      | 'HAS_VECTOR',
-    label:
-      | 'MemoryCandidate'
-      | 'MemoryBlock'
-      | 'DiaryEntry'
-      | 'SemanticRecord'
-      | 'SemanticVector',
+    relation: 'HAS_CANDIDATE' | 'HAS_BLOCK' | 'HAS_DIARY' | 'HAS_SEMANTIC' | 'HAS_VECTOR',
+    label: 'MemoryCandidate' | 'MemoryBlock' | 'DiaryEntry' | 'SemanticRecord' | 'SemanticVector',
     scopeKey: string,
     memoryId: string,
   ) {
@@ -1357,10 +2091,7 @@ export class LadybugMemoryService {
     }
   }
 
-  private async ensureSemanticVectorIndex(
-    dimension: number,
-    options: { rebuild?: boolean } = {},
-  ) {
+  private async ensureSemanticVectorIndex(dimension: number, options: { rebuild?: boolean } = {}) {
     await this.ensureSemanticVectorTable(dimension);
     const vectorTable = semanticVectorTableName(dimension);
     const vectorIndex = semanticVectorIndexName(dimension);
@@ -1384,7 +2115,11 @@ export class LadybugMemoryService {
   private async createNodeIfMissing(query: string) {
     await this.exec(query).catch((error) => {
       const message = String(error instanceof Error ? error.message : error).toLowerCase();
-      if (!message.includes('duplicate') && !message.includes('primary') && !message.includes('exist')) {
+      if (
+        !message.includes('duplicate') &&
+        !message.includes('primary') &&
+        !message.includes('exist')
+      ) {
         throw error;
       }
     });
@@ -1436,6 +2171,199 @@ function snapshotId(kind: LadybugSnapshotKind, scopeKey: string) {
   return `${kind}:${scopeKey}`;
 }
 
+const GRILLO_RECORD_ENTITIES = new Set<LadybugGrilloRecordEntity>([
+  'turn_events',
+  'memory_candidates',
+  'diary_entries',
+  'memory_blocks',
+  'memory_slots',
+  'memory_slot_patches',
+  'relationship_profiles',
+  'emotion_states',
+  'grillo_activity_log',
+  'worker_context_traces',
+  'semantic_records',
+  'semantic_vectors',
+]);
+
+const GRILLO_SINGLETON_ENTITIES = new Set<LadybugGrilloSingletonEntity>([
+  'runtime_settings',
+  'memory_worker_state',
+]);
+
+function normalizeGrilloEntity(entity: LadybugGrilloRecordEntity) {
+  if (!GRILLO_RECORD_ENTITIES.has(entity)) {
+    throw new Error(`Unsupported GRILLO record entity: ${entity}`);
+  }
+  return entity;
+}
+
+function normalizeGrilloSingletonEntity(entity: LadybugGrilloSingletonEntity) {
+  if (!GRILLO_SINGLETON_ENTITIES.has(entity)) {
+    throw new Error(`Unsupported GRILLO singleton entity: ${entity}`);
+  }
+  return entity;
+}
+
+function normalizeGrilloRecord(entity: LadybugGrilloRecordEntity, record: Record<string, unknown>) {
+  normalizeGrilloEntity(entity);
+  const scopeKey = grilloRecordScopeKey(record);
+  return {
+    schema_version: '1.0.0',
+    ...record,
+    scopeKey,
+    scope_key: stringValue(record['scope_key']) || scopeKey,
+  };
+}
+
+function grilloRecordRowId(entity: LadybugGrilloRecordEntity, record: Record<string, unknown>) {
+  return `grillo-record:${entity}:${grilloRecordNaturalId(entity, record)}`;
+}
+
+function grilloRecordNaturalId(entity: LadybugGrilloRecordEntity, record: Record<string, unknown>) {
+  const direct =
+    record['id'] ??
+    record['turn_id'] ??
+    record['turnId'] ??
+    record['candidate_id'] ??
+    record['candidateId'] ??
+    record['diary_id'] ??
+    record['diaryId'] ??
+    record['block_id'] ??
+    record['blockId'] ??
+    record['slot_id'] ??
+    record['slotId'] ??
+    record['patch_id'] ??
+    record['patchId'] ??
+    record['activity_id'] ??
+    record['activityId'] ??
+    record['trace_id'] ??
+    record['traceId'] ??
+    record['profile_id'] ??
+    record['profileId'];
+  const value = stringValue(direct);
+  if (value) return value;
+  return `${entity}:${grilloRecordScopeKey(record)}:${grilloRecordTimestamp(record)}:${hashText(JSON.stringify(record)).toString(36)}`;
+}
+
+function grilloRecordScopeKey(record: Record<string, unknown>) {
+  return normalizeScopeKey(
+    stringValue(
+      record['scopeKey'] ??
+        record['scope_key'] ??
+        record['memory_scope'] ??
+        record['memoryScope'] ??
+        record['user_id'] ??
+        record['userId'] ??
+        'default',
+    ),
+  );
+}
+
+function grilloRecordParticipantKey(record: Record<string, unknown>) {
+  const raw = stringValue(
+    record['participantKey'] ??
+      record['participant_key'] ??
+      record['speaker_key'] ??
+      record['speakerKey'] ??
+      record['actor_key'] ??
+      record['actorKey'] ??
+      '',
+  );
+  return raw ? normalizeScopeKey(raw) : '';
+}
+
+function grilloRecordUserId(record: Record<string, unknown>) {
+  return stringValue(record['user_id'] ?? record['userId'] ?? grilloRecordScopeKey(record));
+}
+
+function grilloRecordTimestamp(record: Record<string, unknown>) {
+  return intValue(
+    record['createdAt'] ??
+      record['created_at'] ??
+      record['sentAt'] ??
+      record['sent_at'] ??
+      record['timestamp'] ??
+      Date.now(),
+  );
+}
+
+function grilloRecordUpdatedAt(record: Record<string, unknown>) {
+  return intValue(record['updatedAt'] ?? record['updated_at'] ?? grilloRecordTimestamp(record));
+}
+
+function readSourceTurnIds(record: Record<string, unknown>) {
+  return [
+    ...arrayValue(record['sourceTurnIds']),
+    ...arrayValue(record['source_turn_ids']),
+    ...arrayValue(record['evidence_turn_ids']),
+    stringValue(record['origin_turn_id']),
+    stringValue(record['originTurnId']),
+  ]
+    .map((value) => stringValue(value))
+    .filter(Boolean);
+}
+
+function readSourceCandidateIds(record: Record<string, unknown>) {
+  return [
+    ...arrayValue(record['sourceCandidateIds']),
+    ...arrayValue(record['source_candidate_ids']),
+  ]
+    .map((value) => stringValue(value))
+    .filter(Boolean);
+}
+
+function fallbackGrilloRecordsId(entity: LadybugGrilloRecordEntity) {
+  return `grillo-records:${entity}`;
+}
+
+function fallbackGrilloSingletonId(entity: LadybugGrilloSingletonEntity) {
+  return `grillo-singleton:${entity}`;
+}
+
+function readFallbackGrilloBucket(store: FallbackStore, entity: LadybugGrilloRecordEntity) {
+  const value = store.snapshots[fallbackGrilloRecordsId(entity)]?.value;
+  return Array.isArray(value) ? value.filter(isRecordObject) : [];
+}
+
+function writeFallbackGrilloBucket(
+  store: FallbackStore,
+  entity: LadybugGrilloRecordEntity,
+  records: Record<string, unknown>[],
+) {
+  store.snapshots[fallbackGrilloRecordsId(entity)] = {
+    kind: 'grillo-records',
+    scopeKey: entity,
+    updatedAt: Date.now(),
+    value: records,
+  };
+}
+
+function readFallbackGrilloSingletonValue(
+  store: FallbackStore,
+  entity: LadybugGrilloSingletonEntity,
+) {
+  const value = store.snapshots[fallbackGrilloSingletonId(entity)]?.value;
+  return isRecordObject(value) ? value : null;
+}
+
+function writeFallbackGrilloSingletonValue(
+  store: FallbackStore,
+  entity: LadybugGrilloSingletonEntity,
+  value: Record<string, unknown>,
+) {
+  store.snapshots[fallbackGrilloSingletonId(entity)] = {
+    kind: 'grillo-singleton',
+    scopeKey: entity,
+    updatedAt: Date.now(),
+    value,
+  };
+}
+
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function relationshipProfileId(scopeKey: string) {
   return `relationship:${scopeKey}`;
 }
@@ -1476,6 +2404,15 @@ function q(value: unknown) {
     .replace(/\n/g, '\\n')}'`;
 }
 
+function hashText(text: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 function safeJsonParse(value: string) {
   try {
     return JSON.parse(value);
@@ -1485,7 +2422,10 @@ function safeJsonParse(value: string) {
 }
 
 function stringValue(value: unknown) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 2400);
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 2400);
 }
 
 function numberValue(value: unknown, fallback: number) {

@@ -23,6 +23,135 @@ afterEach(async () => {
 });
 
 describe('LadybugMemoryService', () => {
+  it('stores native GRILLO repository records in Ladybug graph rows', async () => {
+    const service = createService();
+    const scopeKey = 'local:persona:neuro-sama';
+    const participantKey = 'local:local:subsect';
+    try {
+      await service.appendGrilloRecord('turn_events', {
+        author_name: 'Subsect',
+        channel_id: 'local',
+        content: 'remember that I like clean GRILLO memory',
+        created_at: 10,
+        interface_path: 'local/subsect',
+        participant_key: participantKey,
+        role: 'user',
+        scope_key: scopeKey,
+        turn_id: 'turn-1',
+        user_id: scopeKey,
+      });
+      await service.appendGrilloRecord('memory_candidates', {
+        candidate_id: 'candidate-native-1',
+        confidence: 0.92,
+        content: 'Subsect likes clean GRILLO memory.',
+        created_at: 11,
+        evidence_turn_ids: ['turn-1'],
+        participant_key: participantKey,
+        scope_key: scopeKey,
+        source: 'local',
+        summary: 'Subsect likes clean GRILLO memory.',
+        type: 'preference',
+        user_id: scopeKey,
+      });
+      await service.appendGrilloRecord('diary_entries', {
+        beat_type: 'relationship',
+        created_at: 12,
+        diary_id: 'diary-native-1',
+        participant_key: participantKey,
+        personal_thought: 'I should treat GRILLO as the real memory spine now.',
+        scope_key: scopeKey,
+        summary: 'Subsect clarified GRILLO should be canonical.',
+        tags: ['grillo'],
+        user_id: scopeKey,
+      });
+      await service.upsertGrilloMemorySlot({
+        content_json: JSON.stringify(['Subsect likes clean GRILLO memory.']),
+        schema_version: '1.0.0',
+        slot_id: 'slot-native-1',
+        slot_name: 'preferences',
+        source_candidate_ids_json: JSON.stringify(['candidate-native-1']),
+        updated_at: '2026-05-28T00:00:00.000Z',
+        user_id: scopeKey,
+      });
+      await service.appendGrilloMemorySlotPatch({
+        created_at: '2026-05-28T00:00:01.000Z',
+        operation: 'merge',
+        patch_id: 'patch-native-1',
+        patch_json: JSON.stringify({ items: ['Subsect likes clean GRILLO memory.'] }),
+        schema_version: '1.0.0',
+        slot_id: 'slot-native-1',
+        slot_name: 'preferences',
+        source_candidate_ids_json: JSON.stringify(['candidate-native-1']),
+        user_id: scopeKey,
+      });
+      await service.appendGrilloRecord('grillo_activity_log', {
+        activity_id: 'activity-native-1',
+        beat_type: 'relationship',
+        created_at: 13,
+        prompt_text: 'Reflect on the latest memory turn.',
+        response_text: 'Wrote candidate and diary.',
+        scope_key: scopeKey,
+        user_id: scopeKey,
+      });
+      await service.appendGrilloRecord('worker_context_traces', {
+        beat_type: 'relationship',
+        created_at: 14,
+        model: 'zai/glm-4.7-flash',
+        prompt: 'New messages to process...',
+        provider: 'openrouter',
+        scope_key: scopeKey,
+        system_prompt: 'You are the background sleep-time memory agent.',
+        task_type: 'extraction',
+        trace_id: 'trace-native-1',
+        user_id: scopeKey,
+      });
+      await service.setGrilloSingleton('memory_worker_state', {
+        schema_version: '1.0.0',
+        last_processed_turn_count: 1,
+      });
+
+      const turns = await service.readGrilloRecords<{ turn_id: string }>('turn_events');
+      const candidates = await service.readGrilloRecords<{ candidate_id: string }>(
+        'memory_candidates',
+      );
+      const slots = await service.listGrilloMemorySlots(scopeKey);
+      const patches = await service.listGrilloMemorySlotPatches(scopeKey);
+      const singleton = await service.getGrilloSingleton<{ last_processed_turn_count: number }>(
+        'memory_worker_state',
+      );
+      const status = await service.getStatus();
+      const graph = await service.getGraphSummary();
+
+      expect(turns.map((turn) => turn.turn_id)).toEqual(['turn-1']);
+      expect(candidates.map((candidate) => candidate.candidate_id)).toEqual(['candidate-native-1']);
+      expect(slots[0]?.slot_name).toBe('preferences');
+      expect(patches[0]?.operation).toBe('merge');
+      expect(singleton?.last_processed_turn_count).toBe(1);
+      expect(status.turnEvents).toBe(1);
+      expect(status.candidates).toBe(1);
+      expect(status.diaryEntries).toBe(1);
+      expect(status.memorySlots).toBe(1);
+      expect(status.memorySlotPatches).toBe(1);
+      expect(status.grilloActivities).toBe(1);
+      expect(status.workerContextTraces).toBe(1);
+      expect(graph.participants[0]?.id).toBe(participantKey);
+      expect(graph.edges.map((edge) => edge.relation)).toEqual(
+        expect.arrayContaining([
+          'HAS_TURN',
+          'TURN_BY',
+          'HAS_CANDIDATE',
+          'HAS_DIARY',
+          'HAS_SLOT',
+          'HAS_SLOT_PATCH',
+          'HAS_ACTIVITY',
+          'HAS_TRACE',
+        ]),
+      );
+    } finally {
+      await service.close();
+    }
+  });
+
   it('stores Grillo, semantic, participant, persona, and relationship graph rows', async () => {
     const service = createService();
     try {
