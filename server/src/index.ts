@@ -654,11 +654,16 @@ function getRuntimeChatProvider(
   llmProvider: unknown,
   model?: string,
   allowServerProxy = false,
-) {
+): ChatProvider | null {
   const allowServerKeys = baseConfig.providerProxyEnabled && allowServerProxy;
   const providerName = normalizeRuntimeLlmProvider(
     getHeaderValue(request, 'x-yourwifey-llm-provider') || llmProvider,
   );
+  if (process.env['WEBWAIFU_SMOKE_RUNTIME_MOCK_PROVIDER'] === 'true') {
+    const mockProvider = new MockChatProvider();
+    mockProvider.setModel(model?.trim() || 'smoke-mock');
+    return mockProvider;
+  }
   const apiKey = getHeaderSecret(request, 'x-yourwifey-llm-provider-key');
   const aiGatewayByokOpenAiApiKey = getHeaderSecret(request, 'x-yourwifey-openai-byok-key');
   const tavilyApiKey = getRuntimeTavilyApiKeyWithAuth(baseConfig, request, allowServerKeys);

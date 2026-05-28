@@ -128,20 +128,21 @@ Progress note:
 - 2026-05-28: Added provider-lane parity coverage for Vercel AI Gateway and OpenRouter. Both providers are proven through the same AI SDK `streamText` path with structured memory-worker output, stateless app-owned context, step-count agentic loop controls, and memory-scope tool suppression.
 - 2026-05-28: Audited current GRILLO evidence and refreshed stale TODO checkboxes. Focused tests covering Ladybug GRILLO storage, backend worker service, context packet/POML injection, Twitch intake scoring, operator UI, provider lanes, and runtime provider routing pass.
 - 2026-05-28: Fixed packaged Electron backend ownership when a stale wildcard IPv6 backend is already bound to the preferred port. Electron now probes both IPv4 and wildcard IPv6 loopback availability and requires the owner token during startup health checks, then falls forward to the next port. Packaged UI smoke and desktop port-fallback smoke prove `/health`, `/memory/status`, `/memory/graph`, and `/memory/grillo/runtime` on the owned fallback backend.
+- 2026-05-28: Added `smoke:grillo-chat-context`. The smoke starts the compiled backend on a temporary port, seeds GRILLO through backend endpoints, fetches the native context packet, renders POML through `/ai/poml/render`, verifies the seeded candidate/slot/diary text in the system prompt, and sends those rendered messages through `/ai/chat` using an explicit smoke-only mock runtime provider.
 
 ## Phase 2 - Backend GRILLO Service
 
 - [x] Move GRILLO worker ownership to the backend.
 - [x] Add backend endpoints for native turn ingest and manual GRILLO writes.
 - [x] Wire completed local/Twitch assistant reply pairs into backend turn ingest.
-- [ ] Add backend service lifecycle:
+- [x] Add backend service lifecycle:
   - [x] start with backend
   - [x] stop on backend shutdown
   - [x] no orphan timers
   - [x] no second backend
 - [x] Implement worker state in Ladybug.
 - [x] Implement tick guard so only one GRILLO tick runs at a time.
-- [ ] Implement tasks:
+- [x] Implement tasks:
   - [x] extraction
   - [x] reflection beat
   - [x] relationship beat
@@ -206,11 +207,11 @@ Progress note:
 ## Phase 6 - Local Mode And Stream Mode
 
 - [x] Add clear Local/Stream mode setting.
-- [ ] Local mode:
+- [x] Local mode:
   - [x] local chat turns feed GRILLO
   - [x] no Twitch intake by default
   - [x] controller/local participant is scoped clearly
-- [ ] Stream mode:
+- [x] Stream mode:
   - [x] Twitch intake enabled
   - [x] direct mentions and high-signal turns feed GRILLO
   - [x] batch summaries can feed GRILLO
@@ -227,7 +228,7 @@ Progress note:
 ## Phase 7 - GRILLO Operator UI
 
 - [x] Rename/rework Memory Worker panel into G.R.I.L.L.O.
-- [ ] Show:
+- [x] Show:
   - [x] enabled state
   - [x] current mode
   - [x] backend status
@@ -246,7 +247,7 @@ Progress note:
   - [x] memory slots/blocks
   - [x] semantic recall/vector counts
   - [x] graph counts/relations
-- [ ] Add buttons:
+- [x] Add buttons:
   - [x] Run Extraction
   - [x] Run Beat
   - [x] Run Consolidation
@@ -268,24 +269,24 @@ Progress note:
 
 ## Phase 9 - Verification Gates
 
-- [ ] Unit tests:
+- [x] Unit tests:
   - [x] Ladybug GRILLO repository
   - [x] worker tools
   - [x] context packet reduction
   - [x] POML injection
   - [x] Twitch intake filtering
-- [ ] Integration tests:
+- [x] Integration tests:
   - [x] local chat -> extraction -> candidate/diary/slot
   - [x] semantic recall -> context packet -> POML
   - [x] manual beat -> trace visible in UI endpoint
   - [x] stream mode does not ingest low-signal spam
-- [ ] Runtime smoke:
+- [x] Runtime smoke:
   - [x] backend health
   - [x] memory status
   - [x] graph summary
-  - [ ] chat reply with injected GRILLO context
+  - [x] chat reply with injected GRILLO context
   - [x] packaged EXE starts and exits cleanly
-- [ ] Commit after each passing slice.
+- [x] Commit after each passing slice.
 
 ## First Slice
 
