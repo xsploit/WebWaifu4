@@ -298,6 +298,91 @@ describe('GrilloWorkerService', () => {
     }
   });
 
+  it('lets GRILLO worker tools read and update canonical emotion state', async () => {
+    const { grillo, memory } = createServices();
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      const firstUpdate = await grillo.runWorkerTool({
+        args: {
+          intensities: { guarded: 2, happy: 3 },
+          last_signal_source: 'tool-test-first',
+          operation: 'replace',
+        },
+        name: 'core.worker_emotion_update',
+        participantKey,
+        scopeKey,
+      });
+      const firstRead = await grillo.runWorkerTool({
+        args: {},
+        name: 'core.worker_emotion_read',
+        participantKey,
+        scopeKey,
+      });
+      const secondUpdate = await grillo.runWorkerTool({
+        args: {
+          intensities: { curious: 4, happy: 6 },
+          last_signal_source: 'tool-test-second',
+          operation: 'merge',
+        },
+        name: 'core.worker_emotion_update',
+        participantKey,
+        scopeKey,
+      });
+      const secondRead = await grillo.runWorkerTool({
+        args: {},
+        name: 'core.worker_emotion_read',
+        participantKey,
+        scopeKey,
+      });
+
+      expect(firstUpdate.ok).toBe(true);
+      expect(firstRead.result).toMatchObject({
+        emotion_state: {
+          intensities: { guarded: 2, happy: 3 },
+          last_signal_source: 'tool-test-first',
+          scope_key: scopeKey,
+        },
+      });
+      expect(secondUpdate.result).toMatchObject({
+        emotion_state: {
+          intensities: { curious: 4, guarded: 2, happy: 6 },
+          last_signal_source: 'tool-test-second',
+          scope_key: scopeKey,
+        },
+      });
+      expect(secondRead.result).toMatchObject({
+        emotion_state: {
+          intensities: { curious: 4, guarded: 2, happy: 6 },
+          last_signal_source: 'tool-test-second',
+          scope_key: scopeKey,
+        },
+      });
+
+      const records = await memory.readGrilloRecords<Record<string, unknown>>('emotion_states');
+      const graph = await memory.getGraphSummary();
+      const status = await memory.getStatus();
+
+      expect(records).toHaveLength(1);
+      expect(status.emotionStates).toBe(1);
+      expect(status.emotionIntensities).toBe(3);
+      expect(graph.recent.emotions[0]).toMatchObject({
+        id: `emotion:${scopeKey}`,
+        lastSignalSource: 'tool-test-second',
+        scopeKey,
+      });
+      expect(graph.recent.emotionIntensities.map((row) => row.name).sort()).toEqual([
+        'curious',
+        'guarded',
+        'happy',
+      ]);
+      expect(graph.recent.activities.filter((row) => row.beatType === 'worker_tool')).toHaveLength(4);
+    } finally {
+      await memory.close();
+    }
+  });
+
   it('runs backend extraction ticks from native turn pairs into context-visible memory', async () => {
     const { grillo, memory } = createServices();
     try {

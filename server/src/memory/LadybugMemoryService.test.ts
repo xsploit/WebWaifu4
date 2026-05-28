@@ -423,6 +423,55 @@ describe('LadybugMemoryService', () => {
     }
   });
 
+  it('upserts one native emotion state per scope and replaces graph intensities', async () => {
+    const service = createService();
+    const scopeKey = 'local:persona:hikari-chan';
+    try {
+      await service.upsertGrilloEmotionState(scopeKey, {
+        intensities: { focused: 4 },
+        lastSignalAt: 10,
+        lastSignalSource: 'first-pass',
+        updatedAt: 10,
+      });
+      await service.upsertGrilloEmotionState(scopeKey, {
+        intensities: { curious: 7 },
+        lastSignalAt: 20,
+        lastSignalSource: 'second-pass',
+        updatedAt: 20,
+      });
+
+      const records = await service.readGrilloRecords<Record<string, unknown>>('emotion_states');
+      const graph = await service.getGraphSummary();
+      const status = await service.getStatus();
+
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        emotion_state_id: `emotion:${scopeKey}`,
+        last_signal_source: 'second-pass',
+        scope_key: scopeKey,
+      });
+      expect(records[0]?.['intensities']).toEqual({ curious: 7 });
+      expect(status.emotionStates).toBe(1);
+      expect(status.emotionIntensities).toBe(1);
+      expect(graph.recent.emotions[0]).toMatchObject({
+        id: `emotion:${scopeKey}`,
+        lastSignalSource: 'second-pass',
+        scopeKey,
+      });
+      expect(graph.recent.emotionIntensities).toEqual([
+        expect.objectContaining({
+          emotionStateId: `emotion:${scopeKey}`,
+          intensity: 7,
+          name: 'curious',
+          scopeKey,
+        }),
+      ]);
+      expect(JSON.stringify(graph)).not.toContain('focused');
+    } finally {
+      await service.close();
+    }
+  });
+
   it('falls back to local JSON snapshots when Ladybug native storage fails', async () => {
     const service = createService();
     const failingService = service as unknown as { init: () => Promise<never> };

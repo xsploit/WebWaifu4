@@ -50,18 +50,18 @@ Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, Electron tr
 
 Current slice definition of done:
 
-- [ ] `core.worker_emotion_read` is accepted by the backend worker tool loop.
-- [ ] `core.worker_emotion_update` is accepted by the backend worker tool loop.
-- [ ] Emotion reads return the current scope state or a safe empty state.
-- [ ] Emotion updates replace the current scope state instead of creating duplicate active states.
-- [ ] Emotion updates write through Ladybug and appear in `/memory/graph`.
-- [ ] Worker telemetry records emotion tool name, args summary, result, duration, and errors.
-- [ ] Focused service tests prove emotion read/update through the worker path.
-- [ ] Focused Ladybug tests prove emotion graph replacement behavior.
-- [ ] `npm run build` passes.
-- [ ] `npm run desktop:pack` rebuilds the EXE.
-- [ ] `git diff --check` passes.
-- [ ] Commit and push only the intended GRILLO files.
+- [x] `core.worker_emotion_read` is accepted by the backend worker tool loop.
+- [x] `core.worker_emotion_update` is accepted by the backend worker tool loop.
+- [x] Emotion reads return the current scope state or a safe empty state.
+- [x] Emotion updates replace the current scope state instead of creating duplicate active states.
+- [x] Emotion updates write through Ladybug and appear in `/memory/graph`.
+- [x] Worker telemetry records emotion tool name, args summary, result, duration, and errors.
+- [x] Focused service tests prove emotion read/update through the worker path.
+- [x] Focused Ladybug tests prove emotion graph replacement behavior.
+- [x] `npm run build` passes.
+- [x] `npm run desktop:pack` rebuilds the EXE.
+- [x] `git diff --check` passes.
+- [x] Commit and push only the intended GRILLO files.
 
 ## Phase 1 - Ladybug GRILLO Store
 
@@ -116,6 +116,7 @@ Progress note:
 - 2026-05-28: Added graph lineage edges from memory blocks/slots back to source candidates and optional relationship participant edges alongside existing persona links. Focused Ladybug graph tests prove the new relations.
 - 2026-05-28: Reworked the Memory Worker operator panel as G.R.I.L.L.O. trace inspection. The graph summary now exposes worker prompt/system prompt and activity prompt/output text, and the UI renders latest worker prompt/output plus graph-backed memory rows.
 - 2026-05-28: Renamed reset controls to explicit `Clear GRILLO Memory` and `Reset Chat Context` actions. The UI now states that chat-context reset keeps durable memory while GRILLO clear removes the current scope's relationship, diary, GRILLO, and semantic recall.
+- 2026-05-28: Added backend GRILLO emotion read/update worker tools. Emotion state now upserts one canonical Ladybug record per scope, replaces graph intensities instead of duplicating them, and records normal worker-tool telemetry.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -153,7 +154,7 @@ Progress note:
   - [x] `core.worker_memory_write`
   - [x] `core.worker_profile_patch`
   - [x] `core.worker_memory_insert_archival`
-  - [ ] emotion read/update tools if useful
+  - [x] emotion read/update tools if useful
 - [x] Make all tool writes go through Ladybug.
 - [ ] Add tool-call telemetry:
   - [x] name

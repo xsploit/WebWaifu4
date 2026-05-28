@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  LadybugEmotionStateRecord,
   LadybugMemoryService,
   LadybugMemorySlotPatchRecord,
   LadybugMemorySlotRecord,
@@ -69,6 +70,8 @@ export type GrilloWorkerToolName =
   | 'core.worker_diary_write'
   | 'core.worker_memory_write'
   | 'core.worker_profile_patch'
+  | 'core.worker_emotion_read'
+  | 'core.worker_emotion_update'
   | 'core.worker_memory_insert_archival';
 
 export type GrilloWorkerToolInput = {
@@ -1279,6 +1282,12 @@ export class GrilloWorkerService {
     if (name === 'core.worker_profile_patch') {
       return this.patchWorkerProfile(scopeKey, args);
     }
+    if (name === 'core.worker_emotion_read') {
+      return this.readWorkerEmotion(scopeKey);
+    }
+    if (name === 'core.worker_emotion_update') {
+      return this.updateWorkerEmotion(scopeKey, args);
+    }
     return this.insertWorkerArchivalMemory(scopeKey, args);
   }
 
@@ -1529,6 +1538,52 @@ export class GrilloWorkerService {
     return { field, ok: true, operation, value };
   }
 
+  private async readWorkerEmotion(scopeKey: string) {
+    return { emotion_state: await this.getCurrentEmotionState(scopeKey) };
+  }
+
+  private async updateWorkerEmotion(scopeKey: string, args: Record<string, unknown>) {
+    const operation = normalizeText(args['operation']) === 'replace' ? 'replace' : 'merge';
+    const incoming = readEmotionIntensityMap(args['intensities'] ?? args['emotions']);
+    if (Object.keys(incoming).length === 0 && operation !== 'replace') {
+      throw new Error('emotion update requires intensities or operation="replace"');
+    }
+    const current = await this.getCurrentEmotionState(scopeKey);
+    const previous = readEmotionIntensityMap(current.intensities);
+    const intensities = operation === 'replace' ? incoming : { ...previous, ...incoming };
+    const now = this.nowMs();
+    const source =
+      normalizeText(args['last_signal_source'] ?? args['lastSignalSource'] ?? args['source']) ||
+      'worker_tool';
+    const record = await this.memory.upsertGrilloEmotionState(scopeKey, {
+      intensities,
+      lastSignalAt: now,
+      lastSignalSource: source,
+      updatedAt: now,
+    });
+    return {
+      emotion_state: toWorkerEmotionState(record),
+      emotion_state_id: record.emotion_state_id,
+      ok: true,
+      operation,
+    };
+  }
+
+  private async getCurrentEmotionState(scopeKey: string) {
+    const records = await this.memory.readGrilloRecords<Record<string, unknown>>('emotion_states');
+    const current = records
+      .filter((record) => recordScopeKey(record) === scopeKey)
+      .sort((left, right) => recordUpdatedAt(right) - recordUpdatedAt(left))[0];
+    return toWorkerEmotionState(current ?? {
+      emotion_state_id: `emotion:${scopeKey}`,
+      intensities: {},
+      last_signal_at: '',
+      last_signal_source: '',
+      scope_key: scopeKey,
+      updated_at: '',
+    });
+  }
+
   private async insertWorkerArchivalMemory(scopeKey: string, args: Record<string, unknown>) {
     const text = normalizeText(args['text']);
     if (!text) {
@@ -1592,6 +1647,8 @@ const WORKER_TOOL_NAME_VALUES: GrilloWorkerToolName[] = [
   'core.worker_diary_write',
   'core.worker_memory_write',
   'core.worker_profile_patch',
+  'core.worker_emotion_read',
+  'core.worker_emotion_update',
   'core.worker_memory_insert_archival',
 ];
 
@@ -1671,6 +1728,8 @@ function buildBackendWorkerSystemPrompt() {
     '- core.worker_diary_write args: {"summary": string, "personal_thought": string, "tags"?: string[], "beat_type"?: string, "source_turn_ids"?: string[]}',
     '- core.worker_memory_write args: {"block_name": string, "items": string[], "operation": "merge|replace", "reason"?: string, "source_candidate_ids"?: string[]}',
     '- core.worker_profile_patch args: {"field": "tone_preferences|interaction_style|boundaries|active_threads", "operation": "add|remove", "value": string}',
+    '- core.worker_emotion_read args: {}',
+    '- core.worker_emotion_update args: {"intensities": {"emotion_name": number}, "operation"?: "merge|replace", "last_signal_source"?: string}',
     '- core.worker_memory_insert_archival args: {"text": string}',
     '',
     'First read or search memory if needed. Then call write tools. When finished, return done=true and toolCalls=[].',
@@ -1948,6 +2007,7 @@ function isWorkerWriteTool(name: GrilloWorkerToolName) {
     name === 'core.worker_diary_write' ||
     name === 'core.worker_memory_write' ||
     name === 'core.worker_profile_patch' ||
+    name === 'core.worker_emotion_update' ||
     name === 'core.worker_memory_insert_archival'
   );
 }
@@ -1983,6 +2043,46 @@ function readEmotionArray(value: unknown) {
         .filter((item) => item.name)
         .slice(0, 12)
     : [];
+}
+
+function readEmotionIntensityMap(value: unknown) {
+  const source = typeof value === 'string' ? safeJsonParse(value) : value;
+  if (Array.isArray(source)) {
+    const intensities: Record<string, number> = {};
+    for (const item of source) {
+      const record = asRecord(item);
+      const name = normalizeText(record['name']);
+      const intensity = clampNumber(record['intensity'], 0, 10, 0);
+      if (!name || !Number.isFinite(intensity)) continue;
+      intensities[name] = intensity;
+    }
+    return intensities;
+  }
+  if (!source || typeof source !== 'object') {
+    return {};
+  }
+  const intensities: Record<string, number> = {};
+  for (const [name, rawIntensity] of Object.entries(source as Record<string, unknown>)) {
+    const normalizedName = normalizeText(name);
+    const intensity = clampNumber(rawIntensity, 0, 10, 0);
+    if (!normalizedName || !Number.isFinite(intensity)) continue;
+    intensities[normalizedName] = intensity;
+  }
+  return intensities;
+}
+
+function toWorkerEmotionState(record: Record<string, unknown> | LadybugEmotionStateRecord) {
+  const row = record as unknown as Record<string, unknown>;
+  return {
+    emotion_state_id: normalizeText(
+      row['emotion_state_id'] ?? row['emotionStateId'] ?? row['id'],
+    ),
+    intensities: readEmotionIntensityMap(row['intensities'] ?? row['intensities_json']),
+    last_signal_at: normalizeText(row['last_signal_at'] ?? row['lastSignalAt']),
+    last_signal_source: normalizeText(row['last_signal_source'] ?? row['lastSignalSource']),
+    scope_key: recordScopeKey(row),
+    updated_at: normalizeText(row['updated_at'] ?? row['updatedAt']),
+  };
 }
 
 function readJsonArray(value: unknown) {

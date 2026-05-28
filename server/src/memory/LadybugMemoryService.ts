@@ -144,6 +144,18 @@ export type LadybugMemorySlotPatchRecord = {
   user_id: string;
 };
 
+export type LadybugEmotionStateRecord = {
+  emotion_state_id: string;
+  intensities: Record<string, number>;
+  intensities_json: string;
+  last_signal_at: string;
+  last_signal_source: string;
+  schema_version: '1.0.0';
+  scope_key: string;
+  updated_at: string;
+  user_id: string;
+};
+
 type LadybugSnapshotKind = 'grillo' | 'relationships' | 'semantic';
 
 type LadybugSnapshot = {
@@ -647,6 +659,35 @@ export class LadybugMemoryService {
   async listGrilloMemorySlotPatches(userId?: string): Promise<LadybugMemorySlotPatchRecord[]> {
     const rows = await this.readGrilloRecords<LadybugMemorySlotPatchRecord>('memory_slot_patches');
     return userId ? rows.filter((row) => row.user_id === userId) : rows;
+  }
+
+  async upsertGrilloEmotionState(scopeKey: string, state: Record<string, unknown>) {
+    const normalizedScopeKey = normalizeScopeKey(scopeKey);
+    const emotionStateId = `emotion:${normalizedScopeKey}`;
+    const updatedAt = intValue(state['updatedAt'] ?? state['updated_at'] ?? Date.now());
+    const lastSignalAt = intValue(state['lastSignalAt'] ?? state['last_signal_at'] ?? updatedAt);
+    const intensities = normalizeEmotionIntensityMap(
+      state['intensities'] ?? state['intensities_json'],
+    );
+    const record = {
+      ...state,
+      emotionStateId: emotionStateId,
+      emotion_state_id: emotionStateId,
+      intensities,
+      intensities_json: JSON.stringify(intensities),
+      lastSignalAt,
+      lastSignalSource: stringValue(state['lastSignalSource'] ?? state['last_signal_source']),
+      last_signal_at: String(lastSignalAt),
+      last_signal_source: stringValue(state['lastSignalSource'] ?? state['last_signal_source']),
+      schema_version: '1.0.0',
+      scopeKey: normalizedScopeKey,
+      scope_key: normalizedScopeKey,
+      updatedAt,
+      updated_at: String(updatedAt),
+      user_id: normalizedScopeKey,
+    };
+    await this.replaceOneGrilloRecord('emotion_states', emotionStateId, record);
+    return record as LadybugEmotionStateRecord & Record<string, unknown>;
   }
 
   async getGraphSummary(): Promise<LadybugMemoryGraphSummary> {
@@ -1476,7 +1517,12 @@ export class LadybugMemoryService {
     if (entity === 'memory_slots') await deleteByLabel('MemorySlot');
     if (entity === 'memory_slot_patches') await deleteByLabel('MemorySlotPatch');
     if (entity === 'relationship_profiles') await deleteByLabel('RelationshipProfile');
-    if (entity === 'emotion_states') await deleteByLabel('EmotionState');
+    if (entity === 'emotion_states') {
+      await deleteByLabel('EmotionState');
+      await this.exec(`MATCH (m:EmotionIntensity) WHERE m.emotionStateId IN [${ids}] DELETE m`).catch(
+        () => undefined,
+      );
+    }
     if (entity === 'grillo_activity_log') await deleteByLabel('GrilloActivity');
     if (entity === 'worker_context_traces') await deleteByLabel('WorkerContextTrace');
   }
@@ -1955,7 +2001,9 @@ export class LadybugMemoryService {
   }
 
   private async createEmotionGraph(scopeKey: string, emotionState: Record<string, unknown>) {
-    const emotionStateId = `emotion:${scopeKey}`;
+    const emotionStateId =
+      stringValue(emotionState['emotion_state_id'] ?? emotionState['emotionStateId'] ?? emotionState['id']) ||
+      `emotion:${scopeKey}`;
     const intensities =
       emotionState['intensities'] &&
       typeof emotionState['intensities'] === 'object' &&
@@ -2459,7 +2507,9 @@ function grilloRecordNaturalId(entity: LadybugGrilloRecordEntity, record: Record
     record['trace_id'] ??
     record['traceId'] ??
     record['profile_id'] ??
-    record['profileId'];
+    record['profileId'] ??
+    record['emotion_state_id'] ??
+    record['emotionStateId'];
   const value = stringValue(direct);
   if (value) return value;
   return `${entity}:${grilloRecordScopeKey(record)}:${grilloRecordTimestamp(record)}:${hashText(JSON.stringify(record)).toString(36)}`;
@@ -2509,6 +2559,35 @@ function grilloRecordTimestamp(record: Record<string, unknown>) {
 
 function grilloRecordUpdatedAt(record: Record<string, unknown>) {
   return intValue(record['updatedAt'] ?? record['updated_at'] ?? grilloRecordTimestamp(record));
+}
+
+function normalizeEmotionIntensityMap(value: unknown) {
+  const source =
+    typeof value === 'string'
+      ? safeJsonParse(value)
+      : value;
+  if (Array.isArray(source)) {
+    const intensities: Record<string, number> = {};
+    for (const item of source) {
+      const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      const normalizedName = stringValue(record['name']).trim();
+      const intensity = numberValue(record['intensity'], 0);
+      if (!normalizedName || !Number.isFinite(intensity)) continue;
+      intensities[normalizedName] = Math.max(0, Math.min(10, intensity));
+    }
+    return intensities;
+  }
+  if (!source || typeof source !== 'object') {
+    return {};
+  }
+  const intensities: Record<string, number> = {};
+  for (const [name, rawIntensity] of Object.entries(source as Record<string, unknown>)) {
+    const normalizedName = stringValue(name).trim();
+    const intensity = numberValue(rawIntensity, 0);
+    if (!normalizedName || !Number.isFinite(intensity)) continue;
+    intensities[normalizedName] = Math.max(0, Math.min(10, intensity));
+  }
+  return intensities;
 }
 
 function readSourceTurnIds(record: Record<string, unknown>) {
