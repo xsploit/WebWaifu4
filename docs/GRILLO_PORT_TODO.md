@@ -29,13 +29,12 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 Do this before removing the old React memory worker:
 
-1. Wire a real backend extraction tick:
-   - read native completed `TurnEvent` pairs
-   - skip already processed turn ids
-   - write candidate, diary, and memory slot/block updates through worker tools
-   - write an extraction trace
-   - persist processed turn ids in `memory_worker_state`
-2. Prove the resulting context packet includes the extracted candidate, diary thought, and slot memory.
+1. Wire the backend reflection lane to the existing provider infrastructure:
+   - use `stateScope: memory`
+   - use the configured GRILLO/reflection provider/model
+   - pass worker tools only to the worker loop
+   - keep public chat/search tools out of memory scope
+2. Replace the deterministic extraction fallback with LLM-guided extraction once the lane is verified.
 3. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 4. Commit only the intended files.
 
@@ -84,6 +83,7 @@ Progress note:
 - 2026-05-28: Added backend GRILLO runtime lifecycle, `/memory/grillo/runtime`, `/memory/grillo/run/tick`, Ladybug `memory_worker_state`, shutdown cleanup, no-op tick activity, and overlap guarding.
 - 2026-05-28: Wired backend GRILLO runtime status and manual tick control into the Memory UI, refreshed through the same backend polling path as Ladybug status and graph state.
 - 2026-05-28: Replaced the default no-op backend tick with a native extraction pass over completed turn pairs. It writes candidates, diary thoughts, and open-thread slots through worker tools, records extraction traces, persists processed turn ids, and proves the context packet sees the extracted memory.
+- 2026-05-28: Verified the provider lane keeps public runtime search tools out of `stateScope: memory` requests while normal chat requests still receive Tavily tools and agentic loop controls. Focused `AiSdkGatewayProvider` tests pass.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -130,7 +130,7 @@ Progress note:
   - [x] duration
   - [x] error
 - [ ] Add debrief recovery for missing candidate/diary writes.
-- [ ] Verify worker tools are separate from public chat tools.
+- [x] Verify worker tools are separate from public chat tools.
 
 ## Phase 4 - Lanes And Providers
 
@@ -141,7 +141,7 @@ Progress note:
   - [ ] embedding lane
 - [ ] Let reflection lane choose its own provider/model.
 - [ ] Let embedding lane choose browser local, local model, or provider-based when supported.
-- [ ] Ensure memory-scoped requests do not expose normal public chat tools.
+- [x] Ensure memory-scoped requests do not expose normal public chat tools.
 - [ ] Ensure OpenRouter and Vercel Gateway models work through the same lane shape.
 
 ## Phase 5 - Context Packet And POML
