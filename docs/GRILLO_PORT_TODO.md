@@ -75,7 +75,7 @@ Current slice definition of done:
   - [x] `WorkerContextTrace`
   - [x] `SemanticRecord`
   - [x] `SemanticVector`
-- [ ] Define graph relations:
+- [x] Define graph relations:
   - [x] scope -> turn
   - [x] scope -> candidate
   - [x] scope -> diary
@@ -88,7 +88,7 @@ Current slice definition of done:
   - [x] semantic/vector -> persona
   - [x] block/slot -> source candidates
   - [x] relationship -> persona/participant
-- [ ] Implement a Ladybug-backed repository matching the GRILLO storage contract.
+- [x] Implement a Ladybug-backed repository matching the GRILLO storage contract.
 - [x] Add unit tests for append/read/replace/singleton/slot APIs.
 - [x] Add graph summary tests proving nodes and edges are real, not just JSON snapshots.
 
@@ -126,10 +126,12 @@ Progress note:
 - 2026-05-28: Added explicit Stream Mode GRILLO intake scoring. Twitch turns can enter durable memory for trusted roles, direct persona mentions, explicit durable-memory cues, emotional/relationship signals, stream-relevant badges/first-chat signals, or repeated batch topics; single low-signal Twitch chatter stays short-term. Focused intake tests cover all scoring categories.
 - 2026-05-28: Extended packaged runtime smoke checks to require `/memory/graph` alongside `/health`, `/memory/status`, and `/memory/grillo/runtime`. Both normal packaged UI smoke and busy-port fallback smoke now fail if graph summary is unreachable or malformed.
 - 2026-05-28: Added provider-lane parity coverage for Vercel AI Gateway and OpenRouter. Both providers are proven through the same AI SDK `streamText` path with structured memory-worker output, stateless app-owned context, step-count agentic loop controls, and memory-scope tool suppression.
+- 2026-05-28: Audited current GRILLO evidence and refreshed stale TODO checkboxes. Focused tests covering Ladybug GRILLO storage, backend worker service, context packet/POML injection, Twitch intake scoring, operator UI, provider lanes, and runtime provider routing pass.
+- 2026-05-28: Fixed packaged Electron backend ownership when a stale wildcard IPv6 backend is already bound to the preferred port. Electron now probes both IPv4 and wildcard IPv6 loopback availability and requires the owner token during startup health checks, then falls forward to the next port. Packaged UI smoke and desktop port-fallback smoke prove `/health`, `/memory/status`, `/memory/graph`, and `/memory/grillo/runtime` on the owned fallback backend.
 
 ## Phase 2 - Backend GRILLO Service
 
-- [ ] Move GRILLO worker ownership to the backend.
+- [x] Move GRILLO worker ownership to the backend.
 - [x] Add backend endpoints for native turn ingest and manual GRILLO writes.
 - [x] Wire completed local/Twitch assistant reply pairs into backend turn ingest.
 - [ ] Add backend service lifecycle:
@@ -149,12 +151,12 @@ Progress note:
   - [x] semantic indexing
   - [x] compaction
   - [x] debrief/recovery
-- [ ] Add run traces for every task.
+- [x] Add run traces for every task.
 - [x] Add clear status for no-op runs.
 
 ## Phase 3 - Worker Tools
 
-- [ ] Port/adapt core worker tools:
+- [x] Port/adapt core worker tools:
   - [x] `core.worker_memory_read`
   - [x] `core.worker_memory_search`
   - [x] `core.worker_candidate_list`
@@ -165,7 +167,7 @@ Progress note:
   - [x] `core.worker_memory_insert_archival`
   - [x] emotion read/update tools if useful
 - [x] Make all tool writes go through Ladybug.
-- [ ] Add tool-call telemetry:
+- [x] Add tool-call telemetry:
   - [x] name
   - [x] args summary
   - [x] result
@@ -207,7 +209,7 @@ Progress note:
 - [ ] Local mode:
   - [x] local chat turns feed GRILLO
   - [x] no Twitch intake by default
-  - [ ] controller/local participant is scoped clearly
+  - [x] controller/local participant is scoped clearly
 - [ ] Stream mode:
   - [x] Twitch intake enabled
   - [x] direct mentions and high-signal turns feed GRILLO
@@ -257,7 +259,7 @@ Progress note:
 
 - [x] Ensure Electron starts exactly one backend.
 - [x] Ensure frontend receives the backend URL/port correctly.
-- [ ] If port is busy:
+- [x] If port is busy:
   - [x] reuse only if it is our owned compatible backend
   - [x] otherwise choose a new port and pass it to frontend
 - [x] Ensure app exit shuts down backend, GRILLO timers, TTS bridges, and sockets.
@@ -267,16 +269,16 @@ Progress note:
 ## Phase 9 - Verification Gates
 
 - [ ] Unit tests:
-  - [ ] Ladybug GRILLO repository
+  - [x] Ladybug GRILLO repository
   - [x] worker tools
-  - [ ] context packet reduction
-  - [ ] POML injection
+  - [x] context packet reduction
+  - [x] POML injection
   - [x] Twitch intake filtering
 - [ ] Integration tests:
   - [x] local chat -> extraction -> candidate/diary/slot
-  - [ ] semantic recall -> context packet -> POML
-  - [ ] manual beat -> trace visible in UI endpoint
-  - [ ] stream mode does not ingest low-signal spam
+  - [x] semantic recall -> context packet -> POML
+  - [x] manual beat -> trace visible in UI endpoint
+  - [x] stream mode does not ingest low-signal spam
 - [ ] Runtime smoke:
   - [x] backend health
   - [x] memory status

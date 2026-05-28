@@ -113,28 +113,6 @@ function normalizePort(value) {
   return String(Number.isFinite(parsed) && parsed > 0 && parsed < 65536 ? parsed : 8797);
 }
 
-function isBackendHealthy(port) {
-  return new Promise((resolve) => {
-    const request = http.get(
-      {
-        host: '127.0.0.1',
-        path: '/health',
-        port,
-        timeout: 1200,
-      },
-      (response) => {
-        response.resume();
-        resolve(response.statusCode === 200);
-      },
-    );
-    request.on('error', () => resolve(false));
-    request.on('timeout', () => {
-      request.destroy();
-      resolve(false);
-    });
-  });
-}
-
 function requestBackendJson(port, requestPath, timeout = 1500, headers = {}) {
   return new Promise((resolve, reject) => {
     const request = http.get(
@@ -215,7 +193,7 @@ async function warmUpBackendRuntime(port) {
   await requestBackendJson(port, '/memory/relationships');
 }
 
-function canListenOnPort(port) {
+function canListenOnHostPort(host, port) {
   return new Promise((resolve) => {
     const probe = nodeNet.createServer();
     probe.once('error', () => resolve(false));
@@ -224,10 +202,20 @@ function canListenOnPort(port) {
     });
     probe.listen({
       exclusive: true,
-      host: '127.0.0.1',
+      host,
       port: Number(port),
     });
   });
+}
+
+async function canListenOnPort(port) {
+  if (!(await canListenOnHostPort('127.0.0.1', port))) {
+    return false;
+  }
+  if (!(await canListenOnHostPort('::', port))) {
+    return false;
+  }
+  return true;
 }
 
 async function findAvailablePort(startPort) {
@@ -297,12 +285,21 @@ async function getCompatibleOwnedBackendHealth(port) {
 
 async function waitForBackendHealth(port) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (await isBackendHealthy(port)) {
-      return;
+    try {
+      const health = await requestBackendJson(port, '/health', 1500, getBackendOwnerHeaders());
+      const desktopBackend = health?.desktopBackend;
+      if (
+        desktopBackend?.appId === BACKEND_APP_ID &&
+        desktopBackend?.ownerTokenMatched === true
+      ) {
+        return;
+      }
+    } catch {
+      // Backend may still be booting.
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  throw new Error(`Local backend did not become healthy on port ${port}.`);
+  throw new Error(`Owned local backend did not become healthy on port ${port}.`);
 }
 
 async function startBackendIfNeeded(recoveredFromStartupCrash = false) {
