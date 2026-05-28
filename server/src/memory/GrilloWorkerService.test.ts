@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GrilloWorkerService } from './GrilloWorkerService';
+import { GrilloWorkerService, type GrilloWorkerCompletionRequest } from './GrilloWorkerService';
 import { LadybugMemoryService } from './LadybugMemoryService';
 
 const dbPaths: string[] = [];
@@ -727,6 +727,176 @@ describe('GrilloWorkerService', () => {
         lastBeatModel: 'openai/gpt-5-nano',
         lastBeatProvider: 'vercel-gateway',
         lastBeatType: 'relationship',
+        lastToolCalls: 2,
+      });
+    } finally {
+      await memory.close();
+    }
+  });
+
+  it('runs consolidation and compaction beats through the backend memory lane', async () => {
+    const { grillo, memory } = createServices();
+    const requests: Array<{
+      beatType: string;
+      messages: Array<{ content: string; role: string }>;
+      stateScope: string;
+    }> = [];
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will keep consolidation and compaction visible in GRILLO.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'consolidate and compact grillo memory when it gets noisy',
+      });
+
+      const completion = async (request: GrilloWorkerCompletionRequest) => {
+        const prompt = request.messages[1]?.content ?? '';
+        const beatType = prompt.includes('compaction beat')
+          ? 'compaction'
+          : prompt.includes('consolidation beat')
+            ? 'consolidation'
+            : 'unknown';
+        requests.push({
+          beatType,
+          messages: request.messages.map((message) => ({ ...message })),
+          stateScope: request.stateScope,
+        });
+        if (request.messages.length > 2) {
+          return JSON.stringify({
+            candidate: null,
+            diary: null,
+            done: true,
+            memory: null,
+            notes: `${beatType} done`,
+            relationship: null,
+            toolCalls: [],
+          });
+        }
+        if (beatType === 'consolidation') {
+          return {
+            meta: { model: 'openai/gpt-5-nano', provider: 'vercel-gateway' },
+            text: JSON.stringify({
+              candidate: null,
+              diary: null,
+              done: false,
+              memory: null,
+              notes: 'consolidating durable memory',
+              relationship: null,
+              toolCalls: [
+                {
+                  args: {
+                    block_name: 'ongoing_threads',
+                    items: ['Subsect wants GRILLO to consolidate durable memory from noisy chat.'],
+                    operation: 'merge',
+                    reason: 'consolidation beat',
+                  },
+                  name: 'core.worker_memory_write',
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          meta: { model: 'openai/gpt-5-nano', provider: 'vercel-gateway' },
+          text: JSON.stringify({
+            candidate: null,
+            diary: null,
+            done: false,
+            memory: null,
+            notes: 'compacting durable memory',
+            relationship: null,
+            toolCalls: [
+              {
+                args: {
+                  block_name: 'open_threads',
+                  items: ['GRILLO memory needs concise durable summaries when chat context gets noisy.'],
+                  operation: 'replace',
+                  reason: 'compaction beat',
+                },
+                name: 'core.worker_memory_write',
+              },
+              {
+                args: {
+                  text: 'Archived noisy GRILLO memory discussion before compaction.',
+                },
+                name: 'core.worker_memory_insert_archival',
+              },
+            ],
+          }),
+        };
+      };
+
+      const consolidation = await grillo.runTickWithOptions(
+        {
+          beatType: 'consolidation',
+          reason: 'manual_consolidation',
+          scopeKey,
+        },
+        {
+          completion,
+          maxToolRounds: 15,
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+      const compaction = await grillo.runTickWithOptions(
+        {
+          beatType: 'compaction',
+          reason: 'manual_compaction',
+          scopeKey,
+        },
+        {
+          completion,
+          maxToolRounds: 15,
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+
+      expect(consolidation).toMatchObject({
+        beatType: 'consolidation',
+        noOpReason: '',
+        writes: 1,
+      });
+      expect(compaction).toMatchObject({
+        beatType: 'compaction',
+        noOpReason: '',
+        writes: 2,
+      });
+      expect(requests.every((request) => request.stateScope === 'memory')).toBe(true);
+      expect(requests[0]?.messages[1]?.content).toContain('This is a consolidation beat.');
+      expect(requests[2]?.messages[1]?.content).toContain('This is a compaction beat.');
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.traces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ beatType: 'consolidation', taskType: 'consolidation' }),
+          expect.objectContaining({ beatType: 'compaction', taskType: 'compaction' }),
+        ]),
+      );
+      expect(graph.recent.slots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ slotName: 'ongoing_threads' }),
+          expect.objectContaining({ slotName: 'open_threads' }),
+        ]),
+      );
+      expect(graph.recent.semantic[0]?.text).toBe(
+        'Archived noisy GRILLO memory discussion before compaction.',
+      );
+
+      const state = await memory.getGrilloSingleton<Record<string, unknown>>('memory_worker_state');
+      expect(state).toMatchObject({
+        lastBeatModel: 'openai/gpt-5-nano',
+        lastBeatProvider: 'vercel-gateway',
+        lastBeatType: 'compaction',
         lastToolCalls: 2,
       });
     } finally {

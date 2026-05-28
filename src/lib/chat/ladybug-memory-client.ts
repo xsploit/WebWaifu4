@@ -260,7 +260,7 @@ export async function updateLadybugGrilloRuntime(options: {
 
 export async function runLadybugGrilloTick(
   options: {
-    beatType?: 'extraction' | 'reflection' | 'relationship';
+    beatType?: 'extraction' | 'reflection' | 'relationship' | 'consolidation' | 'compaction';
     llmProvider?: string;
     maxToolRounds?: number;
     model?: string;

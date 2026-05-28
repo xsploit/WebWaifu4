@@ -243,6 +243,8 @@ describe('ContextTab', () => {
         onRefreshModels={vi.fn()}
         onResetContext={vi.fn()}
         onRunBackendGrilloBeat={vi.fn()}
+        onRunBackendGrilloCompaction={vi.fn()}
+        onRunBackendGrilloConsolidation={vi.fn()}
         onRunBackendGrilloTick={vi.fn()}
         onRunMemoryAgent={vi.fn()}
         relationshipMemory={{
@@ -263,6 +265,8 @@ describe('ContextTab', () => {
     expect(html).toContain('Database path:');
     expect(html).toContain('C:/tmp/webwaifu4-memory.db');
     expect(html).toContain('Backend GRILLO runtime');
+    expect(html).toContain('Run Consolidation');
+    expect(html).toContain('Run Compaction');
     expect(html).toContain('manual only');
     expect(html).toContain('worker_tasks_not_wired');
     expect(html).toContain('/ reflection / tools 2');
@@ -331,6 +335,8 @@ describe('ContextTab', () => {
         onRefreshModels={vi.fn()}
         onResetContext={vi.fn()}
         onRunBackendGrilloBeat={vi.fn()}
+        onRunBackendGrilloCompaction={vi.fn()}
+        onRunBackendGrilloConsolidation={vi.fn()}
         onRunBackendGrilloTick={vi.fn()}
         onRunMemoryAgent={vi.fn()}
         relationshipMemory={createDefaultRelationshipMemory()}

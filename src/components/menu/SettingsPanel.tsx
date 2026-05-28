@@ -94,6 +94,8 @@ type SettingsPanelProps = {
   onResetContext: () => void;
   onResetTwitchState: () => void;
   onRunBackendGrilloBeat: () => void;
+  onRunBackendGrilloCompaction: () => void;
+  onRunBackendGrilloConsolidation: () => void;
   onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
   onSavePersona: (draft: PersonaDraft, personaId?: string) => void;
@@ -210,6 +212,8 @@ export function SettingsPanel({
   onResetContext,
   onResetTwitchState,
   onRunBackendGrilloBeat,
+  onRunBackendGrilloCompaction,
+  onRunBackendGrilloConsolidation,
   onRunBackendGrilloTick,
   onRunMemoryAgent,
   onSavePersona,
@@ -359,6 +363,8 @@ export function SettingsPanel({
         onRefreshModels={onRefreshModels}
         onResetContext={onResetContext}
         onRunBackendGrilloBeat={onRunBackendGrilloBeat}
+        onRunBackendGrilloCompaction={onRunBackendGrilloCompaction}
+        onRunBackendGrilloConsolidation={onRunBackendGrilloConsolidation}
         onRunBackendGrilloTick={onRunBackendGrilloTick}
         onRunMemoryAgent={onRunMemoryAgent}
         grilloMemoryState={grilloMemoryState}

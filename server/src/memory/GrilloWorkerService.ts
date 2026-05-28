@@ -1563,13 +1563,33 @@ function buildBackendBeatPrompt({
           'Use core.worker_memory_write with block_name="relationship_state" for grounded relationship updates.',
           'Use core.worker_profile_patch for grounded boundaries, interaction_style, tone_preferences, or active_threads.',
         ]
-      : [
-          'This is a reflection beat.',
-          'Review recent channel_history, thoughts, recalled_memories, and relationship_memory.',
-          'Use core.worker_memory_read or core.worker_memory_search if useful.',
-          'Write a diary reflection only if there is something meaningful to remember internally.',
-          'Use core.worker_memory_write for grounded open_threads or ongoing_threads updates.',
-        ];
+      : beatType === 'consolidation'
+        ? [
+            'This is a consolidation beat.',
+            'Review candidates, slots, blocks, thoughts, recalled_memories, and recent channel_history.',
+            'Use core.worker_candidate_list, core.worker_memory_read, or core.worker_memory_search before writing if useful.',
+            'Promote repeated or high-confidence grounded candidates into durable memory slots or blocks.',
+            'Use core.worker_memory_write with operation="merge" for durable preferences, boundaries, verified_facts, relationship_state, or ongoing_threads.',
+            'Write a diary reflection only if the consolidation changes the private interpretation of the relationship or persona context.',
+            'Do not delete raw records during consolidation.',
+          ]
+        : beatType === 'compaction'
+          ? [
+              'This is a compaction beat.',
+              'Review noisy open_threads, working_scratchpad, recalled_memories, thoughts, and recent channel_history.',
+              'Use core.worker_memory_read or core.worker_memory_search to find redundant or stale working memory.',
+              'Compact noisy or overlapping memory into concise durable memory slots or blocks.',
+              'Use core.worker_memory_write with operation="replace" only when the replacement is clearly grounded and shorter.',
+              'Use core.worker_memory_insert_archival only for valuable long-form context that should stay searchable but not prompt-visible.',
+              'Do not delete raw records during compaction.',
+            ]
+          : [
+              'This is a reflection beat.',
+              'Review recent channel_history, thoughts, recalled_memories, and relationship_memory.',
+              'Use core.worker_memory_read or core.worker_memory_search if useful.',
+              'Write a diary reflection only if there is something meaningful to remember internally.',
+              'Use core.worker_memory_write for grounded open_threads or ongoing_threads updates.',
+            ];
   return [
     `scopeKey: ${scopeKey}`,
     `beatType: ${beatType}`,
@@ -1929,7 +1949,12 @@ function normalizeSlotOperation(value: unknown): LadybugMemorySlotPatchRecord['o
 
 function normalizeWorkerBeatType(value: unknown) {
   const normalized = normalizeText(value).toLowerCase().replace(/\s+/g, '_');
-  if (normalized === 'reflection' || normalized === 'relationship') {
+  if (
+    normalized === 'reflection' ||
+    normalized === 'relationship' ||
+    normalized === 'consolidation' ||
+    normalized === 'compaction'
+  ) {
     return normalized;
   }
   return 'extraction';

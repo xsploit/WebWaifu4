@@ -26,6 +26,8 @@ type ContextTabProps = {
   onRefreshModels: () => void;
   onResetContext: () => void;
   onRunBackendGrilloBeat: () => void;
+  onRunBackendGrilloCompaction: () => void;
+  onRunBackendGrilloConsolidation: () => void;
   onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
   grilloRuntimeStatus: LadybugGrilloRuntimeStatus | null;
@@ -56,6 +58,8 @@ export function ContextTab({
   onRefreshModels,
   onResetContext,
   onRunBackendGrilloBeat,
+  onRunBackendGrilloCompaction,
+  onRunBackendGrilloConsolidation,
   onRunBackendGrilloTick,
   onRunMemoryAgent,
   grilloRuntimeStatus,
@@ -227,6 +231,22 @@ export function ContextTab({
             type="button"
           >
             {backendGrilloTickBusy ? 'Ticking...' : 'Run Beat'}
+          </button>
+          <button
+            className="btn-tech secondary"
+            disabled={backendGrilloTickBusy}
+            onClick={onRunBackendGrilloConsolidation}
+            type="button"
+          >
+            {backendGrilloTickBusy ? 'Ticking...' : 'Run Consolidation'}
+          </button>
+          <button
+            className="btn-tech secondary"
+            disabled={backendGrilloTickBusy}
+            onClick={onRunBackendGrilloCompaction}
+            type="button"
+          >
+            {backendGrilloTickBusy ? 'Ticking...' : 'Run Compaction'}
           </button>
         </div>
         <div className="status-copy">{memoryAgentStatus}</div>

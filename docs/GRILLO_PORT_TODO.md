@@ -44,18 +44,18 @@ Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron
 
 Current slice definition of done:
 
-- [ ] `consolidation` and `compaction` are accepted backend beat types.
-- [ ] Both beats run through the provider-backed memory lane when a key is available.
-- [ ] Both beats keep deterministic extraction as a missing-key fallback only.
-- [ ] Both beats write `worker_context_traces` with the correct `beat_type` and `task_type`.
-- [ ] Runtime status shows the last beat type and tool-call count after either beat.
-- [ ] Memory UI has explicit `Run Consolidation` and `Run Compaction` buttons.
-- [ ] Focused backend tests prove at least one consolidation or compaction write reaches Ladybug.
-- [ ] Focused UI tests prove the new controls render and wire through props.
-- [ ] `npm run build` passes.
-- [ ] `npm run desktop:pack` rebuilds the EXE.
-- [ ] `git diff --check` passes.
-- [ ] Commit and push only the intended GRILLO files.
+- [x] `consolidation` and `compaction` are accepted backend beat types.
+- [x] Both beats run through the provider-backed memory lane when a key is available.
+- [x] Both beats keep deterministic extraction as a missing-key fallback only.
+- [x] Both beats write `worker_context_traces` with the correct `beat_type` and `task_type`.
+- [x] Runtime status shows the last beat type and tool-call count after either beat.
+- [x] Memory UI has explicit `Run Consolidation` and `Run Compaction` buttons.
+- [x] Focused backend tests prove at least one consolidation or compaction write reaches Ladybug.
+- [x] Focused UI tests prove the new controls render and wire through props.
+- [x] `npm run build` passes.
+- [x] `npm run desktop:pack` rebuilds the EXE.
+- [x] `git diff --check` passes.
+- [x] Commit and push only the intended GRILLO files.
 
 ## Phase 1 - Ladybug GRILLO Store
 
@@ -104,6 +104,7 @@ Progress note:
 - 2026-05-28: Wired manual backend GRILLO ticks into the existing provider infrastructure. The Memory UI passes browser-vault provider headers plus the selected memory-worker model, the backend calls the same `/ai/chat` path with `stateScope: memory`, and `GrilloWorkerService` runs an LLM-guided JSON worker-tool loop against Ladybug worker tools. If no provider key is available, the existing deterministic backend extraction remains the fallback.
 - 2026-05-28: Added backend debrief recovery for provider-backed extraction ticks. If the LLM-guided worker reaches `done` without candidate or diary writes, the backend runs one recovery prompt in the same `stateScope: memory` lane before marking source turns processed. Focused service tests prove recovered candidate/diary writes land in Ladybug and are tracked in worker state.
 - 2026-05-28: Added explicit backend reflection and relationship beats on the same memory lane. Manual backend ticks now accept a `beatType`, write traces with the beat task type, store last beat/tool-call status, and the Memory UI exposes separate Run Extraction and Run Beat controls plus last beat/tool count status. Focused service, client, and ContextTab tests pass.
+- 2026-05-28: Added explicit backend consolidation and compaction beats on the same memory lane. Both beats write typed worker traces, update runtime beat/tool-call status, and have Memory UI buttons. Focused service, client, ContextTab, build, package, and diff-check gates pass.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -123,9 +124,9 @@ Progress note:
   - [x] relationship beat
   - [ ] curiosity beat
   - [ ] tag elaboration beat
-  - [ ] consolidation
+  - [x] consolidation
   - [ ] semantic indexing
-  - [ ] compaction
+  - [x] compaction
   - [x] debrief/recovery
 - [ ] Add run traces for every task.
 - [x] Add clear status for no-op runs.
@@ -225,8 +226,8 @@ Progress note:
 - [ ] Add buttons:
   - [x] Run Extraction
   - [x] Run Beat
-  - [ ] Run Consolidation
-  - [ ] Run Compaction
+  - [x] Run Consolidation
+  - [x] Run Compaction
   - [ ] Clear GRILLO Memory
   - [ ] Reset Chat Context
 

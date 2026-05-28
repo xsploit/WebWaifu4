@@ -4477,7 +4477,9 @@ function App() {
     );
   }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
-  const runBackendGrilloTask = useCallback((beatType: 'extraction' | 'reflection') => {
+  const runBackendGrilloTask = useCallback((
+    beatType: 'extraction' | 'reflection' | 'consolidation' | 'compaction',
+  ) => {
     if (backendGrilloTickBusy) {
       return;
     }
@@ -4497,7 +4499,14 @@ function App() {
           llmProvider: settings.llmProvider,
           maxToolRounds: settings.maxToolRounds,
           model,
-          reason: beatType === 'reflection' ? 'manual_ui_beat' : 'manual_ui',
+          reason:
+            beatType === 'reflection'
+              ? 'manual_ui_beat'
+              : beatType === 'consolidation'
+                ? 'manual_ui_consolidation'
+                : beatType === 'compaction'
+                  ? 'manual_ui_compaction'
+                  : 'manual_ui',
           scopeKey: stateKey,
         },
         { headers },
@@ -4530,6 +4539,14 @@ function App() {
 
   const handleRunBackendGrilloBeat = useCallback(() => {
     runBackendGrilloTask('reflection');
+  }, [runBackendGrilloTask]);
+
+  const handleRunBackendGrilloConsolidation = useCallback(() => {
+    runBackendGrilloTask('consolidation');
+  }, [runBackendGrilloTask]);
+
+  const handleRunBackendGrilloCompaction = useCallback(() => {
+    runBackendGrilloTask('compaction');
   }, [runBackendGrilloTask]);
 
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
@@ -6384,6 +6401,8 @@ function App() {
                 appendSystemMessage('Twitch AI queue reset.');
               }}
               onRunBackendGrilloBeat={handleRunBackendGrilloBeat}
+              onRunBackendGrilloCompaction={handleRunBackendGrilloCompaction}
+              onRunBackendGrilloConsolidation={handleRunBackendGrilloConsolidation}
               onRunBackendGrilloTick={handleRunBackendGrilloTick}
               onRunMemoryAgent={handleRunMemoryAgentNow}
               onSavePersona={handleSavePersona}
