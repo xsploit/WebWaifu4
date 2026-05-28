@@ -25,9 +25,21 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 - Do not add autonomous Twitch posting or unprompted speech by default.
 - Do not make regex keyword hacks for tool or memory behavior.
 
+## Immediate Next Slice
+
+Do this before broader worker work:
+
+1. Finish native GRILLO visibility on existing `/memory/status` and `/memory/graph`.
+2. Surface recent `TurnEvent`, `MemorySlot`, `MemorySlotPatch`, `GrilloActivity`, and `WorkerContextTrace` rows in the Memory/G.R.I.L.L.O. UI.
+3. Add one focused backend test and one focused UI test for those surfaces.
+4. Run focused tests, `npm run build`, and `git diff --check`.
+5. Commit only the intended files.
+
+Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron transparency during this slice.
+
 ## Phase 1 - Ladybug GRILLO Store
 
-- [ ] Define canonical Ladybug entities:
+- [x] Define canonical Ladybug entities:
   - [x] `TurnEvent`
   - [x] `MemoryCandidate`
   - [x] `DiaryEntry`
@@ -54,7 +66,7 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
   - [ ] block/slot -> source candidates
   - [ ] relationship -> persona/participant
 - [ ] Implement a Ladybug-backed repository matching the GRILLO storage contract.
-- [ ] Add unit tests for append/read/replace/singleton/slot APIs.
+- [x] Add unit tests for append/read/replace/singleton/slot APIs.
 - [x] Add graph summary tests proving nodes and edges are real, not just JSON snapshots.
 
 Progress note:
