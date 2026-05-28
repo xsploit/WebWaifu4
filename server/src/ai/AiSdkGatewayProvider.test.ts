@@ -167,4 +167,76 @@ describe('AiSdkGatewayProvider', () => {
       baseURL: 'https://openrouter.ai/api/v1',
     });
   });
+
+  it('falls back to raw JSON text when structured output parsing throws a React child error', async () => {
+    const provider = createProvider();
+    streamTextMock.mockReturnValueOnce({
+      output: Promise.reject(
+        new Error(
+          'Objects are not valid as a React child (found: object with keys {$$typeof, type, key, props, _owner, _store}).',
+        ),
+      ),
+      text: Promise.resolve('{"message":"Plain fallback reply.","emotion":"curious"}'),
+    });
+
+    const result = await provider.completeStream(
+      createRequest({
+        responseFormat: {
+          name: 'assistant_reply',
+          schema: {
+            additionalProperties: false,
+            properties: {
+              emotion: { enum: ['neutral', 'curious'], type: 'string' },
+              message: { type: 'string' },
+            },
+            required: ['message', 'emotion'],
+            type: 'object',
+          },
+          strict: true,
+          type: 'json_schema',
+        },
+      }),
+    );
+
+    expect(result.text).toBe('{"message":"Plain fallback reply.","emotion":"curious"}');
+  });
+
+  it('serializes React-shaped structured message values as plain text', async () => {
+    const provider = createProvider();
+    streamTextMock.mockReturnValueOnce({
+      output: Promise.resolve({
+        emotion: 'amused',
+        message: {
+          $$typeof: Symbol.for('react.element'),
+          key: null,
+          props: { children: ['React shaped ', { props: { children: 'reply' } }] },
+          type: 'span',
+          _owner: null,
+          _store: {},
+        },
+      }),
+      text: Promise.resolve(''),
+    });
+
+    const result = await provider.completeStream(
+      createRequest({
+        responseFormat: {
+          name: 'assistant_reply',
+          schema: {
+            additionalProperties: false,
+            properties: {
+              emotion: { enum: ['neutral', 'amused'], type: 'string' },
+              message: { type: 'string' },
+            },
+            required: ['message', 'emotion'],
+            type: 'object',
+          },
+          strict: true,
+          type: 'json_schema',
+        },
+      }),
+    );
+
+    expect(result.text).toBe('{"message":"React shaped reply","emotion":"amused"}');
+  });
 });

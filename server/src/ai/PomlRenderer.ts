@@ -136,12 +136,14 @@ function stringifyRichContentPart(content: unknown): string {
 
   const record = content as Record<string, unknown>;
   const type = typeof record['type'] === 'string' ? record['type'].toLowerCase() : '';
+  const props = record['props'];
   const childContent =
     record['children'] ??
     record['content'] ??
     record['contents'] ??
     record['value'] ??
-    record['text'];
+    record['text'] ??
+    (props && typeof props === 'object' ? (props as Record<string, unknown>)['children'] : null);
   const text = stringifyRichContentPart(childContent).trim();
 
   if (type === 'item' || type === 'listitem' || type === 'li') {

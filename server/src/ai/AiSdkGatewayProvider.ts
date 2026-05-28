@@ -102,7 +102,9 @@ function isOpenAiGpt5Model(model: string) {
   return provider === 'openai' && leaf.startsWith('gpt-5');
 }
 
-function createProviderOptions(options: AiSdkGatewayProviderOptions): Record<string, any> | undefined {
+function createProviderOptions(
+  options: AiSdkGatewayProviderOptions,
+): Record<string, any> | undefined {
   const providerOptions: Record<string, any> = {};
   if (isOpenAiGpt5Model(options.model)) {
     providerOptions.openai = {
@@ -135,6 +137,82 @@ function createStructuredOutput(request: ChatProviderRequest) {
     return aiOutput.json();
   }
   return undefined;
+}
+
+function readObjectTextField(value: Record<string, unknown>, key: string) {
+  return stringifyStructuredText(value[key]);
+}
+
+function stringifyStructuredText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(stringifyStructuredText).filter(Boolean).join(' ');
+  }
+  if (typeof value !== 'object') {
+    return '';
+  }
+
+  const record = value as Record<string, unknown>;
+  const props = record['props'];
+  if (props && typeof props === 'object' && 'children' in props) {
+    return stringifyStructuredText((props as Record<string, unknown>)['children']);
+  }
+  for (const key of ['text', 'content', 'children', 'value']) {
+    const text = readObjectTextField(record, key).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return JSON.stringify(record);
+}
+
+function serializeStructuredOutput(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return stringifyStructuredText(value).trim();
+  }
+
+  const record = value as Record<string, unknown>;
+  if ('message' in record || 'emotion' in record) {
+    return JSON.stringify({
+      message: stringifyStructuredText(record['message']).replace(/\s+/g, ' ').trim(),
+      emotion: stringifyStructuredText(record['emotion']).replace(/\s+/g, ' ').trim() || 'neutral',
+    });
+  }
+
+  return JSON.stringify(record);
+}
+
+function parseJsonObject(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readStructuredResultText(result: Awaited<ReturnType<typeof streamText>>) {
+  try {
+    return serializeStructuredOutput(await result.output);
+  } catch (error) {
+    const rawText = (await Promise.resolve(result.text).catch(() => '')).trim();
+    const parsed = parseJsonObject(rawText);
+    if (parsed) {
+      return serializeStructuredOutput(parsed);
+    }
+    if (rawText) {
+      return rawText;
+    }
+    throw error;
+  }
 }
 
 export class AiSdkGatewayProvider implements ChatProvider {
@@ -201,7 +279,7 @@ export class AiSdkGatewayProvider implements ChatProvider {
     });
 
     const text = structuredOutput
-      ? JSON.stringify(await result.output)
+      ? await readStructuredResultText(result)
       : (await result.text).trim();
     if (!text) {
       throw new Error('AI Gateway returned an empty response.');
