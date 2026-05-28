@@ -108,6 +108,35 @@ describe('Grillo context packet', () => {
     expect(promptBlock).toContain('Local chat is a participant transcript turn');
   });
 
+  it('includes native Ladybug GRILLO context packet lanes in the rendered prompt block', () => {
+    const promptBlock = buildGrilloContextPromptBlock({
+      memoryAdditions: {
+        contextPacket: {
+          background_information: ['scope_key: local:persona:hikari'],
+          channel_history: ['Subsect: remember native turns'],
+          output_description: ['Use native Ladybug GRILLO context.'],
+          recalled_memories: [{ score: 0.88, text: '[candidate:goal] native GRILLO packet' }],
+          relationship_memory: ['[slot:ongoing_threads] native packets feed POML'],
+          thoughts: ['[diary:reflection] native packet reached the prompt'],
+        },
+      },
+      persona: { ...DEFAULT_PERSONA, name: 'Hikari', userNickname: 'Subby' },
+      relationshipMemory: createDefaultRelationshipMemory(),
+      turnContext: {
+        conversationScope: 'local-chat',
+        displayName: 'Subby',
+        source: 'local',
+      },
+    });
+
+    expect(promptBlock).toContain('scope_key: local:persona:hikari');
+    expect(promptBlock).toContain('Subsect: remember native turns');
+    expect(promptBlock).toContain('[slot:ongoing_threads] native packets feed POML');
+    expect(promptBlock).toContain('[candidate:goal] native GRILLO packet');
+    expect(promptBlock).toContain('[diary:reflection] native packet reached the prompt');
+    expect(promptBlock).toContain('Use native Ladybug GRILLO context.');
+  });
+
   it('drops low-scored recalled memories before trimming recent channel history', () => {
     const sections = buildGrilloContextSections({
       channelHistory: Array.from({ length: 8 }, (_, index) =>

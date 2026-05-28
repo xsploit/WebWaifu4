@@ -129,6 +129,50 @@ describe('GrilloWorkerService', () => {
         provider: 'vercel-gateway',
         taskType: 'manual_extraction',
       });
+
+      await memory.saveRelationshipProfiles({
+        'local:persona:hikari-chan': {
+          facts: ['Subsect wants backend-owned GRILLO memory.'],
+          mood: 'focused',
+          relationshipStage: 'familiar',
+          summary: 'Subsect is verifying native GRILLO context packets.',
+        },
+      });
+      await memory.saveSemanticRecords('local:persona:hikari-chan', [
+        {
+          assistantText: 'Native context packet acknowledged.',
+          createdAt: 1770000002000,
+          embedding: [1, 0, 0],
+          id: 'semantic-1',
+          personaId: 'hikari-chan',
+          scopeKey: 'local:persona:hikari-chan',
+          text: 'User: native GRILLO packet\nHikari: Native context packet acknowledged.',
+          userText: 'native GRILLO packet',
+        },
+      ]);
+
+      const packet = await grillo.buildContextPacket({
+        participantKeys: ['local:local:subsect'],
+        query: 'native GRILLO packet',
+        scopeKey: 'local:persona:hikari-chan',
+      });
+
+      expect(packet.background_information).toContain('scope_key: local:persona:hikari-chan');
+      expect(packet.relationship_memory.join('\n')).toContain(
+        'Subsect is verifying native GRILLO context packets.',
+      );
+      expect(packet.relationship_memory.join('\n')).toContain(
+        '[slot:ongoing_threads local:local:subsect] Subsect wants backend-owned GRILLO memory.',
+      );
+      expect(packet.recalled_memories.map((item) => item.text).join('\n')).toContain(
+        'Subsect wants GRILLO owned by the backend.',
+      );
+      expect(packet.recalled_memories.map((item) => item.text).join('\n')).toContain(
+        'Native context packet acknowledged.',
+      );
+      expect(packet.thoughts.join('\n')).toContain(
+        'I should treat backend GRILLO as the source of durable memory.',
+      );
     } finally {
       await memory.close();
     }

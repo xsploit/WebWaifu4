@@ -40,6 +40,21 @@ describe('POML-backed chat prompt', () => {
   it('renders persona, memory, context, metadata, and history through POML', async () => {
     const messages = await buildChatCompletionMessages({
       animationCatalogContext: 'Available animation: little-wave [wave-01]',
+      grilloMemory: {
+        contextPacket: {
+          background_information: ['scope_key: twitch:subsect:persona:hikari'],
+          channel_history: ['Subsect: prove native packet reaches POML'],
+          generatedAt: 1770000000000,
+          output_description: ['Use native GRILLO packet context.'],
+          recalled_memories: [{ score: 0.9, text: '[candidate:goal] Native packet reaches POML.' }],
+          relationship_memory: ['[slot:ongoing_threads] Native packet is injected.'],
+          scopeKey: 'twitch:subsect:persona:hikari',
+          thoughts: ['[diary:reflection] Native packet arrived in system prompt.'],
+        },
+        diaryThoughts: [],
+        recalledMemories: [],
+        relationshipMemory: [],
+      },
       history: [
         {
           id: 'old-system',
@@ -140,9 +155,13 @@ describe('POML-backed chat prompt', () => {
     expect(systemMessage.content).toContain('# Memory Context');
     expect(systemMessage.content).not.toContain('turns=9');
     expect(systemMessage.content).toContain('## relationship_memory');
+    expect(systemMessage.content).toContain('[slot:ongoing_threads] Native packet is injected.');
     expect(systemMessage.content).toContain('known_facts=["likes prompt templates"]');
     expect(systemMessage.content).toContain('## recalled_memories');
+    expect(systemMessage.content).toContain('[candidate:goal] Native packet reaches POML.');
     expect(systemMessage.content).toContain('Prior note: keep conversation state stable across turns.');
+    expect(systemMessage.content).toContain('Subsect: prove native packet reaches POML');
+    expect(systemMessage.content).toContain('[diary:reflection] Native packet arrived in system prompt.');
     expect(systemMessage.content).toContain('# Semantic Memory Usage');
     expect(systemMessage.content).not.toContain('{{');
     expect(messages.slice(1)).toEqual([

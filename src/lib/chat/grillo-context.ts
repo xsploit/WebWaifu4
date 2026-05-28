@@ -51,6 +51,14 @@ type BuildGrilloContextSectionsOptions = {
   currentTurnText?: string;
   diaryContext?: string;
   memoryAdditions?: {
+    contextPacket?: {
+      background_information?: string[];
+      channel_history?: string[];
+      output_description?: string[];
+      recalled_memories?: GrilloScoredItem[];
+      relationship_memory?: string[];
+      thoughts?: string[];
+    } | null;
     diaryThoughts?: string[];
     recalledMemories?: GrilloScoredItem[];
     relationshipMemory?: string[];
@@ -91,6 +99,7 @@ export function buildGrilloContextSections({
     turnSource === 'twitch'
       ? `twitch/${normalizePathPart(channel)}`
       : `local/${normalizePathPart(currentSpeaker)}`;
+  const packet = memoryAdditions?.contextPacket ?? null;
 
   return {
     background_information: [
@@ -100,6 +109,7 @@ export function buildGrilloContextSections({
       `conversation_scope: ${conversationScope}`,
       `turn_source: ${turnSource || 'unknown'}`,
       `current_speaker: ${currentSpeaker}`,
+      ...(packet?.background_information ?? []),
     ],
     instructions: [
       'Use channel_history as transcript, relationship_memory as stable participant context, recalled_memories as semantic matches, and thoughts as private diary/reflection.',
@@ -108,17 +118,27 @@ export function buildGrilloContextSections({
       'Local chat is a participant transcript turn, but trusted/controller metadata may permit commands or stronger operator intent.',
       'Do not rewrite the persona from memory; use memory only as context for this reply.',
     ],
-    channel_history: channelHistory.slice(-18).map(formatGrilloChatTurn),
+    channel_history: [
+      ...(packet?.channel_history ?? []),
+      ...channelHistory.slice(-18).map(formatGrilloChatTurn),
+    ],
     relationship_memory: [
+      ...(packet?.relationship_memory ?? []),
       ...buildRelationshipLane(relationshipMemory),
       ...(memoryAdditions?.relationshipMemory ?? []),
     ],
     recalled_memories: [
+      ...(packet?.recalled_memories ?? []),
       ...buildRecalledMemoryLane(semanticMemoryContext),
       ...(memoryAdditions?.recalledMemories ?? []),
     ],
-    thoughts: [...buildThoughtLane(diaryContext), ...(memoryAdditions?.diaryThoughts ?? [])],
+    thoughts: [
+      ...(packet?.thoughts ?? []),
+      ...buildThoughtLane(diaryContext),
+      ...(memoryAdditions?.diaryThoughts ?? []),
+    ],
     output_description: [
+      ...(packet?.output_description ?? []),
       'Return spoken dialogue for the live stream using the active reply length rules, then append the required hidden reply metadata block.',
       'Select emotion/animation metadata that matches the visible reply; avoid conflicting motion cues.',
       currentTurnText.trim()

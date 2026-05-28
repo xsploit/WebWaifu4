@@ -611,6 +611,59 @@ export function ContextTab({
               </div>
               <p>{memoryPromptDebug.semanticMemoryContext || 'No semantic matches injected.'}</p>
             </div>
+            <div className="memory-entry">
+              <div className="memory-entry-header">
+                <strong>native_grillo_context_packet</strong>
+                <span>{memoryPromptDebug.grilloContextPacket ? 'present' : 'empty'}</span>
+              </div>
+              {memoryPromptDebug.grilloContextPacket ? (
+                <div className="memory-kv-grid">
+                  <div className="status-copy">
+                    background_information:{' '}
+                    <strong>
+                      {memoryPromptDebug.grilloContextPacket.background_information.length}
+                    </strong>
+                  </div>
+                  <div className="status-copy">
+                    channel_history:{' '}
+                    <strong>{memoryPromptDebug.grilloContextPacket.channel_history.length}</strong>
+                  </div>
+                  <div className="status-copy">
+                    relationship_memory:{' '}
+                    <strong>
+                      {memoryPromptDebug.grilloContextPacket.relationship_memory.length}
+                    </strong>
+                  </div>
+                  <div className="status-copy">
+                    recalled_memories:{' '}
+                    <strong>
+                      {memoryPromptDebug.grilloContextPacket.recalled_memories.length}
+                    </strong>
+                  </div>
+                  <div className="status-copy">
+                    thoughts: <strong>{memoryPromptDebug.grilloContextPacket.thoughts.length}</strong>
+                  </div>
+                  <div className="status-copy">
+                    output_description:{' '}
+                    <strong>{memoryPromptDebug.grilloContextPacket.output_description.length}</strong>
+                  </div>
+                  <p>
+                    {[
+                      ...memoryPromptDebug.grilloContextPacket.relationship_memory,
+                      ...memoryPromptDebug.grilloContextPacket.recalled_memories,
+                      ...memoryPromptDebug.grilloContextPacket.thoughts,
+                    ]
+                      .slice(0, 4)
+                      .join('\n') || 'Packet loaded with no memory rows yet.'}
+                  </p>
+                  <pre className="context-preview compact">
+                    {JSON.stringify(memoryPromptDebug.grilloContextPacket, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <p>No native Ladybug GRILLO packet loaded for the last prompt.</p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="status-copy">No completed prompt injection captured yet.</div>

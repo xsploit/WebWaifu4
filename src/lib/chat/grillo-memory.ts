@@ -17,6 +17,7 @@ import {
   deleteLadybugGrilloState,
   loadLadybugGrilloState,
   saveLadybugGrilloState,
+  type LadybugGrilloContextPacket,
 } from './ladybug-memory-client';
 
 export type GrilloCandidateType =
@@ -96,6 +97,7 @@ export type GrilloEmotionState = {
 };
 
 export type GrilloMemoryPromptAdditions = {
+  contextPacket?: LadybugGrilloContextPacket | null;
   diaryThoughts: string[];
   recalledMemories: GrilloScoredItem[];
   relationshipMemory: string[];

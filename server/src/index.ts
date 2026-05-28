@@ -102,6 +102,12 @@ type MemoryGrilloManualRunBody = {
   trace?: unknown;
 };
 
+type MemoryGrilloContextQuery = {
+  participantKeys?: unknown;
+  query?: unknown;
+  scopeKey?: unknown;
+};
+
 type MemorySemanticBody = {
   records?: unknown;
   scopeKey?: unknown;
@@ -1529,6 +1535,29 @@ const httpServer = createServer(async (request, response) => {
         ok: false,
         backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'GRILLO manual run failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && runtimePath === '/memory/grillo/context') {
+    try {
+      const participantKeys = url.searchParams.getAll('participantKey');
+      const query: MemoryGrilloContextQuery = {
+        participantKeys,
+        query: url.searchParams.get('query'),
+        scopeKey: url.searchParams.get('scopeKey'),
+      };
+      const packet = await getGrilloWorkerService().buildContextPacket(query);
+      writeJson(response, 200, {
+        ok: true,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        packet,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to build GRILLO context packet.',
       });
     }
     return;

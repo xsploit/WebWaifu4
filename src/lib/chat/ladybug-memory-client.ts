@@ -128,6 +128,17 @@ export type LadybugGrilloTurnPairInput = {
   userText?: string;
 };
 
+export type LadybugGrilloContextPacket = {
+  background_information: string[];
+  channel_history: string[];
+  generatedAt: number;
+  output_description: string[];
+  recalled_memories: Array<{ score?: number; text: string }>;
+  relationship_memory: string[];
+  scopeKey: string;
+  thoughts: string[];
+};
+
 type LadybugResponse<T> = T & {
   backend?: string;
   error?: string;
@@ -177,6 +188,25 @@ export async function saveLadybugGrilloTurnPair(input: LadybugGrilloTurnPairInpu
     method: 'POST',
   });
   return response?.ok === true;
+}
+
+export async function loadLadybugGrilloContextPacket(
+  scopeKey: string,
+  options: { participantKeys?: string[]; query?: string } = {},
+) {
+  const params = new URLSearchParams({ scopeKey });
+  if (options.query?.trim()) {
+    params.set('query', options.query.trim());
+  }
+  for (const participantKey of options.participantKeys ?? []) {
+    if (participantKey.trim()) {
+      params.append('participantKey', participantKey.trim());
+    }
+  }
+  const response = await requestLadybugMemory<{ packet: LadybugGrilloContextPacket }>(
+    `/memory/grillo/context?${params.toString()}`,
+  );
+  return response?.ok === true ? response.packet : null;
 }
 
 export async function loadLadybugSemanticMemory(scopeKey: string) {

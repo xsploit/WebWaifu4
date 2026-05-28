@@ -1,4 +1,12 @@
 export type MemoryPromptDebugSnapshot = {
+  grilloContextPacket?: {
+    background_information: string[];
+    channel_history: string[];
+    output_description: string[];
+    recalled_memories: string[];
+    relationship_memory: string[];
+    thoughts: string[];
+  } | null;
   grilloDiaryThoughts: string[];
   grilloRecalledMemories: string[];
   grilloRelationshipMemory: string[];

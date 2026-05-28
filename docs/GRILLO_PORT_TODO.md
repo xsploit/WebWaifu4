@@ -75,6 +75,7 @@ Progress note:
 - 2026-05-28: Exposed native GRILLO turns, slots, slot patches, activity rows, and worker traces through `/memory/graph` and the Memory UI. Focused Ladybug and ContextTab tests pass.
 - 2026-05-28: Added backend-owned GRILLO service slice with `/memory/grillo/turn` and `/memory/grillo/run/manual`. It writes turn pairs, manual candidate/diary/slot updates, activity rows, and worker traces through Ladybug. Focused service tests and full build pass.
 - 2026-05-28: Wired completed chat replies to `/memory/grillo/turn` through the Ladybug memory client. The app records the model-visible prompt plus parsed assistant reply as native GRILLO turn events without blocking TTS/UI playback.
+- 2026-05-28: Added `/memory/grillo/context` for canonical Ladybug GRILLO context packets and threaded that packet into the POML-rendered chat prompt. The Memory UI now shows the exact last injected native packet.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -137,18 +138,18 @@ Progress note:
 
 ## Phase 5 - Context Packet And POML
 
-- [ ] Build canonical GRILLO context packet:
-  - [ ] `background_information`
-  - [ ] `channel_history`
-  - [ ] `relationship_memory`
-  - [ ] `recalled_memories`
-  - [ ] `thoughts`
-  - [ ] `output_description`
-- [ ] Budget and reduce context before POML render.
-- [ ] Inject the single GRILLO packet into POML.
+- [x] Build canonical GRILLO context packet:
+  - [x] `background_information`
+  - [x] `channel_history`
+  - [x] `relationship_memory`
+  - [x] `recalled_memories`
+  - [x] `thoughts`
+  - [x] `output_description`
+- [x] Budget and reduce context before POML render.
+- [x] Inject the canonical GRILLO packet into POML.
 - [ ] Remove duplicate old memory prompt inputs after packet is verified.
-- [ ] Show exact injected packet in the UI.
-- [ ] Add tests proving POML receives memory slots, diary thoughts, semantic recall, and relationship state.
+- [x] Show exact injected packet in the UI.
+- [x] Add tests proving POML receives memory slots, diary thoughts, semantic recall, and relationship state.
 
 ## Phase 6 - Local Mode And Stream Mode
 

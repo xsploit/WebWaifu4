@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   canUseLadybugMemoryBackend,
+  loadLadybugGrilloContextPacket,
   loadLadybugMemoryStatus,
   saveLadybugGrilloTurnPair,
 } from './ladybug-memory-client';
@@ -139,5 +140,40 @@ describe('Ladybug memory client routing', () => {
     ).resolves.toBe(true);
 
     expect(fetchCalls[0]).toBe('http://127.0.0.1:8797/memory/grillo/turn');
+  });
+
+  it('loads native GRILLO context packets with scoped participant filters', async () => {
+    installWindow('', 'http://localhost:5173/editor');
+    const fetchCalls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      fetchCalls.push(String(input));
+      return Response.json({
+        ok: true,
+        packet: {
+          background_information: ['scope_key: local:persona:hikari-chan'],
+          channel_history: ['Subsect: hi'],
+          generatedAt: 1770000000000,
+          output_description: ['Use scoped memory.'],
+          recalled_memories: [{ score: 0.8, text: 'Subsect likes Ladybug memory.' }],
+          relationship_memory: ['known_facts=["Subsect likes Ladybug memory."]'],
+          scopeKey: 'local:persona:hikari-chan',
+          thoughts: ['I should remember the Ladybug context.'],
+        },
+      });
+    }) as typeof fetch;
+
+    await expect(
+      loadLadybugGrilloContextPacket('local:persona:hikari-chan', {
+        participantKeys: ['local:local:subsect'],
+        query: 'memory',
+      }),
+    ).resolves.toMatchObject({
+      scopeKey: 'local:persona:hikari-chan',
+      relationship_memory: ['known_facts=["Subsect likes Ladybug memory."]'],
+    });
+
+    expect(fetchCalls[0]).toBe(
+      'http://localhost:5173/api/memory/grillo/context?scopeKey=local%3Apersona%3Ahikari-chan&query=memory&participantKey=local%3Alocal%3Asubsect',
+    );
   });
 });

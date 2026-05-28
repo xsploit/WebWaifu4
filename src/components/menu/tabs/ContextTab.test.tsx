@@ -193,6 +193,14 @@ describe('ContextTab', () => {
           ],
         }}
         memoryPromptDebug={{
+          grilloContextPacket: {
+            background_information: ['scope_key: local:persona:hikari-context'],
+            channel_history: ['Subby: Do you remember Ladybug?'],
+            output_description: ['Use native GRILLO packet context.'],
+            recalled_memories: ['[candidate:fact] Subby asked me to remember Ladybug.'],
+            relationship_memory: ['[slot:preferences] Subby prefers Ladybug memory first.'],
+            thoughts: ['[diary:relationship] I should keep this memory visible.'],
+          },
           grilloDiaryThoughts: ['I should keep this memory visible.'],
           grilloRecalledMemories: ['Subby asked me to remember Ladybug.'],
           grilloRelationshipMemory: ['Subby prefers Ladybug memory first.'],
@@ -265,6 +273,9 @@ describe('ContextTab', () => {
     expect(html).toContain('Semantic record');
     expect(html).toContain('Vector record');
     expect(html).toContain('Last Prompt Injection');
+    expect(html).toContain('native_grillo_context_packet');
+    expect(html).toContain('scope_key: local:persona:hikari-context');
+    expect(html).toContain('[slot:preferences] Subby prefers Ladybug memory first.');
     expect(html).toContain('relationship_memory');
     expect(html).toContain('semantic_memory');
     expect(html).toContain('semantic recall');

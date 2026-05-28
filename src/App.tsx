@@ -53,6 +53,7 @@ import {
 } from './lib/chat/grillo-memory';
 import {
   deleteLadybugRelationshipMemory,
+  loadLadybugGrilloContextPacket,
   loadLadybugMemoryGraph,
   loadLadybugMemoryStatus,
   loadLadybugRelationshipMemories,
@@ -5247,17 +5248,39 @@ function App() {
           settings.embeddingMode,
           settings.embeddingModel,
         );
+        const participantKeys = job.messages.map(getGrilloParticipantKey);
         const grilloMemory = await buildGrilloMemoryPromptAdditionsAsync({
-          participantKeys: job.messages.map(getGrilloParticipantKey),
+          participantKeys,
           query: userContent,
           scopeKey: stateKey,
         });
+        const grilloContextPacket = await loadLadybugGrilloContextPacket(stateKey, {
+          participantKeys,
+          query: userContent,
+        }).catch((error) => {
+          console.warn('[App] Failed to load native GRILLO context packet', error);
+          return null;
+        });
+        const grilloPromptMemory = {
+          ...grilloMemory,
+          contextPacket: grilloContextPacket,
+        };
         setMemoryPromptDebug({
-          grilloDiaryThoughts: grilloMemory.diaryThoughts.slice(0, 4),
-          grilloRecalledMemories: grilloMemory.recalledMemories
+          grilloContextPacket: grilloContextPacket
+            ? {
+                background_information: grilloContextPacket.background_information,
+                channel_history: grilloContextPacket.channel_history,
+                output_description: grilloContextPacket.output_description,
+                recalled_memories: grilloContextPacket.recalled_memories.map((item) => item.text),
+                relationship_memory: grilloContextPacket.relationship_memory,
+                thoughts: grilloContextPacket.thoughts,
+              }
+            : null,
+          grilloDiaryThoughts: grilloPromptMemory.diaryThoughts.slice(0, 4),
+          grilloRecalledMemories: grilloPromptMemory.recalledMemories
             .slice(0, 6)
             .map((item) => item.text),
-          grilloRelationshipMemory: grilloMemory.relationshipMemory.slice(0, 6),
+          grilloRelationshipMemory: grilloPromptMemory.relationshipMemory.slice(0, 6),
           semanticMemoryContext,
           source: targetMessage?.source ?? 'twitch',
           stateKey,
@@ -5278,7 +5301,7 @@ function App() {
             ),
             channelHistory: job.context,
             currentTurnContext,
-            grilloMemory,
+            grilloMemory: grilloPromptMemory,
             history: requestHistory,
             maxHistoryMessages: job.mode === 'batch' ? 18 : 14,
             persona,
