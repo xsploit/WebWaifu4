@@ -32,6 +32,7 @@
     "smoke:packaged-ai": "tsx scripts/smoke-packaged-ai.ts",
     "smoke:packaged-ui": "node scripts/smoke-packaged-ui.mjs",
     "smoke:packaged-ui:desktop": "node scripts/smoke-packaged-ui.mjs --window-mode=desktop --exercise-desktop-controls",
+    "smoke:desktop-owned-backend-reuse": "node scripts/smoke-desktop-owned-backend-reuse.mjs",
     "smoke:desktop-port-fallback": "node scripts/smoke-desktop-port-fallback.mjs",
     "smoke:desktop-relaunch": "node scripts/smoke-desktop-relaunch.mjs",
     "probe:ladybug-memory": "tsx scripts/probe-ladybug-memory.ts",

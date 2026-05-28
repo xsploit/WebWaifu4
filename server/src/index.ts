@@ -1388,6 +1388,9 @@ function normalizeMemoryScopeKey(value: unknown) {
 const config = loadConfig();
 const provider = createProvider(config);
 const serverTwitchMode = config.twitchMock ? 'client-direct' : 'server-irc';
+const DESKTOP_BACKEND_APP_ID = process.env.WEBWAIFU_BACKEND_APP_ID?.trim() || 'web-waifu-4';
+const DESKTOP_BACKEND_OWNER_HEADER = 'x-webwaifu-backend-owner-token';
+const desktopBackendOwnerToken = process.env.WEBWAIFU_BACKEND_OWNER_TOKEN?.trim() || '';
 
 let mockSource: MockTwitchChatSource | null = null;
 let chatSource: TwitchChatSource;
@@ -1405,6 +1408,17 @@ const httpServer = createServer(async (request, response) => {
 
   const runtimePath = getRuntimeApiPath(url.pathname);
   const allowServerProviderProxy = config.providerProxyEnabled;
+
+  if (request.method === 'POST' && runtimePath === '/desktop/shutdown') {
+    const requestedToken = getHeaderSecret(request, DESKTOP_BACKEND_OWNER_HEADER);
+    if (!desktopBackendOwnerToken || requestedToken !== desktopBackendOwnerToken) {
+      writeJson(response, 403, { ok: false, error: 'Forbidden' });
+      return;
+    }
+    writeJson(response, 202, { ok: true, shuttingDown: true });
+    setImmediate(shutdownAndExit);
+    return;
+  }
 
   if (request.method === 'GET' && runtimePath === '/health') {
     const requestedStateKey = url.searchParams.get('stateKey') ?? undefined;
@@ -1453,8 +1467,16 @@ const httpServer = createServer(async (request, response) => {
               : 'server-env',
           }
         : providerState;
+    const requestedBackendOwnerToken = getHeaderSecret(request, DESKTOP_BACKEND_OWNER_HEADER);
     writeJson(response, 200, {
       ok: true,
+      desktopBackend: {
+        appId: DESKTOP_BACKEND_APP_ID,
+        ownerTokenMatched:
+          Boolean(desktopBackendOwnerToken) && requestedBackendOwnerToken === desktopBackendOwnerToken,
+        pid: process.pid,
+        shutdownSupported: Boolean(desktopBackendOwnerToken),
+      },
       twitchMode: serverTwitchMode,
       serverTwitchSource: config.twitchMock ? 'local-control' : 'irc',
       channel: chatSource.channel,

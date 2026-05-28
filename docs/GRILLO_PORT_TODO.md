@@ -121,6 +121,7 @@ Progress note:
 - 2026-05-28: Hardened backend shutdown by tracking HTTP sockets and draining/destroying remaining keep-alive or streaming connections after GRILLO, provider cache, Twitch source, overlay sockets, and Ladybug shutdown.
 - 2026-05-28: Made the native Ladybug GRILLO context packet authoritative for prompt memory lanes. When the packet is present, old browser relationship memory, diary thoughts, semantic recall, and duplicate channel history are not appended into the POML memory block.
 - 2026-05-28: Split the embedding lane into provider and browser/local model configuration. The local transformers.js worker accepts and caches per-model extractors, prompt recall/semantic save/worker memory paths thread the selected local model id, the Context tab exposes both fields plus a Run Semantic Indexing button, and the backend `/memory/grillo/run/tick` respects `embeddingMode` so `browser` mode no longer silently calls provider embeddings (existing `semantic_indexing_requires_embedding` no-op path covers it).
+- 2026-05-28: Added token-backed Electron/backend ownership reuse. Packaged Electron now reuses a busy preferred port only when `/health` proves a compatible WebWaifu backend with the same owner token, exposes `backendReused` to the renderer, and can shut down a reused owned backend through a token-protected local shutdown route. New packaged smoke coverage proves owned reuse, and existing fallback smoke still proves non-owned busy ports fall forward.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -131,7 +132,7 @@ Progress note:
   - [x] start with backend
   - [x] stop on backend shutdown
   - [x] no orphan timers
-  - [ ] no second backend
+  - [x] no second backend
 - [x] Implement worker state in Ladybug.
 - [x] Implement tick guard so only one GRILLO tick runs at a time.
 - [ ] Implement tasks:
@@ -253,7 +254,7 @@ Progress note:
 - [x] Ensure Electron starts exactly one backend.
 - [x] Ensure frontend receives the backend URL/port correctly.
 - [ ] If port is busy:
-  - [ ] reuse only if it is our owned compatible backend
+  - [x] reuse only if it is our owned compatible backend
   - [x] otherwise choose a new port and pass it to frontend
 - [x] Ensure app exit shuts down backend, GRILLO timers, TTS bridges, and sockets.
 - [x] Add packaged app smoke test for backend health and GRILLO status.
@@ -273,8 +274,8 @@ Progress note:
   - [ ] manual beat -> trace visible in UI endpoint
   - [ ] stream mode does not ingest low-signal spam
 - [ ] Runtime smoke:
-  - [ ] backend health
-  - [ ] memory status
+  - [x] backend health
+  - [x] memory status
   - [ ] graph summary
   - [ ] chat reply with injected GRILLO context
   - [x] packaged EXE starts and exits cleanly

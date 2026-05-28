@@ -12,6 +12,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import nodeNet from 'node:net';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -22,6 +23,8 @@ const devServerUrl = (process.env.ELECTRON_DEV_SERVER_URL || '').trim();
 const externalBackend = process.env.ELECTRON_BACKEND_EXTERNAL === 'true';
 const allowedWindowModes = new Set(['editor', 'desktop', 'overlay']);
 const BACKEND_MAX_EARLY_RESTARTS = 6;
+const BACKEND_APP_ID = 'web-waifu-4';
+const BACKEND_OWNER_HEADER = 'x-webwaifu-backend-owner-token';
 
 let mainWindow = null;
 let windowMode = readInitialWindowMode();
@@ -35,6 +38,8 @@ let backendRestartTimer = null;
 let backendStartedAt = 0;
 let backendEarlyExitCount = 0;
 let memoryDbRecoveryCount = 0;
+let backendOwnerToken = '';
+let reusedOwnedBackend = false;
 
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -130,10 +135,11 @@ function isBackendHealthy(port) {
   });
 }
 
-function requestBackendJson(port, requestPath, timeout = 1500) {
+function requestBackendJson(port, requestPath, timeout = 1500, headers = {}) {
   return new Promise((resolve, reject) => {
     const request = http.get(
       {
+        headers,
         host: '127.0.0.1',
         path: requestPath,
         port,
@@ -162,6 +168,44 @@ function requestBackendJson(port, requestPath, timeout = 1500) {
     request.on('timeout', () => {
       request.destroy(new Error(`Timed out warming backend route ${requestPath}`));
     });
+  });
+}
+
+function postBackendJson(port, requestPath, timeout = 1500, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        headers,
+        host: '127.0.0.1',
+        method: 'POST',
+        path: requestPath,
+        port,
+        timeout,
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          if (response.statusCode && response.statusCode >= 400) {
+            reject(new Error(`Backend ${requestPath} returned HTTP ${response.statusCode}.`));
+            return;
+          }
+          try {
+            resolve(body ? JSON.parse(body) : null);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    request.on('error', reject);
+    request.on('timeout', () => {
+      request.destroy(new Error(`Timed out posting backend route ${requestPath}`));
+    });
+    request.end();
   });
 }
 
@@ -195,6 +239,62 @@ async function findAvailablePort(startPort) {
   throw new Error(`No available backend port near ${startPort}.`);
 }
 
+function getBackendOwnerTokenPath() {
+  return path.join(app.getPath('userData'), 'backend-owner-token');
+}
+
+function readOrCreateBackendOwnerToken() {
+  if (backendOwnerToken) {
+    return backendOwnerToken;
+  }
+  const configured = (process.env.WEBWAIFU_BACKEND_OWNER_TOKEN || '').trim();
+  if (/^[a-f0-9]{32,128}$/i.test(configured)) {
+    backendOwnerToken = configured;
+    return backendOwnerToken;
+  }
+  const tokenPath = getBackendOwnerTokenPath();
+  try {
+    const existing = fs.readFileSync(tokenPath, 'utf8').trim();
+    if (/^[a-f0-9]{32,128}$/i.test(existing)) {
+      backendOwnerToken = existing;
+      return backendOwnerToken;
+    }
+  } catch {
+    // Missing or unreadable token files are replaced below.
+  }
+  backendOwnerToken = randomBytes(32).toString('hex');
+  try {
+    fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
+    fs.writeFileSync(tokenPath, backendOwnerToken, { mode: 0o600 });
+  } catch (error) {
+    logDesktop(`failed to persist backend owner token: ${formatError(error)}`);
+  }
+  return backendOwnerToken;
+}
+
+function getBackendOwnerHeaders() {
+  return {
+    [BACKEND_OWNER_HEADER]: readOrCreateBackendOwnerToken(),
+  };
+}
+
+async function getCompatibleOwnedBackendHealth(port) {
+  try {
+    const health = await requestBackendJson(port, '/health', 1500, getBackendOwnerHeaders());
+    const desktopBackend = health?.desktopBackend;
+    if (
+      desktopBackend?.appId === BACKEND_APP_ID &&
+      desktopBackend?.ownerTokenMatched === true &&
+      desktopBackend?.shutdownSupported === true
+    ) {
+      return health;
+    }
+  } catch {
+    // Busy non-HTTP ports and older backends are not reusable.
+  }
+  return null;
+}
+
 async function waitForBackendHealth(port) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if (await isBackendHealthy(port)) {
@@ -217,13 +317,23 @@ async function startBackendIfNeeded(recoveredFromStartupCrash = false) {
 
   if (!(await canListenOnPort(backendPort))) {
     const requestedPort = backendPort;
+    const ownedHealth = await getCompatibleOwnedBackendHealth(requestedPort);
+    if (ownedHealth) {
+      reusedOwnedBackend = true;
+      logDesktop(`reusing compatible owned backend on ${requestedPort}`);
+      await warmUpBackendRuntime(requestedPort);
+      return;
+    }
     backendPort = await findAvailablePort(Number.parseInt(requestedPort, 10) + 1);
     console.warn(
       `[desktop] port ${requestedPort} is busy; starting this app backend on ${backendPort}`,
     );
   }
+  reusedOwnedBackend = false;
 
   process.env.BOT_PORT = backendPort;
+  process.env.WEBWAIFU_BACKEND_APP_ID = BACKEND_APP_ID;
+  process.env.WEBWAIFU_BACKEND_OWNER_TOKEN = readOrCreateBackendOwnerToken();
   process.env.TWITCH_MOCK ??= 'true';
   process.env.VITE_BOT_PORT = backendPort;
   process.env.WEBWAIFU_MEMORY_DB_DIR ??= path.join(app.getPath('userData'), 'ladybug-memory.db');
@@ -243,6 +353,8 @@ async function startBackendIfNeeded(recoveredFromStartupCrash = false) {
       BOT_PORT: backendPort,
       TWITCH_MOCK: process.env.TWITCH_MOCK ?? 'true',
       VITE_BOT_PORT: backendPort,
+      WEBWAIFU_BACKEND_APP_ID: BACKEND_APP_ID,
+      WEBWAIFU_BACKEND_OWNER_TOKEN: readOrCreateBackendOwnerToken(),
       WEBWAIFU_MEMORY_DB_DIR:
         process.env.WEBWAIFU_MEMORY_DB_DIR ??
         path.join(app.getPath('userData'), 'ladybug-memory.db'),
@@ -289,7 +401,18 @@ async function startBackendIfNeeded(recoveredFromStartupCrash = false) {
 }
 
 async function stopBackendIfNeeded() {
-  if (externalBackend || !backendProcess) {
+  if (externalBackend) {
+    return;
+  }
+  if (!backendProcess) {
+    if (reusedOwnedBackend) {
+      await postBackendJson(backendPort, '/desktop/shutdown', 1500, getBackendOwnerHeaders()).catch(
+        (error) => {
+          logDesktop(`failed to request reused backend shutdown: ${formatError(error)}`);
+        },
+      );
+      reusedOwnedBackend = false;
+    }
     return;
   }
   const child = backendProcess;
@@ -477,6 +600,7 @@ function getDesktopRuntime(extra = {}) {
     backendOwned: !externalBackend,
     backendOwner: getBackendOwnerMode(),
     backendPort,
+    backendReused: reusedOwnedBackend,
     backendUrl: `http://127.0.0.1:${backendPort}`,
     clickThrough,
     mode: windowMode,
@@ -545,7 +669,7 @@ function requestExitAfterBackendStop() {
     clearTimeout(backendRestartTimer);
     backendRestartTimer = null;
   }
-  if (externalBackend || !backendProcess) {
+  if (externalBackend || (!backendProcess && !reusedOwnedBackend)) {
     app.exit(0);
     return;
   }
@@ -700,7 +824,7 @@ app.on('before-quit', (event) => {
     clearTimeout(backendRestartTimer);
     backendRestartTimer = null;
   }
-  if (externalBackend || !backendProcess) {
+  if (externalBackend || (!backendProcess && !reusedOwnedBackend)) {
     return;
   }
   event.preventDefault();
