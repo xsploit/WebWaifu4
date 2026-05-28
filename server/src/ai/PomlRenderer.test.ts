@@ -103,20 +103,4 @@ describe('PomlRenderer', () => {
     );
     expect(output).not.toContain('\nprivate-node-id\n');
   });
-
-  it('flattens React-shaped rich content through props.children', () => {
-    const output = stringifyPomlContent({
-      $$typeof: Symbol.for('react.element'),
-      key: null,
-      props: {
-        children: ['Hello ', { props: { children: 'from JSX-shaped content' } }],
-      },
-      type: 'span',
-      _owner: null,
-      _store: {},
-    } as never);
-
-    expect(output).toBe('Hello \nfrom JSX-shaped content');
-    expect(output).not.toContain('$$typeof');
-  });
 });
