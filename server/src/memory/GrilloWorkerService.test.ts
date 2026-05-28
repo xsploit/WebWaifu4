@@ -177,4 +177,124 @@ describe('GrilloWorkerService', () => {
       await memory.close();
     }
   });
+
+  it('runs core worker tools against Ladybug and records tool telemetry', async () => {
+    const { grillo, memory } = createServices();
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      const memoryWrite = await grillo.runWorkerTool({
+        args: {
+          block_name: 'preferences',
+          items: ['Subsect likes direct technical memory checks.'],
+          operation: 'merge',
+          source_candidate_ids: ['cand-existing'],
+        },
+        name: 'core.worker_memory_write',
+        participantKey,
+        scopeKey,
+      });
+      const candidateWrite = await grillo.runWorkerTool({
+        args: {
+          confidence: 0.91,
+          content: 'Subsect wants GRILLO worker tools backed by Ladybug.',
+          summary: 'Subsect wants native Ladybug worker tools.',
+          type: 'goal',
+        },
+        name: 'core.worker_candidate_write',
+        participantKey,
+        scopeKey,
+      });
+      const diaryWrite = await grillo.runWorkerTool({
+        args: {
+          beat_type: 'reflection',
+          personal_thought: 'I should keep GRILLO tool writes visible and inspectable.',
+          summary: 'GRILLO tool writes should be inspectable.',
+          tags: ['grillo', 'tools'],
+        },
+        name: 'core.worker_diary_write',
+        participantKey,
+        scopeKey,
+      });
+      const profilePatch = await grillo.runWorkerTool({
+        args: {
+          field: 'active_threads',
+          operation: 'add',
+          value: 'native GRILLO worker tools',
+        },
+        name: 'core.worker_profile_patch',
+        participantKey,
+        scopeKey,
+      });
+      const archivalWrite = await grillo.runWorkerTool({
+        args: {
+          text: 'Native GRILLO worker tools use Ladybug records.',
+        },
+        name: 'core.worker_memory_insert_archival',
+        participantKey,
+        scopeKey,
+      });
+      const memoryRead = await grillo.runWorkerTool({
+        args: { block_name: 'preferences' },
+        name: 'core.worker_memory_read',
+        participantKey,
+        scopeKey,
+      });
+      const search = await grillo.runWorkerTool({
+        args: { limit: 10, query: 'Ladybug worker tools' },
+        name: 'core.worker_memory_search',
+        participantKey,
+        scopeKey,
+      });
+      const candidateList = await grillo.runWorkerTool({
+        args: { type_filter: 'goal' },
+        name: 'core.worker_candidate_list',
+        participantKey,
+        scopeKey,
+      });
+
+      expect(memoryWrite.ok).toBe(true);
+      expect(candidateWrite.ok).toBe(true);
+      expect(diaryWrite.ok).toBe(true);
+      expect(profilePatch.ok).toBe(true);
+      expect(archivalWrite.ok).toBe(true);
+      expect(memoryRead.result).toMatchObject({
+        slots: [
+          expect.objectContaining({
+            items: ['Subsect likes direct technical memory checks.'],
+            slot_name: 'preferences',
+          }),
+        ],
+      });
+      expect(String(JSON.stringify(search.result))).toContain('native Ladybug worker tools');
+      expect(String(JSON.stringify(search.result))).toContain('Native GRILLO worker tools use Ladybug records');
+      expect(candidateList.result).toMatchObject({
+        candidates: [expect.objectContaining({ summary: 'Subsect wants native Ladybug worker tools.' })],
+      });
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.activities.filter((row) => row.beatType === 'worker_tool')).toHaveLength(8);
+      expect(graph.edges.map((edge) => edge.relation)).toEqual(
+        expect.arrayContaining(['HAS_BLOCK', 'HAS_SLOT', 'HAS_SLOT_PATCH', 'HAS_ACTIVITY']),
+      );
+
+      const packet = await grillo.buildContextPacket({
+        participantKeys: [participantKey],
+        query: 'Ladybug worker tools',
+        scopeKey,
+      });
+      expect(packet.relationship_memory.join('\n')).toContain(
+        'Subsect likes direct technical memory checks.',
+      );
+      expect(packet.recalled_memories.map((item) => item.text).join('\n')).toContain(
+        'Subsect wants native Ladybug worker tools.',
+      );
+      expect(packet.thoughts.join('\n')).toContain(
+        'I should keep GRILLO tool writes visible and inspectable.',
+      );
+    } finally {
+      await memory.close();
+    }
+  });
 });

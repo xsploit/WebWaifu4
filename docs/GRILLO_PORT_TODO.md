@@ -27,12 +27,18 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 ## Immediate Next Slice
 
-Do this before broader worker work:
+Do this before broader autonomous worker work:
 
-1. Finish native GRILLO visibility on existing `/memory/status` and `/memory/graph`.
-2. Surface recent `TurnEvent`, `MemorySlot`, `MemorySlotPatch`, `GrilloActivity`, and `WorkerContextTrace` rows in the Memory/G.R.I.L.L.O. UI.
-3. Add one focused backend test and one focused UI test for those surfaces.
-4. Run focused tests, `npm run build`, and `git diff --check`.
+1. Add the backend worker-tool foundation against Ladybug:
+   - memory read/search/list
+   - candidate write
+   - diary write
+   - memory slot/block write
+   - profile patch
+   - archival semantic insert
+2. Record worker-tool telemetry in GRILLO activity rows.
+3. Add one focused backend test proving tool writes are visible in the context packet.
+4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 5. Commit only the intended files.
 
 Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron transparency during this slice.
@@ -76,6 +82,7 @@ Progress note:
 - 2026-05-28: Added backend-owned GRILLO service slice with `/memory/grillo/turn` and `/memory/grillo/run/manual`. It writes turn pairs, manual candidate/diary/slot updates, activity rows, and worker traces through Ladybug. Focused service tests and full build pass.
 - 2026-05-28: Wired completed chat replies to `/memory/grillo/turn` through the Ladybug memory client. The app records the model-visible prompt plus parsed assistant reply as native GRILLO turn events without blocking TTS/UI playback.
 - 2026-05-28: Added `/memory/grillo/context` for canonical Ladybug GRILLO context packets and threaded that packet into the POML-rendered chat prompt. The Memory UI now shows the exact last injected native packet.
+- 2026-05-28: Added a backend worker-tool foundation for read/search/list, candidate writes, diary writes, memory slot/block writes, profile patches, and archival semantic inserts. Tool telemetry is recorded in GRILLO activity rows, and focused service tests prove tool writes feed the context packet.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -105,22 +112,22 @@ Progress note:
 ## Phase 3 - Worker Tools
 
 - [ ] Port/adapt core worker tools:
-  - [ ] `core.worker_memory_read`
-  - [ ] `core.worker_memory_search`
-  - [ ] `core.worker_candidate_list`
-  - [ ] `core.worker_candidate_write`
-  - [ ] `core.worker_diary_write`
-  - [ ] `core.worker_memory_write`
-  - [ ] `core.worker_profile_patch`
-  - [ ] `core.worker_memory_insert_archival`
+  - [x] `core.worker_memory_read`
+  - [x] `core.worker_memory_search`
+  - [x] `core.worker_candidate_list`
+  - [x] `core.worker_candidate_write`
+  - [x] `core.worker_diary_write`
+  - [x] `core.worker_memory_write`
+  - [x] `core.worker_profile_patch`
+  - [x] `core.worker_memory_insert_archival`
   - [ ] emotion read/update tools if useful
-- [ ] Make all tool writes go through Ladybug.
+- [x] Make all tool writes go through Ladybug.
 - [ ] Add tool-call telemetry:
-  - [ ] name
-  - [ ] args summary
-  - [ ] result
-  - [ ] duration
-  - [ ] error
+  - [x] name
+  - [x] args summary
+  - [x] result
+  - [x] duration
+  - [x] error
 - [ ] Add debrief recovery for missing candidate/diary writes.
 - [ ] Verify worker tools are separate from public chat tools.
 
@@ -217,7 +224,7 @@ Progress note:
 
 - [ ] Unit tests:
   - [ ] Ladybug GRILLO repository
-  - [ ] worker tools
+  - [x] worker tools
   - [ ] context packet reduction
   - [ ] POML injection
   - [ ] Twitch intake filtering

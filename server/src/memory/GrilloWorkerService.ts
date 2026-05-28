@@ -56,6 +56,32 @@ export type GrilloContextPacket = {
   thoughts: string[];
 };
 
+export type GrilloWorkerToolName =
+  | 'core.worker_memory_read'
+  | 'core.worker_memory_search'
+  | 'core.worker_candidate_list'
+  | 'core.worker_candidate_write'
+  | 'core.worker_diary_write'
+  | 'core.worker_memory_write'
+  | 'core.worker_profile_patch'
+  | 'core.worker_memory_insert_archival';
+
+export type GrilloWorkerToolInput = {
+  args?: unknown;
+  name?: unknown;
+  participantKey?: unknown;
+  scopeKey?: unknown;
+};
+
+export type GrilloWorkerToolExecution = {
+  durationMs: number;
+  error?: string;
+  name: string;
+  ok: boolean;
+  result: unknown;
+  telemetryId: string;
+};
+
 export class GrilloWorkerService {
   constructor(
     private readonly memory: LadybugMemoryService,
@@ -254,6 +280,49 @@ export class GrilloWorkerService {
     };
   }
 
+  async runWorkerTool(input: GrilloWorkerToolInput): Promise<GrilloWorkerToolExecution> {
+    const name = normalizeText(input.name);
+    const args = asRecord(input.args);
+    const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
+    const participantKey = normalizeKey(input.participantKey, defaultParticipantKey(scopeKey));
+    const startedAt = this.nowMs();
+    const telemetryId = this.idFactory();
+
+    try {
+      if (!isWorkerToolName(name)) {
+        throw new Error(`Unsupported GRILLO worker tool: ${name || 'unknown'}`);
+      }
+      const result = await this.executeWorkerTool(name, scopeKey, participantKey, args);
+      const durationMs = Math.max(0, this.nowMs() - startedAt);
+      await this.appendWorkerToolTelemetry({
+        args,
+        durationMs,
+        error: '',
+        name,
+        ok: true,
+        result,
+        scopeKey,
+        telemetryId,
+      });
+      return { durationMs, name, ok: true, result, telemetryId };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const durationMs = Math.max(0, this.nowMs() - startedAt);
+      const result = { ok: false, error: message };
+      await this.appendWorkerToolTelemetry({
+        args,
+        durationMs,
+        error: message,
+        name,
+        ok: false,
+        result,
+        scopeKey,
+        telemetryId,
+      });
+      return { durationMs, error: message, name, ok: false, result, telemetryId };
+    }
+  }
+
   async buildContextPacket(input: GrilloContextPacketInput): Promise<GrilloContextPacket> {
     const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
     const participantKeys = readStringArray(input.participantKeys).map((key) => key.toLowerCase());
@@ -347,6 +416,332 @@ export class GrilloWorkerService {
       thoughts: scopedDiary.map(formatDiaryEntry),
     };
   }
+
+  private async executeWorkerTool(
+    name: GrilloWorkerToolName,
+    scopeKey: string,
+    participantKey: string,
+    args: Record<string, unknown>,
+  ) {
+    if (name === 'core.worker_memory_read') {
+      return this.readWorkerMemory(scopeKey, participantKey, args);
+    }
+    if (name === 'core.worker_memory_search') {
+      return this.searchWorkerMemory(scopeKey, participantKey, args);
+    }
+    if (name === 'core.worker_candidate_list') {
+      return this.listWorkerCandidates(scopeKey, participantKey, args);
+    }
+    if (name === 'core.worker_candidate_write') {
+      return this.writeWorkerCandidate(scopeKey, participantKey, args);
+    }
+    if (name === 'core.worker_diary_write') {
+      return this.writeWorkerDiary(scopeKey, participantKey, args);
+    }
+    if (name === 'core.worker_memory_write') {
+      return this.writeWorkerMemory(scopeKey, participantKey, args);
+    }
+    if (name === 'core.worker_profile_patch') {
+      return this.patchWorkerProfile(scopeKey, args);
+    }
+    return this.insertWorkerArchivalMemory(scopeKey, args);
+  }
+
+  private async readWorkerMemory(
+    scopeKey: string,
+    participantKey: string,
+    args: Record<string, unknown>,
+  ) {
+    const blockName = normalizeText(args['block_name']);
+    const [blocks, slots] = await Promise.all([
+      this.memory.readGrilloRecords<Record<string, unknown>>('memory_blocks'),
+      this.memory.readGrilloRecords<Record<string, unknown>>('memory_slots'),
+    ]);
+    const inWorkerScope = (record: Record<string, unknown>) =>
+      recordScopeKey(record) === scopeKey && workerParticipantMatches(record, participantKey);
+    const blockMatches = (record: Record<string, unknown>) =>
+      !blockName || normalizeText(record['blockName'] ?? record['block_name']) === blockName;
+    const slotMatches = (record: Record<string, unknown>) =>
+      !blockName || normalizeText(record['slotName'] ?? record['slot_name']) === blockName;
+    return {
+      memory_blocks: blocks.filter((record) => inWorkerScope(record) && blockMatches(record)).slice(-20),
+      slots: slots
+        .filter((record) => inWorkerScope(record) && slotMatches(record))
+        .map((slot) => ({
+          items: readJsonArray(slot['contentJson'] ?? slot['content_json']),
+          slot_name: normalizeText(slot['slotName'] ?? slot['slot_name']),
+          updated_at: normalizeText(slot['updatedAt'] ?? slot['updated_at']),
+        })),
+    };
+  }
+
+  private async searchWorkerMemory(
+    scopeKey: string,
+    participantKey: string,
+    args: Record<string, unknown>,
+  ) {
+    const query = normalizeText(args['query']);
+    const limit = clampInteger(args['limit'], 1, 20, 5);
+    if (!query) {
+      return { results: [] };
+    }
+    const [candidates, diary, blocks, slots, semanticRecords] = await Promise.all([
+      this.memory.readGrilloRecords<Record<string, unknown>>('memory_candidates'),
+      this.memory.readGrilloRecords<Record<string, unknown>>('diary_entries'),
+      this.memory.readGrilloRecords<Record<string, unknown>>('memory_blocks'),
+      this.memory.readGrilloRecords<Record<string, unknown>>('memory_slots'),
+      this.memory.loadSemanticRecords(scopeKey),
+    ]);
+    const scoped = (record: Record<string, unknown>) =>
+      recordScopeKey(record) === scopeKey && workerParticipantMatches(record, participantKey);
+    const results = [
+      ...candidates.filter(scoped).map((record) => ({
+        id: normalizeText(record['candidateId'] ?? record['candidate_id']),
+        metadata: { source: 'candidate', type: normalizeText(record['type']) },
+        text: `${normalizeText(record['summary'])} ${normalizeText(record['content'])}`.trim(),
+      })),
+      ...diary.filter(scoped).map((record) => ({
+        id: normalizeText(record['diaryId'] ?? record['diary_id']),
+        metadata: { source: 'diary', beat_type: normalizeText(record['beatType'] ?? record['beat_type']) },
+        text: `${normalizeText(record['summary'])} ${normalizeText(record['personalThought'] ?? record['personal_thought'])}`.trim(),
+      })),
+      ...blocks.filter(scoped).map((record) => ({
+        id: normalizeText(record['blockId'] ?? record['block_id']),
+        metadata: { source: 'memory_block', block_name: normalizeText(record['blockName'] ?? record['block_name']) },
+        text: readJsonArray(record['itemsJson'] ?? record['items_json'] ?? record['items']).join(' '),
+      })),
+      ...slots.filter(scoped).map((record) => ({
+        id: normalizeText(record['slotId'] ?? record['slot_id']),
+        metadata: { source: 'memory_slot', slot_name: normalizeText(record['slotName'] ?? record['slot_name']) },
+        text: readJsonArray(record['contentJson'] ?? record['content_json']).join(' '),
+      })),
+      ...(semanticRecords ?? []).map((record) => ({
+        id: record.id,
+        metadata: { source: 'semantic', persona_id: record.personaId },
+        text: normalizeText(record.text),
+      })),
+    ]
+      .filter((record) => record.id && record.text)
+      .map((record) => ({ ...record, score: lexicalScore(record.text, query) }))
+      .filter((record) => record.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, limit);
+    return { results };
+  }
+
+  private async listWorkerCandidates(
+    scopeKey: string,
+    participantKey: string,
+    args: Record<string, unknown>,
+  ) {
+    const limit = clampInteger(args['limit'], 1, 100, 20);
+    const typeFilter = normalizeText(args['type_filter']);
+    const candidates = await this.memory.readGrilloRecords<Record<string, unknown>>('memory_candidates');
+    return {
+      candidates: candidates
+        .filter((record) => recordScopeKey(record) === scopeKey && workerParticipantMatches(record, participantKey))
+        .filter((record) => !typeFilter || normalizeText(record['type']) === typeFilter)
+        .sort((left, right) => recordTimestamp(right) - recordTimestamp(left))
+        .slice(0, limit),
+    };
+  }
+
+  private async writeWorkerCandidate(
+    scopeKey: string,
+    participantKey: string,
+    args: Record<string, unknown>,
+  ) {
+    const content = normalizeText(args['content']);
+    const summary = normalizeText(args['summary']);
+    if (!content || !summary) {
+      throw new Error('candidate content and summary are required');
+    }
+    const candidateId = this.idFactory();
+    await this.memory.appendGrilloRecord('memory_candidates', {
+      candidate_id: candidateId,
+      confidence: clampNumber(args['confidence'], 0, 1, 0.7),
+      content,
+      created_at: this.nowMs(),
+      evidence_turn_ids: readStringArray(args['evidence_turn_ids'] ?? args['source_turn_ids']),
+      origin_turn_id: normalizeText(args['origin_turn_id']),
+      participant_key: participantKey,
+      scope_key: scopeKey,
+      source: normalizeText(args['source']) || 'worker_tool',
+      summary,
+      tags: readStringArray(args['tags']),
+      type: normalizeCandidateType(args['type']),
+      user_id: scopeKey,
+    });
+    return { candidate_id: candidateId };
+  }
+
+  private async writeWorkerDiary(scopeKey: string, participantKey: string, args: Record<string, unknown>) {
+    const summary = normalizeText(args['summary']);
+    const personalThought = normalizeText(args['personal_thought'] ?? args['personalThought']);
+    if (!summary || !personalThought) {
+      throw new Error('diary summary and personal_thought are required');
+    }
+    const diaryId = this.idFactory();
+    await this.memory.appendGrilloRecord('diary_entries', {
+      beat_type: normalizeText(args['beat_type'] ?? args['beatType']) || 'reflection',
+      content: normalizeText(args['content']),
+      context_tags: readStringArray(args['context_tags']),
+      created_at: this.nowMs(),
+      diary_id: diaryId,
+      emotions: readEmotionArray(args['emotions']),
+      interaction_summary: normalizeText(args['interaction_summary']),
+      involved_users: readStringArray(args['involved_users']),
+      participant_key: participantKey,
+      personal_thought: personalThought,
+      scope_key: scopeKey,
+      source_turn_ids: readStringArray(args['source_turn_ids']),
+      summary,
+      tags: readStringArray(args['tags']),
+      user_id: scopeKey,
+      user_message: normalizeText(args['user_message']),
+    });
+    return { diary_id: diaryId };
+  }
+
+  private async writeWorkerMemory(scopeKey: string, participantKey: string, args: Record<string, unknown>) {
+    const blockName = normalizeMemoryBlockName(args['block_name']);
+    const items = dedupeStrings(readStringArray(args['items']));
+    if (!blockName || items.length === 0) {
+      throw new Error('block_name and non-empty items are required');
+    }
+    const operation = normalizeText(args['operation']) === 'replace' ? 'replace' : 'merge';
+    const sourceCandidateIds = dedupeStrings(readStringArray(args['source_candidate_ids']));
+    const now = this.nowMs();
+    const slots = await this.memory.readGrilloRecords<Record<string, unknown>>('memory_slots');
+    const existingSlot = slots.find(
+      (slot) =>
+        recordScopeKey(slot) === scopeKey &&
+        workerParticipantMatches(slot, participantKey) &&
+        normalizeText(slot['slotName'] ?? slot['slot_name']) === blockName,
+    );
+    const existingItems = readJsonArray(existingSlot?.['contentJson'] ?? existingSlot?.['content_json']);
+    const nextItems = operation === 'replace' ? items : dedupeStrings([...existingItems, ...items]);
+    const slotId = normalizeText(existingSlot?.['slotId'] ?? existingSlot?.['slot_id']) || `${scopeKey}:${participantKey}:${blockName}`;
+    const existingSourceIds = readJsonArray(
+      existingSlot?.['sourceCandidateIdsJson'] ?? existingSlot?.['source_candidate_ids_json'],
+    );
+    const nextSourceIds = dedupeStrings([...existingSourceIds, ...sourceCandidateIds]);
+    await this.memory.upsertGrilloMemorySlot({
+      content_json: JSON.stringify(nextItems),
+      participant_key: participantKey,
+      schema_version: '1.0.0',
+      slot_id: slotId,
+      slot_name: blockName,
+      scope_key: scopeKey,
+      source_candidate_ids_json: JSON.stringify(nextSourceIds),
+      updated_at: String(now),
+      user_id: scopeKey,
+    } as LadybugMemorySlotRecord & { participant_key: string; scope_key: string });
+    await this.memory.appendGrilloMemorySlotPatch({
+      created_at: String(now),
+      operation: operation === 'replace' ? 'set' : 'merge',
+      participant_key: participantKey,
+      patch_id: this.idFactory(),
+      patch_json: JSON.stringify({ items, reason: normalizeText(args['reason']) }),
+      schema_version: '1.0.0',
+      slot_id: slotId,
+      slot_name: blockName,
+      scope_key: scopeKey,
+      source_candidate_ids_json: JSON.stringify(sourceCandidateIds),
+      user_id: scopeKey,
+    } as LadybugMemorySlotPatchRecord & { participant_key: string; scope_key: string });
+    const blockId = this.idFactory();
+    await this.memory.appendGrilloRecord('memory_blocks', {
+      block_id: blockId,
+      block_name: blockName,
+      created_at: now,
+      items,
+      items_json: JSON.stringify(items),
+      operation,
+      participant_key: participantKey,
+      reason: normalizeText(args['reason']),
+      scope_key: scopeKey,
+      source_candidate_ids: sourceCandidateIds,
+      source_candidate_ids_json: JSON.stringify(sourceCandidateIds),
+      updated_at: now,
+      user_id: scopeKey,
+    });
+    return { block_id: blockId, block_name: blockName, item_count: nextItems.length, slot_id: slotId };
+  }
+
+  private async patchWorkerProfile(scopeKey: string, args: Record<string, unknown>) {
+    const field = normalizeProfilePatchField(args['field']);
+    const operation = normalizeText(args['operation']) === 'remove' ? 'remove' : 'add';
+    const value = normalizeText(args['value']);
+    if (!field || !value) {
+      throw new Error('profile patch field and value are required');
+    }
+    const profiles = asRecord((await this.memory.loadRelationshipProfiles()) ?? {});
+    const profile = asRecord(profiles[scopeKey]);
+    const currentValues = readStringArray(profile[field]);
+    const nextValues =
+      operation === 'remove'
+        ? currentValues.filter((item) => item !== value)
+        : dedupeStrings([...currentValues, value]);
+    await this.memory.saveRelationshipProfiles({
+      ...profiles,
+      [scopeKey]: {
+        ...profile,
+        [field]: nextValues,
+        updatedAt: this.nowMs(),
+      },
+    });
+    return { field, ok: true, operation, value };
+  }
+
+  private async insertWorkerArchivalMemory(scopeKey: string, args: Record<string, unknown>) {
+    const text = normalizeText(args['text']);
+    if (!text) {
+      throw new Error('archival memory text is required');
+    }
+    const id = this.idFactory();
+    const records = await this.memory.loadSemanticRecords(scopeKey);
+    await this.memory.saveSemanticRecords(scopeKey, [
+      ...(records ?? []),
+      {
+        assistantText: '',
+        createdAt: this.nowMs(),
+        embedding: null,
+        id,
+        personaId: inferPersona(scopeKey),
+        scopeKey,
+        text,
+        userText: '',
+      },
+    ]);
+    return { id, ok: true };
+  }
+
+  private async appendWorkerToolTelemetry(input: {
+    args: Record<string, unknown>;
+    durationMs: number;
+    error: string;
+    name: string;
+    ok: boolean;
+    result: unknown;
+    scopeKey: string;
+    telemetryId: string;
+  }) {
+    await this.memory.appendGrilloRecord('grillo_activity_log', {
+      activity_id: input.telemetryId,
+      args_summary: summarizeToolArgs(input.args),
+      beat_type: 'worker_tool',
+      created_at: this.nowMs(),
+      duration_ms: input.durationMs,
+      error: input.error,
+      ok: input.ok,
+      response_text: input.ok ? `${input.name} ok` : `${input.name || 'unknown'} failed: ${input.error}`,
+      result_json: JSON.stringify(truncateToolResult(input.result)),
+      scope_key: input.scopeKey,
+      tool_name: input.name,
+      user_id: input.scopeKey,
+    });
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -369,6 +764,19 @@ function readStringArray(value: unknown) {
     : [];
 }
 
+function readEmotionArray(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((item) => asRecord(item))
+        .map((item) => ({
+          intensity: clampNumber(item['intensity'], 0, 10, 0),
+          name: normalizeText(item['name']),
+        }))
+        .filter((item) => item.name)
+        .slice(0, 12)
+    : [];
+}
+
 function readJsonArray(value: unknown) {
   const parsed = typeof value === 'string' ? safeJsonParse(value) : value;
   return Array.isArray(parsed) ? parsed.map((item) => normalizeText(item)).filter(Boolean) : [];
@@ -387,6 +795,10 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Math.max(min, Math.min(max, numeric));
 }
 
+function clampInteger(value: unknown, min: number, max: number, fallback: number) {
+  return Math.trunc(clampNumber(value, min, max, fallback));
+}
+
 function inferSource(scopeKey: string) {
   return scopeKey.split(':')[0] || 'local';
 }
@@ -395,12 +807,25 @@ function inferChannel(scopeKey: string) {
   return scopeKey.split(':')[1] || 'local';
 }
 
+function inferPersona(scopeKey: string) {
+  return scopeKey.split(':').slice(2).join(':') || 'default';
+}
+
+function defaultParticipantKey(scopeKey: string) {
+  return `${inferSource(scopeKey)}:${inferChannel(scopeKey)}:local`;
+}
+
 function recordScopeKey(record: Record<string, unknown>) {
   return normalizeText(record['scopeKey'] ?? record['scope_key'] ?? record['user_id']);
 }
 
 function recordParticipantKey(record: Record<string, unknown>) {
   return normalizeText(record['participantKey'] ?? record['participant_key']);
+}
+
+function workerParticipantMatches(record: Record<string, unknown>, participantKey: string) {
+  const recordParticipant = recordParticipantKey(record);
+  return !recordParticipant || !participantKey || recordParticipant === participantKey;
 }
 
 function recordTimestamp(record: Record<string, unknown>) {
@@ -485,4 +910,106 @@ function normalizeSlotOperation(value: unknown): LadybugMemorySlotPatchRecord['o
     return normalized;
   }
   return 'merge';
+}
+
+const WORKER_TOOL_NAMES = new Set<GrilloWorkerToolName>([
+  'core.worker_memory_read',
+  'core.worker_memory_search',
+  'core.worker_candidate_list',
+  'core.worker_candidate_write',
+  'core.worker_diary_write',
+  'core.worker_memory_write',
+  'core.worker_profile_patch',
+  'core.worker_memory_insert_archival',
+]);
+
+function isWorkerToolName(value: string): value is GrilloWorkerToolName {
+  return WORKER_TOOL_NAMES.has(value as GrilloWorkerToolName);
+}
+
+const MEMORY_BLOCK_NAMES = new Set([
+  'preferences',
+  'boundaries',
+  'relationship_state',
+  'ongoing_threads',
+  'verified_facts',
+  'open_threads',
+  'core_identity',
+  'working_scratchpad',
+]);
+
+function normalizeMemoryBlockName(value: unknown) {
+  const normalized = normalizeText(value);
+  return MEMORY_BLOCK_NAMES.has(normalized) ? normalized : '';
+}
+
+function normalizeProfilePatchField(value: unknown) {
+  const normalized = normalizeText(value);
+  return ['tone_preferences', 'interaction_style', 'boundaries', 'active_threads'].includes(normalized)
+    ? normalized
+    : '';
+}
+
+function dedupeStrings(items: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of items) {
+    const normalized = normalizeText(item);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function lexicalScore(text: string, query: string) {
+  const haystack = text.toLowerCase();
+  const needle = query.toLowerCase().trim();
+  if (!needle) {
+    return 0;
+  }
+  let score = haystack.includes(needle) ? 1 : 0;
+  for (const part of needle.split(/\s+/).filter(Boolean)) {
+    if (haystack.includes(part)) {
+      score += 0.2;
+    }
+  }
+  return score;
+}
+
+function summarizeToolArgs(args: Record<string, unknown>) {
+  const keys = Object.keys(args).sort();
+  return keys
+    .slice(0, 8)
+    .map((key) => `${key}=${summarizeToolValue(args[key])}`)
+    .join(' ');
+}
+
+function summarizeToolValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return `[${value.length}]`;
+  }
+  if (value && typeof value === 'object') {
+    return '{object}';
+  }
+  return normalizeText(value).slice(0, 80);
+}
+
+function truncateToolResult(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value.slice(0, 1200);
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 10).map(truncateToolResult);
+  }
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value).slice(0, 20)) {
+      result[key] = truncateToolResult(item);
+    }
+    return result;
+  }
+  return value;
 }
