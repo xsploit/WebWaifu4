@@ -236,6 +236,15 @@ async function main() {
       timeoutMs,
       (result) => result.status === 200 && result.body?.ok === true,
     );
+    const memoryGraph = await waitForJson(
+      `http://127.0.0.1:${expectedPort}/memory/graph`,
+      timeoutMs,
+      (result) =>
+        result.status === 200 &&
+        result.body?.ok === true &&
+        result.body?.graph &&
+        Array.isArray(result.body.graph.edges),
+    );
     const page = await waitForDebugPage(debugPort, timeoutMs);
     cdp = connectCdp(page.webSocketDebuggerUrl);
     await cdp.waitOpen();
@@ -249,7 +258,8 @@ async function main() {
         desktopBridge: Boolean(window.webWaifuDesktop?.isDesktop),
         runtime: await window.webWaifuDesktop?.getRuntime?.(),
         health: await fetch('http://127.0.0.1:${expectedPort}/health').then((r) => r.json()).then((j) => j.ok === true),
-        grilloRuntime: await fetch('http://127.0.0.1:${expectedPort}/memory/grillo/runtime').then((r) => r.json()).then((j) => j.ok === true)
+        grilloRuntime: await fetch('http://127.0.0.1:${expectedPort}/memory/grillo/runtime').then((r) => r.json()).then((j) => j.ok === true),
+        memoryGraph: await fetch('http://127.0.0.1:${expectedPort}/memory/graph').then((r) => r.json()).then((j) => j.ok === true && Boolean(j.graph))
       }))()`,
     );
     if (String(renderer.backendPort) !== String(expectedPort)) {
@@ -258,7 +268,7 @@ async function main() {
     if (renderer.backendOwner !== 'owned' || renderer.runtime?.backendOwned !== true) {
       throw new Error(`Renderer backend owner was not packaged-owned: ${JSON.stringify(renderer)}`);
     }
-    if (!renderer.desktopBridge || !renderer.health || !renderer.grilloRuntime) {
+    if (!renderer.desktopBridge || !renderer.health || !renderer.grilloRuntime || !renderer.memoryGraph) {
       throw new Error(`Renderer fallback backend checks failed: ${JSON.stringify(renderer)}`);
     }
     console.log(
@@ -267,6 +277,7 @@ async function main() {
           expectedPort,
           grilloRuntime,
           health,
+          memoryGraph,
           memoryStatus,
           ok: true,
           requestedPort,

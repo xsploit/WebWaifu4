@@ -124,6 +124,7 @@ Progress note:
 - 2026-05-28: Added token-backed Electron/backend ownership reuse. Packaged Electron now reuses a busy preferred port only when `/health` proves a compatible WebWaifu backend with the same owner token, exposes `backendReused` to the renderer, and can shut down a reused owned backend through a token-protected local shutdown route. New packaged smoke coverage proves owned reuse, and existing fallback smoke still proves non-owned busy ports fall forward.
 - 2026-05-28: Added a G.R.I.L.L.O. lane snapshot to the Memory tab. It now shows current Local/Queue/Batch mode, chat lane provider/model/transport/state mode, GRILLO lane provider/model/tool-round cap, embedding lane source/provider/local models, and turn cadence across current/all scopes.
 - 2026-05-28: Added explicit Stream Mode GRILLO intake scoring. Twitch turns can enter durable memory for trusted roles, direct persona mentions, explicit durable-memory cues, emotional/relationship signals, stream-relevant badges/first-chat signals, or repeated batch topics; single low-signal Twitch chatter stays short-term. Focused intake tests cover all scoring categories.
+- 2026-05-28: Extended packaged runtime smoke checks to require `/memory/graph` alongside `/health`, `/memory/status`, and `/memory/grillo/runtime`. Both normal packaged UI smoke and busy-port fallback smoke now fail if graph summary is unreachable or malformed.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -278,7 +279,7 @@ Progress note:
 - [ ] Runtime smoke:
   - [x] backend health
   - [x] memory status
-  - [ ] graph summary
+  - [x] graph summary
   - [ ] chat reply with injected GRILLO context
   - [x] packaged EXE starts and exits cleanly
 - [ ] Commit after each passing slice.

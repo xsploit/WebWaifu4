@@ -318,6 +318,10 @@ try {
     cdp,
     `fetch('http://127.0.0.1:' + (${JSON.stringify(snapshot.backendPort)} || '8797') + '/memory/grillo/runtime').then(r => r.json()).then(j => JSON.stringify(j))`,
   ).then(JSON.parse);
+  const memoryGraph = await evaluateJson(
+    cdp,
+    `fetch('http://127.0.0.1:' + (${JSON.stringify(snapshot.backendPort)} || '8797') + '/memory/graph').then(r => r.json()).then(j => JSON.stringify(j))`,
+  ).then(JSON.parse);
 
   const badEvents = summarizeBadEvents(cdp.events).filter(
     (line) =>
@@ -333,6 +337,7 @@ try {
       backendPort: snapshot.backendPort,
       backendOwner: runtime?.backendOwner || snapshot.backendOwner,
       desktopBridge: snapshot.isDesktop,
+      graphSummary: Boolean(memoryGraph.ok && memoryGraph.graph),
       grilloRuntime: Boolean(grilloRuntime.ok),
       health: Boolean(health.ok),
       mode: snapshot.mode,
@@ -354,6 +359,9 @@ try {
   }
   if (!grilloRuntime.ok) {
     throw new Error('Renderer could not reach packaged GRILLO runtime status.');
+  }
+  if (!memoryGraph.ok || !memoryGraph.graph || !Array.isArray(memoryGraph.graph.edges)) {
+    throw new Error('Renderer could not reach packaged memory graph summary.');
   }
   if (badText) {
     throw new Error('Renderer showed known crash text.');
