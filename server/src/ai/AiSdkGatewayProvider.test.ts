@@ -60,6 +60,27 @@ function createProvider() {
   });
 }
 
+function createProviderForLane(provider: 'openrouter-responses' | 'vercel-gateway') {
+  return new AiSdkGatewayProvider({
+    apiKey: provider === 'vercel-gateway' ? 'gateway-key' : 'openrouter-key',
+    apiBaseUrl: 'https://openrouter.ai/api/v1',
+    maxTokens: 180,
+    model:
+      provider === 'vercel-gateway'
+        ? 'anthropic/claude-3-5-haiku'
+        : 'google/gemini-2.5-flash',
+    provider,
+    tavilyTools: {
+      apiKey: 'tavily-key',
+      crawlLimit: 8,
+      maxResults: 5,
+      searchDepth: 'basic',
+      timeoutMs: 10000,
+    },
+    temperature: 0.7,
+  });
+}
+
 describe('AiSdkGatewayProvider', () => {
   beforeEach(() => {
     createGatewayMock.mockReset();
@@ -167,4 +188,69 @@ describe('AiSdkGatewayProvider', () => {
       baseURL: 'https://openrouter.ai/api/v1',
     });
   });
+
+  it.each(['vercel-gateway', 'openrouter-responses'] as const)(
+    'uses the same structured memory-lane shape for %s',
+    async (providerName) => {
+      streamTextMock.mockReturnValueOnce({
+        output: Promise.resolve({
+          candidate: null,
+          diary: null,
+          done: true,
+          memory: null,
+          notes: 'no durable write needed',
+          relationship: null,
+          toolCalls: [],
+        }),
+      });
+      const provider = createProviderForLane(providerName);
+
+      const response = await provider.completeStream(
+        createRequest({
+          maxToolRounds: 22,
+          responseFormat: {
+            name: 'grillo_worker_response',
+            schema: {
+              additionalProperties: false,
+              properties: {
+                done: { type: 'boolean' },
+                toolCalls: { items: {}, type: 'array' },
+              },
+              required: ['done', 'toolCalls'],
+              type: 'object',
+            },
+            type: 'json_schema',
+          },
+          stateScope: 'memory',
+          toolChoiceMode: 'required',
+        }),
+      );
+
+      const call = streamTextMock.mock.calls[0]?.[0];
+      expect(call).toMatchObject({
+        allowSystemInMessages: true,
+        output: {
+          kind: 'object-output',
+          value: {
+            name: 'grillo_worker_response',
+            schema: {
+              kind: 'json-schema',
+              schema: expect.objectContaining({ type: 'object' }),
+            },
+          },
+        },
+        stopWhen: { kind: 'step-count', rounds: 22 },
+        toolChoice: 'auto',
+      });
+      expect(call.tools).toBeUndefined();
+      expect(call.messages[0].content).not.toContain('You may call these tools directly');
+      expect(response.text).toContain('"done":true');
+      expect(response.meta).toMatchObject({
+        provider: providerName,
+        toolsAvailable: false,
+        toolNames: [],
+        transport: 'http-stream',
+      });
+    },
+  );
 });

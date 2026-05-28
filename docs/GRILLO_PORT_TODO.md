@@ -125,6 +125,7 @@ Progress note:
 - 2026-05-28: Added a G.R.I.L.L.O. lane snapshot to the Memory tab. It now shows current Local/Queue/Batch mode, chat lane provider/model/transport/state mode, GRILLO lane provider/model/tool-round cap, embedding lane source/provider/local models, and turn cadence across current/all scopes.
 - 2026-05-28: Added explicit Stream Mode GRILLO intake scoring. Twitch turns can enter durable memory for trusted roles, direct persona mentions, explicit durable-memory cues, emotional/relationship signals, stream-relevant badges/first-chat signals, or repeated batch topics; single low-signal Twitch chatter stays short-term. Focused intake tests cover all scoring categories.
 - 2026-05-28: Extended packaged runtime smoke checks to require `/memory/graph` alongside `/health`, `/memory/status`, and `/memory/grillo/runtime`. Both normal packaged UI smoke and busy-port fallback smoke now fail if graph summary is unreachable or malformed.
+- 2026-05-28: Added provider-lane parity coverage for Vercel AI Gateway and OpenRouter. Both providers are proven through the same AI SDK `streamText` path with structured memory-worker output, stateless app-owned context, step-count agentic loop controls, and memory-scope tool suppression.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -175,7 +176,7 @@ Progress note:
 
 ## Phase 4 - Lanes And Providers
 
-- [ ] Keep same provider infrastructure.
+- [x] Keep same provider infrastructure.
 - [x] Add/verify configurable lanes:
   - [x] chat lane
   - [x] GRILLO/reflection lane
@@ -183,7 +184,7 @@ Progress note:
 - [x] Let reflection lane choose its own provider/model.
 - [x] Let embedding lane choose browser local, local model, or provider-based when supported.
 - [x] Ensure memory-scoped requests do not expose normal public chat tools.
-- [ ] Ensure OpenRouter and Vercel Gateway models work through the same lane shape.
+- [x] Ensure OpenRouter and Vercel Gateway models work through the same lane shape.
 
 ## Phase 5 - Context Packet And POML
 
