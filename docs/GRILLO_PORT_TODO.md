@@ -108,6 +108,7 @@ Progress note:
 - 2026-05-28: Added explicit backend curiosity and tag elaboration beats on the same memory lane. Both beats have dedicated worker prompts, typed traces, runtime beat/tool-call status, and focused service tests proving Ladybug writes. Focused service, client, build, and package gates pass.
 - 2026-05-28: Added backend semantic indexing as a GRILLO beat. It embeds completed GRILLO turn pairs through the embedding lane, writes Ladybug semantic records/vectors, records typed indexing traces, and persists indexed turn ids for retry-safe follow-up runs. Focused service, client, and build gates pass.
 - 2026-05-28: Added graph lineage edges from memory blocks/slots back to source candidates and optional relationship participant edges alongside existing persona links. Focused Ladybug graph tests prove the new relations.
+- 2026-05-28: Reworked the Memory Worker operator panel as G.R.I.L.L.O. trace inspection. The graph summary now exposes worker prompt/system prompt and activity prompt/output text, and the UI renders latest worker prompt/output plus graph-backed memory rows.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -206,7 +207,7 @@ Progress note:
 
 ## Phase 7 - GRILLO Operator UI
 
-- [ ] Rename/rework Memory Worker panel into G.R.I.L.L.O.
+- [x] Rename/rework Memory Worker panel into G.R.I.L.L.O.
 - [ ] Show:
   - [x] enabled state
   - [ ] current mode
@@ -218,14 +219,14 @@ Progress note:
   - [x] last beat type
   - [x] last run reason/no-op reason
   - [x] last tool calls
-  - [ ] last worker prompt
-  - [ ] last worker output
-  - [ ] injected context packet
-  - [ ] candidates
-  - [ ] diary entries
-  - [ ] memory slots/blocks
-  - [ ] semantic recall/vector counts
-  - [ ] graph counts/relations
+  - [x] last worker prompt
+  - [x] last worker output
+  - [x] injected context packet
+  - [x] candidates
+  - [x] diary entries
+  - [x] memory slots/blocks
+  - [x] semantic recall/vector counts
+  - [x] graph counts/relations
 - [ ] Add buttons:
   - [x] Run Extraction
   - [x] Run Beat

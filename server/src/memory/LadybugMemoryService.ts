@@ -27,6 +27,7 @@ export type LadybugMemoryGraphSummary = {
       beatType: string;
       createdAt: number;
       id: string;
+      promptText: string;
       responseText: string;
       scopeKey: string;
     }>;
@@ -86,8 +87,10 @@ export type LadybugMemoryGraphSummary = {
       createdAt: number;
       id: string;
       model: string;
+      prompt: string;
       provider: string;
       scopeKey: string;
+      systemPrompt: string;
       taskType: string;
     }>;
     turns: Array<{
@@ -794,10 +797,10 @@ export class LadybugMemoryService {
           'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
         ),
         this.all(
-          'MATCH (m:GrilloActivity) RETURN m.id AS id, m.scopeKey AS scopeKey, m.beatType AS beatType, m.responseText AS responseText, m.createdAt AS createdAt LIMIT 8',
+          'MATCH (m:GrilloActivity) RETURN m.id AS id, m.scopeKey AS scopeKey, m.beatType AS beatType, m.promptText AS promptText, m.responseText AS responseText, m.createdAt AS createdAt ORDER BY m.createdAt DESC LIMIT 8',
         ),
         this.all(
-          'MATCH (m:WorkerContextTrace) RETURN m.id AS id, m.scopeKey AS scopeKey, m.taskType AS taskType, m.beatType AS beatType, m.provider AS provider, m.model AS model, m.createdAt AS createdAt LIMIT 8',
+          'MATCH (m:WorkerContextTrace) RETURN m.id AS id, m.scopeKey AS scopeKey, m.taskType AS taskType, m.beatType AS beatType, m.provider AS provider, m.model AS model, m.systemPrompt AS systemPrompt, m.prompt AS prompt, m.createdAt AS createdAt ORDER BY m.createdAt DESC LIMIT 8',
         ),
         this.all(
           'MATCH (m:EmotionState) RETURN m.id AS id, m.scopeKey AS scopeKey, m.lastSignalSource AS lastSignalSource, m.updatedAt AS updatedAt LIMIT 8',
@@ -862,6 +865,7 @@ export class LadybugMemoryService {
             beatType: stringValue(row['beatType']),
             createdAt: Number(row['createdAt'] ?? 0),
             id: stringValue(row['id']),
+            promptText: stringValue(row['promptText']),
             responseText: stringValue(row['responseText']),
             scopeKey: stringValue(row['scopeKey']),
           })),
@@ -946,8 +950,10 @@ export class LadybugMemoryService {
             createdAt: Number(row['createdAt'] ?? 0),
             id: stringValue(row['id']),
             model: stringValue(row['model']),
+            prompt: stringValue(row['prompt']),
             provider: stringValue(row['provider']),
             scopeKey: stringValue(row['scopeKey']),
+            systemPrompt: stringValue(row['systemPrompt']),
             taskType: stringValue(row['taskType']),
           })),
           turns: turns.map((row) => ({

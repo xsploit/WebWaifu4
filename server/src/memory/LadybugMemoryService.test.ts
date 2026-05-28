@@ -153,14 +153,17 @@ describe('LadybugMemoryService', () => {
       });
       expect(graph.recent.activities[0]).toMatchObject({
         beatType: 'relationship',
+        promptText: 'Reflect on the latest memory turn.',
         responseText: 'Wrote candidate and diary.',
         scopeKey,
       });
       expect(graph.recent.traces[0]).toMatchObject({
         beatType: 'relationship',
         model: 'zai/glm-4.7-flash',
+        prompt: 'New messages to process...',
         provider: 'openrouter',
         scopeKey,
+        systemPrompt: 'You are the background sleep-time memory agent.',
         taskType: 'extraction',
       });
       expect(graph.edges.map((edge) => edge.relation)).toEqual(

@@ -76,6 +76,7 @@ describe('ContextTab', () => {
                 beatType: 'relationship',
                 createdAt: Date.parse('2026-05-25T12:00:03.000Z'),
                 id: 'activity-1',
+                promptText: 'Reflect on the latest memory turn.',
                 responseText: 'Wrote a relationship reflection.',
                 scopeKey: 'local:persona:hikari-context',
               },
@@ -185,8 +186,10 @@ describe('ContextTab', () => {
                 createdAt: Date.parse('2026-05-25T12:00:05.000Z'),
                 id: 'trace-1',
                 model: 'gpt-5-nano',
+                prompt: 'New messages to process for Hikari.',
                 provider: 'vercel-gateway',
                 scopeKey: 'local:persona:hikari-context',
+                systemPrompt: 'You are the background sleep-time memory agent.',
                 taskType: 'extraction',
               },
             ],
@@ -270,6 +273,12 @@ describe('ContextTab', () => {
     expect(html).toContain('manual only');
     expect(html).toContain('worker_tasks_not_wired');
     expect(html).toContain('/ reflection / tools 2');
+    expect(html).toContain('G.R.I.L.L.O.');
+    expect(html).toContain('GRILLO Trace Inspector');
+    expect(html).toContain('Last worker prompt');
+    expect(html).toContain('New messages to process for Hikari.');
+    expect(html).toContain('Last worker output');
+    expect(html).toContain('Reflect on the latest memory turn.');
     expect(html).toContain('Grillo scopes:');
     expect(html).toContain('Semantic scopes:');
     expect(html).toContain('Turn events:');

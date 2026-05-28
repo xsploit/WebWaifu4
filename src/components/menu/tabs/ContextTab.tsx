@@ -120,11 +120,13 @@ export function ContextTab({
       ? Array.from(new Set([...availableModels, selectedMemoryModel]))
       : availableModels,
   );
+  const latestWorkerTrace = memoryGraphSummary?.recent.traces?.[0] ?? null;
+  const latestGrilloActivity = memoryGraphSummary?.recent.activities?.[0] ?? null;
 
   return (
     <>
       <div className="control-group">
-        <div className="control-label">Memory Worker</div>
+        <div className="control-label">G.R.I.L.L.O.</div>
         <select
           className="select-tech"
           onChange={(event) =>
@@ -325,6 +327,46 @@ export function ContextTab({
         {modelsError ? <div className="status-copy">{modelsError}</div> : null}
       </div>
 
+      {latestWorkerTrace || latestGrilloActivity ? (
+        <div className="control-group">
+          <div className="control-label">GRILLO Trace Inspector</div>
+          {latestWorkerTrace ? (
+            <div className="memory-entry">
+              <div className="memory-entry-header">
+                <strong>Last worker prompt</strong>
+                <span>{latestWorkerTrace.taskType || latestWorkerTrace.beatType || 'task'}</span>
+              </div>
+              <p>
+                {[latestWorkerTrace.provider, latestWorkerTrace.model, latestWorkerTrace.scopeKey]
+                  .filter(Boolean)
+                  .join(' / ') || 'No worker prompt metadata captured.'}
+              </p>
+              {latestWorkerTrace.systemPrompt ? (
+                <div className="status-copy">{latestWorkerTrace.systemPrompt}</div>
+              ) : null}
+              <pre className="context-preview compact">
+                {latestWorkerTrace.prompt || 'No worker prompt captured.'}
+              </pre>
+            </div>
+          ) : null}
+          {latestGrilloActivity ? (
+            <div className="memory-entry">
+              <div className="memory-entry-header">
+                <strong>Last worker output</strong>
+                <span>{latestGrilloActivity.beatType || 'beat'}</span>
+              </div>
+              <p>{latestGrilloActivity.scopeKey || 'unknown scope'}</p>
+              {latestGrilloActivity.promptText ? (
+                <div className="status-copy">{latestGrilloActivity.promptText}</div>
+              ) : null}
+              <pre className="context-preview compact">
+                {latestGrilloActivity.responseText || 'No worker output captured.'}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="control-group">
         <div className="control-label">Memory Backend</div>
         <div className="memory-kv-grid">
@@ -516,6 +558,9 @@ export function ContextTab({
                   <span>{activity.beatType || 'beat'}</span>
                 </div>
                 <p>{activity.scopeKey || 'unknown scope'}</p>
+                {activity.promptText ? (
+                  <div className="status-copy">{activity.promptText}</div>
+                ) : null}
                 <div className="status-copy">
                   {activity.responseText || 'No activity response captured.'}
                 </div>
@@ -532,6 +577,7 @@ export function ContextTab({
                   {[trace.provider, trace.model, trace.beatType].filter(Boolean).join(' / ') ||
                     'No trace model metadata captured.'}
                 </div>
+                {trace.prompt ? <div className="status-copy">{trace.prompt}</div> : null}
               </div>
             ))}
             {memoryGraphSummary.recent.relationships.slice(0, 4).map((profile) => (

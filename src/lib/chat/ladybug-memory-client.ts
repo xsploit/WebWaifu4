@@ -39,6 +39,7 @@ export type LadybugMemoryGraphSummary = {
       beatType: string;
       createdAt: number;
       id: string;
+      promptText: string;
       responseText: string;
       scopeKey: string;
     }>;
@@ -98,8 +99,10 @@ export type LadybugMemoryGraphSummary = {
       createdAt: number;
       id: string;
       model: string;
+      prompt: string;
       provider: string;
       scopeKey: string;
+      systemPrompt: string;
       taskType: string;
     }>;
     turns: Array<{
