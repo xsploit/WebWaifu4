@@ -690,6 +690,9 @@ export class GrilloWorkerService {
     let lastProvider = normalizeText(options.provider) || 'runtime-provider';
     let lastModel = normalizeText(options.model) || 'runtime-model';
     let lastNotes = '';
+    let candidateWrites = 0;
+    let diaryWrites = 0;
+    let recoveryAttempted = false;
 
     for (let round = 1; round <= maxRounds; round += 1) {
       const rawResult = await completion({
@@ -732,6 +735,28 @@ export class GrilloWorkerService {
       const calls = normalizeWorkerToolCalls(parsed, sourceTurnIds);
       if (calls.length === 0) {
         if (parsed['done'] === true) {
+          if (
+            !recoveryAttempted &&
+            shouldRunWorkerDebriefRecovery({
+              candidateWrites,
+              diaryWrites,
+              pairs,
+              writes,
+            })
+          ) {
+            recoveryAttempted = true;
+            messages.push({ role: 'assistant', content: rawText });
+            messages.push({
+              role: 'user',
+              content: buildBackendWorkerDebriefPrompt({
+                candidateWrites,
+                diaryWrites,
+                pairs,
+                writes,
+              }),
+            });
+            continue;
+          }
           for (const turnId of sourceTurnIds) {
             processedTurnIds.add(turnId);
           }
@@ -758,6 +783,8 @@ export class GrilloWorkerService {
         });
         if (execution.ok) {
           writes += isWorkerWriteTool(call.name) ? 1 : 0;
+          candidateWrites += call.name === 'core.worker_candidate_write' ? 1 : 0;
+          diaryWrites += call.name === 'core.worker_diary_write' ? 1 : 0;
         }
         messages.push({
           role: 'user',
@@ -781,9 +808,12 @@ export class GrilloWorkerService {
     return {
       noOpReason: writes > 0 ? undefined : 'worker_no_writes',
       statePatch: {
+        lastExtractionCandidateWrites: candidateWrites,
+        lastExtractionDiaryWrites: diaryWrites,
         lastExtractionAt: this.nowMs(),
         lastExtractionModel: lastModel,
         lastExtractionProvider: lastProvider,
+        lastExtractionRecoveryAttempted: recoveryAttempted,
         lastExtractionTraceId: lastTraceId,
         lastExtractionTurnCount: pairs.length,
         lastExtractionWorkerNotes: lastNotes,
@@ -1336,6 +1366,48 @@ function buildBackendExtractionPrompt(
     '',
     'Write only memories grounded in these turns. If nothing durable is present, return done=true with no tool calls.',
   ].join('\n');
+}
+
+function buildBackendWorkerDebriefPrompt({
+  candidateWrites,
+  diaryWrites,
+  pairs,
+  writes,
+}: {
+  candidateWrites: number;
+  diaryWrites: number;
+  pairs: Array<{ assistant: Record<string, unknown>; user: Record<string, unknown> }>;
+  writes: number;
+}) {
+  return [
+    'Debrief recovery:',
+    `The worker reached done with writes=${writes}, candidateWrites=${candidateWrites}, diaryWrites=${diaryWrites}.`,
+    'Re-audit the completed turn pairs once.',
+    'If there is any durable preference, fact, goal, boundary, bond signal, or ongoing thread, call core.worker_candidate_write.',
+    'If the exchange meaningfully affects relationship, mood, trust, stream context, or the avatar should privately reflect on it, call core.worker_diary_write.',
+    'If a consolidated slot is clearly grounded, call core.worker_memory_write after candidate_write.',
+    'If there is truly nothing durable or reflective here, return done=true with no toolCalls.',
+    '',
+    'Turn pairs:',
+    pairs.map(formatExtractionPairForTrace).join('\n\n'),
+  ].join('\n');
+}
+
+function shouldRunWorkerDebriefRecovery({
+  candidateWrites,
+  diaryWrites,
+  pairs,
+  writes,
+}: {
+  candidateWrites: number;
+  diaryWrites: number;
+  pairs: Array<{ assistant: Record<string, unknown>; user: Record<string, unknown> }>;
+  writes: number;
+}) {
+  if (pairs.length === 0) {
+    return false;
+  }
+  return writes === 0 || candidateWrites === 0 || diaryWrites === 0;
 }
 
 function parseWorkerJson(rawText: string): Record<string, unknown> {

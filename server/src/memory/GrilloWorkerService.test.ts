@@ -401,7 +401,13 @@ describe('GrilloWorkerService', () => {
         },
         {
           completion: async (request) => {
-            requests.push(request);
+            requests.push({
+              maxToolRounds: request.maxToolRounds,
+              messages: request.messages.map((message) => ({ ...message })),
+              stateKey: request.stateKey,
+              stateScope: request.stateScope,
+              toolChoiceMode: request.toolChoiceMode,
+            });
             if (requests.length === 1) {
               return {
                 meta: { model: 'openai/gpt-5-nano', provider: 'vercel-gateway' },
@@ -485,6 +491,117 @@ describe('GrilloWorkerService', () => {
       await expect(grillo.runTickWithOptions({ reason: 'manual_test', scopeKey })).resolves.toMatchObject({
         noOpReason: 'no_new_turn_pairs',
         writes: 0,
+      });
+    } finally {
+      await memory.close();
+    }
+  });
+
+  it('runs a backend debrief recovery round when LLM extraction writes no candidate or diary', async () => {
+    const { grillo, memory } = createServices();
+    const requests: Array<{
+      messages: Array<{ content: string; role: string }>;
+      stateScope: string;
+    }> = [];
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will remember that recovery should not silently drop durable memory.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'remember debrief recovery when worker writes nothing',
+      });
+
+      const tick = await grillo.runTickWithOptions(
+        { reason: 'manual_test', scopeKey },
+        {
+          completion: async (request) => {
+            requests.push({
+              messages: request.messages.map((message) => ({ ...message })),
+              stateScope: request.stateScope,
+            });
+            if (requests.length === 1) {
+              return JSON.stringify({
+                candidate: null,
+                diary: null,
+                done: true,
+                memory: null,
+                notes: 'missed the write',
+                relationship: null,
+                toolCalls: [],
+              });
+            }
+            if (requests.length === 2) {
+              return JSON.stringify({
+                candidate: null,
+                diary: null,
+                done: false,
+                memory: null,
+                notes: 'recovered writes',
+                relationship: null,
+                toolCalls: [
+                  {
+                    args: {
+                      confidence: 0.82,
+                      content: 'Subsect wants GRILLO debrief recovery when the worker writes nothing.',
+                      summary: 'Subsect wants GRILLO debrief recovery.',
+                      tags: ['grillo', 'debrief'],
+                      type: 'goal',
+                    },
+                    name: 'core.worker_candidate_write',
+                  },
+                  {
+                    args: {
+                      beat_type: 'debrief',
+                      personal_thought: 'I should not let the worker silently finish without checking for missed memory.',
+                      summary: 'Recovered a missed GRILLO memory write.',
+                      tags: ['grillo', 'debrief'],
+                    },
+                    name: 'core.worker_diary_write',
+                  },
+                ],
+              });
+            }
+            return JSON.stringify({
+              candidate: null,
+              diary: null,
+              done: true,
+              memory: null,
+              notes: 'done after recovery',
+              relationship: null,
+              toolCalls: [],
+            });
+          },
+          maxRounds: 4,
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+
+      expect(tick).toMatchObject({
+        noOpReason: '',
+        writes: 2,
+      });
+      expect(requests).toHaveLength(3);
+      expect(requests.every((request) => request.stateScope === 'memory')).toBe(true);
+      expect(requests[1]?.messages.at(-1)?.content).toContain('Debrief recovery:');
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.candidates[0]?.summary).toBe('Subsect wants GRILLO debrief recovery.');
+      expect(graph.recent.diary[0]?.summary).toBe('Recovered a missed GRILLO memory write.');
+
+      const state = await memory.getGrilloSingleton<Record<string, unknown>>('memory_worker_state');
+      expect(state).toMatchObject({
+        lastExtractionCandidateWrites: 1,
+        lastExtractionDiaryWrites: 1,
+        lastExtractionRecoveryAttempted: true,
       });
     } finally {
       await memory.close();

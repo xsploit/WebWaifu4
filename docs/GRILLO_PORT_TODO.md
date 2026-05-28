@@ -29,8 +29,8 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 Do this before removing the old React memory worker:
 
-1. Add backend debrief/recovery when the LLM-guided worker returns no candidate or diary writes.
-2. Add explicit reflection/relationship beat tasks on top of the same backend memory lane.
+1. Add explicit reflection/relationship beat tasks on top of the same backend memory lane.
+2. Add UI controls for Run Beat and show the last beat type/tool-call summary from backend traces/activity.
 3. Keep the deterministic extraction fallback only for missing provider keys; provider-backed manual ticks should use the LLM-guided worker loop.
 4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 5. Commit only the intended files.
@@ -82,6 +82,7 @@ Progress note:
 - 2026-05-28: Replaced the default no-op backend tick with a native extraction pass over completed turn pairs. It writes candidates, diary thoughts, and open-thread slots through worker tools, records extraction traces, persists processed turn ids, and proves the context packet sees the extracted memory.
 - 2026-05-28: Verified the provider lane keeps public runtime search tools out of `stateScope: memory` requests while normal chat requests still receive Tavily tools and agentic loop controls. Focused `AiSdkGatewayProvider` tests pass.
 - 2026-05-28: Wired manual backend GRILLO ticks into the existing provider infrastructure. The Memory UI passes browser-vault provider headers plus the selected memory-worker model, the backend calls the same `/ai/chat` path with `stateScope: memory`, and `GrilloWorkerService` runs an LLM-guided JSON worker-tool loop against Ladybug worker tools. If no provider key is available, the existing deterministic backend extraction remains the fallback.
+- 2026-05-28: Added backend debrief recovery for provider-backed extraction ticks. If the LLM-guided worker reaches `done` without candidate or diary writes, the backend runs one recovery prompt in the same `stateScope: memory` lane before marking source turns processed. Focused service tests prove recovered candidate/diary writes land in Ladybug and are tracked in worker state.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -104,7 +105,7 @@ Progress note:
   - [ ] consolidation
   - [ ] semantic indexing
   - [ ] compaction
-  - [ ] debrief/recovery
+  - [x] debrief/recovery
 - [ ] Add run traces for every task.
 - [x] Add clear status for no-op runs.
 
@@ -127,7 +128,7 @@ Progress note:
   - [x] result
   - [x] duration
   - [x] error
-- [ ] Add debrief recovery for missing candidate/diary writes.
+- [x] Add debrief recovery for missing candidate/diary writes.
 - [x] Verify worker tools are separate from public chat tools.
 
 ## Phase 4 - Lanes And Providers
