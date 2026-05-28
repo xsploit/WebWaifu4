@@ -55,6 +55,7 @@
   "build": {
     "appId": "ai.webwaifu.webwaifu4",
     "productName": "WebWaifu 4",
+    "afterPack": "scripts/after-pack.mjs",
     "directories": {
       "output": "release"
     },
