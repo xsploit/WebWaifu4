@@ -54,6 +54,7 @@ import {
   closeLadybugMemoryService,
   getLadybugMemoryService,
 } from './memory/LadybugMemoryService.js';
+import { GrilloWorkerService } from './memory/GrilloWorkerService.js';
 
 type OpenAiEmbeddingPayload = {
   data?: Array<{
@@ -75,6 +76,30 @@ type ProviderModelsPayload = {
 type MemoryGrilloBody = {
   scopeKey?: unknown;
   state?: unknown;
+};
+
+type MemoryGrilloTurnBody = {
+  assistantName?: unknown;
+  assistantText?: unknown;
+  authorName?: unknown;
+  channelId?: unknown;
+  createdAt?: unknown;
+  interfacePath?: unknown;
+  participantKey?: unknown;
+  scopeKey?: unknown;
+  source?: unknown;
+  userText?: unknown;
+};
+
+type MemoryGrilloManualRunBody = {
+  beatType?: unknown;
+  candidate?: unknown;
+  diary?: unknown;
+  participantKey?: unknown;
+  responseText?: unknown;
+  scopeKey?: unknown;
+  slot?: unknown;
+  trace?: unknown;
 };
 
 type MemorySemanticBody = {
@@ -140,6 +165,12 @@ type CachedRuntimeChatProvider = {
 };
 
 const runtimeChatProviderCache = new Map<string, CachedRuntimeChatProvider>();
+let grilloWorkerService: GrilloWorkerService | null = null;
+
+function getGrilloWorkerService() {
+  grilloWorkerService ??= new GrilloWorkerService(getLadybugMemoryService());
+  return grilloWorkerService;
+}
 
 function isLocalCorsHost(hostname: string) {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
@@ -1460,6 +1491,44 @@ const httpServer = createServer(async (request, response) => {
         ok: false,
         backend: getLadybugMemoryService().getBackendLabel(),
         error: error instanceof Error ? error.message : 'Ladybug memory graph load failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/memory/grillo/turn') {
+    try {
+      const body = await readRequestJson<MemoryGrilloTurnBody>(request, 1024 * 1024);
+      const result = await getGrilloWorkerService().ingestTurnPair(body);
+      writeJson(response, 200, {
+        ok: true,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        ...result,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        error: error instanceof Error ? error.message : 'GRILLO turn ingest failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/memory/grillo/run/manual') {
+    try {
+      const body = await readRequestJson<MemoryGrilloManualRunBody>(request, 1024 * 1024);
+      const result = await getGrilloWorkerService().runManualExtraction(body);
+      writeJson(response, 200, {
+        ok: true,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        result,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        error: error instanceof Error ? error.message : 'GRILLO manual run failed.',
       });
     }
     return;
