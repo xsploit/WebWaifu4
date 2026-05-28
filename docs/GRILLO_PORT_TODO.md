@@ -52,7 +52,7 @@ Current slice definition of done:
 
 - [ ] Electron startup has one clear backend owner path.
 - [x] Renderer receives the actual backend URL/port.
-- [ ] Busy preferred port path is deterministic and tested.
+- [x] Busy preferred port path is deterministic and tested.
 - [x] App exit shuts down owned backend resources.
 - [x] Packaged smoke proves backend health and GRILLO runtime status.
 - [x] `npm run build` passes.
@@ -116,6 +116,7 @@ Progress note:
 - 2026-05-28: Added backend GRILLO emotion read/update worker tools. Emotion state now upserts one canonical Ladybug record per scope, replaces graph intensities instead of duplicating them, and records normal worker-tool telemetry.
 - 2026-05-28: Added Local/Stream mode GRILLO intake gating. Twitch is local-only by default, Stream Mode must be enabled before IRC starts, raw Twitch turns only feed durable memory when they are mentions or trusted roles, and batch summaries can still feed GRILLO without storing every low-signal chat line.
 - 2026-05-28: Extended Electron backend warmup and packaged UI smoke coverage to require `/memory/grillo/runtime` in addition to `/health`. The packaged smoke now proves the renderer sees the backend port, backend health responds, GRILLO runtime responds, and the backend port closes after Electron exits.
+- 2026-05-28: Tightened the desktop port-fallback smoke. It now blocks the preferred port, expects Electron to choose the next port, verifies `/health`, `/memory/status`, and `/memory/grillo/runtime`, inspects the renderer bridge over CDP to prove the fallback port reached the frontend, and verifies the fallback backend closes after Electron exits.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -248,7 +249,7 @@ Progress note:
 - [x] Ensure frontend receives the backend URL/port correctly.
 - [ ] If port is busy:
   - [ ] reuse only if it is our owned compatible backend
-  - [ ] otherwise choose a new port and pass it to frontend
+  - [x] otherwise choose a new port and pass it to frontend
 - [ ] Ensure app exit shuts down backend, GRILLO timers, TTS bridges, and sockets.
 - [x] Add packaged app smoke test for backend health and GRILLO status.
 - [x] Compile the EXE after each meaningful implementation slice.
