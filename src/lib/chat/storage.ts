@@ -649,6 +649,10 @@ function normalizeTwitchSettings(value: unknown): TwitchSettings {
       5,
       60,
     ),
+    streamModeEnabled:
+      typeof source.streamModeEnabled === 'boolean'
+        ? source.streamModeEnabled
+        : defaults.streamModeEnabled,
     streamVisionContextEnabled:
       typeof source.streamVisionContextEnabled === 'boolean'
         ? source.streamVisionContextEnabled

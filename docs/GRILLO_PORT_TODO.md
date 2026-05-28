@@ -35,33 +35,30 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 ## Immediate Next Slice
 
-Add backend-owned GRILLO emotion tools without touching chat/TTS streaming:
+Harden Electron/backend lifecycle so packaged WebWaifu does not leave stale local backends:
 
-1. Inspect current Ladybug `EmotionState` storage and worker-tool dispatch.
-2. Add `core.worker_emotion_read` and `core.worker_emotion_update`.
-3. Persist emotion state through Ladybug with one canonical state per scope, not duplicate append rows.
-4. Mirror updated emotion state into the Ladybug graph.
-5. Add focused backend tests proving read/update, replacement behavior, telemetry, and graph visibility.
-6. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
+1. Inspect Electron startup, backend port selection, frontend backend URL injection, and shutdown cleanup.
+2. Ensure packaged app starts exactly one owned backend.
+3. If the preferred port is busy, reuse only a compatible owned backend or choose a new port and pass it to the renderer.
+4. Ensure app exit shuts down backend, GRILLO timers, sockets, and bridge processes.
+5. Add or update packaged smoke coverage for `/health`, `/memory/status`, and `/memory/grillo/runtime`.
+6. Run focused lifecycle checks, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 7. Commit only the intended files.
 8. Push the commit to `origin main`.
 
-Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, Electron transparency, or public chat tools during this slice.
+Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, GRILLO memory semantics, or public chat tools during this slice.
 
 Current slice definition of done:
 
-- [x] `core.worker_emotion_read` is accepted by the backend worker tool loop.
-- [x] `core.worker_emotion_update` is accepted by the backend worker tool loop.
-- [x] Emotion reads return the current scope state or a safe empty state.
-- [x] Emotion updates replace the current scope state instead of creating duplicate active states.
-- [x] Emotion updates write through Ladybug and appear in `/memory/graph`.
-- [x] Worker telemetry records emotion tool name, args summary, result, duration, and errors.
-- [x] Focused service tests prove emotion read/update through the worker path.
-- [x] Focused Ladybug tests prove emotion graph replacement behavior.
-- [x] `npm run build` passes.
-- [x] `npm run desktop:pack` rebuilds the EXE.
-- [x] `git diff --check` passes.
-- [x] Commit and push only the intended GRILLO files.
+- [ ] Electron startup has one clear backend owner path.
+- [ ] Renderer receives the actual backend URL/port.
+- [ ] Busy preferred port path is deterministic and tested.
+- [ ] App exit shuts down owned backend resources.
+- [ ] Packaged smoke proves backend health and GRILLO runtime status.
+- [ ] `npm run build` passes.
+- [ ] `npm run desktop:pack` rebuilds the EXE.
+- [ ] `git diff --check` passes.
+- [ ] Commit and push only the intended lifecycle files.
 
 ## Phase 1 - Ladybug GRILLO Store
 
@@ -117,6 +114,7 @@ Progress note:
 - 2026-05-28: Reworked the Memory Worker operator panel as G.R.I.L.L.O. trace inspection. The graph summary now exposes worker prompt/system prompt and activity prompt/output text, and the UI renders latest worker prompt/output plus graph-backed memory rows.
 - 2026-05-28: Renamed reset controls to explicit `Clear GRILLO Memory` and `Reset Chat Context` actions. The UI now states that chat-context reset keeps durable memory while GRILLO clear removes the current scope's relationship, diary, GRILLO, and semantic recall.
 - 2026-05-28: Added backend GRILLO emotion read/update worker tools. Emotion state now upserts one canonical Ladybug record per scope, replaces graph intensities instead of duplicating them, and records normal worker-tool telemetry.
+- 2026-05-28: Added Local/Stream mode GRILLO intake gating. Twitch is local-only by default, Stream Mode must be enabled before IRC starts, raw Twitch turns only feed durable memory when they are mentions or trusted roles, and batch summaries can still feed GRILLO without storing every low-signal chat line.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -194,24 +192,24 @@ Progress note:
 
 ## Phase 6 - Local Mode And Stream Mode
 
-- [ ] Add clear Local/Stream mode setting.
+- [x] Add clear Local/Stream mode setting.
 - [ ] Local mode:
-  - [ ] local chat turns feed GRILLO
-  - [ ] no Twitch intake by default
+  - [x] local chat turns feed GRILLO
+  - [x] no Twitch intake by default
   - [ ] controller/local participant is scoped clearly
 - [ ] Stream mode:
-  - [ ] Twitch intake enabled
-  - [ ] direct mentions and high-signal turns feed GRILLO
-  - [ ] batch summaries can feed GRILLO
-  - [ ] low-signal chatter stays short-term only
+  - [x] Twitch intake enabled
+  - [x] direct mentions and high-signal turns feed GRILLO
+  - [x] batch summaries can feed GRILLO
+  - [x] low-signal chatter stays short-term only
 - [ ] Add Twitch memory intake scoring/filtering:
-  - [ ] direct mention
-  - [ ] broadcaster/mod/controller
+  - [x] direct mention
+  - [x] broadcaster/mod/controller
   - [ ] explicit preference/fact/goal/boundary
   - [ ] repeated topic thread
   - [ ] emotional/relationship signal
   - [ ] stream event relevance
-- [ ] Add tests so Twitch spam does not create durable memory spam.
+- [x] Add tests so Twitch spam does not create durable memory spam.
 
 ## Phase 7 - GRILLO Operator UI
 

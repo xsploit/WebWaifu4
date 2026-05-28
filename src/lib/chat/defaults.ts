@@ -182,6 +182,7 @@ export function createDefaultTwitchSettings(): TwitchSettings {
     streamTranscriptionIntervalSeconds: 90,
     streamTranscriptionModel: 'openai/whisper-large-v3',
     streamTranscriptionSampleSeconds: 15,
+    streamModeEnabled: false,
     streamVisionContextEnabled: false,
     streamVisionDetail: 'low',
     streamVisionIntervalSeconds: 120,

@@ -230,6 +230,7 @@ export type TwitchSettings = {
   streamTranscriptionIntervalSeconds: number;
   streamTranscriptionModel: string;
   streamTranscriptionSampleSeconds: number;
+  streamModeEnabled: boolean;
   streamVisionContextEnabled: boolean;
   streamVisionDetail: 'auto' | 'high' | 'low';
   streamVisionIntervalSeconds: number;

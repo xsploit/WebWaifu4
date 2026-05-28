@@ -99,6 +99,10 @@ import {
   type TwitchAiQueueJob,
 } from './lib/chat/twitch-ai-queue';
 import {
+  shouldIngestChatJobToGrillo,
+  shouldIngestChatTurnToGrillo,
+} from './lib/chat/grillo-intake';
+import {
   addSemanticMemoryTurn,
   buildSemanticMemoryContext,
   clearSemanticMemory,
@@ -1923,7 +1927,9 @@ function App() {
     [activePersona],
   );
   const twitchModeLabel =
-    twitchConnectionLabel === 'Live'
+    !twitchSettings.streamModeEnabled
+      ? 'Local'
+      : twitchConnectionLabel === 'Live'
       ? twitchActiveChatterCount > twitchSettings.directChatterLimit
         ? 'Batch'
         : 'Queue'
@@ -5481,59 +5487,69 @@ function App() {
             ),
           ),
         );
-        const nextRelationshipMemory = updateRelationshipMemory(
-          memorySnapshot,
-          updatedHistory,
-          userContent,
-        );
-        commitScopedRelationshipMemory(stateKey, nextRelationshipMemory);
-        setMemoryAgentStatus(
-          getMemoryProgressStatus(nextRelationshipMemory, settings.memoryAgentIntervalMessages),
-        );
-        grilloRecentTurnsByStateKeyRef.current[stateKey] = [
-          ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
-          ...job.messages,
-        ].slice(-24);
-        scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
-        void rememberSemanticTurn(
-          stateKey,
-          userContent,
-          assistantContent,
+        const shouldRecordDurableMemory = shouldIngestChatJobToGrillo(
+          job.mode,
+          job.messages,
           persona,
-          providerKeyVaultWorkspaceId,
-          settings.llmProvider,
-          setMemoryEmbeddingDebug,
-          'semantic-save',
-          settings.embeddingMode,
-          settings.embeddingModel,
-        )
-          .then(() => {
-            void refreshMemoryBackendStatus();
-          })
-          .catch((error) => {
-            console.warn('[App] Failed to record semantic chat memory turn', error);
-          });
-        void saveLadybugGrilloTurnPair(
-          buildLadybugGrilloTurnPairInput(job, stateKey, userContent, assistantContent, persona),
-        )
-          .then((saved) => {
-            if (saved) {
+          currentTwitchSettings,
+        );
+        if (shouldRecordDurableMemory) {
+          const nextRelationshipMemory = updateRelationshipMemory(
+            memorySnapshot,
+            updatedHistory,
+            userContent,
+          );
+          commitScopedRelationshipMemory(stateKey, nextRelationshipMemory);
+          setMemoryAgentStatus(
+            getMemoryProgressStatus(nextRelationshipMemory, settings.memoryAgentIntervalMessages),
+          );
+          grilloRecentTurnsByStateKeyRef.current[stateKey] = [
+            ...(grilloRecentTurnsByStateKeyRef.current[stateKey] ?? []),
+            ...job.messages,
+          ].slice(-24);
+          scheduleRelationshipMemoryRefresh(updatedHistory, nextRelationshipMemory, stateKey);
+          void rememberSemanticTurn(
+            stateKey,
+            userContent,
+            assistantContent,
+            persona,
+            providerKeyVaultWorkspaceId,
+            settings.llmProvider,
+            setMemoryEmbeddingDebug,
+            'semantic-save',
+            settings.embeddingMode,
+            settings.embeddingModel,
+          )
+            .then(() => {
               void refreshMemoryBackendStatus();
-            }
-          })
-          .catch((error) => {
-            console.warn('[App] Failed to record native GRILLO turn pair', error);
+            })
+            .catch((error) => {
+              console.warn('[App] Failed to record semantic chat memory turn', error);
+            });
+          void saveLadybugGrilloTurnPair(
+            buildLadybugGrilloTurnPairInput(job, stateKey, userContent, assistantContent, persona),
+          )
+            .then((saved) => {
+              if (saved) {
+                void refreshMemoryBackendStatus();
+              }
+            })
+            .catch((error) => {
+              console.warn('[App] Failed to record native GRILLO turn pair', error);
+            });
+          const nextGrilloMemoryState = await recordGrilloMemoryTurnAsync({
+            assistantText: assistantContent,
+            persona,
+            scopeKey: stateKey,
+            turns: job.messages,
           });
-        const nextGrilloMemoryState = await recordGrilloMemoryTurnAsync({
-          assistantText: assistantContent,
-          persona,
-          scopeKey: stateKey,
-          turns: job.messages,
-        });
-        if (stateKey === activeRelationshipStateKey) {
-          setGrilloMemoryState(nextGrilloMemoryState);
+          if (stateKey === activeRelationshipStateKey) {
+            setGrilloMemoryState(nextGrilloMemoryState);
+          }
+          void refreshMemoryBackendStatus();
+        } else {
+          setMemoryAgentStatus('Stream Mode memory gate kept this Twitch turn short-term only.');
         }
-        void refreshMemoryBackendStatus();
       } catch (error) {
         speechPlayer.cancel?.();
         const message = getAiErrorMessage(error, 'chat');
@@ -5669,7 +5685,7 @@ function App() {
   const handleDirectTwitchAiMessage = useCallback(
     (message: DirectTwitchChatMessage) => {
       const currentTwitchSettings = twitchSettingsRef.current;
-      if (!currentTwitchSettings.aiEnabled) {
+      if (!currentTwitchSettings.streamModeEnabled || !currentTwitchSettings.aiEnabled) {
         return;
       }
 
@@ -5746,20 +5762,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || !DIRECT_TWITCH_CHAT_ENABLED) {
+    if (!hydrated || !DIRECT_TWITCH_CHAT_ENABLED || !twitchSettings.streamModeEnabled) {
+      if (hydrated && DIRECT_TWITCH_CHAT_ENABLED) {
+        setTwitchConnectionLabel('Off');
+      }
       return;
     }
 
     const client = new DirectTwitchIrcClient(twitchChannel || DIRECT_TWITCH_CHANNEL, {
       onMessage: (message) => {
         const displayTurn = createTwitchChatTurn(message, client.channel, false);
-        recordRawChatMemoryTurns(
-          getTwitchConversationStateKey(
-            client.channel,
-            activePersonaRef.current ?? DEFAULT_PERSONA,
-          ),
-          [displayTurn],
-        );
+        const persona = activePersonaRef.current ?? DEFAULT_PERSONA;
+        const settings = twitchSettingsRef.current;
+        if (shouldIngestChatTurnToGrillo(displayTurn, persona, settings)) {
+          recordRawChatMemoryTurns(getTwitchConversationStateKey(client.channel, persona), [
+            displayTurn,
+          ]);
+        }
         setChatHistory((current) =>
           trimChatHistory([...current, chatTurnToChatMessage(displayTurn)]),
         );
@@ -5792,7 +5811,7 @@ function App() {
         directTwitchClientRef.current = null;
       }
     };
-  }, [hydrated]);
+  }, [hydrated, recordRawChatMemoryTurns, twitchChannel, twitchSettings.streamModeEnabled]);
 
   useEffect(() => {
     if (!STREAM_BOT_WS_ENABLED) {

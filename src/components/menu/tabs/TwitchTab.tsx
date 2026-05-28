@@ -120,6 +120,9 @@ export function TwitchTab({
           <div className="status-copy">
             Commands: <strong>{twitchSettings.commandsEnabled ? 'Enabled' : 'Off'}</strong>
           </div>
+          <div className="status-copy">
+            Stream Mode: <strong>{twitchSettings.streamModeEnabled ? 'On' : 'Local only'}</strong>
+          </div>
         </div>
       </div>
 
@@ -214,6 +217,15 @@ export function TwitchTab({
               {twitchSettings.batchHighSize}/{twitchSettings.batchMaxSize} msgs
             </strong>
           </div>
+        </div>
+        <div className="setting-row">
+          <span>Stream Mode</span>
+          <Toggle
+            checked={twitchSettings.streamModeEnabled}
+            onChange={(checked) =>
+              updateTwitchSettings(setTwitchSettings, { streamModeEnabled: checked })
+            }
+          />
         </div>
         <div className="setting-row">
           <span>AI replies from Twitch</span>
