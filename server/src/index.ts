@@ -102,6 +102,13 @@ type MemoryGrilloManualRunBody = {
   trace?: unknown;
 };
 
+type MemoryGrilloRuntimeBody = {
+  enabled?: unknown;
+  intervalMs?: unknown;
+  reason?: unknown;
+  scopeKey?: unknown;
+};
+
 type MemoryGrilloContextQuery = {
   participantKeys?: unknown;
   query?: unknown;
@@ -1563,6 +1570,59 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'GET' && runtimePath === '/memory/grillo/runtime') {
+    writeJson(response, 200, {
+      ok: true,
+      backend: getLadybugMemoryService().getBackendLabel(),
+      runtime: getGrilloWorkerService().getRuntimeStatus(),
+    });
+    return;
+  }
+
+  if (request.method === 'PUT' && runtimePath === '/memory/grillo/runtime') {
+    try {
+      const body = await readRequestJson<MemoryGrilloRuntimeBody>(request, 128 * 1024);
+      const runtime = getGrilloWorkerService().start({
+        enabled: body.enabled,
+        intervalMs: body.intervalMs,
+      });
+      writeJson(response, 200, {
+        ok: true,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        runtime,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        error: error instanceof Error ? error.message : 'GRILLO runtime update failed.',
+      });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && runtimePath === '/memory/grillo/run/tick') {
+    try {
+      const body = await readRequestJson<MemoryGrilloRuntimeBody>(request, 128 * 1024);
+      const result = await getGrilloWorkerService().runTick({
+        reason: body.reason,
+        scopeKey: body.scopeKey,
+      });
+      writeJson(response, 200, {
+        ok: true,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        result,
+      });
+    } catch (error) {
+      writeJson(response, 200, {
+        ok: false,
+        backend: getLadybugMemoryService().getBackendLabel(),
+        error: error instanceof Error ? error.message : 'GRILLO tick failed.',
+      });
+    }
+    return;
+  }
+
   if (request.method === 'GET' && runtimePath === '/memory/grillo') {
     try {
       const scopeKey = normalizeMemoryScopeKey(url.searchParams.get('scopeKey'));
@@ -2319,6 +2379,7 @@ export async function shutdownStreamBot() {
   }
   shuttingDown = true;
   clearInterval(batchTimer);
+  grilloWorkerService?.stop();
   disposeRuntimeChatProviderCache();
   disposeChatProvider(provider);
   await closeLadybugMemoryService();
@@ -2346,6 +2407,7 @@ function formatHostForUrl(host: string) {
 
 httpServer.listen(config.botPort, config.botHost, () => {
   const urlHost = formatHostForUrl(config.botHost);
+  getGrilloWorkerService().start({ enabled: false });
   console.log(`Web Waifu 4 stream bot listening on http://${urlHost}:${config.botPort}`);
   console.log(`Overlay WebSocket path: ws://${urlHost}:${config.botPort}/ws`);
   console.log(`Twitch chat mode: ${serverTwitchMode} (#${chatSource.channel})`);

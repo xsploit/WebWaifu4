@@ -297,4 +297,75 @@ describe('GrilloWorkerService', () => {
       await memory.close();
     }
   });
+
+  it('starts, stops, and guards backend worker ticks', async () => {
+    const dbPath = join(tmpdir(), `webwaifu4-grillo-runtime-test-${process.pid}-${Date.now()}.db`);
+    dbPaths.push(dbPath);
+    const memory = new LadybugMemoryService(dbPath);
+    let id = 0;
+    let releaseTick: (() => void) | null = null;
+    const grillo = new GrilloWorkerService(
+      memory,
+      () => 1770000000000,
+      () => `runtime-id-${++id}`,
+      async () => {
+        await new Promise<void>((resolve) => {
+          releaseTick = resolve;
+        });
+        return { noOpReason: 'test_tick_noop', writes: 0 };
+      },
+    );
+
+    try {
+      expect(grillo.start({ enabled: true, intervalMs: 5000 })).toMatchObject({
+        enabled: true,
+        intervalMs: 5000,
+        started: true,
+      });
+
+      const firstTick = grillo.runTick({
+        reason: 'manual_test',
+        scopeKey: 'local:persona:hikari-chan',
+      });
+      const guardedTick = await grillo.runTick({
+        reason: 'manual_test',
+        scopeKey: 'local:persona:hikari-chan',
+      });
+
+      expect(guardedTick).toMatchObject({
+        noOpReason: 'tick_already_running',
+        running: true,
+        writes: 0,
+      });
+
+      releaseTick?.();
+      expect(await firstTick).toMatchObject({
+        noOpReason: 'test_tick_noop',
+        reason: 'manual_test',
+        running: false,
+        tickId: 'runtime-id-1',
+        writes: 0,
+      });
+
+      const state = await memory.getGrilloSingleton<Record<string, unknown>>('memory_worker_state');
+      expect(state).toMatchObject({
+        lastNoOpReason: 'test_tick_noop',
+        lastTickId: 'runtime-id-1',
+        scopeKey: 'local:persona:hikari-chan',
+      });
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.activities[0]).toMatchObject({
+        beatType: 'worker_tick',
+        responseText: 'GRILLO tick no-op: test_tick_noop',
+      });
+      expect(grillo.stop()).toMatchObject({
+        enabled: false,
+        lastNoOpReason: 'stopped',
+        started: false,
+      });
+    } finally {
+      grillo.stop();
+      await memory.close();
+    }
+  });
 });

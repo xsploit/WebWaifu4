@@ -27,17 +27,16 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 ## Immediate Next Slice
 
-Do this before broader autonomous worker work:
+Do this before wiring the real autonomous worker prompt:
 
-1. Add the backend worker-tool foundation against Ladybug:
-   - memory read/search/list
-   - candidate write
-   - diary write
-   - memory slot/block write
-   - profile patch
-   - archival semantic insert
-2. Record worker-tool telemetry in GRILLO activity rows.
-3. Add one focused backend test proving tool writes are visible in the context packet.
+1. Add backend GRILLO runtime lifecycle:
+   - start with the backend
+   - stop on backend shutdown
+   - expose runtime status
+   - expose a manual tick endpoint
+   - guard against overlapping ticks
+2. Persist worker runtime state in Ladybug.
+3. Record no-op tick activity so the UI/API can explain why nothing happened.
 4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 5. Commit only the intended files.
 
@@ -83,6 +82,7 @@ Progress note:
 - 2026-05-28: Wired completed chat replies to `/memory/grillo/turn` through the Ladybug memory client. The app records the model-visible prompt plus parsed assistant reply as native GRILLO turn events without blocking TTS/UI playback.
 - 2026-05-28: Added `/memory/grillo/context` for canonical Ladybug GRILLO context packets and threaded that packet into the POML-rendered chat prompt. The Memory UI now shows the exact last injected native packet.
 - 2026-05-28: Added a backend worker-tool foundation for read/search/list, candidate writes, diary writes, memory slot/block writes, profile patches, and archival semantic inserts. Tool telemetry is recorded in GRILLO activity rows, and focused service tests prove tool writes feed the context packet.
+- 2026-05-28: Added backend GRILLO runtime lifecycle, `/memory/grillo/runtime`, `/memory/grillo/run/tick`, Ladybug `memory_worker_state`, shutdown cleanup, no-op tick activity, and overlap guarding.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -90,12 +90,12 @@ Progress note:
 - [x] Add backend endpoints for native turn ingest and manual GRILLO writes.
 - [x] Wire completed local/Twitch assistant reply pairs into backend turn ingest.
 - [ ] Add backend service lifecycle:
-  - [ ] start with backend
-  - [ ] stop on backend shutdown
-  - [ ] no orphan timers
+  - [x] start with backend
+  - [x] stop on backend shutdown
+  - [x] no orphan timers
   - [ ] no second backend
-- [ ] Implement worker state in Ladybug.
-- [ ] Implement tick guard so only one GRILLO tick runs at a time.
+- [x] Implement worker state in Ladybug.
+- [x] Implement tick guard so only one GRILLO tick runs at a time.
 - [ ] Implement tasks:
   - [ ] extraction
   - [ ] reflection beat
@@ -107,7 +107,7 @@ Progress note:
   - [ ] compaction
   - [ ] debrief/recovery
 - [ ] Add run traces for every task.
-- [ ] Add clear status for no-op runs.
+- [x] Add clear status for no-op runs.
 
 ## Phase 3 - Worker Tools
 

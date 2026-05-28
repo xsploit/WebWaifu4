@@ -82,12 +82,132 @@ export type GrilloWorkerToolExecution = {
   telemetryId: string;
 };
 
+export type GrilloWorkerRuntimeOptions = {
+  enabled?: unknown;
+  intervalMs?: unknown;
+};
+
+export type GrilloWorkerTickInput = {
+  reason?: unknown;
+  scopeKey?: unknown;
+};
+
+export type GrilloWorkerTickResult = {
+  durationMs: number;
+  noOpReason: string;
+  ok: boolean;
+  reason: string;
+  running: boolean;
+  scopeKey: string;
+  tickId: string;
+  writes: number;
+};
+
+type GrilloWorkerRuntimeState = {
+  enabled: boolean;
+  intervalMs: number;
+  lastNoOpReason: string;
+  lastTickAt: number;
+  lastTickDurationMs: number;
+  lastTickId: string;
+  lastTickReason: string;
+  running: boolean;
+  started: boolean;
+  startedAt: number;
+};
+
+type GrilloWorkerTickTask = (input: {
+  reason: string;
+  scopeKey: string;
+}) => Promise<{
+  noOpReason?: string;
+  writes?: number;
+}>;
+
 export class GrilloWorkerService {
+  private activeTickPromise: Promise<GrilloWorkerTickResult> | null = null;
+  private runtime: GrilloWorkerRuntimeState = {
+    enabled: false,
+    intervalMs: 60_000,
+    lastNoOpReason: 'not_started',
+    lastTickAt: 0,
+    lastTickDurationMs: 0,
+    lastTickId: '',
+    lastTickReason: '',
+    running: false,
+    started: false,
+    startedAt: 0,
+  };
+  private tickTimer: NodeJS.Timeout | null = null;
+
   constructor(
     private readonly memory: LadybugMemoryService,
     private readonly nowMs: () => number = () => Date.now(),
     private readonly idFactory: () => string = () => randomUUID(),
+    private readonly tickTask: GrilloWorkerTickTask = async () => ({
+      noOpReason: 'worker_tasks_not_wired',
+      writes: 0,
+    }),
   ) {}
+
+  start(options: GrilloWorkerRuntimeOptions = {}) {
+    const intervalMs = clampInteger(options.intervalMs, 5_000, 60 * 60 * 1000, this.runtime.intervalMs);
+    const enabled = options.enabled === true;
+    if (!this.runtime.started) {
+      this.runtime.startedAt = this.nowMs();
+    }
+    this.runtime = {
+      ...this.runtime,
+      enabled,
+      intervalMs,
+      lastNoOpReason: enabled ? this.runtime.lastNoOpReason : 'disabled',
+      started: true,
+    };
+    this.resetTimer();
+    return this.getRuntimeStatus();
+  }
+
+  stop() {
+    this.resetTimer();
+    this.runtime = {
+      ...this.runtime,
+      enabled: false,
+      lastNoOpReason: 'stopped',
+      running: Boolean(this.activeTickPromise),
+      started: false,
+    };
+    return this.getRuntimeStatus();
+  }
+
+  getRuntimeStatus() {
+    return {
+      ...this.runtime,
+      running: Boolean(this.activeTickPromise),
+    };
+  }
+
+  runTick(input: GrilloWorkerTickInput = {}) {
+    if (this.activeTickPromise) {
+      const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
+      const reason = normalizeText(input.reason) || 'manual';
+      return Promise.resolve({
+        durationMs: 0,
+        noOpReason: 'tick_already_running',
+        ok: true,
+        reason,
+        running: true,
+        scopeKey,
+        tickId: '',
+        writes: 0,
+      } satisfies GrilloWorkerTickResult);
+    }
+    this.activeTickPromise = this.runTickNow(input).finally(() => {
+      this.activeTickPromise = null;
+      this.runtime.running = false;
+    });
+    this.runtime.running = true;
+    return this.activeTickPromise;
+  }
 
   async ingestTurnPair(input: GrilloTurnIngestInput) {
     const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
@@ -321,6 +441,68 @@ export class GrilloWorkerService {
       });
       return { durationMs, error: message, name, ok: false, result, telemetryId };
     }
+  }
+
+  private resetTimer() {
+    if (this.tickTimer) {
+      clearInterval(this.tickTimer);
+      this.tickTimer = null;
+    }
+    if (this.runtime.started && this.runtime.enabled) {
+      this.tickTimer = setInterval(() => {
+        void this.runTick({ reason: 'interval' });
+      }, this.runtime.intervalMs);
+      this.tickTimer.unref?.();
+    }
+  }
+
+  private async runTickNow(input: GrilloWorkerTickInput): Promise<GrilloWorkerTickResult> {
+    const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
+    const reason = normalizeText(input.reason) || 'manual';
+    const startedAt = this.nowMs();
+    const tickId = this.idFactory();
+    const taskResult = await this.tickTask({ reason, scopeKey });
+    const writes = clampInteger(taskResult.writes, 0, 100_000, 0);
+    const noOpReason = writes > 0 ? '' : normalizeText(taskResult.noOpReason) || 'no_writes';
+    const durationMs = Math.max(0, this.nowMs() - startedAt);
+    this.runtime = {
+      ...this.runtime,
+      lastNoOpReason: noOpReason,
+      lastTickAt: this.nowMs(),
+      lastTickDurationMs: durationMs,
+      lastTickId: tickId,
+      lastTickReason: reason,
+      running: true,
+    };
+    await this.memory.setGrilloSingleton('memory_worker_state', {
+      ...this.runtime,
+      lastTickId: tickId,
+      scopeKey,
+      updatedAt: this.nowMs(),
+    });
+    await this.memory.appendGrilloRecord('grillo_activity_log', {
+      activity_id: tickId,
+      beat_type: 'worker_tick',
+      created_at: this.nowMs(),
+      duration_ms: durationMs,
+      no_op_reason: noOpReason,
+      ok: true,
+      reason,
+      response_text: noOpReason ? `GRILLO tick no-op: ${noOpReason}` : `GRILLO tick wrote ${writes} update(s).`,
+      scope_key: scopeKey,
+      user_id: scopeKey,
+      writes,
+    });
+    return {
+      durationMs,
+      noOpReason,
+      ok: true,
+      reason,
+      running: false,
+      scopeKey,
+      tickId,
+      writes,
+    };
   }
 
   async buildContextPacket(input: GrilloContextPacketInput): Promise<GrilloContextPacket> {
