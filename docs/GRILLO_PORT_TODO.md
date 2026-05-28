@@ -51,14 +51,14 @@ Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, GRILLO memo
 Current slice definition of done:
 
 - [ ] Electron startup has one clear backend owner path.
-- [ ] Renderer receives the actual backend URL/port.
+- [x] Renderer receives the actual backend URL/port.
 - [ ] Busy preferred port path is deterministic and tested.
-- [ ] App exit shuts down owned backend resources.
-- [ ] Packaged smoke proves backend health and GRILLO runtime status.
-- [ ] `npm run build` passes.
-- [ ] `npm run desktop:pack` rebuilds the EXE.
-- [ ] `git diff --check` passes.
-- [ ] Commit and push only the intended lifecycle files.
+- [x] App exit shuts down owned backend resources.
+- [x] Packaged smoke proves backend health and GRILLO runtime status.
+- [x] `npm run build` passes.
+- [x] `npm run desktop:pack` rebuilds the EXE.
+- [x] `git diff --check` passes.
+- [x] Commit and push only the intended lifecycle files.
 
 ## Phase 1 - Ladybug GRILLO Store
 
@@ -115,6 +115,7 @@ Progress note:
 - 2026-05-28: Renamed reset controls to explicit `Clear GRILLO Memory` and `Reset Chat Context` actions. The UI now states that chat-context reset keeps durable memory while GRILLO clear removes the current scope's relationship, diary, GRILLO, and semantic recall.
 - 2026-05-28: Added backend GRILLO emotion read/update worker tools. Emotion state now upserts one canonical Ladybug record per scope, replaces graph intensities instead of duplicating them, and records normal worker-tool telemetry.
 - 2026-05-28: Added Local/Stream mode GRILLO intake gating. Twitch is local-only by default, Stream Mode must be enabled before IRC starts, raw Twitch turns only feed durable memory when they are mentions or trusted roles, and batch summaries can still feed GRILLO without storing every low-signal chat line.
+- 2026-05-28: Extended Electron backend warmup and packaged UI smoke coverage to require `/memory/grillo/runtime` in addition to `/health`. The packaged smoke now proves the renderer sees the backend port, backend health responds, GRILLO runtime responds, and the backend port closes after Electron exits.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -244,13 +245,13 @@ Progress note:
 ## Phase 8 - Backend/Electron Lifecycle
 
 - [ ] Ensure Electron starts exactly one backend.
-- [ ] Ensure frontend receives the backend URL/port correctly.
+- [x] Ensure frontend receives the backend URL/port correctly.
 - [ ] If port is busy:
   - [ ] reuse only if it is our owned compatible backend
   - [ ] otherwise choose a new port and pass it to frontend
 - [ ] Ensure app exit shuts down backend, GRILLO timers, TTS bridges, and sockets.
-- [ ] Add packaged app smoke test for backend health and GRILLO status.
-- [ ] Compile the EXE after each meaningful implementation slice.
+- [x] Add packaged app smoke test for backend health and GRILLO status.
+- [x] Compile the EXE after each meaningful implementation slice.
 
 ## Phase 9 - Verification Gates
 
@@ -270,7 +271,7 @@ Progress note:
   - [ ] memory status
   - [ ] graph summary
   - [ ] chat reply with injected GRILLO context
-  - [ ] packaged EXE starts and exits cleanly
+  - [x] packaged EXE starts and exits cleanly
 - [ ] Commit after each passing slice.
 
 ## First Slice

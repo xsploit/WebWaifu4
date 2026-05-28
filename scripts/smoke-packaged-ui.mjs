@@ -309,6 +309,10 @@ try {
     cdp,
     `fetch('http://127.0.0.1:' + (${JSON.stringify(snapshot.backendPort)} || '8797') + '/health').then(r => r.json()).then(j => JSON.stringify(j))`,
   ).then(JSON.parse);
+  const grilloRuntime = await evaluateJson(
+    cdp,
+    `fetch('http://127.0.0.1:' + (${JSON.stringify(snapshot.backendPort)} || '8797') + '/memory/grillo/runtime').then(r => r.json()).then(j => JSON.stringify(j))`,
+  ).then(JSON.parse);
 
   const badEvents = summarizeBadEvents(cdp.events).filter(
     (line) =>
@@ -323,6 +327,7 @@ try {
     {
       backendPort: snapshot.backendPort,
       desktopBridge: snapshot.isDesktop,
+      grilloRuntime: Boolean(grilloRuntime.ok),
       health: Boolean(health.ok),
       mode: snapshot.mode,
       rendererErrors: badEvents.length,
@@ -337,6 +342,9 @@ try {
   }
   if (!health.ok) {
     throw new Error('Renderer could not reach packaged backend health.');
+  }
+  if (!grilloRuntime.ok) {
+    throw new Error('Renderer could not reach packaged GRILLO runtime status.');
   }
   if (badText) {
     throw new Error('Renderer showed known crash text.');

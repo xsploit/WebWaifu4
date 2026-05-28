@@ -167,6 +167,7 @@ function requestBackendJson(port, requestPath, timeout = 1500) {
 
 async function warmUpBackendRuntime(port) {
   await requestBackendJson(port, '/memory/status');
+  await requestBackendJson(port, '/memory/grillo/runtime');
   await requestBackendJson(port, '/memory/relationships');
 }
 
