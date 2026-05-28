@@ -122,6 +122,7 @@ Progress note:
 - 2026-05-28: Made the native Ladybug GRILLO context packet authoritative for prompt memory lanes. When the packet is present, old browser relationship memory, diary thoughts, semantic recall, and duplicate channel history are not appended into the POML memory block.
 - 2026-05-28: Split the embedding lane into provider and browser/local model configuration. The local transformers.js worker accepts and caches per-model extractors, prompt recall/semantic save/worker memory paths thread the selected local model id, the Context tab exposes both fields plus a Run Semantic Indexing button, and the backend `/memory/grillo/run/tick` respects `embeddingMode` so `browser` mode no longer silently calls provider embeddings (existing `semantic_indexing_requires_embedding` no-op path covers it).
 - 2026-05-28: Added token-backed Electron/backend ownership reuse. Packaged Electron now reuses a busy preferred port only when `/health` proves a compatible WebWaifu backend with the same owner token, exposes `backendReused` to the renderer, and can shut down a reused owned backend through a token-protected local shutdown route. New packaged smoke coverage proves owned reuse, and existing fallback smoke still proves non-owned busy ports fall forward.
+- 2026-05-28: Added a G.R.I.L.L.O. lane snapshot to the Memory tab. It now shows current Local/Queue/Batch mode, chat lane provider/model/transport/state mode, GRILLO lane provider/model/tool-round cap, embedding lane source/provider/local models, and turn cadence across current/all scopes.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -223,11 +224,11 @@ Progress note:
 - [x] Rename/rework Memory Worker panel into G.R.I.L.L.O.
 - [ ] Show:
   - [x] enabled state
-  - [ ] current mode
+  - [x] current mode
   - [x] backend status
-  - [ ] lane provider/model values
+  - [x] lane provider/model values
   - [x] beat interval
-  - [ ] turn cadence
+  - [x] turn cadence
   - [x] last run
   - [x] last beat type
   - [x] last run reason/no-op reason

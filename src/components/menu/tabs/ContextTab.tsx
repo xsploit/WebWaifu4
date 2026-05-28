@@ -22,6 +22,7 @@ type ContextTabProps = {
   availableModels: string[];
   backendGrilloTickBusy: boolean;
   chatDraftLength: number;
+  currentModeLabel: string;
   messageCount: number;
   onClearChat: () => void;
   onClearDraft: () => void;
@@ -55,6 +56,7 @@ export function ContextTab({
   availableModels,
   backendGrilloTickBusy,
   chatDraftLength,
+  currentModeLabel,
   messageCount,
   onClearChat,
   onClearDraft,
@@ -120,6 +122,8 @@ export function ContextTab({
       ? new Date(grilloRuntimeStatus.lastTickAt).toLocaleTimeString()
       : '';
   const selectedMemoryModel = aiSettings.memoryAgentModel.trim();
+  const grilloLaneModel = selectedMemoryModel || aiSettings.model;
+  const turnCadenceLabel = `${currentPendingWorkerTurns}/${aiSettings.memoryAgentIntervalMessages} current scope`;
   const memoryModelOptions = filterSafeProviderModels(
     selectedMemoryModel
       ? Array.from(new Set([...availableModels, selectedMemoryModel]))
@@ -234,6 +238,28 @@ export function ContextTab({
         <div className="field-hint">
           Counts normalized local chat and Twitch chat messages. The worker runs from the same queue
           as the manual button after this many messages land in the current memory scope.
+        </div>
+        <div className="memory-entry">
+          <div className="memory-entry-header">
+            <strong>G.R.I.L.L.O. lane snapshot</strong>
+            <span>{currentModeLabel}</span>
+          </div>
+          <p>
+            Chat lane: {aiSettings.llmProvider} / {aiSettings.model} /{' '}
+            {aiSettings.aiTransportMode} / {aiSettings.openAiStateMode}
+          </p>
+          <p>
+            GRILLO lane: {aiSettings.llmProvider} / {grilloLaneModel} / max tool rounds{' '}
+            {aiSettings.maxToolRounds}
+          </p>
+          <p>
+            Embedding lane: {aiSettings.embeddingMode} / provider {aiSettings.embeddingModel} /
+            local {aiSettings.embeddingLocalModel}
+          </p>
+          <p>
+            Turn cadence: {turnCadenceLabel} / {totalPendingWorkerTurns} all scopes /{' '}
+            {messageCount} chat messages / draft {chatDraftLength} chars
+          </p>
         </div>
         <div className="btn-row">
           <button

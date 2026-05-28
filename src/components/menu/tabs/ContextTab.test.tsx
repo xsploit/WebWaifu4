@@ -12,6 +12,7 @@ describe('ContextTab', () => {
         availableModels={['gpt-5-nano']}
         backendGrilloTickBusy={false}
         chatDraftLength={0}
+        currentModeLabel="Local"
         grilloRuntimeStatus={{
           enabled: false,
           intervalMs: 60000,
@@ -275,6 +276,12 @@ describe('ContextTab', () => {
     expect(html).toContain('worker_tasks_not_wired');
     expect(html).toContain('/ reflection / tools 2');
     expect(html).toContain('G.R.I.L.L.O.');
+    expect(html).toContain('G.R.I.L.L.O. lane snapshot');
+    expect(html).toContain('Local');
+    expect(html).toContain('Chat lane: vercel-gateway / openai/gpt-5-nano');
+    expect(html).toContain('GRILLO lane: vercel-gateway / openai/gpt-5-nano / max tool rounds 15');
+    expect(html).toContain('Embedding lane: browser');
+    expect(html).toContain('Turn cadence: 2/7 current scope / 2 all scopes / 1 chat messages');
     expect(html).toContain('GRILLO Trace Inspector');
     expect(html).toContain('Last worker prompt');
     expect(html).toContain('New messages to process for Hikari.');
@@ -329,6 +336,7 @@ describe('ContextTab', () => {
         availableModels={['gpt-5-mini', 'o1-pro-2025-03-19']}
         backendGrilloTickBusy={false}
         chatDraftLength={0}
+        currentModeLabel="Queue"
         grilloRuntimeStatus={null}
         grilloMemoryState={createDefaultGrilloMemoryState('local:persona:hikari-context')}
         memoryAgentBusy={false}

@@ -358,6 +358,7 @@ export function SettingsPanel({
         availableModels={availableModels}
         backendGrilloTickBusy={backendGrilloTickBusy}
         chatDraftLength={chatDraftLength}
+        currentModeLabel={twitchAiModeLabel}
         messageCount={messageCount}
         onClearChat={onClearChat}
         onClearDraft={onClearDraft}
