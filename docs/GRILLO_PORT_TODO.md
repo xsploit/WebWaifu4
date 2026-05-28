@@ -74,10 +74,13 @@ Progress note:
 - 2026-05-28: Added native Ladybug GRILLO record primitives for append/read/singleton/slot writes, plus graph mirrors for turns, candidates, diary, slots, activity, and worker traces. Focused Ladybug memory test passes.
 - 2026-05-28: Exposed native GRILLO turns, slots, slot patches, activity rows, and worker traces through `/memory/graph` and the Memory UI. Focused Ladybug and ContextTab tests pass.
 - 2026-05-28: Added backend-owned GRILLO service slice with `/memory/grillo/turn` and `/memory/grillo/run/manual`. It writes turn pairs, manual candidate/diary/slot updates, activity rows, and worker traces through Ladybug. Focused service tests and full build pass.
+- 2026-05-28: Wired completed chat replies to `/memory/grillo/turn` through the Ladybug memory client. The app records the model-visible prompt plus parsed assistant reply as native GRILLO turn events without blocking TTS/UI playback.
 
 ## Phase 2 - Backend GRILLO Service
 
 - [ ] Move GRILLO worker ownership to the backend.
+- [x] Add backend endpoints for native turn ingest and manual GRILLO writes.
+- [x] Wire completed local/Twitch assistant reply pairs into backend turn ingest.
 - [ ] Add backend service lifecycle:
   - [ ] start with backend
   - [ ] stop on backend shutdown

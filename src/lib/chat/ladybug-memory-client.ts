@@ -115,6 +115,19 @@ export type LadybugMemoryGraphSummary = {
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
 };
 
+export type LadybugGrilloTurnPairInput = {
+  assistantName?: string;
+  assistantText?: string;
+  authorName?: string;
+  channelId?: string;
+  createdAt?: number;
+  interfacePath?: string;
+  participantKey?: string;
+  scopeKey: string;
+  source?: string;
+  userText?: string;
+};
+
 type LadybugResponse<T> = T & {
   backend?: string;
   error?: string;
@@ -150,6 +163,19 @@ export async function deleteLadybugGrilloState(scopeKey: string) {
     `/memory/grillo?scopeKey=${encodeURIComponent(scopeKey)}`,
     { method: 'DELETE' },
   );
+  return response?.ok === true;
+}
+
+export async function saveLadybugGrilloTurnPair(input: LadybugGrilloTurnPairInput) {
+  const response = await requestLadybugMemory<{
+    scopeKey: string;
+    turnIds: string[];
+    writes: number;
+  }>('/memory/grillo/turn', {
+    body: JSON.stringify(input),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
   return response?.ok === true;
 }
 

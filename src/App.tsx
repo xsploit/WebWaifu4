@@ -56,7 +56,9 @@ import {
   loadLadybugMemoryGraph,
   loadLadybugMemoryStatus,
   loadLadybugRelationshipMemories,
+  saveLadybugGrilloTurnPair,
   saveLadybugRelationshipMemories,
+  type LadybugGrilloTurnPairInput,
   type LadybugMemoryGraphSummary,
   type LadybugMemoryStatus,
 } from './lib/chat/ladybug-memory-client';
@@ -1283,6 +1285,38 @@ async function rememberSemanticTurn(
     scopeKey,
     userText,
   });
+}
+
+function buildLadybugGrilloTurnPairInput(
+  job: ChatAiJob,
+  stateKey: string,
+  userText: string,
+  assistantText: string,
+  persona: PersonaProfile,
+): LadybugGrilloTurnPairInput {
+  const representativeTurn = job.messages[0] ?? null;
+  const isBatch = job.mode === 'batch';
+  const source =
+    representativeTurn?.source ?? (stateKey.startsWith('twitch:') ? 'twitch' : 'local');
+  const channelId = representativeTurn?.channel ?? (source === 'twitch' ? 'unknown' : 'local');
+  return {
+    assistantName: persona.name,
+    assistantText,
+    authorName: isBatch
+      ? `Chat batch (${job.messages.length})`
+      : representativeTurn?.displayName ?? persona.userNickname,
+    channelId,
+    createdAt: representativeTurn?.timestamp ?? Date.now(),
+    interfacePath: `${source}/${channelId}`,
+    participantKey: isBatch
+      ? `${stateKey}:chat-batch`
+      : representativeTurn
+        ? getGrilloParticipantKey(representativeTurn)
+        : stateKey,
+    scopeKey: stateKey,
+    source,
+    userText,
+  };
 }
 
 function normalizeCommandSelector(value: string) {
@@ -5370,6 +5404,17 @@ function App() {
           })
           .catch((error) => {
             console.warn('[App] Failed to record semantic chat memory turn', error);
+          });
+        void saveLadybugGrilloTurnPair(
+          buildLadybugGrilloTurnPairInput(job, stateKey, userContent, assistantContent, persona),
+        )
+          .then((saved) => {
+            if (saved) {
+              void refreshMemoryBackendStatus();
+            }
+          })
+          .catch((error) => {
+            console.warn('[App] Failed to record native GRILLO turn pair', error);
           });
         const nextGrilloMemoryState = await recordGrilloMemoryTurnAsync({
           assistantText: assistantContent,
