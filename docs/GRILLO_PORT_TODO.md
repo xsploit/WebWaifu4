@@ -72,6 +72,7 @@ Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron
 Progress note:
 
 - 2026-05-28: Added native Ladybug GRILLO record primitives for append/read/singleton/slot writes, plus graph mirrors for turns, candidates, diary, slots, activity, and worker traces. Focused Ladybug memory test passes.
+- 2026-05-28: Exposed native GRILLO turns, slots, slot patches, activity rows, and worker traces through `/memory/graph` and the Memory UI. Focused Ladybug and ContextTab tests pass.
 
 ## Phase 2 - Backend GRILLO Service
 

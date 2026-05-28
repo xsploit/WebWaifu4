@@ -135,6 +135,34 @@ describe('LadybugMemoryService', () => {
       expect(status.grilloActivities).toBe(1);
       expect(status.workerContextTraces).toBe(1);
       expect(graph.participants[0]?.id).toBe(participantKey);
+      expect(graph.recent.turns[0]).toMatchObject({
+        authorName: 'Subsect',
+        role: 'user',
+        scopeKey,
+        text: 'remember that I like clean GRILLO memory',
+      });
+      expect(graph.recent.slots[0]).toMatchObject({
+        itemCount: 1,
+        slotName: 'preferences',
+        scopeKey,
+      });
+      expect(graph.recent.slotPatches[0]).toMatchObject({
+        operation: 'merge',
+        slotId: 'slot-native-1',
+        slotName: 'preferences',
+      });
+      expect(graph.recent.activities[0]).toMatchObject({
+        beatType: 'relationship',
+        responseText: 'Wrote candidate and diary.',
+        scopeKey,
+      });
+      expect(graph.recent.traces[0]).toMatchObject({
+        beatType: 'relationship',
+        model: 'zai/glm-4.7-flash',
+        provider: 'openrouter',
+        scopeKey,
+        taskType: 'extraction',
+      });
       expect(graph.edges.map((edge) => edge.relation)).toEqual(
         expect.arrayContaining([
           'HAS_TURN',

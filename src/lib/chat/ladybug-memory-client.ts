@@ -10,8 +10,11 @@ export type LadybugMemoryStatus = {
   diaryEntries?: number;
   emotionIntensities?: number;
   emotionStates?: number;
+  grilloActivities?: number;
   grilloScopes?: number;
   memoryBlocks?: number;
+  memorySlotPatches?: number;
+  memorySlots?: number;
   participants?: number;
   personas?: number;
   relationshipFacts?: number;
@@ -23,6 +26,8 @@ export type LadybugMemoryStatus = {
   semanticScopes?: number;
   semanticVectors?: number;
   snapshots?: number;
+  turnEvents?: number;
+  workerContextTraces?: number;
 };
 
 export type LadybugMemoryGraphSummary = {
@@ -30,6 +35,13 @@ export type LadybugMemoryGraphSummary = {
   participants: Array<{ channel: string; displayName: string; id: string; source: string }>;
   personas: Array<{ id: string; name: string }>;
   recent: {
+    activities: Array<{
+      beatType: string;
+      createdAt: number;
+      id: string;
+      responseText: string;
+      scopeKey: string;
+    }>;
     blocks: Array<{
       blockName: string;
       id: string;
@@ -63,6 +75,41 @@ export type LadybugMemoryGraphSummary = {
     }>;
     relationshipFacts: Array<{ id: string; scopeKey: string; text: string }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
+    slotPatches: Array<{
+      createdAt: number;
+      id: string;
+      operation: string;
+      participantKey: string;
+      scopeKey: string;
+      slotId: string;
+      slotName: string;
+    }>;
+    slots: Array<{
+      id: string;
+      itemCount: number;
+      items: string[];
+      participantKey: string;
+      slotName: string;
+      scopeKey: string;
+      updatedAt: number;
+    }>;
+    traces: Array<{
+      beatType: string;
+      createdAt: number;
+      id: string;
+      model: string;
+      provider: string;
+      scopeKey: string;
+      taskType: string;
+    }>;
+    turns: Array<{
+      authorName: string;
+      createdAt: number;
+      id: string;
+      role: string;
+      scopeKey: string;
+      text: string;
+    }>;
     vectors: Array<{ id: string; personaId: string; text: string }>;
   };
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;

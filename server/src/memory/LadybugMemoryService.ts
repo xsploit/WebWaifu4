@@ -23,6 +23,13 @@ export type LadybugMemoryGraphSummary = {
   participants: Array<{ channel: string; displayName: string; id: string; source: string }>;
   personas: Array<{ id: string; name: string }>;
   recent: {
+    activities: Array<{
+      beatType: string;
+      createdAt: number;
+      id: string;
+      responseText: string;
+      scopeKey: string;
+    }>;
     blocks: Array<{
       blockName: string;
       id: string;
@@ -56,6 +63,41 @@ export type LadybugMemoryGraphSummary = {
     }>;
     relationshipFacts: Array<{ id: string; scopeKey: string; text: string }>;
     semantic: Array<{ id: string; personaId: string; text: string }>;
+    slotPatches: Array<{
+      createdAt: number;
+      id: string;
+      operation: string;
+      participantKey: string;
+      scopeKey: string;
+      slotId: string;
+      slotName: string;
+    }>;
+    slots: Array<{
+      id: string;
+      itemCount: number;
+      items: string[];
+      participantKey: string;
+      slotName: string;
+      scopeKey: string;
+      updatedAt: number;
+    }>;
+    traces: Array<{
+      beatType: string;
+      createdAt: number;
+      id: string;
+      model: string;
+      provider: string;
+      scopeKey: string;
+      taskType: string;
+    }>;
+    turns: Array<{
+      authorName: string;
+      createdAt: number;
+      id: string;
+      role: string;
+      scopeKey: string;
+      text: string;
+    }>;
     vectors: Array<{ id: string; personaId: string; text: string }>;
   };
   scopes: Array<{ channel: string; id: string; personaId: string; source: string }>;
@@ -618,9 +660,14 @@ export class LadybugMemoryService {
         scopes,
         participants,
         personas,
+        turns,
         candidates,
         blocks,
+        slots,
+        slotPatches,
         diary,
+        activities,
+        traces,
         emotions,
         emotionIntensities,
         relationships,
@@ -702,13 +749,28 @@ export class LadybugMemoryService {
         ),
         this.all('MATCH (p:Persona) RETURN p.id AS id, p.name AS name LIMIT 12'),
         this.all(
+          'MATCH (m:TurnEvent) RETURN m.id AS id, m.scopeKey AS scopeKey, m.role AS role, m.content AS content, m.authorName AS authorName, m.createdAt AS createdAt LIMIT 8',
+        ),
+        this.all(
           'MATCH (m:MemoryCandidate) RETURN m.id AS id, m.participantKey AS participantKey, m.type AS type, m.summary AS summary LIMIT 8',
         ),
         this.all(
           'MATCH (m:MemoryBlock) RETURN m.id AS id, m.scopeKey AS scopeKey, m.participantKey AS participantKey, m.blockName AS blockName, m.itemsJson AS itemsJson LIMIT 8',
         ),
         this.all(
+          'MATCH (m:MemorySlot) RETURN m.id AS id, m.scopeKey AS scopeKey, m.participantKey AS participantKey, m.slotName AS slotName, m.contentJson AS contentJson, m.updatedAt AS updatedAt LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:MemorySlotPatch) RETURN m.id AS id, m.scopeKey AS scopeKey, m.participantKey AS participantKey, m.slotId AS slotId, m.slotName AS slotName, m.operation AS operation, m.createdAt AS createdAt LIMIT 8',
+        ),
+        this.all(
           'MATCH (m:DiaryEntry) RETURN m.id AS id, m.participantKey AS participantKey, m.beatType AS beatType, m.summary AS summary LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:GrilloActivity) RETURN m.id AS id, m.scopeKey AS scopeKey, m.beatType AS beatType, m.responseText AS responseText, m.createdAt AS createdAt LIMIT 8',
+        ),
+        this.all(
+          'MATCH (m:WorkerContextTrace) RETURN m.id AS id, m.scopeKey AS scopeKey, m.taskType AS taskType, m.beatType AS beatType, m.provider AS provider, m.model AS model, m.createdAt AS createdAt LIMIT 8',
         ),
         this.all(
           'MATCH (m:EmotionState) RETURN m.id AS id, m.scopeKey AS scopeKey, m.lastSignalSource AS lastSignalSource, m.updatedAt AS updatedAt LIMIT 8',
@@ -766,6 +828,13 @@ export class LadybugMemoryService {
           name: stringValue(row['name']),
         })),
         recent: {
+          activities: activities.map((row) => ({
+            beatType: stringValue(row['beatType']),
+            createdAt: Number(row['createdAt'] ?? 0),
+            id: stringValue(row['id']),
+            responseText: stringValue(row['responseText']),
+            scopeKey: stringValue(row['scopeKey']),
+          })),
           blocks: blocks.map((row) => ({
             blockName: stringValue(row['blockName']),
             id: stringValue(row['id']),
@@ -819,6 +888,45 @@ export class LadybugMemoryService {
             id: stringValue(row['id']),
             personaId: stringValue(row['personaId']),
             text: stringValue(row['text']),
+          })),
+          slotPatches: slotPatches.map((row) => ({
+            createdAt: Number(row['createdAt'] ?? 0),
+            id: stringValue(row['id']),
+            operation: stringValue(row['operation']),
+            participantKey: stringValue(row['participantKey']),
+            scopeKey: stringValue(row['scopeKey']),
+            slotId: stringValue(row['slotId']),
+            slotName: stringValue(row['slotName']),
+          })),
+          slots: slots.map((row) => {
+            const parsedItems = safeJsonParse(stringValue(row['contentJson']));
+            const items = arrayValue(parsedItems).map((item) => stringValue(item)).filter(Boolean);
+            return {
+              id: stringValue(row['id']),
+              itemCount: items.length,
+              items: items.slice(0, 4),
+              participantKey: stringValue(row['participantKey']),
+              slotName: stringValue(row['slotName']),
+              scopeKey: stringValue(row['scopeKey']),
+              updatedAt: Number(row['updatedAt'] ?? 0),
+            };
+          }),
+          traces: traces.map((row) => ({
+            beatType: stringValue(row['beatType']),
+            createdAt: Number(row['createdAt'] ?? 0),
+            id: stringValue(row['id']),
+            model: stringValue(row['model']),
+            provider: stringValue(row['provider']),
+            scopeKey: stringValue(row['scopeKey']),
+            taskType: stringValue(row['taskType']),
+          })),
+          turns: turns.map((row) => ({
+            authorName: stringValue(row['authorName']),
+            createdAt: Number(row['createdAt'] ?? 0),
+            id: stringValue(row['id']),
+            role: stringValue(row['role']),
+            scopeKey: stringValue(row['scopeKey']),
+            text: stringValue(row['content']),
           })),
           vectors: vectors.map((row) => ({
             id: stringValue(row['id']),
@@ -2526,6 +2634,7 @@ function createEmptyGraphSummary(): LadybugMemoryGraphSummary {
     participants: [],
     personas: [],
     recent: {
+      activities: [],
       blocks: [],
       candidates: [],
       diary: [],
@@ -2534,6 +2643,10 @@ function createEmptyGraphSummary(): LadybugMemoryGraphSummary {
       relationships: [],
       relationshipFacts: [],
       semantic: [],
+      slotPatches: [],
+      slots: [],
+      traces: [],
+      turns: [],
       vectors: [],
     },
     scopes: [],

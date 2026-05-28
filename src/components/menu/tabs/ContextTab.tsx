@@ -264,13 +264,28 @@ export function ContextTab({
             Semantic scopes: <strong>{memoryBackendStatus?.semanticScopes ?? 0}</strong>
           </div>
           <div className="status-copy">
+            Turn events: <strong>{memoryBackendStatus?.turnEvents ?? 0}</strong>
+          </div>
+          <div className="status-copy">
             Graph candidates: <strong>{memoryBackendStatus?.candidates ?? 0}</strong>
           </div>
           <div className="status-copy">
             Memory blocks: <strong>{memoryBackendStatus?.memoryBlocks ?? 0}</strong>
           </div>
           <div className="status-copy">
+            Memory slots: <strong>{memoryBackendStatus?.memorySlots ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Slot patches: <strong>{memoryBackendStatus?.memorySlotPatches ?? 0}</strong>
+          </div>
+          <div className="status-copy">
             Graph diary: <strong>{memoryBackendStatus?.diaryEntries ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            GRILLO activities: <strong>{memoryBackendStatus?.grilloActivities ?? 0}</strong>
+          </div>
+          <div className="status-copy">
+            Worker traces: <strong>{memoryBackendStatus?.workerContextTraces ?? 0}</strong>
           </div>
           <div className="status-copy">
             Emotion states: <strong>{memoryBackendStatus?.emotionStates ?? 0}</strong>
@@ -309,9 +324,9 @@ export function ContextTab({
           </div>
         ) : null}
         <div className="field-hint">
-          Local backend mode uses LadybugDB for memory snapshots, vector records, participants,
-          personas, scopes, and graph edges, then falls back to browser IndexedDB if the backend is
-          unavailable.
+          Local backend mode uses LadybugDB for native GRILLO turns, candidates, diary, slots,
+          worker traces, vector records, participants, personas, scopes, and graph edges, then falls
+          back to browser IndexedDB if the backend is unavailable.
         </div>
         {memoryGraphSummary ? (
           <div className="memory-list">
@@ -359,6 +374,17 @@ export function ContextTab({
                 </p>
               </div>
             ) : null}
+            {(memoryGraphSummary.recent.turns ?? []).slice(0, 4).map((turn) => (
+              <div className="memory-entry" key={turn.id}>
+                <div className="memory-entry-header">
+                  <strong>Graph turn</strong>
+                  <span>{turn.role || 'turn'}</span>
+                </div>
+                <p>{turn.authorName || 'unknown author'}</p>
+                <div className="status-copy">{turn.text || 'No turn text captured.'}</div>
+                <div className="status-copy">{turn.scopeKey || 'unknown scope'}</div>
+              </div>
+            ))}
             {memoryGraphSummary.recent.candidates.slice(0, 4).map((candidate) => (
               <div className="memory-entry" key={candidate.id}>
                 <div className="memory-entry-header">
@@ -369,6 +395,30 @@ export function ContextTab({
                 <div className="status-copy">{candidate.summary || 'No candidate summary.'}</div>
               </div>
             ))}
+            {(memoryGraphSummary.recent.slots ?? []).slice(0, 4).map((slot) => (
+              <div className="memory-entry" key={slot.id}>
+                <div className="memory-entry-header">
+                  <strong>{slot.slotName || 'Memory slot'}</strong>
+                  <span>{slot.itemCount} items</span>
+                </div>
+                <p>{slot.participantKey || slot.scopeKey || 'unknown scope'}</p>
+                {slot.items.length > 0 ? (
+                  <div className="status-copy">{slot.items.join(' / ')}</div>
+                ) : null}
+              </div>
+            ))}
+            {(memoryGraphSummary.recent.slotPatches ?? []).slice(0, 4).map((patch) => (
+              <div className="memory-entry" key={patch.id}>
+                <div className="memory-entry-header">
+                  <strong>Slot patch</strong>
+                  <span>{patch.operation || 'patch'}</span>
+                </div>
+                <p>{patch.slotName || patch.slotId || 'unknown slot'}</p>
+                <div className="status-copy">
+                  {patch.participantKey || patch.scopeKey || 'unknown scope'}
+                </div>
+              </div>
+            ))}
             {memoryGraphSummary.recent.diary.slice(0, 4).map((entry) => (
               <div className="memory-entry" key={entry.id}>
                 <div className="memory-entry-header">
@@ -377,6 +427,31 @@ export function ContextTab({
                 </div>
                 <p>{entry.participantKey || 'unknown participant'}</p>
                 <div className="status-copy">{entry.summary || 'No diary summary.'}</div>
+              </div>
+            ))}
+            {(memoryGraphSummary.recent.activities ?? []).slice(0, 4).map((activity) => (
+              <div className="memory-entry" key={activity.id}>
+                <div className="memory-entry-header">
+                  <strong>GRILLO activity</strong>
+                  <span>{activity.beatType || 'beat'}</span>
+                </div>
+                <p>{activity.scopeKey || 'unknown scope'}</p>
+                <div className="status-copy">
+                  {activity.responseText || 'No activity response captured.'}
+                </div>
+              </div>
+            ))}
+            {(memoryGraphSummary.recent.traces ?? []).slice(0, 4).map((trace) => (
+              <div className="memory-entry" key={trace.id}>
+                <div className="memory-entry-header">
+                  <strong>Worker trace</strong>
+                  <span>{trace.taskType || 'task'}</span>
+                </div>
+                <p>{trace.scopeKey || 'unknown scope'}</p>
+                <div className="status-copy">
+                  {[trace.provider, trace.model, trace.beatType].filter(Boolean).join(' / ') ||
+                    'No trace model metadata captured.'}
+                </div>
               </div>
             ))}
             {memoryGraphSummary.recent.relationships.slice(0, 4).map((profile) => (

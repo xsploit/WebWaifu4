@@ -22,8 +22,11 @@ describe('ContextTab', () => {
           diaryEntries: 1,
           emotionIntensities: 2,
           emotionStates: 1,
+          grilloActivities: 1,
           grilloScopes: 1,
           memoryBlocks: 1,
+          memorySlotPatches: 1,
+          memorySlots: 1,
           ok: true,
           participants: 2,
           personas: 1,
@@ -35,6 +38,8 @@ describe('ContextTab', () => {
           semanticScopes: 1,
           semanticVectors: 2,
           snapshots: 3,
+          turnEvents: 1,
+          workerContextTraces: 1,
         }}
         memoryEmbeddingDebug={{
           inputChars: 42,
@@ -51,6 +56,15 @@ describe('ContextTab', () => {
           ],
           personas: [{ id: 'hikari-context', name: 'Hikari' }],
           recent: {
+            activities: [
+              {
+                beatType: 'relationship',
+                createdAt: Date.parse('2026-05-25T12:00:03.000Z'),
+                id: 'activity-1',
+                responseText: 'Wrote a relationship reflection.',
+                scopeKey: 'local:persona:hikari-context',
+              },
+            ],
             blocks: [
               {
                 blockName: 'preferences',
@@ -75,6 +89,16 @@ describe('ContextTab', () => {
                 id: 'diary-1',
                 participantKey: 'local:local:subby',
                 summary: 'Subby verified memory.',
+              },
+            ],
+            turns: [
+              {
+                authorName: 'Subby',
+                createdAt: Date.parse('2026-05-25T12:00:01.000Z'),
+                id: 'turn-1',
+                role: 'user',
+                scopeKey: 'local:persona:hikari-context',
+                text: 'Please remember Ladybug memory.',
               },
             ],
             emotionIntensities: [
@@ -116,6 +140,39 @@ describe('ContextTab', () => {
                 id: 'semantic-1',
                 personaId: 'hikari-context',
                 text: 'User: remember Ladybug semantic memory.',
+              },
+            ],
+            slotPatches: [
+              {
+                createdAt: Date.parse('2026-05-25T12:00:04.000Z'),
+                id: 'patch-1',
+                operation: 'merge',
+                participantKey: 'local:local:subby',
+                scopeKey: 'local:persona:hikari-context',
+                slotId: 'slot-1',
+                slotName: 'preferences',
+              },
+            ],
+            slots: [
+              {
+                id: 'slot-1',
+                itemCount: 1,
+                items: ['Subby prefers Ladybug memory first.'],
+                participantKey: 'local:local:subby',
+                slotName: 'preferences',
+                scopeKey: 'local:persona:hikari-context',
+                updatedAt: Date.parse('2026-05-25T12:00:02.000Z'),
+              },
+            ],
+            traces: [
+              {
+                beatType: 'relationship',
+                createdAt: Date.parse('2026-05-25T12:00:05.000Z'),
+                id: 'trace-1',
+                model: 'gpt-5-nano',
+                provider: 'vercel-gateway',
+                scopeKey: 'local:persona:hikari-context',
+                taskType: 'extraction',
               },
             ],
             vectors: [
@@ -182,16 +239,29 @@ describe('ContextTab', () => {
     expect(html).toContain('C:/tmp/webwaifu4-memory.db');
     expect(html).toContain('Grillo scopes:');
     expect(html).toContain('Semantic scopes:');
+    expect(html).toContain('Turn events:');
+    expect(html).toContain('Memory slots:');
+    expect(html).toContain('Slot patches:');
+    expect(html).toContain('GRILLO activities:');
+    expect(html).toContain('Worker traces:');
     expect(html).toContain('Vector records:');
     expect(html).toContain('Relationship facts:');
     expect(html).toContain('Graph relations');
     expect(html).toContain('HAS_VECTOR: 2');
     expect(html).toContain('Subby');
     expect(html).toContain('Persona');
+    expect(html).toContain('Graph turn');
+    expect(html).toContain('Please remember Ladybug memory.');
     expect(html).toContain('Graph candidate');
     expect(html).toContain('Subby asked me to remember Ladybug.');
+    expect(html).toContain('preferences');
+    expect(html).toContain('Slot patch');
     expect(html).toContain('Graph diary');
     expect(html).toContain('Subby verified memory.');
+    expect(html).toContain('GRILLO activity');
+    expect(html).toContain('Wrote a relationship reflection.');
+    expect(html).toContain('Worker trace');
+    expect(html).toContain('vercel-gateway / gpt-5-nano / relationship');
     expect(html).toContain('Semantic record');
     expect(html).toContain('Vector record');
     expect(html).toContain('Last Prompt Injection');
