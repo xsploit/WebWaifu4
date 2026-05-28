@@ -92,6 +92,7 @@ export type GrilloWorkerRuntimeOptions = {
 };
 
 export type GrilloWorkerTickInput = {
+  beatType?: unknown;
   reason?: unknown;
   scopeKey?: unknown;
 };
@@ -126,6 +127,7 @@ export type GrilloWorkerTickOptions = {
 };
 
 export type GrilloWorkerTickResult = {
+  beatType: string;
   durationMs: number;
   noOpReason: string;
   ok: boolean;
@@ -138,12 +140,14 @@ export type GrilloWorkerTickResult = {
 
 type GrilloWorkerRuntimeState = {
   enabled: boolean;
+  lastBeatType: string;
   intervalMs: number;
   lastNoOpReason: string;
   lastTickAt: number;
   lastTickDurationMs: number;
   lastTickId: string;
   lastTickReason: string;
+  lastToolCalls: number;
   running: boolean;
   started: boolean;
   startedAt: number;
@@ -152,22 +156,28 @@ type GrilloWorkerRuntimeState = {
 type GrilloWorkerTickTask = (input: {
   reason: string;
   scopeKey: string;
-}) => Promise<{
+}) => Promise<GrilloWorkerTaskResult>;
+
+type GrilloWorkerTaskResult = {
+  beatType?: string;
   noOpReason?: string;
   statePatch?: Record<string, unknown>;
+  toolCalls?: number;
   writes?: number;
-}>;
+};
 
 export class GrilloWorkerService {
   private activeTickPromise: Promise<GrilloWorkerTickResult> | null = null;
   private runtime: GrilloWorkerRuntimeState = {
     enabled: false,
+    lastBeatType: '',
     intervalMs: 60_000,
     lastNoOpReason: 'not_started',
     lastTickAt: 0,
     lastTickDurationMs: 0,
     lastTickId: '',
     lastTickReason: '',
+    lastToolCalls: 0,
     running: false,
     started: false,
     startedAt: 0,
@@ -225,7 +235,9 @@ export class GrilloWorkerService {
     if (this.activeTickPromise) {
       const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
       const reason = normalizeText(input.reason) || 'manual';
+      const beatType = normalizeWorkerBeatType(input.beatType);
       return Promise.resolve({
+        beatType,
         durationMs: 0,
         noOpReason: 'tick_already_running',
         ok: true,
@@ -497,21 +509,28 @@ export class GrilloWorkerService {
   ): Promise<GrilloWorkerTickResult> {
     const scopeKey = normalizeKey(input.scopeKey, 'local:persona:default');
     const reason = normalizeText(input.reason) || 'manual';
+    const beatType = normalizeWorkerBeatType(input.beatType);
     const startedAt = this.nowMs();
     const tickId = this.idFactory();
     const taskResult = await (this.tickTask
       ? this.tickTask({ reason, scopeKey })
-      : this.runExtractionTick({ reason, scopeKey }, options));
+      : beatType === 'extraction'
+        ? this.runExtractionTick({ reason, scopeKey }, options)
+        : this.runMemoryBeatTick({ beatType, reason, scopeKey }, options));
     const writes = clampInteger(taskResult.writes, 0, 100_000, 0);
+    const taskBeatType = normalizeWorkerBeatType(taskResult.beatType ?? beatType);
+    const toolCalls = clampInteger(taskResult.toolCalls, 0, 100_000, 0);
     const noOpReason = writes > 0 ? '' : normalizeText(taskResult.noOpReason) || 'no_writes';
     const durationMs = Math.max(0, this.nowMs() - startedAt);
     this.runtime = {
       ...this.runtime,
+      lastBeatType: taskBeatType,
       lastNoOpReason: noOpReason,
       lastTickAt: this.nowMs(),
       lastTickDurationMs: durationMs,
       lastTickId: tickId,
       lastTickReason: reason,
+      lastToolCalls: toolCalls,
       running: true,
     };
     await this.memory.setGrilloSingleton('memory_worker_state', {
@@ -524,17 +543,22 @@ export class GrilloWorkerService {
     await this.memory.appendGrilloRecord('grillo_activity_log', {
       activity_id: tickId,
       beat_type: 'worker_tick',
+      task_beat_type: taskBeatType,
       created_at: this.nowMs(),
       duration_ms: durationMs,
       no_op_reason: noOpReason,
       ok: true,
       reason,
-      response_text: noOpReason ? `GRILLO tick no-op: ${noOpReason}` : `GRILLO tick wrote ${writes} update(s).`,
+      response_text: noOpReason
+        ? `GRILLO ${taskBeatType} tick no-op: ${noOpReason}`
+        : `GRILLO ${taskBeatType} tick wrote ${writes} update(s) through ${toolCalls} tool call(s).`,
       scope_key: scopeKey,
+      tool_calls: toolCalls,
       user_id: scopeKey,
       writes,
     });
     return {
+      beatType: taskBeatType,
       durationMs,
       noOpReason,
       ok: true,
@@ -549,7 +573,7 @@ export class GrilloWorkerService {
   private async runExtractionTick(input: {
     reason: string;
     scopeKey: string;
-  }, options: GrilloWorkerTickOptions = {}): Promise<{ noOpReason?: string; statePatch?: Record<string, unknown>; writes: number }> {
+  }, options: GrilloWorkerTickOptions = {}): Promise<GrilloWorkerTaskResult> {
     const previousState = asRecord(await this.memory.getGrilloSingleton('memory_worker_state'));
     const processedTurnIds = new Set(readStringArray(previousState['processedTurnIds']));
     const turns = (await this.memory.readGrilloRecords<Record<string, unknown>>('turn_events'))
@@ -653,6 +677,7 @@ export class GrilloWorkerService {
         lastExtractionTraceId: traceId,
         processedTurnIds: [...processedTurnIds].slice(-2000),
       },
+      toolCalls: writes,
       writes,
     };
   }
@@ -665,7 +690,7 @@ export class GrilloWorkerService {
     pairs: Array<{ assistant: Record<string, unknown>; user: Record<string, unknown> }>,
     processedTurnIds: Set<string>,
     options: GrilloWorkerTickOptions,
-  ): Promise<{ noOpReason?: string; statePatch?: Record<string, unknown>; writes: number }> {
+  ): Promise<GrilloWorkerTaskResult> {
     const completion = options.completion;
     if (!completion) {
       return { noOpReason: 'missing_completion', writes: 0 };
@@ -693,6 +718,7 @@ export class GrilloWorkerService {
     let candidateWrites = 0;
     let diaryWrites = 0;
     let recoveryAttempted = false;
+    let toolCalls = 0;
 
     for (let round = 1; round <= maxRounds; round += 1) {
       const rawResult = await completion({
@@ -769,12 +795,14 @@ export class GrilloWorkerService {
             lastExtractionWorkerNotes: lastNotes,
             processedTurnIds: [...processedTurnIds].slice(-2000),
           },
+          toolCalls,
           writes,
         };
       }
 
       messages.push({ role: 'assistant', content: rawText });
       for (const call of calls) {
+        toolCalls += 1;
         const execution = await this.runWorkerTool({
           args: call.args,
           name: call.name,
@@ -819,6 +847,152 @@ export class GrilloWorkerService {
         lastExtractionWorkerNotes: lastNotes,
         processedTurnIds: [...processedTurnIds].slice(-2000),
       },
+      toolCalls,
+      writes,
+    };
+  }
+
+  private async runMemoryBeatTick(
+    input: {
+      beatType: string;
+      reason: string;
+      scopeKey: string;
+    },
+    options: GrilloWorkerTickOptions = {},
+  ): Promise<GrilloWorkerTaskResult> {
+    const completion = options.completion;
+    if (!completion) {
+      return {
+        beatType: input.beatType,
+        noOpReason: 'beat_requires_provider',
+        writes: 0,
+      };
+    }
+
+    const maxRounds = clampInteger(options.maxRounds, 1, 8, 4);
+    const maxToolRounds = clampInteger(options.maxToolRounds, 1, 30, 15);
+    const contextPacket = await this.buildContextPacket({ scopeKey: input.scopeKey });
+    const recentTurns = (await this.memory.readGrilloRecords<Record<string, unknown>>('turn_events'))
+      .filter((record) => recordScopeKey(record) === input.scopeKey)
+      .sort((left, right) => recordTimestamp(right) - recordTimestamp(left))
+      .slice(0, 8);
+    const participantKey =
+      recentTurns.map(recordParticipantKey).find(Boolean) || defaultParticipantKey(input.scopeKey);
+    const sourceTurnIds = recentTurns.map(recordTurnId).filter(Boolean);
+    const systemPrompt = buildBackendWorkerSystemPrompt();
+    const userPrompt = buildBackendBeatPrompt({
+      beatType: input.beatType,
+      contextPacket,
+      recentTurns,
+      scopeKey: input.scopeKey,
+    });
+    const messages: ChatProviderMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ];
+    let writes = 0;
+    let toolCalls = 0;
+    let lastTraceId = '';
+    let lastProvider = normalizeText(options.provider) || 'runtime-provider';
+    let lastModel = normalizeText(options.model) || 'runtime-model';
+    let lastNotes = '';
+
+    for (let round = 1; round <= maxRounds; round += 1) {
+      const rawResult = await completion({
+        disableState: true,
+        maxTokens: 900,
+        maxToolRounds,
+        messages,
+        responseFormat: BACKEND_GRILLO_WORKER_RESPONSE_FORMAT,
+        stateKey: `memory:${input.scopeKey}`,
+        stateScope: 'memory',
+        temperature: input.beatType === 'relationship' ? 0.2 : 0.35,
+        toolChoiceMode: 'auto',
+      });
+      const result =
+        typeof rawResult === 'string'
+          ? { text: rawResult }
+          : { meta: rawResult.meta ?? null, text: rawResult.text };
+      const rawText = normalizeText(result.text);
+      const meta = asRecord(result.meta);
+      lastProvider = normalizeText(meta['provider']) || lastProvider;
+      lastModel = normalizeText(meta['model']) || lastModel;
+      lastTraceId = this.idFactory();
+      await this.memory.appendGrilloRecord('worker_context_traces', {
+        beat_type: input.beatType,
+        created_at: this.nowMs(),
+        model: lastModel,
+        prompt: userPrompt,
+        provider: lastProvider,
+        response_text: rawText,
+        round,
+        scope_key: input.scopeKey,
+        system_prompt: systemPrompt,
+        task_type: input.beatType,
+        trace_id: lastTraceId,
+        user_id: input.scopeKey,
+      });
+
+      const parsed = parseWorkerJson(rawText);
+      lastNotes = normalizeText(parsed['notes']);
+      const calls = normalizeWorkerToolCalls(parsed, sourceTurnIds);
+      if (calls.length === 0) {
+        if (parsed['done'] === true) {
+          break;
+        }
+        return {
+          beatType: input.beatType,
+          noOpReason: writes > 0 ? undefined : 'worker_no_tool_calls',
+          statePatch: {
+            lastBeatNotes: lastNotes,
+            lastBeatTraceId: lastTraceId,
+            lastBeatType: input.beatType,
+          },
+          toolCalls,
+          writes,
+        };
+      }
+
+      messages.push({ role: 'assistant', content: rawText });
+      for (const call of calls) {
+        toolCalls += 1;
+        const execution = await this.runWorkerTool({
+          args: call.args,
+          name: call.name,
+          participantKey,
+          scopeKey: input.scopeKey,
+        });
+        if (execution.ok) {
+          writes += isWorkerWriteTool(call.name) ? 1 : 0;
+        }
+        messages.push({
+          role: 'user',
+          content: JSON.stringify({
+            ok: execution.ok,
+            result: execution.result,
+            tool: call.name,
+          }),
+        });
+      }
+      messages.push({
+        role: 'user',
+        content:
+          'Continue this GRILLO beat. Use more worker tools if needed. If complete, return JSON with done=true and toolCalls=[].',
+      });
+    }
+
+    return {
+      beatType: input.beatType,
+      noOpReason: writes > 0 ? undefined : 'worker_no_writes',
+      statePatch: {
+        lastBeatAt: this.nowMs(),
+        lastBeatModel: lastModel,
+        lastBeatNotes: lastNotes,
+        lastBeatProvider: lastProvider,
+        lastBeatTraceId: lastTraceId,
+        lastBeatType: input.beatType,
+      },
+      toolCalls,
       writes,
     };
   }
@@ -1368,6 +1542,66 @@ function buildBackendExtractionPrompt(
   ].join('\n');
 }
 
+function buildBackendBeatPrompt({
+  beatType,
+  contextPacket,
+  recentTurns,
+  scopeKey,
+}: {
+  beatType: string;
+  contextPacket: GrilloContextPacket;
+  recentTurns: Array<Record<string, unknown>>;
+  scopeKey: string;
+}) {
+  const taskLines =
+    beatType === 'relationship'
+      ? [
+          'This is a relationship beat.',
+          'Review durable relationship_memory, recalled_memories, thoughts, and recent channel_history.',
+          'Use core.worker_memory_read or core.worker_memory_search if you need more context.',
+          'Write private diary reflection if the relationship/mood changed.',
+          'Use core.worker_memory_write with block_name="relationship_state" for grounded relationship updates.',
+          'Use core.worker_profile_patch for grounded boundaries, interaction_style, tone_preferences, or active_threads.',
+        ]
+      : [
+          'This is a reflection beat.',
+          'Review recent channel_history, thoughts, recalled_memories, and relationship_memory.',
+          'Use core.worker_memory_read or core.worker_memory_search if useful.',
+          'Write a diary reflection only if there is something meaningful to remember internally.',
+          'Use core.worker_memory_write for grounded open_threads or ongoing_threads updates.',
+        ];
+  return [
+    `scopeKey: ${scopeKey}`,
+    `beatType: ${beatType}`,
+    '',
+    ...taskLines,
+    '',
+    'Canonical GRILLO context packet:',
+    JSON.stringify(
+      {
+        background_information: contextPacket.background_information,
+        channel_history: contextPacket.channel_history.slice(-10),
+        output_description: contextPacket.output_description,
+        recalled_memories: contextPacket.recalled_memories.slice(0, 8),
+        relationship_memory: contextPacket.relationship_memory.slice(0, 12),
+        thoughts: contextPacket.thoughts.slice(0, 8),
+      },
+      null,
+      2,
+    ),
+    '',
+    'Recent turn ids:',
+    JSON.stringify(recentTurns.map((turn) => ({
+      id: recordTurnId(turn),
+      participantKey: recordParticipantKey(turn),
+      role: recordRole(turn),
+      text: compactText(normalizeText(turn['content'] ?? turn['text']), 220),
+    }))),
+    '',
+    'If there is nothing useful to write, return done=true with no toolCalls.',
+  ].join('\n');
+}
+
 function buildBackendWorkerDebriefPrompt({
   candidateWrites,
   diaryWrites,
@@ -1691,6 +1925,14 @@ function normalizeSlotOperation(value: unknown): LadybugMemorySlotPatchRecord['o
     return normalized;
   }
   return 'merge';
+}
+
+function normalizeWorkerBeatType(value: unknown) {
+  const normalized = normalizeText(value).toLowerCase().replace(/\s+/g, '_');
+  if (normalized === 'reflection' || normalized === 'relationship') {
+    return normalized;
+  }
+  return 'extraction';
 }
 
 function buildUnprocessedTurnPairs(

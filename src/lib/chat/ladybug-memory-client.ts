@@ -142,17 +142,20 @@ export type LadybugGrilloContextPacket = {
 export type LadybugGrilloRuntimeStatus = {
   enabled: boolean;
   intervalMs: number;
+  lastBeatType?: string;
   lastNoOpReason: string;
   lastTickAt: number;
   lastTickDurationMs: number;
   lastTickId: string;
   lastTickReason: string;
+  lastToolCalls?: number;
   running: boolean;
   started: boolean;
   startedAt: number;
 };
 
 export type LadybugGrilloTickResult = {
+  beatType?: string;
   durationMs: number;
   noOpReason: string;
   ok: boolean;
@@ -257,6 +260,7 @@ export async function updateLadybugGrilloRuntime(options: {
 
 export async function runLadybugGrilloTick(
   options: {
+    beatType?: 'extraction' | 'reflection' | 'relationship';
     llmProvider?: string;
     maxToolRounds?: number;
     model?: string;

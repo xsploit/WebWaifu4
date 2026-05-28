@@ -4477,13 +4477,13 @@ function App() {
     );
   }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
-  const handleRunBackendGrilloTick = useCallback(() => {
+  const runBackendGrilloTask = useCallback((beatType: 'extraction' | 'reflection') => {
     if (backendGrilloTickBusy) {
       return;
     }
     const stateKey = activeRelationshipStateKeyRef.current;
     setBackendGrilloTickBusy(true);
-    setMemoryAgentStatus('Running backend GRILLO tick through memory lane.');
+    setMemoryAgentStatus(`Running backend GRILLO ${beatType} through memory lane.`);
     void (async () => {
       const settings = aiSettingsRef.current;
       const model = settings.memoryAgentModel.trim() || settings.model;
@@ -4493,10 +4493,11 @@ function App() {
       });
       return runLadybugGrilloTick(
         {
+          beatType,
           llmProvider: settings.llmProvider,
           maxToolRounds: settings.maxToolRounds,
           model,
-          reason: 'manual_ui',
+          reason: beatType === 'reflection' ? 'manual_ui_beat' : 'manual_ui',
           scopeKey: stateKey,
         },
         { headers },
@@ -4509,8 +4510,8 @@ function App() {
         }
         setMemoryAgentStatus(
           result.noOpReason
-            ? `Backend GRILLO tick no-op: ${result.noOpReason}.`
-            : `Backend GRILLO tick wrote ${result.writes} update${result.writes === 1 ? '' : 's'}.`,
+            ? `Backend GRILLO ${result.beatType ?? beatType} no-op: ${result.noOpReason}.`
+            : `Backend GRILLO ${result.beatType ?? beatType} wrote ${result.writes} update${result.writes === 1 ? '' : 's'}.`,
         );
       })
       .catch((error) => {
@@ -4522,6 +4523,14 @@ function App() {
         void refreshMemoryBackendStatus();
       });
   }, [backendGrilloTickBusy, providerKeyVaultWorkspaceId, refreshMemoryBackendStatus]);
+
+  const handleRunBackendGrilloTick = useCallback(() => {
+    runBackendGrilloTask('extraction');
+  }, [runBackendGrilloTask]);
+
+  const handleRunBackendGrilloBeat = useCallback(() => {
+    runBackendGrilloTask('reflection');
+  }, [runBackendGrilloTask]);
 
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
     if (!metadata) {
@@ -6374,6 +6383,7 @@ function App() {
                 twitchKnownUsersRef.current.clear();
                 appendSystemMessage('Twitch AI queue reset.');
               }}
+              onRunBackendGrilloBeat={handleRunBackendGrilloBeat}
               onRunBackendGrilloTick={handleRunBackendGrilloTick}
               onRunMemoryAgent={handleRunMemoryAgentNow}
               onSavePersona={handleSavePersona}

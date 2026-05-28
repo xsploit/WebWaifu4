@@ -25,6 +25,7 @@ type ContextTabProps = {
   onClearMemory: () => void;
   onRefreshModels: () => void;
   onResetContext: () => void;
+  onRunBackendGrilloBeat: () => void;
   onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
   grilloRuntimeStatus: LadybugGrilloRuntimeStatus | null;
@@ -54,6 +55,7 @@ export function ContextTab({
   onClearMemory,
   onRefreshModels,
   onResetContext,
+  onRunBackendGrilloBeat,
   onRunBackendGrilloTick,
   onRunMemoryAgent,
   grilloRuntimeStatus,
@@ -216,7 +218,15 @@ export function ContextTab({
             onClick={onRunBackendGrilloTick}
             type="button"
           >
-            {backendGrilloTickBusy ? 'Ticking...' : 'Run Backend GRILLO Tick'}
+            {backendGrilloTickBusy ? 'Ticking...' : 'Run Extraction'}
+          </button>
+          <button
+            className="btn-tech secondary"
+            disabled={backendGrilloTickBusy}
+            onClick={onRunBackendGrilloBeat}
+            type="button"
+          >
+            {backendGrilloTickBusy ? 'Ticking...' : 'Run Beat'}
           </button>
         </div>
         <div className="status-copy">{memoryAgentStatus}</div>
@@ -240,6 +250,10 @@ export function ContextTab({
               {grilloRuntimeStatus.lastNoOpReason
                 ? grilloRuntimeStatus.lastNoOpReason
                 : `${grilloRuntimeStatus.lastTickDurationMs}ms`}
+              {grilloRuntimeStatus.lastBeatType ? ` / ${grilloRuntimeStatus.lastBeatType}` : ''}
+              {typeof grilloRuntimeStatus.lastToolCalls === 'number'
+                ? ` / tools ${grilloRuntimeStatus.lastToolCalls}`
+                : ''}
             </div>
           </div>
         ) : null}

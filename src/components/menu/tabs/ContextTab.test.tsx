@@ -15,11 +15,13 @@ describe('ContextTab', () => {
         grilloRuntimeStatus={{
           enabled: false,
           intervalMs: 60000,
+          lastBeatType: 'reflection',
           lastNoOpReason: 'worker_tasks_not_wired',
           lastTickAt: Date.parse('2026-05-25T12:00:06.000Z'),
           lastTickDurationMs: 0,
           lastTickId: 'tick-1',
           lastTickReason: 'manual_ui',
+          lastToolCalls: 2,
           running: false,
           started: true,
           startedAt: Date.parse('2026-05-25T12:00:00.000Z'),
@@ -240,6 +242,7 @@ describe('ContextTab', () => {
         onClearMemory={vi.fn()}
         onRefreshModels={vi.fn()}
         onResetContext={vi.fn()}
+        onRunBackendGrilloBeat={vi.fn()}
         onRunBackendGrilloTick={vi.fn()}
         onRunMemoryAgent={vi.fn()}
         relationshipMemory={{
@@ -262,6 +265,7 @@ describe('ContextTab', () => {
     expect(html).toContain('Backend GRILLO runtime');
     expect(html).toContain('manual only');
     expect(html).toContain('worker_tasks_not_wired');
+    expect(html).toContain('/ reflection / tools 2');
     expect(html).toContain('Grillo scopes:');
     expect(html).toContain('Semantic scopes:');
     expect(html).toContain('Turn events:');
@@ -326,6 +330,7 @@ describe('ContextTab', () => {
         onClearMemory={vi.fn()}
         onRefreshModels={vi.fn()}
         onResetContext={vi.fn()}
+        onRunBackendGrilloBeat={vi.fn()}
         onRunBackendGrilloTick={vi.fn()}
         onRunMemoryAgent={vi.fn()}
         relationshipMemory={createDefaultRelationshipMemory()}

@@ -103,6 +103,7 @@ type MemoryGrilloManualRunBody = {
 };
 
 type MemoryGrilloRuntimeBody = {
+  beatType?: unknown;
   enabled?: unknown;
   intervalMs?: unknown;
   llmProvider?: unknown;
@@ -1631,6 +1632,7 @@ const httpServer = createServer(async (request, response) => {
       const useProviderLane = browserProviderKeyPresent || serverProviderKeyPresent;
       const result = await getGrilloWorkerService().runTickWithOptions(
         {
+          beatType: body.beatType,
           reason: body.reason,
           scopeKey: body.scopeKey,
         },

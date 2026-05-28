@@ -93,6 +93,7 @@ type SettingsPanelProps = {
   onDeleteVoiceLabVoice: (voiceId: string) => void;
   onResetContext: () => void;
   onResetTwitchState: () => void;
+  onRunBackendGrilloBeat: () => void;
   onRunBackendGrilloTick: () => void;
   onRunMemoryAgent: () => void;
   onSavePersona: (draft: PersonaDraft, personaId?: string) => void;
@@ -208,6 +209,7 @@ export function SettingsPanel({
   onDeleteVoiceLabVoice,
   onResetContext,
   onResetTwitchState,
+  onRunBackendGrilloBeat,
   onRunBackendGrilloTick,
   onRunMemoryAgent,
   onSavePersona,
@@ -356,6 +358,7 @@ export function SettingsPanel({
         onClearMemory={onClearMemory}
         onRefreshModels={onRefreshModels}
         onResetContext={onResetContext}
+        onRunBackendGrilloBeat={onRunBackendGrilloBeat}
         onRunBackendGrilloTick={onRunBackendGrilloTick}
         onRunMemoryAgent={onRunMemoryAgent}
         grilloMemoryState={grilloMemoryState}

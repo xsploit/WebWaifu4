@@ -608,6 +608,132 @@ describe('GrilloWorkerService', () => {
     }
   });
 
+  it('runs explicit relationship beats through the backend memory lane', async () => {
+    const { grillo, memory } = createServices();
+    const requests: Array<{
+      messages: Array<{ content: string; role: string }>;
+      stateScope: string;
+      temperature: number;
+    }> = [];
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will keep the relationship beat grounded in the backend memory lane.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'relationship beats should update the grillo relationship state',
+      });
+
+      const tick = await grillo.runTickWithOptions(
+        {
+          beatType: 'relationship',
+          reason: 'manual_relationship',
+          scopeKey,
+        },
+        {
+          completion: async (request) => {
+            requests.push({
+              messages: request.messages.map((message) => ({ ...message })),
+              stateScope: request.stateScope,
+              temperature: request.temperature,
+            });
+            if (requests.length === 1) {
+              return {
+                meta: { model: 'openai/gpt-5-nano', provider: 'vercel-gateway' },
+                text: JSON.stringify({
+                  candidate: null,
+                  diary: null,
+                  done: false,
+                  memory: null,
+                  notes: 'relationship beat writes',
+                  relationship: null,
+                  toolCalls: [
+                    {
+                      args: {
+                        beat_type: 'relationship',
+                        personal_thought: 'I should track that Subsect wants relationship beats to update durable GRILLO state.',
+                        summary: 'Relationship beat recorded a durable state request.',
+                        tags: ['relationship', 'grillo'],
+                      },
+                      name: 'core.worker_diary_write',
+                    },
+                    {
+                      args: {
+                        block_name: 'relationship_state',
+                        items: ['Subsect wants relationship beats to update durable GRILLO state.'],
+                        operation: 'merge',
+                        reason: 'relationship beat',
+                      },
+                      name: 'core.worker_memory_write',
+                    },
+                  ],
+                }),
+              };
+            }
+            return JSON.stringify({
+              candidate: null,
+              diary: null,
+              done: true,
+              memory: null,
+              notes: 'relationship beat done',
+              relationship: null,
+              toolCalls: [],
+            });
+          },
+          maxToolRounds: 15,
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+
+      expect(tick).toMatchObject({
+        beatType: 'relationship',
+        noOpReason: '',
+        writes: 2,
+      });
+      expect(requests[0]).toMatchObject({
+        stateScope: 'memory',
+        temperature: 0.2,
+      });
+      expect(requests[0]?.messages[1]?.content).toContain('This is a relationship beat.');
+      expect(requests[0]?.messages[1]?.content).toContain('Canonical GRILLO context packet:');
+
+      const graph = await memory.getGraphSummary();
+      expect(graph.recent.traces[0]).toMatchObject({
+        beatType: 'relationship',
+        model: 'openai/gpt-5-nano',
+        provider: 'vercel-gateway',
+        taskType: 'relationship',
+      });
+      expect(graph.recent.diary[0]).toMatchObject({
+        beatType: 'relationship',
+        participantKey,
+        summary: 'Relationship beat recorded a durable state request.',
+      });
+      expect(graph.recent.slots[0]).toMatchObject({
+        participantKey,
+        slotName: 'relationship_state',
+      });
+
+      const state = await memory.getGrilloSingleton<Record<string, unknown>>('memory_worker_state');
+      expect(state).toMatchObject({
+        lastBeatModel: 'openai/gpt-5-nano',
+        lastBeatProvider: 'vercel-gateway',
+        lastBeatType: 'relationship',
+        lastToolCalls: 2,
+      });
+    } finally {
+      await memory.close();
+    }
+  });
+
   it('starts, stops, and guards backend worker ticks', async () => {
     const dbPath = join(tmpdir(), `webwaifu4-grillo-runtime-test-${process.pid}-${Date.now()}.db`);
     dbPaths.push(dbPath);
@@ -666,7 +792,7 @@ describe('GrilloWorkerService', () => {
       const graph = await memory.getGraphSummary();
       expect(graph.recent.activities[0]).toMatchObject({
         beatType: 'worker_tick',
-        responseText: 'GRILLO tick no-op: test_tick_noop',
+        responseText: 'GRILLO extraction tick no-op: test_tick_noop',
       });
       expect(grillo.stop()).toMatchObject({
         enabled: false,

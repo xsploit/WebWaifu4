@@ -29,8 +29,8 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 Do this before removing the old React memory worker:
 
-1. Add explicit reflection/relationship beat tasks on top of the same backend memory lane.
-2. Add UI controls for Run Beat and show the last beat type/tool-call summary from backend traces/activity.
+1. Add consolidation and compaction beats on top of the backend memory lane.
+2. Add UI controls for Run Consolidation and Run Compaction.
 3. Keep the deterministic extraction fallback only for missing provider keys; provider-backed manual ticks should use the LLM-guided worker loop.
 4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 5. Commit only the intended files.
@@ -83,6 +83,7 @@ Progress note:
 - 2026-05-28: Verified the provider lane keeps public runtime search tools out of `stateScope: memory` requests while normal chat requests still receive Tavily tools and agentic loop controls. Focused `AiSdkGatewayProvider` tests pass.
 - 2026-05-28: Wired manual backend GRILLO ticks into the existing provider infrastructure. The Memory UI passes browser-vault provider headers plus the selected memory-worker model, the backend calls the same `/ai/chat` path with `stateScope: memory`, and `GrilloWorkerService` runs an LLM-guided JSON worker-tool loop against Ladybug worker tools. If no provider key is available, the existing deterministic backend extraction remains the fallback.
 - 2026-05-28: Added backend debrief recovery for provider-backed extraction ticks. If the LLM-guided worker reaches `done` without candidate or diary writes, the backend runs one recovery prompt in the same `stateScope: memory` lane before marking source turns processed. Focused service tests prove recovered candidate/diary writes land in Ladybug and are tracked in worker state.
+- 2026-05-28: Added explicit backend reflection and relationship beats on the same memory lane. Manual backend ticks now accept a `beatType`, write traces with the beat task type, store last beat/tool-call status, and the Memory UI exposes separate Run Extraction and Run Beat controls plus last beat/tool count status. Focused service, client, and ContextTab tests pass.
 
 ## Phase 2 - Backend GRILLO Service
 
@@ -98,8 +99,8 @@ Progress note:
 - [x] Implement tick guard so only one GRILLO tick runs at a time.
 - [ ] Implement tasks:
   - [x] extraction
-  - [ ] reflection beat
-  - [ ] relationship beat
+  - [x] reflection beat
+  - [x] relationship beat
   - [ ] curiosity beat
   - [ ] tag elaboration beat
   - [ ] consolidation
@@ -190,9 +191,9 @@ Progress note:
   - [x] beat interval
   - [ ] turn cadence
   - [x] last run
-  - [ ] last beat type
+  - [x] last beat type
   - [x] last run reason/no-op reason
-  - [ ] last tool calls
+  - [x] last tool calls
   - [ ] last worker prompt
   - [ ] last worker output
   - [ ] injected context packet
@@ -202,8 +203,8 @@ Progress note:
   - [ ] semantic recall/vector counts
   - [ ] graph counts/relations
 - [ ] Add buttons:
-  - [ ] Run Extraction
-  - [ ] Run Beat
+  - [x] Run Extraction
+  - [x] Run Beat
   - [ ] Run Consolidation
   - [ ] Run Compaction
   - [ ] Clear GRILLO Memory
