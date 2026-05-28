@@ -4,6 +4,10 @@ Goal: port the `grillo_next` memory worker architecture into WebWaifu4 one-to-on
 
 ## Locked Decisions
 
+- Work only in `C:\Users\SUBSECT\Documents\GitHub\WebWaifu4`.
+- Do not use `C:\Users\SUBSECT\Documents\New project 3` for this project.
+- Commit and push each passing implementation slice.
+- Rebuild the packaged EXE with `npm run desktop:pack` after each meaningful implementation slice.
 - LadybugDB is the canonical GRILLO database.
 - Clean slate is allowed. Do not design around old snapshot compatibility.
 - One backend process owns AI proxy, TTS, tools, POML render, Ladybug memory, and GRILLO.
@@ -34,8 +38,24 @@ Do this before removing the old React memory worker:
 3. Keep the deterministic extraction fallback only for missing provider keys; provider-backed manual ticks should use the LLM-guided worker loop.
 4. Run focused tests, `npm run build`, `npm run desktop:pack`, and `git diff --check`.
 5. Commit only the intended files.
+6. Push the commit to `origin main`.
 
 Do not touch Fish TTS, OpenAI WebSocket streaming, provider routing, or Electron transparency during this slice.
+
+Current slice definition of done:
+
+- [ ] `consolidation` and `compaction` are accepted backend beat types.
+- [ ] Both beats run through the provider-backed memory lane when a key is available.
+- [ ] Both beats keep deterministic extraction as a missing-key fallback only.
+- [ ] Both beats write `worker_context_traces` with the correct `beat_type` and `task_type`.
+- [ ] Runtime status shows the last beat type and tool-call count after either beat.
+- [ ] Memory UI has explicit `Run Consolidation` and `Run Compaction` buttons.
+- [ ] Focused backend tests prove at least one consolidation or compaction write reaches Ladybug.
+- [ ] Focused UI tests prove the new controls render and wire through props.
+- [ ] `npm run build` passes.
+- [ ] `npm run desktop:pack` rebuilds the EXE.
+- [ ] `git diff --check` passes.
+- [ ] Commit and push only the intended GRILLO files.
 
 ## Phase 1 - Ladybug GRILLO Store
 
