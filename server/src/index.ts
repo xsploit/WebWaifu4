@@ -9,6 +9,7 @@ import {
   createAiVisibleDeltaFilter,
   createMetadataDeltaFilter,
   getSafeFinalVisibleText,
+  responseFormatHasMessageField,
 } from './ai/VisibleDeltaFilter.js';
 import type {
   ChatProvider,
@@ -1227,39 +1228,40 @@ async function runAiChatRequest({
       : null;
 
     try {
+      const emitVisibleDelta = (visibleDelta: string) => {
+        if (!visibleDelta) {
+          return;
+        }
+        visibleTextLength += visibleDelta.length;
+        void streamEvent({ type: 'delta', delta: visibleDelta });
+        if (bridge) {
+          bridgeTextPushed = true;
+          bridge.push(visibleDelta);
+        }
+      };
       const providerResponse =
         (await runtimeProvider.completeStream?.(providerRequest, {
           onTextDelta: (delta) => {
             const visibleDelta = visibleDeltaFilter.push(delta);
-            if (!visibleDelta) {
-              return;
-            }
-            visibleTextLength += visibleDelta.length;
-            void streamEvent({ type: 'delta', delta: visibleDelta });
-            if (bridge) {
-              bridgeTextPushed = true;
-              bridge.push(visibleDelta);
-            }
+            emitVisibleDelta(visibleDelta);
+          },
+          onVisibleTextDelta: (delta) => {
+            emitVisibleDelta(delta);
           },
         })) ?? (await runtimeProvider.complete(providerRequest));
       const finalVisibleDelta = visibleDeltaFilter.flush();
       if (finalVisibleDelta) {
-        visibleTextLength += finalVisibleDelta.length;
-        void streamEvent({ type: 'delta', delta: finalVisibleDelta });
-        if (bridge) {
-          bridgeTextPushed = true;
-          bridge.push(finalVisibleDelta);
-        }
+        emitVisibleDelta(finalVisibleDelta);
       }
       const finalProviderText = getSafeFinalVisibleText(
         providerResponse.text,
         providerRequest.responseFormat,
       );
+      if (responseFormatHasMessageField(providerRequest.responseFormat) && visibleTextLength === 0) {
+        throw new Error('Structured reply did not stream visible message deltas.');
+      }
       if (bridge && !bridgeTextPushed && visibleTextLength === 0 && finalProviderText) {
-        visibleTextLength += finalProviderText.length;
-        await streamEvent({ type: 'delta', delta: finalProviderText });
-        bridgeTextPushed = true;
-        bridge.push(finalProviderText);
+        emitVisibleDelta(finalProviderText);
       }
       bridge?.close();
       if (bridgeDone) {

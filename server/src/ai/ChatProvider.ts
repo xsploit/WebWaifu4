@@ -48,6 +48,7 @@ export type ChatProviderResponse = {
 
 export type ChatProviderStreamHandlers = {
   onTextDelta?: (delta: string) => void;
+  onVisibleTextDelta?: (delta: string) => void;
 };
 
 export type ChatProviderStateOptions = {

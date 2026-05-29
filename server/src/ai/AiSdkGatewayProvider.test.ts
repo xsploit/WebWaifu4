@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatProviderRequest } from './ChatProvider.js';
 
 const streamTextMock = vi.hoisted(() => vi.fn());
+const generateTextMock = vi.hoisted(() => vi.fn());
 const createGatewayMock = vi.hoisted(() => vi.fn());
 const createOpenRouterMock = vi.hoisted(() => vi.fn());
 
@@ -10,6 +11,7 @@ vi.mock('ai', () => ({
     json: vi.fn(() => ({ kind: 'json-output' })),
     object: vi.fn((value) => ({ kind: 'object-output', value })),
   },
+  generateText: generateTextMock,
   jsonSchema: vi.fn((schema) => ({ kind: 'json-schema', schema })),
   stepCountIs: vi.fn((rounds) => ({ kind: 'step-count', rounds })),
   streamText: streamTextMock,
@@ -89,6 +91,10 @@ describe('AiSdkGatewayProvider', () => {
     createOpenRouterMock.mockReturnValue(
       vi.fn((model: string) => ({ provider: 'openrouter', model })),
     );
+    generateTextMock.mockReset();
+    generateTextMock.mockReturnValue({
+      text: 'tool-backed answer',
+    });
     streamTextMock.mockReset();
     streamTextMock.mockReturnValue({
       text: Promise.resolve('tool-backed answer'),
@@ -192,8 +198,8 @@ describe('AiSdkGatewayProvider', () => {
   it.each(['vercel-gateway', 'openrouter-responses'] as const)(
     'uses the same structured memory-lane shape for %s',
     async (providerName) => {
-      streamTextMock.mockReturnValueOnce({
-        output: Promise.resolve({
+      generateTextMock.mockReturnValueOnce({
+        output: {
           candidate: null,
           diary: null,
           done: true,
@@ -201,11 +207,11 @@ describe('AiSdkGatewayProvider', () => {
           notes: 'no durable write needed',
           relationship: null,
           toolCalls: [],
-        }),
+        },
       });
       const provider = createProviderForLane(providerName);
 
-      const response = await provider.completeStream(
+      const response = await provider.complete(
         createRequest({
           maxToolRounds: 22,
           responseFormat: {
@@ -226,7 +232,7 @@ describe('AiSdkGatewayProvider', () => {
         }),
       );
 
-      const call = streamTextMock.mock.calls[0]?.[0];
+      const call = generateTextMock.mock.calls[0]?.[0];
       expect(call).toMatchObject({
         allowSystemInMessages: true,
         output: {
@@ -254,16 +260,67 @@ describe('AiSdkGatewayProvider', () => {
     },
   );
 
-  it('falls back to final text when structured output parsing fails after tools', async () => {
+  it('streams structured message partials through the visible-delta handler', async () => {
+    streamTextMock.mockReturnValueOnce({
+      output: Promise.resolve({
+        arousal: 0.4,
+        dominance: 0.6,
+        emotion: 'curious',
+        message: 'Hello there.',
+        valence: 0.7,
+      }),
+      partialOutputStream: (async function* () {
+        yield { message: 'Hello' };
+        yield { message: 'Hello there.' };
+      })(),
+    });
+    const provider = createProvider();
+    const visibleDeltas: string[] = [];
+
+    const response = await provider.completeStream(
+      createRequest({
+        responseFormat: {
+          name: 'yourwifey_assistant_reply',
+          schema: {
+            additionalProperties: false,
+            properties: {
+              arousal: { type: 'number' },
+              dominance: { type: 'number' },
+              emotion: { enum: ['curious'], type: 'string' },
+              message: { type: 'string' },
+              valence: { type: 'number' },
+            },
+            required: ['message', 'emotion', 'valence', 'arousal', 'dominance'],
+            type: 'object',
+          },
+          type: 'json_schema',
+        },
+      }),
+      {
+        onTextDelta: (delta) => {
+          throw new Error(`structured JSON should not emit raw text delta: ${delta}`);
+        },
+        onVisibleTextDelta: (delta) => {
+          visibleDeltas.push(delta);
+        },
+      },
+    );
+
+    expect(visibleDeltas).toEqual(['Hello', ' there.']);
+    expect(response.text).toContain('"message":"Hello there."');
+  });
+
+  it('throws instead of falling back to raw text when structured output parsing fails', async () => {
     streamTextMock.mockReturnValueOnce({
       output: Promise.reject(new Error('No object generated: could not parse the response.')),
+      partialOutputStream: (async function* () {})(),
       text: Promise.resolve(
         'Tool-backed answer. <yw-meta>{"emotion":"curious"}</yw-meta>',
       ),
     });
     const provider = createProvider();
 
-    const response = await provider.completeStream(
+    await expect(provider.completeStream(
       createRequest({
         responseFormat: {
           name: 'yourwifey_assistant_reply',
@@ -279,13 +336,6 @@ describe('AiSdkGatewayProvider', () => {
           type: 'json_schema',
         },
       }),
-    );
-
-    expect(response.text).toContain('Tool-backed answer');
-    expect(response.meta).toMatchObject({
-      structuredOutputFallback: true,
-      structuredOutputFallbackError: 'No object generated: could not parse the response.',
-      toolsAvailable: true,
-    });
+    )).rejects.toThrow('No object generated: could not parse the response.');
   });
 });

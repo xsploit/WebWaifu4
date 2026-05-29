@@ -1,6 +1,7 @@
 import {
   jsonSchema,
   Output as aiOutput,
+  generateText,
   stepCountIs,
   streamText,
   tool,
@@ -9,7 +10,12 @@ import {
 } from 'ai';
 import { createGateway, type GatewayProviderOptions } from '@ai-sdk/gateway';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import type { ChatProvider, ChatProviderRequest, ChatProviderResponse } from './ChatProvider.js';
+import type {
+  ChatProvider,
+  ChatProviderRequest,
+  ChatProviderResponse,
+  ChatProviderStreamHandlers,
+} from './ChatProvider.js';
 import {
   TAVILY_OPENAI_TOOLS,
   buildTavilyToolInstruction,
@@ -141,6 +147,24 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function readPartialMessage(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const message = (value as { message?: unknown }).message;
+  return typeof message === 'string' ? message : null;
+}
+
+function getMonotonicDelta(previous: string, next: string) {
+  if (!next || next === previous) {
+    return '';
+  }
+  if (next.startsWith(previous)) {
+    return next.slice(previous.length);
+  }
+  return '';
+}
+
 export class AiSdkGatewayProvider implements ChatProvider {
   private model: string;
 
@@ -170,19 +194,54 @@ export class AiSdkGatewayProvider implements ChatProvider {
   }
 
   async complete(request: ChatProviderRequest): Promise<ChatProviderResponse> {
-    return this.completeStream(request);
+    const toolsAvailable = request.stateScope !== 'memory' && Boolean(this.options.tavilyTools);
+    const tools = createTavilyToolSet(toolsAvailable ? this.options.tavilyTools : undefined);
+    const toolsUsed: string[] = [];
+    const structuredOutput = createStructuredOutput(request);
+    const result = await generateText({
+      abortSignal: request.signal,
+      allowSystemInMessages: true,
+      maxOutputTokens: request.maxTokens ?? this.options.maxTokens,
+      messages: toAiSdkMessages(request, toolsAvailable),
+      model: this.createModel(),
+      output: structuredOutput,
+      experimental_onToolCallStart: ({ toolCall }) => {
+        toolsUsed.push(toolCall.toolName);
+      },
+      providerOptions: createProviderOptions({ ...this.options, model: this.model }),
+      stopWhen: stepCountIs(normalizeMaxToolRounds(request.maxToolRounds)),
+      temperature: request.temperature ?? this.options.temperature,
+      toolChoice: toolsAvailable && request.toolChoiceMode === 'required' ? 'required' : 'auto',
+      tools,
+    });
+
+    const text = structuredOutput ? JSON.stringify(result.output) : result.text.trim();
+    if (!text) {
+      throw new Error('AI Gateway returned an empty response.');
+    }
+
+    return {
+      meta: {
+        provider: this.options.provider,
+        toolNames: toolsAvailable ? TAVILY_OPENAI_TOOLS.map((item) => item.name) : [],
+        toolsAvailable,
+        toolsUsed,
+        transport: 'http-stream',
+      },
+      text,
+    };
   }
 
   async completeStream(
     request: ChatProviderRequest,
-    handlers: { onTextDelta?: (delta: string) => void } = {},
+    handlers: ChatProviderStreamHandlers = {},
   ): Promise<ChatProviderResponse> {
     const toolsAvailable = request.stateScope !== 'memory' && Boolean(this.options.tavilyTools);
     const tools = createTavilyToolSet(toolsAvailable ? this.options.tavilyTools : undefined);
     const toolsUsed: string[] = [];
     const model = this.createModel();
     const structuredOutput = createStructuredOutput(request);
-    let structuredOutputFallbackError: string | null = null;
+    let streamError: string | null = null;
     const result = streamText({
       abortSignal: request.signal,
       allowSystemInMessages: true,
@@ -190,9 +249,12 @@ export class AiSdkGatewayProvider implements ChatProvider {
       messages: toAiSdkMessages(request, toolsAvailable),
       model,
       onChunk: ({ chunk }) => {
-        if (chunk.type === 'text-delta') {
+        if (!structuredOutput && chunk.type === 'text-delta') {
           handlers.onTextDelta?.(chunk.text);
         }
+      },
+      onError: ({ error }) => {
+        streamError = getErrorMessage(error);
       },
       output: structuredOutput,
       experimental_onToolCallStart: ({ toolCall }) => {
@@ -207,17 +269,37 @@ export class AiSdkGatewayProvider implements ChatProvider {
 
     let text: string;
     if (structuredOutput) {
-      try {
-        text = JSON.stringify(await result.output);
-      } catch (error) {
-        structuredOutputFallbackError = getErrorMessage(error);
-        text = (await result.text).trim();
+      let lastVisibleMessage = '';
+      for await (const partialOutput of result.partialOutputStream) {
+        const nextVisibleMessage = readPartialMessage(partialOutput);
+        if (nextVisibleMessage === null) {
+          continue;
+        }
+        const delta = getMonotonicDelta(lastVisibleMessage, nextVisibleMessage);
+        lastVisibleMessage = nextVisibleMessage;
+        if (delta) {
+          handlers.onVisibleTextDelta?.(delta);
+        }
       }
+      let output: unknown;
+      try {
+        output = await result.output;
+      } catch (error) {
+        throw new Error(streamError || getErrorMessage(error));
+      }
+      const finalVisibleMessage = readPartialMessage(output);
+      if (finalVisibleMessage !== null) {
+        const delta = getMonotonicDelta(lastVisibleMessage, finalVisibleMessage);
+        if (delta) {
+          handlers.onVisibleTextDelta?.(delta);
+        }
+      }
+      text = JSON.stringify(output);
     } else {
       text = (await result.text).trim();
     }
     if (!text) {
-      throw new Error(structuredOutputFallbackError || 'AI Gateway returned an empty response.');
+      throw new Error(streamError || 'AI Gateway returned an empty response.');
     }
 
     return {
@@ -227,12 +309,6 @@ export class AiSdkGatewayProvider implements ChatProvider {
         toolsAvailable,
         toolsUsed,
         transport: 'http-stream',
-        ...(structuredOutputFallbackError
-          ? {
-              structuredOutputFallback: true,
-              structuredOutputFallbackError,
-            }
-          : {}),
       },
       text,
     };

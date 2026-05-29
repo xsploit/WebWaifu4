@@ -6,7 +6,7 @@ const ASSISTANT_METADATA_DELIMITERS = [
   { open: '<hidden-block>', close: '</hidden-block>' },
 ] as const;
 
-function responseFormatHasMessageField(value: ChatProviderRequest['responseFormat']) {
+export function responseFormatHasMessageField(value: ChatProviderRequest['responseFormat']) {
   if (!value || value.type !== 'json_schema') {
     return false;
   }
