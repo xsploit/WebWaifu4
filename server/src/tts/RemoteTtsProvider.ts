@@ -714,56 +714,18 @@ async function streamInworld(
       : [request.text];
 
   for (const textChunk of textChunks) {
-    let emittedTimestampedAudio = false;
-    try {
-      const stream = client.streamWithTimestamps({
-        text: textChunk,
-        voice: voiceId,
-        model: modelId,
-        encoding,
-        sampleRate: config.inworldSampleRate,
-        deliveryMode,
-        timestampType: 'WORD',
-      });
-
-      for await (const frame of stream) {
-        const chunk = bufferFromAudioChunk(frame.audio);
-        if (chunk?.length) {
-          const pcmChunk = stripWavHeaderFromPcmChunk(chunk);
-          if (!pcmChunk.length) {
-            continue;
-          }
-          emittedTimestampedAudio = true;
-          handlers.onAudioChunk({
-            audio: pcmChunk,
-            lipSync: mapInworldTimestamps(frame.timestamps),
-            mimeType,
-            sampleRate: config.inworldSampleRate,
-          });
-        }
-      }
-      continue;
-    } catch (error) {
-      if (emittedTimestampedAudio) {
-        throw error;
-      }
-      console.warn(
-        '[InworldTTS] streamWithTimestamps failed before audio; falling back to plain stream:',
-        error,
-      );
-    }
-
-    const stream = client.stream({
+    const stream = client.streamWithTimestamps({
       text: textChunk,
       voice: voiceId,
       model: modelId,
       encoding,
       sampleRate: config.inworldSampleRate,
       deliveryMode,
+      timestampType: 'WORD',
     });
 
-    for await (const audio of stream) {
-      const chunk = bufferFromAudioChunk(audio);
+    for await (const frame of stream) {
+      const chunk = bufferFromAudioChunk(frame.audio);
       if (chunk?.length) {
         const pcmChunk = stripWavHeaderFromPcmChunk(chunk);
         if (!pcmChunk.length) {
@@ -771,6 +733,7 @@ async function streamInworld(
         }
         handlers.onAudioChunk({
           audio: pcmChunk,
+          lipSync: mapInworldTimestamps(frame.timestamps),
           mimeType,
           sampleRate: config.inworldSampleRate,
         });
