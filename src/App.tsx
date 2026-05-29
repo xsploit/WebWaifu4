@@ -25,7 +25,6 @@ import {
   isPremiumCostModelId,
 } from './lib/chat/provider-defaults';
 import { extractSpeakableChunks, getChunkRevealDelay } from './lib/chat/chunking';
-import { findOverlappingSuffix } from './lib/chat/streaming-overlap';
 import {
   buildMemoryAgentMessages,
   MEMORY_AGENT_JSON_FORMAT,
@@ -2965,37 +2964,6 @@ function App() {
         } else {
           console.info('[AI Stream Debug] assistant stream finish', streamDebug);
         }
-        if (!isStale() && !sawDelta && normalizedFinal && normalizedFinal !== fullText.trim()) {
-          if (!sawDelta) {
-            fullText = normalizedFinal;
-            pendingText = normalizedFinal;
-            queueDisplayText(normalizedFinal);
-            queueLiveSubtitleText(normalizedFinal);
-          } else if (normalizedFinal.startsWith(fullText)) {
-            const suffix = normalizedFinal.slice(fullText.length);
-            fullText = normalizedFinal;
-            pendingText += suffix;
-            queueDisplayText(suffix);
-            queueLiveSubtitleText(suffix);
-          } else {
-            const suffix = findOverlappingSuffix(fullText, normalizedFinal);
-            const visiblePrefix = displayText + queuedDisplayText;
-            fullText = normalizedFinal;
-            if (normalizedFinal.startsWith(visiblePrefix)) {
-              const suffix = normalizedFinal.slice(visiblePrefix.length);
-              queueDisplayText(suffix);
-              queueLiveSubtitleText(suffix);
-            } else {
-              displayText = '';
-              queuedDisplayText = '';
-              queueDisplayText(normalizedFinal);
-              liveSubtitleText = '';
-              queuedLiveSubtitleText = '';
-              queueLiveSubtitleText(normalizedFinal);
-            }
-            pendingText += suffix;
-          }
-        }
         if (!isStale() && fullText.trim()) {
           updateAssistantMessageContent(assistantMessage.id, fullText.trim());
         }
@@ -3020,7 +2988,7 @@ function App() {
         } else if (chunkTtsRequests) {
           consumeSpeakableChunks(true);
         } else {
-          const finalSpeechText = (fullText.trim() || normalizedFinal).trim();
+          const finalSpeechText = fullText.trim();
           if (finalSpeechText) {
             enqueueSpeech(finalSpeechText);
           }
@@ -3052,7 +3020,7 @@ function App() {
 
         return {
           metadata: parsedReply.metadata,
-          text: fullText.trim() || normalizedFinal,
+          text: fullText.trim(),
         };
       };
 
@@ -3079,7 +3047,6 @@ function App() {
       const metadataFilter = createAssistantReplyStreamFilter();
       let fullText = '';
       let pendingText = '';
-      let sawDelta = false;
       let queuedSpeech = false;
       const speechPromises: Promise<void>[] = [];
 
@@ -3154,7 +3121,6 @@ function App() {
           return;
         }
 
-        sawDelta = true;
         fullText += visibleDelta;
         if (chunkTtsRequests) {
           pendingText += visibleDelta;
@@ -3164,26 +3130,11 @@ function App() {
 
       const finish = async (finalText?: string) => {
         const parsedReply = metadataFilter.finish(finalText ?? fullText);
-        const normalizedFinal = parsedReply.text;
-        if (!isStale() && !sawDelta && normalizedFinal && normalizedFinal !== fullText.trim()) {
-          if (!sawDelta) {
-            fullText = normalizedFinal;
-            pendingText = normalizedFinal;
-          } else if (normalizedFinal.startsWith(fullText)) {
-            const suffix = normalizedFinal.slice(fullText.length);
-            fullText = normalizedFinal;
-            pendingText += suffix;
-          } else {
-            const suffix = findOverlappingSuffix(fullText, normalizedFinal);
-            fullText = normalizedFinal;
-            pendingText += suffix;
-          }
-        }
 
         if (chunkTtsRequests) {
           consumeSpeakableChunks(true);
         } else {
-          const finalSpeechText = (fullText.trim() || normalizedFinal).trim();
+          const finalSpeechText = fullText.trim();
           if (finalSpeechText) {
             enqueueSpeech(finalSpeechText);
           }
@@ -3207,7 +3158,7 @@ function App() {
 
         return {
           metadata: parsedReply.metadata,
-          text: fullText.trim() || normalizedFinal,
+          text: fullText.trim(),
         };
       };
 

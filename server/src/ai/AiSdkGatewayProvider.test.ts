@@ -254,14 +254,22 @@ describe('AiSdkGatewayProvider', () => {
     },
   );
 
-  it('falls back to final text when structured output parsing fails after tools', async () => {
+  it('streams assistant structured replies from structured partial output', async () => {
     streamTextMock.mockReturnValueOnce({
-      output: Promise.reject(new Error('No object generated: could not parse the response.')),
-      text: Promise.resolve(
-        'Tool-backed answer. <yw-meta>{"emotion":"curious"}</yw-meta>',
-      ),
+      output: Promise.resolve({
+        arousal: 0.4,
+        dominance: 0.1,
+        emotion: 'curious',
+        message: 'Tool-backed answer.',
+        valence: 0.2,
+      }),
+      partialOutputStream: (async function* () {
+        yield { message: 'Tool' };
+        yield { message: 'Tool-backed answer.' };
+      })(),
     });
     const provider = createProvider();
+    const deltas: string[] = [];
 
     const response = await provider.completeStream(
       createRequest({
@@ -271,21 +279,67 @@ describe('AiSdkGatewayProvider', () => {
             additionalProperties: false,
             properties: {
               emotion: { enum: ['curious'], type: 'string' },
+              arousal: { type: 'number' },
+              dominance: { type: 'number' },
               message: { type: 'string' },
+              valence: { type: 'number' },
             },
-            required: ['message', 'emotion'],
+            required: ['message', 'emotion', 'valence', 'arousal', 'dominance'],
             type: 'object',
           },
           type: 'json_schema',
         },
       }),
+      { onTextDelta: (delta) => deltas.push(delta) },
     );
 
-    expect(response.text).toContain('Tool-backed answer');
+    const call = streamTextMock.mock.calls[0]?.[0];
+    expect(call.output).toMatchObject({ kind: 'object-output' });
+    expect(call.messages[0].content).toContain('The active reply format is strict JSON.');
+    expect(call.messages[0].content).toContain('Return exactly one complete JSON object');
+    expect(deltas.join('')).toBe('Tool-backed answer.');
+    expect(JSON.parse(response.text)).toEqual({
+      arousal: 0.4,
+      dominance: 0.1,
+      emotion: 'curious',
+      message: 'Tool-backed answer.',
+      valence: 0.2,
+    });
     expect(response.meta).toMatchObject({
-      structuredOutputFallback: true,
-      structuredOutputFallbackError: 'No object generated: could not parse the response.',
       toolsAvailable: true,
     });
+  });
+
+  it('rejects structured replies that never stream message text', async () => {
+    streamTextMock.mockReturnValueOnce({
+      output: Promise.resolve({
+        emotion: 'curious',
+        message: 'Tool-backed answer.',
+      }),
+      partialOutputStream: (async function* () {
+        yield { emotion: 'curious' };
+      })(),
+    });
+    const provider = createProvider();
+
+    await expect(
+      provider.completeStream(
+        createRequest({
+          responseFormat: {
+            name: 'yourwifey_assistant_reply',
+            schema: {
+              additionalProperties: false,
+              properties: {
+                emotion: { enum: ['curious'], type: 'string' },
+                message: { type: 'string' },
+              },
+              required: ['message', 'emotion'],
+              type: 'object',
+            },
+            type: 'json_schema',
+          },
+        }),
+      ),
+    ).rejects.toThrow('Structured reply did not stream message text.');
   });
 });

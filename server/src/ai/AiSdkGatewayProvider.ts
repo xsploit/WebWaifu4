@@ -73,6 +73,24 @@ function toAiSdkMessages(request: ChatProviderRequest, toolsAvailable: boolean):
   );
 }
 
+function appendSystemInstruction(messages: ModelMessage[], instruction: string): ModelMessage[] {
+  const trimmed = instruction.trim();
+  if (!trimmed) {
+    return messages;
+  }
+
+  const firstSystemIndex = messages.findIndex((message) => message.role === 'system');
+  if (firstSystemIndex === -1) {
+    return [{ role: 'system', content: trimmed }, ...messages];
+  }
+
+  return messages.map((message, index) =>
+    index === firstSystemIndex && message.role === 'system'
+      ? { ...message, content: `${message.content}\n\n${trimmed}` }
+      : message,
+  );
+}
+
 function createTavilyToolSet(options?: TavilyToolOptions): ToolSet | undefined {
   if (!options) {
     return undefined;
@@ -93,6 +111,29 @@ function createTavilyToolSet(options?: TavilyToolOptions): ToolSet | undefined {
       }),
     ]),
   ) as ToolSet;
+}
+
+function responseFormatHasMessageField(request: ChatProviderRequest) {
+  return (
+    request.stateScope !== 'memory' &&
+    request.responseFormat?.type === 'json_schema' &&
+    request.responseFormat.schema.type === 'object' &&
+    Object.prototype.hasOwnProperty.call(request.responseFormat.schema.properties, 'message')
+  );
+}
+
+function buildStructuredJsonTextInstruction(request: ChatProviderRequest) {
+  if (!responseFormatHasMessageField(request) || request.responseFormat?.type !== 'json_schema') {
+    return '';
+  }
+
+  return [
+    'The active reply format is strict JSON.',
+    'Return exactly one complete JSON object matching the schema and nothing else.',
+    'Do not use markdown, code fences, XML tags, hidden blocks, commentary, or partial fragments.',
+    'Put all spoken dialogue in the message field.',
+    `Use this exact JSON schema: ${JSON.stringify(request.responseFormat.schema)}`,
+  ].join('\n');
 }
 
 function isOpenAiGpt5Model(model: string) {
@@ -141,6 +182,14 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function getPartialMessage(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  const message = (value as Record<string, unknown>)['message'];
+  return typeof message === 'string' ? message : '';
+}
+
 export class AiSdkGatewayProvider implements ChatProvider {
   private model: string;
 
@@ -181,13 +230,16 @@ export class AiSdkGatewayProvider implements ChatProvider {
     const tools = createTavilyToolSet(toolsAvailable ? this.options.tavilyTools : undefined);
     const toolsUsed: string[] = [];
     const model = this.createModel();
+    const structuredTextStream = responseFormatHasMessageField(request);
     const structuredOutput = createStructuredOutput(request);
     let structuredOutputFallbackError: string | null = null;
+    let messages = toAiSdkMessages(request, toolsAvailable);
+    messages = appendSystemInstruction(messages, buildStructuredJsonTextInstruction(request));
     const result = streamText({
       abortSignal: request.signal,
       allowSystemInMessages: true,
       maxOutputTokens: request.maxTokens ?? this.options.maxTokens,
-      messages: toAiSdkMessages(request, toolsAvailable),
+      messages,
       model,
       onChunk: ({ chunk }) => {
         if (chunk.type === 'text-delta') {
@@ -204,6 +256,30 @@ export class AiSdkGatewayProvider implements ChatProvider {
       toolChoice: toolsAvailable && request.toolChoiceMode === 'required' ? 'required' : 'auto',
       tools,
     });
+    let structuredStreamedMessageLength = 0;
+    let structuredStreamError: string | null = null;
+    const structuredMessageStreamDone =
+      structuredTextStream && structuredOutput
+        ? (async () => {
+            let previousMessage = '';
+            for await (const partial of result.partialOutputStream as AsyncIterable<unknown>) {
+              const nextMessage = getPartialMessage(partial);
+              if (!nextMessage || nextMessage.length <= previousMessage.length) {
+                continue;
+              }
+              if (!nextMessage.startsWith(previousMessage)) {
+                previousMessage = nextMessage;
+                continue;
+              }
+              const delta = nextMessage.slice(previousMessage.length);
+              previousMessage = nextMessage;
+              structuredStreamedMessageLength += delta.length;
+              handlers.onTextDelta?.(delta);
+            }
+          })().catch((error) => {
+            structuredStreamError = getErrorMessage(error);
+          })
+        : null;
 
     let text: string;
     if (structuredOutput) {
@@ -215,6 +291,15 @@ export class AiSdkGatewayProvider implements ChatProvider {
       }
     } else {
       text = (await result.text).trim();
+    }
+    if (structuredMessageStreamDone) {
+      await structuredMessageStreamDone;
+      if (structuredStreamError) {
+        throw new Error(structuredStreamError);
+      }
+      if (structuredStreamedMessageLength === 0) {
+        throw new Error('Structured reply did not stream message text.');
+      }
     }
     if (!text) {
       throw new Error(structuredOutputFallbackError || 'AI Gateway returned an empty response.');

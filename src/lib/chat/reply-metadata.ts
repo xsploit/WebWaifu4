@@ -97,7 +97,7 @@ export const ASSISTANT_REPLY_JSON_FORMAT = {
         description: 'Felt control from -1 uncertain/submissive to 1 confident/in-control.',
       },
     },
-    required: ['message', 'emotion', 'valence', 'arousal', 'dominance'],
+    required: ['message', 'emotion'],
     additionalProperties: false,
   },
   strict: true,
@@ -194,12 +194,12 @@ export const EMOTION_VAD_DEFAULTS: Record<
 
 export function buildReplyMetadataInstruction() {
   return [
-    'When the reply format is JSON, return only a JSON object with message, emotion, valence, arousal, and dominance. Put the spoken dialogue in message.',
+    'When the reply format is JSON, return only a JSON object with message and emotion. Put the spoken dialogue in message.',
     'When the reply format is normal text, append exactly one metadata block at the very end using this exact tag shape:',
     `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral","valence":0,"arousal":0.18,"dominance":0}${ASSISTANT_REPLY_META_CLOSE}`,
     'The block must be valid compact JSON and must not be explained. Do not use any other wrapper name such as hidden block.',
     `emotion must be one of: ${Array.from(EMOTIONS).join(', ')}.`,
-    'valence must be -1 to 1, arousal must be 0 to 1, and dominance must be -1 to 1.',
+    'If valence, arousal, or dominance are included, valence must be -1 to 1, arousal must be 0 to 1, and dominance must be -1 to 1.',
     'Choose the emotion you genuinely feel toward the current message and your reply, not the topic category.',
     'Use amused for playful teasing, annoyed or angry for irritation, embarrassed or nervous for flustered/shy replies, caring or grateful for warmth, and surprised, confused, curious, or thinking for uncertainty or discovery.',
     'Use neutral only when there is no clear emotional color. Prefer a real emotion when the reply is teasing, playful, caring, irritated, surprised, embarrassed, or excited.',

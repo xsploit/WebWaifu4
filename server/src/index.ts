@@ -5,7 +5,7 @@ import type { Socket } from 'node:net';
 import { AiSdkGatewayProvider } from './ai/AiSdkGatewayProvider.js';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { TAVILY_OPENAI_TOOLS } from './ai/TavilyTools.js';
-import { createAiVisibleDeltaFilter, getSafeFinalVisibleText } from './ai/VisibleDeltaFilter.js';
+import { createAiVisibleDeltaFilter } from './ai/VisibleDeltaFilter.js';
 import type {
   ChatProvider,
   ChatProviderInputImage,
@@ -1242,6 +1242,7 @@ async function runAiChatRequest({
     }
     const bridge = bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge(bridgeRequest) : null;
     let bridgeTextPushed = false;
+    let streamedVisibleText = '';
     const bridgeDone = bridge
       ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
           onAudioChunk: (chunk) => {
@@ -1270,6 +1271,7 @@ async function runAiChatRequest({
               return;
             }
             visibleTextLength += visibleDelta.length;
+            streamedVisibleText += visibleDelta;
             void streamEvent({ type: 'delta', delta: visibleDelta });
             if (bridge) {
               bridgeTextPushed = true;
@@ -1280,21 +1282,20 @@ async function runAiChatRequest({
       const finalVisibleDelta = visibleDeltaFilter.flush();
       if (finalVisibleDelta) {
         visibleTextLength += finalVisibleDelta.length;
+        streamedVisibleText += finalVisibleDelta;
         void streamEvent({ type: 'delta', delta: finalVisibleDelta });
         if (bridge) {
           bridgeTextPushed = true;
           bridge.push(finalVisibleDelta);
         }
       }
-      const finalProviderText = getSafeFinalVisibleText(
-        providerResponse.text,
-        providerRequest.responseFormat,
-      );
-      if (bridge && !bridgeTextPushed && visibleTextLength === 0 && finalProviderText) {
-        visibleTextLength += finalProviderText.length;
-        await streamEvent({ type: 'delta', delta: finalProviderText });
-        bridgeTextPushed = true;
-        bridge.push(finalProviderText);
+      if (
+        providerRequest.responseFormat?.type === 'json_schema' &&
+        providerRequest.responseFormat.schema.type === 'object' &&
+        Object.prototype.hasOwnProperty.call(providerRequest.responseFormat.schema.properties, 'message') &&
+        visibleTextLength === 0
+      ) {
+        throw new Error('Structured reply did not stream message text.');
       }
       bridge?.close();
       if (bridgeDone) {
@@ -1311,7 +1312,7 @@ async function runAiChatRequest({
       }
       return {
         meta: providerResponse.meta ?? runtimeProvider.getState?.() ?? null,
-        text: providerResponse.text,
+        text: streamedVisibleText.trim(),
       };
     } catch (error) {
       bridge?.fail(error instanceof Error ? error : new Error(String(error)));

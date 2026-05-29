@@ -90,7 +90,7 @@ describe('assistant reply metadata', () => {
     });
     expect(ASSISTANT_REPLY_JSON_FORMAT.schema).toMatchObject({
       additionalProperties: false,
-      required: ['message', 'emotion', 'valence', 'arousal', 'dominance'],
+      required: ['message', 'emotion'],
       type: 'object',
     });
   });
