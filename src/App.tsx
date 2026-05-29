@@ -801,7 +801,12 @@ async function readAiProxyStream(
       return;
     }
 
-    const event = JSON.parse(data) as AiProxyStreamEvent;
+    let event: AiProxyStreamEvent;
+    try {
+      event = JSON.parse(data) as AiProxyStreamEvent;
+    } catch {
+      throw new Error('Stream bot AI proxy returned a malformed stream event.');
+    }
     if (event.type === 'tts-error') {
       console.warn('[TTS] Live bridge failed:', event.error);
       return;

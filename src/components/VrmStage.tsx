@@ -1855,6 +1855,9 @@ export const VrmStage = memo(function VrmStage({
       }
       return;
     }
+    if (facialExpressionRuntimeRef.current.nonce === facialExpressionRequest.nonce) {
+      return;
+    }
 
     const result = playFacialExpressionRequest(
       vrm,

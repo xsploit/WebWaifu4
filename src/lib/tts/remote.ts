@@ -74,6 +74,14 @@ type RemoteTtsStreamEvent =
       error?: string;
     };
 
+function parseRemoteTtsStreamEvent(line: string): RemoteTtsStreamEvent {
+  try {
+    return JSON.parse(line) as RemoteTtsStreamEvent;
+  } catch {
+    throw new Error('Remote TTS proxy returned a malformed stream event.');
+  }
+}
+
 const TTS_PROXY_URL = (import.meta.env['VITE_TTS_PROXY_URL'] || '').trim();
 const TTS_PROVIDER_KEY_HEADER = 'x-yourwifey-tts-provider-key';
 
@@ -202,14 +210,14 @@ export function createRemoteTtsStream(
         buffer = lines.pop() ?? '';
         for (const line of lines) {
           if (line.trim()) {
-            handleEvent(JSON.parse(line) as RemoteTtsStreamEvent);
+            handleEvent(parseRemoteTtsStreamEvent(line));
           }
         }
       }
 
       buffer += decoder.decode();
       if (buffer.trim()) {
-        handleEvent(JSON.parse(buffer) as RemoteTtsStreamEvent);
+        handleEvent(parseRemoteTtsStreamEvent(buffer));
       }
       done = true;
       wake();
