@@ -4645,7 +4645,7 @@ function App() {
           animationReason: index === -1 ? 'no enabled emotion animation match' : 'pending',
         },
         ...current,
-      ].slice(0, 30),
+      ].slice(0, 20),
     );
 
     setFacialExpressionRequest({

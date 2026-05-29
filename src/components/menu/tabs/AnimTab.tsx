@@ -353,7 +353,7 @@ export function AnimTab({
           <div>
             <div className="anim-group-title">
               Emotion Telemetry
-              <span>{emotionTelemetryEvents.length}/30</span>
+              <span>{emotionTelemetryEvents.length}/20</span>
             </div>
             <p>Shows model emotion, expression resolution, and reaction playback.</p>
           </div>
@@ -364,7 +364,7 @@ export function AnimTab({
               <span className="name">No emotion metadata played yet.</span>
             </div>
           ) : (
-            emotionTelemetryEvents.slice(0, 8).map((event) => (
+            emotionTelemetryEvents.slice(0, 20).map((event) => (
               <div className="row anim-row" key={event.id}>
                 <div className="anim-row-main">
                   <span className="name">
