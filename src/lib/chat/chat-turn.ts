@@ -123,7 +123,7 @@ export function buildChatTurnMemoryMessage(mode: 'direct' | 'batch', turns: Chat
     }
 
     return [
-      `${target.source === 'twitch' ? 'Twitch' : 'Local'} viewer ${target.displayName}: ${target.text}`.trim(),
+      `${target.source === 'twitch' ? 'Twitch viewer' : 'Local controller'} ${target.displayName}: ${target.text}`.trim(),
       `metadata: ${formatChatTurnMetadata(target)}`,
     ].join('\n');
   }

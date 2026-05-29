@@ -1609,9 +1609,13 @@ function buildChatAiPrompt(
   const isTwitchTurn = job.messages.some((turn) => turn.source === 'twitch');
   const identityContext = [
     `Current chat room: ${isTwitchTurn ? `#${channelName}` : 'local chat box'}.`,
-    `You are ${personaName}, the stream avatar/bot. Viewers mention you as ${mentionTags}.`,
+    isTwitchTurn
+      ? `You are ${personaName}, the stream avatar/bot. Viewers mention you as ${mentionTags}.`
+      : `You are ${personaName}, the local desktop avatar. The local chat box is a direct one-on-one conversation.`,
     localControllerNickname
-      ? `The local controller/stream owner nickname is "${localControllerNickname}", but local and Twitch messages both arrive as participant transcript turns.`
+      ? isTwitchTurn
+        ? `The local controller/stream owner nickname is "${localControllerNickname}", but Twitch messages can come from other participants.`
+        : `The local controller nickname is "${localControllerNickname}". Talk to them directly in second person.`
       : null,
     'Do not assume the current speaker is the local controller unless metadata says trustedController=true, local=true, broadcaster=true, or mod=true.',
   ]
@@ -1631,7 +1635,7 @@ function buildChatAiPrompt(
       target?.isBroadcaster
         ? 'The tagged viewer is the broadcaster/channel owner.'
         : target?.isLocal
-          ? 'The target is the local chat box participant. Treat them like a viewer, but metadata marks them as trusted for controls.'
+          ? 'The target is the local chat box participant/controller. Reply directly to them, not to an audience.'
           : 'The tagged viewer is a Twitch chatter; reply to that display name, not the local controller nickname.',
       job.firstTimeChatter
         ? 'This is the first message seen from this viewer in this browser session; greet them naturally.'

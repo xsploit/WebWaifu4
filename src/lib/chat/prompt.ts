@@ -314,7 +314,7 @@ export async function buildChatCompletionMessages({
 
     if (persona.userNickname.trim()) {
       personaBlocks.push(
-        `The local controller/stream owner nickname is "${persona.userNickname.trim()}". Use that naturally for local/manual chat or when the current Twitch viewer is clearly that same person. In Twitch chat, do not assume every chatter is the local controller; address the target viewer by their Twitch display name when provided.`,
+        `The local controller nickname is "${persona.userNickname.trim()}". In local/manual chat, talk directly to that person in second person. In Twitch chat, do not assume every chatter is the local controller; address the target viewer by their Twitch display name when provided.`,
       );
     }
   }

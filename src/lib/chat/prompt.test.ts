@@ -106,7 +106,7 @@ describe('POML-backed chat prompt', () => {
     }
 
     expect(systemMessage.role).toBe('system');
-    expect(systemMessage.content).toContain('live Web Waifu 4 stream avatar');
+    expect(systemMessage.content).toContain('live Web Waifu 4 avatar');
     expect(systemMessage.content).toContain('# Prompt State');
     expect(systemMessage.content).toContain('relationship_mood: teasing');
     expect(systemMessage.content).toContain('# Response Priority Stack');
