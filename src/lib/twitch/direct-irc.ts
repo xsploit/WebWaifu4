@@ -128,6 +128,9 @@ export class DirectTwitchIrcClient {
       this.handlers.onStatus('Twitch IRC channel is empty.', 'error');
       return;
     }
+    if (!this.stopped && this.socket) {
+      return;
+    }
 
     this.stopped = false;
     this.connect();
@@ -169,6 +172,11 @@ export class DirectTwitchIrcClient {
       return;
     }
 
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+
     const socket = new WebSocket(TWITCH_IRC_WS_URL);
     this.socket = socket;
 
@@ -191,13 +199,15 @@ export class DirectTwitchIrcClient {
     });
 
     socket.addEventListener('close', () => {
-      if (this.socket === socket) {
-        this.socket = null;
+      if (this.socket !== socket) {
+        return;
       }
-      if (!this.stopped) {
-        this.handlers.onStatus('Direct Twitch IRC disconnected; reconnecting.', 'warning');
-        this.scheduleReconnect();
+      this.socket = null;
+      if (this.stopped) {
+        return;
       }
+      this.handlers.onStatus('Direct Twitch IRC disconnected; reconnecting.', 'warning');
+      this.scheduleReconnect();
     });
 
     socket.addEventListener('error', () => {
