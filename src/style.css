@@ -1051,6 +1051,24 @@ input[type='range']::-webkit-slider-thumb:hover {
   min-width: 140px;
 }
 
+.emotion-telemetry .anim-row-main {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.emotion-telemetry .anim-meta {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-left: 0;
+}
+
+.emotion-telemetry .anim-meta-field,
+.emotion-telemetry .anim-meta-field-wide {
+  min-width: 0;
+}
+
+.emotion-telemetry .anim-tags {
+  white-space: normal;
+}
+
 .anim-purpose-select,
 .loop-chip {
   min-height: 28px;
