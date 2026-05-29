@@ -187,13 +187,8 @@ import {
 import type { ProviderKind } from './lib/product/byok';
 import { createBrowserProviderKeyVault } from './lib/product/provider-key-vault';
 import { getDesktopBackendUrl, type DesktopWindowMode } from './lib/desktop/runtime';
-import {
-  base64ToBlob,
-  blobToBase64,
-  createLocalTransferBackup,
-  parseLocalTransferBackup,
-  serializeLocalTransferBackup,
-} from './lib/product/local-transfer-backup';
+import { base64ToBlob, parseLocalTransferBackup } from './lib/product/local-transfer-backup';
+import { createLocalTransferBackupBlobInWorker } from './lib/product/local-transfer-backup-export';
 import './style.css';
 
 type SafeAreaInsets = {
@@ -6059,11 +6054,14 @@ function App() {
         const blob = await getSavedVrmModelBlob(model.id);
         return {
           ...model,
-          dataBase64: await blobToBase64(blob),
+          dataBuffer: await blob.arrayBuffer(),
         };
       }),
     );
-    const backup = createLocalTransferBackup({
+    setLocalTransferStatus(
+      `Exporting local transfer backup with ${savedModelBackups.length} saved VRMs...`,
+    );
+    const backup = await createLocalTransferBackupBlobInWorker({
       providerSecrets: await providerVault.exportSecrets(),
       savedVrmModels: savedModelBackups,
       state: persistedStateSnapshot,
@@ -6071,10 +6069,7 @@ function App() {
     const fileName = `web-waifu-4-local-backup-${backup.exportedAt
       .replace(/[:.]/g, '-')
       .slice(0, 19)}.json`;
-    const backupBlob = new Blob([serializeLocalTransferBackup(backup)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(backupBlob);
+    const url = URL.createObjectURL(backup.blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
@@ -6084,7 +6079,7 @@ function App() {
     link.remove();
     URL.revokeObjectURL(url);
     setLocalTransferStatus(
-      `Exported ${fileName} with ${backup.providerSecrets.length} keys and ${backup.savedVrmModels.length} saved VRMs.`,
+      `Exported ${fileName} with ${backup.providerSecretCount} keys and ${backup.savedVrmModelCount} saved VRMs.`,
     );
   }, [persistedStateSnapshot, providerKeyVaultWorkspaceId]);
 
