@@ -106,7 +106,7 @@ describe('AiSdkGatewayProvider', () => {
       toolChoice: 'required',
       stopWhen: { kind: 'step-count', rounds: 15 },
     });
-    expect(Object.keys(call.tools)).toEqual(['web_search', 'crawl_site', 'open_url']);
+    expect(Object.keys(call.tools)).toEqual(['web_research', 'web_search', 'crawl_site', 'open_url']);
     expect(call.messages[0]).toMatchObject({
       role: 'system',
       content: expect.stringContaining('You may call these tools directly'),

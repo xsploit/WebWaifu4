@@ -68,6 +68,61 @@ const MAX_EXTRACT_CHARS_PER_URL = 6000;
 export const TAVILY_OPENAI_TOOLS: OpenAiFunctionTool[] = [
   {
     type: 'function',
+    name: 'web_research',
+    description:
+      'One-step web research: search current/external sources, inspect the top results, and return compact source-backed notes. Prefer this when the user asks you to search, look up, research, verify, or get current information.',
+    strict: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The concise research question or search query.',
+        },
+        max_results: {
+          type: 'integer',
+          description: 'Number of search results to return. Defaults to server settings.',
+          minimum: 1,
+          maximum: 8,
+        },
+        inspect_results: {
+          type: 'integer',
+          description: 'How many top results to open/extract. Defaults to 3.',
+          minimum: 0,
+          maximum: 5,
+        },
+        search_depth: {
+          type: 'string',
+          enum: ['basic', 'advanced'],
+          description: 'Use basic unless the query needs deeper research.',
+        },
+        topic: {
+          type: 'string',
+          enum: ['general', 'news', 'finance'],
+          description: 'Search vertical.',
+        },
+        time_range: {
+          type: ['string', 'null'],
+          enum: ['day', 'week', 'month', 'year', 'd', 'w', 'm', 'y', null],
+          description: 'Optional recency filter.',
+        },
+        include_domains: {
+          type: ['array', 'null'],
+          items: { type: 'string' },
+          description: 'Optional domains to include.',
+        },
+        exclude_domains: {
+          type: ['array', 'null'],
+          items: { type: 'string' },
+          description: 'Optional domains to exclude.',
+        },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'web_search',
     description:
       'Search the web for current or external information. Use this only when the answer depends on recent, specific, or source-backed facts.',
@@ -197,6 +252,7 @@ export function buildTavilyToolInstruction() {
     '- If the user explicitly asks you to search, look up, browse, check the web, open a URL, or get current/latest information, call the relevant tool before answering.',
     '- You may call these tools directly when the user asks for current, external, source-backed, or URL-specific information.',
     '- You may use multiple tool rounds when a search result points to a page that needs open_url or a small crawl_site follow-up.',
+    '- Prefer web_research for normal search/research requests because it searches and inspects top results in one reliable tool call.',
     '- Use web_search for current facts, news, pricing, streamer/profile context, and anything likely to have changed.',
     '- Use open_url when the chat gives a specific page or a search result needs inspection.',
     '- Use crawl_site for a small docs/site section when one page is not enough.',
@@ -420,6 +476,99 @@ async function runWebSearch(options: TavilyToolOptions, args: Record<string, unk
   });
 }
 
+async function runWebResearch(options: TavilyToolOptions, args: Record<string, unknown>) {
+  const query = typeof args['query'] === 'string' ? args['query'].trim() : '';
+  if (!query) {
+    return stringifyToolResult({ ok: false, error: 'query is required' });
+  }
+
+  const maxResults = clampInteger(args['max_results'], options.maxResults, 1, 8);
+  const inspectResults = clampInteger(args['inspect_results'], 3, 0, Math.min(5, maxResults));
+  const body: Record<string, unknown> = {
+    query,
+    search_depth: pickSearchDepth(args['search_depth'], options.searchDepth),
+    topic: pickTopic(args['topic']),
+    max_results: maxResults,
+    include_answer: 'advanced',
+    include_raw_content: false,
+    include_images: false,
+    include_favicon: true,
+    include_usage: true,
+  };
+  const timeRange = pickTimeRange(args['time_range']);
+  const includeDomains = cleanStringArray(args['include_domains']);
+  const excludeDomains = cleanStringArray(args['exclude_domains']);
+  if (timeRange) {
+    body.time_range = timeRange;
+  }
+  if (includeDomains) {
+    body.include_domains = includeDomains;
+  }
+  if (excludeDomains) {
+    body.exclude_domains = excludeDomains;
+  }
+
+  const searchResult = await postTavilyJson(options, 'search', body);
+  if (!searchResult.ok) {
+    return stringifyToolResult(searchResult);
+  }
+
+  const searchData = searchResult.data as TavilySearchResponse;
+  const results = (searchData.results ?? []).slice(0, maxResults);
+  const urls = results
+    .map((item) => (typeof item.url === 'string' ? item.url.trim() : ''))
+    .filter((url) => isHttpUrl(url))
+    .slice(0, inspectResults);
+  let extracted: TavilyExtractResult[] = [];
+  let failedResults: unknown[] = [];
+  let extractUsage: unknown = null;
+  if (urls.length > 0) {
+    const extractResult = await postTavilyJson(options, 'extract', {
+      urls,
+      extract_depth: 'basic',
+      format: 'markdown',
+      include_images: false,
+      include_favicon: true,
+      timeout: Math.ceil(options.timeoutMs / 1000),
+      include_usage: true,
+    });
+    if (extractResult.ok) {
+      const extractData = extractResult.data as TavilyExtractResponse;
+      extracted = extractData.results ?? [];
+      failedResults = extractData.failed_results ?? [];
+      extractUsage = extractData.usage;
+    } else {
+      failedResults = [extractResult];
+    }
+  }
+  const extractedByUrl = new Map(
+    extracted.map((item) => [String(item.url ?? '').trim(), item] as const),
+  );
+
+  return stringifyToolResult({
+    ok: true,
+    query: searchData.query ?? query,
+    answer: searchData.answer ?? '',
+    sources: results.map((item) => {
+      const extractedItem = extractedByUrl.get(String(item.url ?? '').trim());
+      return {
+        title: extractedItem?.title ?? item.title ?? '',
+        url: item.url ?? extractedItem?.url ?? '',
+        snippet: item.content ?? '',
+        content: truncateText(extractedItem?.raw_content ?? extractedItem?.content ?? '', 1800),
+        score: item.score,
+        published_date: item.published_date,
+        favicon: item.favicon ?? extractedItem?.favicon,
+      };
+    }),
+    failed_results: failedResults,
+    usage: {
+      search: searchData.usage,
+      extract: extractUsage,
+    },
+  });
+}
+
 async function runOpenUrl(options: TavilyToolOptions, args: Record<string, unknown>) {
   const rawUrl = typeof args['url'] === 'string' ? args['url'].trim() : '';
   let url: URL;
@@ -527,6 +676,9 @@ async function runCrawlSite(options: TavilyToolOptions, args: Record<string, unk
 
 export async function runTavilyToolCall(options: TavilyToolOptions, call: OpenAiFunctionCall) {
   const args = parseArgs(call);
+  if (call.name === 'web_research') {
+    return runWebResearch(options, args);
+  }
   if (call.name === 'web_search') {
     return runWebSearch(options, args);
   }
@@ -537,4 +689,13 @@ export async function runTavilyToolCall(options: TavilyToolOptions, call: OpenAi
     return runOpenUrl(options, args);
   }
   return stringifyToolResult({ ok: false, error: `Unknown tool ${call.name ?? 'unknown'}` });
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
