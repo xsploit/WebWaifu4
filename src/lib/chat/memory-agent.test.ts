@@ -73,8 +73,25 @@ describe('memory agent chat cadence', () => {
         [],
         'openai/o1-pro-2025-03-19',
       ),
-    ).toEqual(['google/gemini-2.5-pro']);
+    ).toEqual([]);
 
     expect(chooseMemoryAgentModel([], 'o1-pro-2025-03-19')).toBe(DEFAULT_MEMORY_AGENT_MODEL);
+  });
+
+  it('does not sweep arbitrary provider models as memory fallbacks', () => {
+    expect(
+      getMemoryAgentModelCandidates(
+        [
+          'openai/gpt-4o-mini',
+          'amazon/nova-2-lite',
+          'amazon/nova-lite',
+          'amazon/nova-micro',
+          'amazon/nova-pro',
+        ],
+        'openai/gpt-4o-mini',
+        ['openai/gpt-4o-mini'],
+        '',
+      ),
+    ).toEqual([]);
   });
 });

@@ -153,13 +153,6 @@ export function getMemoryAgentModelCandidates(
     }
   }
 
-  availableModels.forEach((model) => {
-    const loweredModel = model.toLowerCase();
-    if (!loweredModel.includes('codex') && !loweredModel.includes('claude-sonnet')) {
-      pushCandidate(model);
-    }
-  });
-
   pushCandidate(fallbackModel);
 
   return candidates;
