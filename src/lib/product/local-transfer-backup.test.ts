@@ -18,7 +18,7 @@ import {
 function createState(): PersistedChatState {
   return {
     activePersonaId: 'hikari-chan',
-    activeTab: 'account',
+    activeTab: 'background',
     aiSettings: createDefaultAiSettings(),
     chatHistory: [],
     currentBundledModelId: '',
@@ -35,7 +35,11 @@ function createState(): PersistedChatState {
     ],
     relationshipMemories: {},
     relationshipMemory: createDefaultRelationshipMemory(),
-    sequencerSettings: createDefaultSequencerSettings(),
+    sequencerSettings: {
+      ...createDefaultSequencerSettings(),
+      duration: 9,
+      speed: 1.25,
+    },
     twitchChannel: 'subsect',
     twitchSettings: createDefaultTwitchSettings(),
     uiState: {
@@ -43,7 +47,11 @@ function createState(): PersistedChatState {
       chatLogOpen: true,
       menuOpen: false,
     },
-    visualSettings: createDefaultVisualSettings(),
+    visualSettings: {
+      ...createDefaultVisualSettings(),
+      sceneBackgroundMode: 'transparent',
+      sceneExposure: 1.2,
+    },
     voiceLabVoices: [],
   };
 }
@@ -83,6 +91,11 @@ describe('local transfer backup', () => {
     const parsed = parseLocalTransferBackup(serializeLocalTransferBackup(backup));
 
     expect(parsed.state.activePersonaId).toBe('hikari-chan');
+    expect(parsed.state.activeTab).toBe('background');
+    expect(parsed.state.sequencerSettings.duration).toBe(9);
+    expect(parsed.state.sequencerSettings.speed).toBe(1.25);
+    expect(parsed.state.visualSettings.sceneBackgroundMode).toBe('transparent');
+    expect(parsed.state.visualSettings.sceneExposure).toBe(1.2);
     expect(parsed.providerSecrets[0]?.secret).toBe('sk-test-1234');
     expect(parsed.savedVrmModels[0]?.id).toBe('custom-vrm-test');
     expect(parsed.includes.providerSecrets).toBe(true);

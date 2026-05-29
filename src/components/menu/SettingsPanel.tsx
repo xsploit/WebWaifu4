@@ -486,9 +486,6 @@ export function SettingsPanel({
           <div className="panel-kicker">Stream controls</div>
           <div className="panel-title">Settings</div>
         </div>
-        <button className="panel-close-btn" onClick={onClose} title="Close settings" type="button">
-          Close
-        </button>
       </div>
 
       <div className="tabs-header" aria-label="Settings sections">

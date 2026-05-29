@@ -570,6 +570,7 @@ function normalizeSettingsTab(value: string | null): SettingsTabId {
   switch (value) {
     case 'account':
     case 'anim':
+    case 'background':
     case 'character':
     case 'ai':
     case 'twitch':

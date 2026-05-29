@@ -146,7 +146,7 @@ describe('chat settings persistence', () => {
     } satisfies PersistedChatState['visualSettings'];
     const state: PersistedChatState = {
       activePersonaId: DEFAULT_PERSONA.id,
-      activeTab: 'tts',
+      activeTab: 'background',
       aiSettings,
       chatHistory: [
         {
@@ -251,7 +251,7 @@ describe('chat settings persistence', () => {
       speed: sequencerSettings.speed,
     });
     expect(loaded.sequencerSettings.playlist).toHaveLength(sequencerSettings.playlist.length);
-    expect(loaded.activeTab).toBe('tts');
+    expect(loaded.activeTab).toBe('background');
     expect(loaded.currentBundledModelId).toBe('hikari-chan');
     expect(loaded.currentCustomVrmModelId).toBe('custom-vrm-test-avatar');
     expect(loaded.twitchChannel).toBe('cohhcarnage');

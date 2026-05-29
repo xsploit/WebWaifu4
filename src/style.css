@@ -456,28 +456,6 @@ select {
   letter-spacing: 0.05em;
 }
 
-.panel-close-btn {
-  min-height: 34px;
-  border: 1px solid rgba(0, 255, 255, 0.25);
-  border-radius: 100px;
-  background: rgba(0, 255, 255, 0.03);
-  color: #00ffff;
-  cursor: pointer;
-  font-family: 'Outfit', sans-serif;
-  font-weight: 700;
-  font-size: 0.75rem;
-  padding: 0 16px;
-  transition: all 0.25s ease;
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
-}
-
-.panel-close-btn:hover {
-  border-color: #00ffff;
-  background: #00ffff;
-  color: #030107;
-  box-shadow: 0 0 25px rgba(0, 255, 255, 0.35);
-}
-
 .tabs-header {
   display: flex;
   flex-wrap: wrap;
