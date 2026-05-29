@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Connection, Database } from '@ladybugdb/core';
 
@@ -1689,7 +1689,9 @@ export class LadybugMemoryService {
       version: 1,
     };
     await mkdir(dirname(this.fallbackStorePath), { recursive: true });
-    await writeFile(this.fallbackStorePath, `${JSON.stringify(nextStore, null, 2)}\n`, 'utf8');
+    const temporaryPath = `${this.fallbackStorePath}.${process.pid}.tmp`;
+    await writeFile(temporaryPath, `${JSON.stringify(nextStore, null, 2)}\n`, 'utf8');
+    await rename(temporaryPath, this.fallbackStorePath);
   }
 
   async close() {
