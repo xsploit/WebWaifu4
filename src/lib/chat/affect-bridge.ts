@@ -1,25 +1,5 @@
 import type { AffectState } from './types';
-import type { AssistantEmotion, AssistantReplyMetadata } from './reply-metadata';
-
-const EMOTION_VAD: Record<AssistantEmotion, Pick<AffectState, 'arousal' | 'dominance' | 'valence'>> = {
-  angry: { arousal: 0.82, dominance: 0.55, valence: -0.72 },
-  annoyed: { arousal: 0.58, dominance: 0.34, valence: -0.42 },
-  amused: { arousal: 0.56, dominance: 0.25, valence: 0.58 },
-  caring: { arousal: 0.32, dominance: 0.08, valence: 0.68 },
-  confused: { arousal: 0.42, dominance: -0.36, valence: -0.18 },
-  curious: { arousal: 0.48, dominance: 0.05, valence: 0.22 },
-  embarrassed: { arousal: 0.62, dominance: -0.48, valence: -0.12 },
-  excited: { arousal: 0.86, dominance: 0.42, valence: 0.78 },
-  grateful: { arousal: 0.36, dominance: 0.02, valence: 0.74 },
-  happy: { arousal: 0.6, dominance: 0.24, valence: 0.72 },
-  nervous: { arousal: 0.68, dominance: -0.58, valence: -0.28 },
-  neutral: { arousal: 0.18, dominance: 0, valence: 0 },
-  optimistic: { arousal: 0.52, dominance: 0.38, valence: 0.7 },
-  proud: { arousal: 0.56, dominance: 0.72, valence: 0.62 },
-  sad: { arousal: 0.24, dominance: -0.42, valence: -0.68 },
-  surprised: { arousal: 0.78, dominance: -0.08, valence: 0.12 },
-  thinking: { arousal: 0.28, dominance: 0.06, valence: 0.04 },
-};
+import { EMOTION_VAD_DEFAULTS, type AssistantReplyMetadata } from './reply-metadata';
 
 export function createDefaultAffectState(): AffectState {
   return {
@@ -52,12 +32,12 @@ export function normalizeAffectState(value: unknown): AffectState {
 
 export function getMetadataVad(metadata: AssistantReplyMetadata | null) {
   if (!metadata) {
-    return EMOTION_VAD.neutral;
+    return EMOTION_VAD_DEFAULTS.neutral;
   }
   return {
-    arousal: clamp01(metadata.arousal ?? EMOTION_VAD[metadata.emotion].arousal),
-    dominance: clampSigned(metadata.dominance ?? EMOTION_VAD[metadata.emotion].dominance),
-    valence: clampSigned(metadata.valence ?? EMOTION_VAD[metadata.emotion].valence),
+    arousal: clamp01(metadata.arousal ?? EMOTION_VAD_DEFAULTS[metadata.emotion].arousal),
+    dominance: clampSigned(metadata.dominance ?? EMOTION_VAD_DEFAULTS[metadata.emotion].dominance),
+    valence: clampSigned(metadata.valence ?? EMOTION_VAD_DEFAULTS[metadata.emotion].valence),
   };
 }
 

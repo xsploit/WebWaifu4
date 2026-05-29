@@ -55,6 +55,7 @@ function serializeTurnMetadataContext({
   const now = new Date();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
   const lastUserMessage = [...history].reverse().find((message) => message.role === 'user');
+  const affectState = normalizeAffectState(relationshipMemory.affectState);
   const metadata: Record<string, PromptTurnContextValue> = {
     currentTimeIso: now.toISOString(),
     localTime: now.toLocaleString(undefined, {
@@ -67,10 +68,10 @@ function serializeTurnMetadataContext({
     personaId: persona?.id,
     personaName: persona?.name,
     relationshipMood: relationshipMemory.mood,
-    affectArousal: normalizeAffectState(relationshipMemory.affectState).arousal.toFixed(2),
-    affectDominance: normalizeAffectState(relationshipMemory.affectState).dominance.toFixed(2),
-    affectLabel: normalizeAffectState(relationshipMemory.affectState).label,
-    affectValence: normalizeAffectState(relationshipMemory.affectState).valence.toFixed(2),
+    affectArousal: affectState.arousal.toFixed(2),
+    affectDominance: affectState.dominance.toFixed(2),
+    affectLabel: affectState.label,
+    affectValence: affectState.valence.toFixed(2),
     semanticMemory: semanticMemoryContext.trim() ? 'present' : 'absent',
     timezone,
     ttsExpressionTags: ttsExpressionTagsEnabled,

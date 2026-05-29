@@ -169,7 +169,7 @@ const EMOTION_ANIMATION_KEYWORDS: Record<AssistantEmotion, string[]> = {
   caring: ['caring', 'approval', 'gratitude'],
 };
 
-const EMOTION_VAD_DEFAULTS: Record<
+export const EMOTION_VAD_DEFAULTS: Record<
   AssistantEmotion,
   { arousal: number; dominance: number; valence: number }
 > = {
