@@ -132,6 +132,8 @@ import { createDefaultSequencerSettings, createDefaultVisualSettings } from './l
 import type {
   AnimationFormat,
   BundledVrmOption,
+  EmotionTelemetryEvent,
+  EmotionTelemetryPatch,
   FacialExpressionRequest,
   ManualPlayRequest,
   SavedVrmModelSummary,
@@ -1793,6 +1795,9 @@ function App() {
   const [manualPlayRequest, setManualPlayRequest] = useState<ManualPlayRequest | null>(null);
   const [facialExpressionRequest, setFacialExpressionRequest] =
     useState<FacialExpressionRequest | null>(null);
+  const [emotionTelemetryEvents, setEmotionTelemetryEvents] = useState<EmotionTelemetryEvent[]>(
+    [],
+  );
   const [visualSettings, setVisualSettings] = useState(createDefaultVisualSettings);
   const [sequencerSettings, setSequencerSettings] = useState(createDefaultSequencerSettings);
   const [personas, setPersonas] = useState<PersonaProfile[]>(createDefaultPersonas);
@@ -4601,23 +4606,56 @@ function App() {
     runBackendGrilloTask('semantic_indexing');
   }, [runBackendGrilloTask]);
 
+  const patchEmotionTelemetryEvent = useCallback((patch: EmotionTelemetryPatch) => {
+    setEmotionTelemetryEvents((current) =>
+      current.map((event) => (event.id === patch.id ? { ...event, ...patch } : event)),
+    );
+  }, []);
+
   const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
     if (!metadata) {
       return;
     }
 
+    const nonce = Date.now();
+    const telemetryId = `emotion-${nonce}-${Math.random().toString(36).slice(2, 8)}`;
     const expression = resolveFacialExpressionForReplyMetadata(metadata);
+    const intensity = resolveFacialExpressionIntensityForReplyMetadata(metadata);
+    const durationMs = resolveFacialExpressionDurationMsForReplyMetadata(metadata);
+    const playlist = sequencerSettingsRef.current.playlist;
+    const index = resolveAnimationIndexForReplyMetadata(metadata, playlist);
+    const animationEntry = index >= 0 ? playlist[index] ?? null : null;
+    setEmotionTelemetryEvents((current) =>
+      [
+        {
+          id: telemetryId,
+          createdAt: nonce,
+          emotion: metadata.emotion,
+          requestedExpression: expression,
+          requestedIntensity: intensity,
+          requestedDurationMs: durationMs,
+          resolvedExpressionNames: [],
+          appliedIntensity: 0,
+          expressionAccepted: null,
+          expressionReason: 'pending',
+          animationIndex: index,
+          animationId: animationEntry?.id ?? null,
+          animationName: animationEntry?.name ?? null,
+          animationAccepted: index === -1 ? false : null,
+          animationReason: index === -1 ? 'no enabled emotion animation match' : 'pending',
+        },
+        ...current,
+      ].slice(0, 30),
+    );
+
     setFacialExpressionRequest({
-      durationMs: resolveFacialExpressionDurationMsForReplyMetadata(metadata),
+      durationMs,
       expression,
-      intensity: resolveFacialExpressionIntensityForReplyMetadata(metadata),
-      nonce: Date.now(),
+      intensity,
+      nonce,
+      telemetryId,
     });
 
-    const index = resolveAnimationIndexForReplyMetadata(
-      metadata,
-      sequencerSettingsRef.current.playlist,
-    );
     if (index === -1) {
       return;
     }
@@ -4625,7 +4663,8 @@ function App() {
     setManualPlayRequest({
       index,
       kind: 'reaction',
-      nonce: Date.now(),
+      nonce: nonce + 1,
+      telemetryId,
     });
   }, []);
 
@@ -6224,6 +6263,8 @@ function App() {
         facialExpressionRequest={facialExpressionRequest}
         manualPlayRequest={manualPlayRequest}
         modelUrl={modelUrl}
+        onAnimationTelemetry={patchEmotionTelemetryEvent}
+        onFacialExpressionTelemetry={patchEmotionTelemetryEvent}
         sequencerSettings={sequencerSettings}
         setSequencerSettings={setSequencerSettings}
         setVisualSettings={setVisualSettings}
@@ -6358,6 +6399,7 @@ function App() {
               messageCount={chatHistory.length}
               currentBundledModelId={currentBundledModelId}
               currentCustomVrmModelId={currentCustomVrmModelId}
+              emotionTelemetryEvents={emotionTelemetryEvents}
               localTransferStatus={localTransferStatus}
               onClearChat={handleClearChat}
               onClearDraft={handleClearDraft}

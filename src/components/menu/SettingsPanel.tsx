@@ -17,6 +17,7 @@ import type {
 } from '../../lib/chat/memory-debug';
 import type {
   BundledVrmOption,
+  EmotionTelemetryEvent,
   ManualPlayRequest,
   SavedVrmModelSummary,
   SequencerSettings,
@@ -64,6 +65,7 @@ type SettingsPanelProps = {
   messageCount: number;
   currentBundledModelId: string;
   currentCustomVrmModelId: string;
+  emotionTelemetryEvents: EmotionTelemetryEvent[];
   localTransferStatus: string;
   onClose: () => void;
   onDeletePersona: (id: string) => void;
@@ -185,6 +187,7 @@ export function SettingsPanel({
   messageCount,
   currentBundledModelId,
   currentCustomVrmModelId,
+  emotionTelemetryEvents,
   localTransferStatus,
   onCacheVoice,
   onClearChat,
@@ -286,6 +289,7 @@ export function SettingsPanel({
       />
     ) : activeTab === 'anim' ? (
       <AnimTab
+        emotionTelemetryEvents={emotionTelemetryEvents}
         onImportAnimationFile={onImportAnimationFile}
         onPlayAnimation={onPlayAnimation}
         sequencerSettings={sequencerSettings}

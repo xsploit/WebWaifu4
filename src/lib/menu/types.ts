@@ -132,6 +132,7 @@ export type ManualPlayRequest = {
   index: number;
   kind?: 'base' | 'reaction';
   nonce: number;
+  telemetryId?: string;
 };
 
 export type FacialExpressionRequest = {
@@ -139,4 +140,33 @@ export type FacialExpressionRequest = {
   expression: string;
   intensity: number;
   nonce: number;
+  telemetryId?: string;
+};
+
+export type EmotionTelemetryEvent = {
+  id: string;
+  createdAt: number;
+  emotion: string;
+  requestedExpression: string;
+  requestedIntensity: number;
+  requestedDurationMs: number;
+  resolvedExpressionNames: string[];
+  appliedIntensity: number;
+  expressionAccepted: boolean | null;
+  expressionReason: string;
+  animationIndex: number;
+  animationId: string | null;
+  animationName: string | null;
+  animationAccepted: boolean | null;
+  animationReason: string;
+};
+
+export type EmotionTelemetryPatch = {
+  id: string;
+  appliedIntensity?: number;
+  animationAccepted?: boolean;
+  animationReason?: string;
+  expressionAccepted?: boolean;
+  expressionReason?: string;
+  resolvedExpressionNames?: string[];
 };

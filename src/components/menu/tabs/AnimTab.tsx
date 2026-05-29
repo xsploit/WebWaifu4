@@ -2,11 +2,13 @@ import type { Dispatch, SetStateAction } from 'react';
 import type {
   AnimationEntry,
   AnimationPurpose,
+  EmotionTelemetryEvent,
   ManualPlayRequest,
   SequencerSettings,
 } from '../../../lib/menu/types';
 
 type AnimTabProps = {
+  emotionTelemetryEvents: EmotionTelemetryEvent[];
   onImportAnimationFile: (file: File) => void;
   onPlayAnimation: (request: ManualPlayRequest) => void;
   setSequencerSettings: Dispatch<SetStateAction<SequencerSettings>>;
@@ -118,6 +120,7 @@ function setAnimationGroupEnabled(
 }
 
 export function AnimTab({
+  emotionTelemetryEvents,
   onImportAnimationFile,
   onPlayAnimation,
   setSequencerSettings,
@@ -344,6 +347,73 @@ export function AnimTab({
         <strong>{currentEntry?.name ?? 'None'}</strong>
         {currentEntry && currentGroup ? <span>{currentGroup.label}</span> : null}
       </div>
+
+      <section className="anim-group emotion-telemetry">
+        <div className="anim-group-header">
+          <div>
+            <div className="anim-group-title">
+              Emotion Telemetry
+              <span>{emotionTelemetryEvents.length}/30</span>
+            </div>
+            <p>Shows model emotion, expression resolution, and reaction playback.</p>
+          </div>
+        </div>
+        <div className="anim-group-list">
+          {emotionTelemetryEvents.length === 0 ? (
+            <div className="row anim-row disabled">
+              <span className="name">No emotion metadata played yet.</span>
+            </div>
+          ) : (
+            emotionTelemetryEvents.slice(0, 8).map((event) => (
+              <div className="row anim-row" key={event.id}>
+                <div className="anim-row-main">
+                  <span className="name">
+                    {event.emotion}
+                    <span className="badge badge-muted">
+                      {new Date(event.createdAt).toLocaleTimeString()}
+                    </span>
+                    <span className="anim-tags">
+                      face {event.requestedExpression} -{' '}
+                      {event.resolvedExpressionNames.length
+                        ? event.resolvedExpressionNames.join(' / ')
+                        : 'none'}
+                    </span>
+                  </span>
+                </div>
+                <div className="anim-meta">
+                  <div className="anim-meta-field">
+                    <span>Expression</span>
+                    <strong>
+                      {event.expressionAccepted === null
+                        ? 'pending'
+                        : event.expressionAccepted
+                          ? 'applied'
+                          : 'skipped'}
+                    </strong>
+                    <span>{event.expressionReason}</span>
+                  </div>
+                  <div className="anim-meta-field">
+                    <span>Peak</span>
+                    <strong>{event.appliedIntensity.toFixed(2)}</strong>
+                    <span>requested {event.requestedIntensity.toFixed(2)}</span>
+                  </div>
+                  <div className="anim-meta-field anim-meta-field-wide">
+                    <span>Animation</span>
+                    <strong>{event.animationName ?? 'none'}</strong>
+                    <span>
+                      {event.animationAccepted === null
+                        ? event.animationReason
+                        : event.animationAccepted
+                          ? 'requested'
+                          : event.animationReason}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
 
       <div className="batch-row">
         <button

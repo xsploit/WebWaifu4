@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import type {
   AnimationEntry,
+  EmotionTelemetryPatch,
   FacialExpressionRequest,
   ManualPlayRequest,
   SequencerSettings,
@@ -30,6 +31,8 @@ type VrmStageProps = {
   facialExpressionRequest: FacialExpressionRequest | null;
   manualPlayRequest: ManualPlayRequest | null;
   modelUrl: string | null;
+  onAnimationTelemetry?: (patch: EmotionTelemetryPatch) => void;
+  onFacialExpressionTelemetry?: (patch: EmotionTelemetryPatch) => void;
   sequencerSettings: SequencerSettings;
   setSequencerSettings: Dispatch<SetStateAction<SequencerSettings>>;
   setVisualSettings: Dispatch<SetStateAction<VisualSettings>>;
@@ -616,8 +619,21 @@ function playFacialExpressionRequest(
   state: FacialExpressionRuntimeState,
 ) {
   const manager = vrm.expressionManager;
-  if (!manager || state.nonce === request.nonce) {
-    return;
+  if (!manager) {
+    return {
+      appliedIntensity: 0,
+      expressionAccepted: false,
+      expressionReason: 'missing expression manager',
+      resolvedExpressionNames: [],
+    };
+  }
+  if (state.nonce === request.nonce) {
+    return {
+      appliedIntensity: 0,
+      expressionAccepted: false,
+      expressionReason: 'duplicate nonce',
+      resolvedExpressionNames: state.names,
+    };
   }
 
   clearFacialExpressionRuntime(vrm, state);
@@ -626,7 +642,12 @@ function playFacialExpressionRequest(
   const names = resolveFacialExpressionNames(manager, request.expression);
   const peak = THREE.MathUtils.clamp(request.intensity, 0, 1);
   if (names.length === 0 || peak <= 0) {
-    return;
+    return {
+      appliedIntensity: peak,
+      expressionAccepted: false,
+      expressionReason: names.length === 0 ? 'no matching VRM expression' : 'zero intensity',
+      resolvedExpressionNames: names,
+    };
   }
 
   state.names = names;
@@ -660,6 +681,12 @@ function playFacialExpressionRequest(
   };
 
   state.animationFrame = window.requestAnimationFrame(tick);
+  return {
+    appliedIntensity: peak,
+    expressionAccepted: true,
+    expressionReason: 'applied',
+    resolvedExpressionNames: names,
+  };
 }
 
 function updateAutoBlink(
@@ -1344,6 +1371,8 @@ export const VrmStage = memo(function VrmStage({
   facialExpressionRequest,
   manualPlayRequest,
   modelUrl,
+  onAnimationTelemetry,
+  onFacialExpressionTelemetry,
   sequencerSettings,
   setSequencerSettings,
   setVisualSettings,
@@ -1708,30 +1737,83 @@ export const VrmStage = memo(function VrmStage({
   ]);
 
   useEffect(() => {
-    if (!vrm || !manualPlayRequest) {
+    if (!manualPlayRequest) {
+      return;
+    }
+    if (!vrm) {
+      if (manualPlayRequest.telemetryId) {
+        onAnimationTelemetry?.({
+          id: manualPlayRequest.telemetryId,
+          animationAccepted: false,
+          animationReason: 'no VRM loaded',
+        });
+      }
       return;
     }
 
     if (lastManualPlayNonceRef.current === manualPlayRequest.nonce) {
+      if (manualPlayRequest.telemetryId) {
+        onAnimationTelemetry?.({
+          id: manualPlayRequest.telemetryId,
+          animationAccepted: false,
+          animationReason: 'duplicate nonce',
+        });
+      }
       return;
     }
 
     const entry = sequencerSettings.playlist[manualPlayRequest.index];
     if (!entry) {
+      if (manualPlayRequest.telemetryId) {
+        onAnimationTelemetry?.({
+          id: manualPlayRequest.telemetryId,
+          animationAccepted: false,
+          animationReason: 'missing animation entry',
+        });
+      }
       return;
     }
 
     lastManualPlayNonceRef.current = manualPlayRequest.nonce;
+    if (manualPlayRequest.telemetryId) {
+      onAnimationTelemetry?.({
+        id: manualPlayRequest.telemetryId,
+        animationAccepted: true,
+        animationReason: 'requested',
+      });
+    }
     playAnimation(entry, manualPlayRequest.index, manualPlayRequest.kind);
-  }, [manualPlayRequest, playAnimation, sequencerSettings.playlist, vrm]);
+  }, [manualPlayRequest, onAnimationTelemetry, playAnimation, sequencerSettings.playlist, vrm]);
 
   useEffect(() => {
-    if (!vrm || !facialExpressionRequest) {
+    if (!facialExpressionRequest) {
+      return;
+    }
+    if (!vrm) {
+      if (facialExpressionRequest.telemetryId) {
+        onFacialExpressionTelemetry?.({
+          id: facialExpressionRequest.telemetryId,
+          appliedIntensity: 0,
+          expressionAccepted: false,
+          expressionReason: 'no VRM loaded',
+          resolvedExpressionNames: [],
+        });
+      }
       return;
     }
 
-    playFacialExpressionRequest(vrm, facialExpressionRequest, facialExpressionRuntimeRef.current);
-  }, [facialExpressionRequest, vrm]);
+    const result = playFacialExpressionRequest(
+      vrm,
+      facialExpressionRequest,
+      facialExpressionRuntimeRef.current,
+    );
+    if (facialExpressionRequest.telemetryId && result) {
+      onFacialExpressionTelemetry?.({
+        id: facialExpressionRequest.telemetryId,
+        ...result,
+      });
+    }
+  }, [facialExpressionRequest, onFacialExpressionTelemetry, vrm]);
 
   useEffect(() => {
     if (!vrm) {
