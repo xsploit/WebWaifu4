@@ -137,6 +137,10 @@ function createStructuredOutput(request: ChatProviderRequest) {
   return undefined;
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class AiSdkGatewayProvider implements ChatProvider {
   private model: string;
 
@@ -178,6 +182,7 @@ export class AiSdkGatewayProvider implements ChatProvider {
     const toolsUsed: string[] = [];
     const model = this.createModel();
     const structuredOutput = createStructuredOutput(request);
+    let structuredOutputFallbackError: string | null = null;
     const result = streamText({
       abortSignal: request.signal,
       allowSystemInMessages: true,
@@ -200,11 +205,19 @@ export class AiSdkGatewayProvider implements ChatProvider {
       tools,
     });
 
-    const text = structuredOutput
-      ? JSON.stringify(await result.output)
-      : (await result.text).trim();
+    let text: string;
+    if (structuredOutput) {
+      try {
+        text = JSON.stringify(await result.output);
+      } catch (error) {
+        structuredOutputFallbackError = getErrorMessage(error);
+        text = (await result.text).trim();
+      }
+    } else {
+      text = (await result.text).trim();
+    }
     if (!text) {
-      throw new Error('AI Gateway returned an empty response.');
+      throw new Error(structuredOutputFallbackError || 'AI Gateway returned an empty response.');
     }
 
     return {
@@ -214,6 +227,12 @@ export class AiSdkGatewayProvider implements ChatProvider {
         toolsAvailable,
         toolsUsed,
         transport: 'http-stream',
+        ...(structuredOutputFallbackError
+          ? {
+              structuredOutputFallback: true,
+              structuredOutputFallbackError,
+            }
+          : {}),
       },
       text,
     };

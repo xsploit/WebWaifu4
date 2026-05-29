@@ -253,4 +253,39 @@ describe('AiSdkGatewayProvider', () => {
       });
     },
   );
+
+  it('falls back to final text when structured output parsing fails after tools', async () => {
+    streamTextMock.mockReturnValueOnce({
+      output: Promise.reject(new Error('No object generated: could not parse the response.')),
+      text: Promise.resolve(
+        'Tool-backed answer. <yw-meta>{"emotion":"curious"}</yw-meta>',
+      ),
+    });
+    const provider = createProvider();
+
+    const response = await provider.completeStream(
+      createRequest({
+        responseFormat: {
+          name: 'yourwifey_assistant_reply',
+          schema: {
+            additionalProperties: false,
+            properties: {
+              emotion: { enum: ['curious'], type: 'string' },
+              message: { type: 'string' },
+            },
+            required: ['message', 'emotion'],
+            type: 'object',
+          },
+          type: 'json_schema',
+        },
+      }),
+    );
+
+    expect(response.text).toContain('Tool-backed answer');
+    expect(response.meta).toMatchObject({
+      structuredOutputFallback: true,
+      structuredOutputFallbackError: 'No object generated: could not parse the response.',
+      toolsAvailable: true,
+    });
+  });
 });
