@@ -356,6 +356,7 @@ const AUTO_RESUME_BROWSER_AUDIO = import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 
 const PIPER_TIMING_TICKS_PER_SECOND = 10000000;
 const SUBTITLE_WORD_WINDOW = 14;
 const SUBTITLE_CLEAR_DELAY_MS = 1200;
+const ESTIMATED_SUBTITLE_WORD_SECONDS = 0.22;
 const LIVE_BRIDGE_SUBTITLE_TICK_MS = 85;
 const LIVE_BRIDGE_SUBTITLE_CHARS_PER_TICK = 3;
 const LIVE_BRIDGE_SUBTITLE_PUNCTUATION_PAUSE_MS = 160;
@@ -1584,6 +1585,15 @@ function getLiveBridgeSubtitleLine(text: string) {
   return words.slice(-SUBTITLE_WORD_WINDOW).join(' ');
 }
 
+function createEstimatedSubtitleWordBoundaries(text: string): WordBoundary[] {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  return words.map((word, index) => ({
+    duration: ESTIMATED_SUBTITLE_WORD_SECONDS * PIPER_TIMING_TICKS_PER_SECOND,
+    offset: index * ESTIMATED_SUBTITLE_WORD_SECONDS * PIPER_TIMING_TICKS_PER_SECOND,
+    word,
+  }));
+}
+
 function buildChatAiPrompt(
   job: ChatAiJob,
   persona: PersonaProfile | null,
@@ -1903,6 +1913,7 @@ function App() {
   const subtitleDataRef = useRef<{ text: string; wordBoundaries: WordBoundary[] } | null>(null);
   const subtitleIntervalRef = useRef<number | null>(null);
   const subtitleClearTimeoutRef = useRef<number | null>(null);
+  const subtitleStartedAtRef = useRef<number | null>(null);
   const liveBridgeSubtitleActiveRef = useRef(false);
   const startupStatusSentRef = useRef(false);
   const appliedPersonaSceneKeyRef = useRef<string | null>(null);
@@ -3260,6 +3271,7 @@ function App() {
       window.clearTimeout(subtitleClearTimeoutRef.current);
       subtitleClearTimeoutRef.current = null;
     }
+    subtitleStartedAtRef.current = null;
     if (clearNow) {
       subtitleDataRef.current = null;
       setSubtitleText('');
@@ -3272,7 +3284,11 @@ function App() {
       return;
     }
 
-    const elapsedSeconds = ttsManager.currentAudio?.currentTime ?? 0;
+    const elapsedSeconds =
+      ttsManager.currentAudio?.currentTime ??
+      (subtitleStartedAtRef.current === null
+        ? 0
+        : (performance.now() - subtitleStartedAtRef.current) / 1000);
     setSubtitleText(
       getSubtitleLine(subtitleData.text, subtitleData.wordBoundaries, elapsedSeconds),
     );
@@ -3281,8 +3297,22 @@ function App() {
   const startSubtitleTracking = useCallback(
     (subtitleData: { text: string; wordBoundaries: WordBoundary[] }) => {
       stopSubtitleTracking(false);
-      subtitleDataRef.current = subtitleData;
-      setSubtitleText(getSubtitleLine(subtitleData.text, subtitleData.wordBoundaries, 0));
+      const normalizedSubtitleData =
+        subtitleData.wordBoundaries.length > 0
+          ? subtitleData
+          : {
+              ...subtitleData,
+              wordBoundaries: createEstimatedSubtitleWordBoundaries(subtitleData.text),
+            };
+      subtitleDataRef.current = normalizedSubtitleData;
+      subtitleStartedAtRef.current = performance.now();
+      setSubtitleText(
+        getSubtitleLine(
+          normalizedSubtitleData.text,
+          normalizedSubtitleData.wordBoundaries,
+          0,
+        ),
+      );
       subtitleIntervalRef.current = window.setInterval(refreshSubtitleFromAudio, 80);
       refreshSubtitleFromAudio();
     },
