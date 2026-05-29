@@ -40,6 +40,49 @@ const semanticMemoryRecordCache = new Map<string, SemanticMemoryRecord[]>();
 const semanticMemorySearchCache = new Map<string, { matches: SemanticMemoryMatch[]; signature: string }>();
 const semanticTokenCache = new Map<string, Set<string>>();
 const MAX_TOKEN_CACHE_ENTRIES = 512;
+const SEMANTIC_MEMORY_DECAY_WINDOW_MS = 1000 * 60 * 60 * 24 * 90;
+const SALIENT_MEMORY_TERMS = new Set([
+  'always',
+  'boundary',
+  'care',
+  'dont',
+  "don't",
+  'favorite',
+  'goal',
+  'hate',
+  'important',
+  'like',
+  'likes',
+  'love',
+  'loves',
+  'need',
+  'needs',
+  'never',
+  'prefer',
+  'prefers',
+  'remember',
+  'trust',
+  'want',
+  'wants',
+]);
+const EMOTIONAL_MEMORY_TERMS = new Set([
+  'angry',
+  'annoyed',
+  'care',
+  'caring',
+  'embarrassed',
+  'excited',
+  'frustrated',
+  'grateful',
+  'happy',
+  'hurt',
+  'mad',
+  'nervous',
+  'sad',
+  'scared',
+  'trust',
+  'worried',
+]);
 
 export function buildSemanticMemoryTurnText(
   userText: string,
@@ -227,7 +270,7 @@ export async function findSemanticMemoryMatches(
 ): Promise<SemanticMemoryMatch[]> {
   const remoteMatches = await searchLadybugSemanticMemory(scopeKey, queryEmbedding, limit);
   if (remoteMatches?.length) {
-    return remoteMatches.slice(0, limit);
+    return rerankSemanticMemoryMatches(remoteMatches, query, queryEmbedding, limit, Date.now());
   }
 
   const records = await loadSemanticMemory(scopeKey);
@@ -280,11 +323,69 @@ function scoreSemanticMemory(
   const vectorScore =
     queryEmbedding && record.embedding ? cosineSimilarity(queryEmbedding, record.embedding) : 0;
   const lexicalScore = jaccardSimilarity(queryTerms, tokenizeSemanticRecord(record));
-  const recencyScore = Math.max(
+  const salienceScore = scoreSemanticMemorySalience(record, queryTerms, now);
+  return vectorScore * 0.7 + lexicalScore * 0.16 + salienceScore * 0.14;
+}
+
+function rerankSemanticMemoryMatches(
+  matches: SemanticMemoryMatch[],
+  query: string,
+  queryEmbedding: number[] | null,
+  limit: number,
+  now: number,
+) {
+  const queryTerms = tokenize(query);
+  const normalizedEmbedding = normalizeEmbedding(queryEmbedding);
+  return matches
+    .map((match) => {
+      const vectorScore =
+        typeof match.score === 'number' && Number.isFinite(match.score)
+          ? Math.max(0, Math.min(1, match.score))
+          : normalizedEmbedding && match.embedding
+            ? cosineSimilarity(normalizedEmbedding, match.embedding)
+            : 0;
+      const lexicalScore = jaccardSimilarity(queryTerms, tokenizeSemanticRecord(match));
+      const salienceScore = scoreSemanticMemorySalience(match, queryTerms, now);
+      return {
+        ...match,
+        score: vectorScore * 0.7 + lexicalScore * 0.16 + salienceScore * 0.14,
+      };
+    })
+    .filter((record) => record.score > 0.05)
+    .sort((a, b) => b.score - a.score || b.createdAt - a.createdAt)
+    .slice(0, limit);
+}
+
+function scoreSemanticMemorySalience(
+  record: SemanticMemoryRecord,
+  queryTerms: Set<string>,
+  now: number,
+) {
+  const recordTerms = tokenizeSemanticRecord(record);
+  const recencyScore = Math.exp(-Math.max(0, now - record.createdAt) / SEMANTIC_MEMORY_DECAY_WINDOW_MS);
+  const usefulnessScore = ratioOfTerms(recordTerms, SALIENT_MEMORY_TERMS);
+  const emotionalScore = ratioOfTerms(recordTerms, EMOTIONAL_MEMORY_TERMS);
+  const repetitionScore = queryTerms.size > 0 ? jaccardSimilarity(queryTerms, recordTerms) : 0;
+  return Math.max(
     0,
-    1 - (now - record.createdAt) / (1000 * 60 * 60 * 24 * 30),
+    Math.min(
+      1,
+      recencyScore * 0.38 + usefulnessScore * 0.28 + emotionalScore * 0.22 + repetitionScore * 0.12,
+    ),
   );
-  return vectorScore * 0.78 + lexicalScore * 0.18 + recencyScore * 0.04;
+}
+
+function ratioOfTerms(terms: Set<string>, salientTerms: Set<string>) {
+  if (terms.size === 0) {
+    return 0;
+  }
+  let hits = 0;
+  for (const term of terms) {
+    if (salientTerms.has(term)) {
+      hits += 1;
+    }
+  }
+  return Math.min(1, hits / 3);
 }
 
 function enqueueSemanticMemoryWrite<T>(scopeKey: string, task: () => Promise<T>) {

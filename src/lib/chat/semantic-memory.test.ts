@@ -155,4 +155,25 @@ describe('semantic memory', () => {
     expect(score).toBeGreaterThan(0.05);
     expect(buildSemanticMemoryContext([{ ...record, score }])).toContain('local chat controls');
   });
+
+  it('keeps emotionally useful memories competitive after recency decay', () => {
+    const records = [
+      createRecord({
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 30,
+        embedding: null,
+        id: 'salient-old',
+        text: 'User: remember my favorite stage is chroma and I love using it for streams\nNeuro-sama: saved.',
+      }),
+      createRecord({
+        createdAt: Date.now() - 1000 * 60,
+        embedding: null,
+        id: 'recent-low-signal',
+        text: 'User: stage topic mentioned briefly\nNeuro-sama: okay.',
+      }),
+    ];
+
+    const matches = findSemanticMemoryMatchesInRecords(records, 'what is my favorite stage?', null);
+
+    expect(matches[0]?.id).toBe('salient-old');
+  });
 });
