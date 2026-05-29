@@ -131,6 +131,15 @@ export type RelationshipActionTag =
   | 'ask_follow'
   | 'ask_open_up';
 
+export type AffectState = {
+  arousal: number;
+  dominance: number;
+  label: string;
+  lastEmotion: string;
+  updatedAt: number | null;
+  valence: number;
+};
+
 export type RelationshipMemory = {
   version: 2;
   turnCount: number;
@@ -149,6 +158,7 @@ export type RelationshipMemory = {
   summary: string;
   diaryEntry: string;
   diaryHistory: string[];
+  affectState: AffectState;
 };
 
 export type AiProxyHealth = {

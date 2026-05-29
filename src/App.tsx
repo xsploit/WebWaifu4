@@ -85,6 +85,7 @@ import {
   type AssistantReplyMetadata,
   type AssistantReplyParseResult,
 } from './lib/chat/reply-metadata';
+import { getAffectExpressionBoost, getMetadataVad, updateAffectState } from './lib/chat/affect-bridge';
 import {
   buildChatTurnMemoryMessage,
   chatTurnToChatMessage,
@@ -4612,61 +4613,83 @@ function App() {
     );
   }, []);
 
-  const playAssistantMetadataAnimation = useCallback((metadata: AssistantReplyMetadata | null) => {
-    if (!metadata) {
-      return;
-    }
+  const playAssistantMetadataAnimation = useCallback(
+    (metadata: AssistantReplyMetadata | null, stateKey = activeRelationshipStateKeyRef.current) => {
+      if (!metadata) {
+        return;
+      }
 
-    const nonce = Date.now();
-    const telemetryId = `emotion-${nonce}-${Math.random().toString(36).slice(2, 8)}`;
-    const expression = resolveFacialExpressionForReplyMetadata(metadata);
-    const intensity = resolveFacialExpressionIntensityForReplyMetadata(metadata);
-    const durationMs = resolveFacialExpressionDurationMsForReplyMetadata(metadata);
-    const playlist = sequencerSettingsRef.current.playlist;
-    const index = resolveAnimationIndexForReplyMetadata(metadata, playlist);
-    const animationEntry = index >= 0 ? playlist[index] ?? null : null;
-    setEmotionTelemetryEvents((current) =>
-      [
-        {
-          id: telemetryId,
-          createdAt: nonce,
-          emotion: metadata.emotion,
-          requestedExpression: expression,
-          requestedIntensity: intensity,
-          requestedDurationMs: durationMs,
-          resolvedExpressionNames: [],
-          appliedIntensity: 0,
-          expressionAccepted: null,
-          expressionReason: 'pending',
-          animationIndex: index,
-          animationId: animationEntry?.id ?? null,
-          animationName: animationEntry?.name ?? null,
-          animationAccepted: index === -1 ? false : null,
-          animationReason: index === -1 ? 'no enabled emotion animation match' : 'pending',
-        },
-        ...current,
-      ].slice(0, 20),
-    );
+      const nonce = Date.now();
+      const telemetryId = `emotion-${nonce}-${Math.random().toString(36).slice(2, 8)}`;
+      const memory = getScopedRelationshipMemory(stateKey);
+      const nextAffectState = updateAffectState(memory.affectState, metadata, nonce);
+      const nextMemory = {
+        ...memory,
+        affectState: nextAffectState,
+      };
+      commitScopedRelationshipMemory(stateKey, nextMemory);
+      const metadataVad = getMetadataVad(metadata);
+      const expression = resolveFacialExpressionForReplyMetadata(metadata);
+      const baseIntensity = resolveFacialExpressionIntensityForReplyMetadata(metadata);
+      const intensity = Math.min(1, baseIntensity + getAffectExpressionBoost(nextAffectState));
+      const durationMs = Math.round(
+        resolveFacialExpressionDurationMsForReplyMetadata(metadata) *
+          (1 + Math.min(0.28, nextAffectState.arousal * 0.18)),
+      );
+      const playlist = sequencerSettingsRef.current.playlist;
+      const index = resolveAnimationIndexForReplyMetadata(metadata, playlist);
+      const animationEntry = index >= 0 ? playlist[index] ?? null : null;
+      setEmotionTelemetryEvents((current) =>
+        [
+          {
+            affectArousal: nextAffectState.arousal,
+            affectDominance: nextAffectState.dominance,
+            affectLabel: nextAffectState.label,
+            affectValence: nextAffectState.valence,
+            id: telemetryId,
+            createdAt: nonce,
+            emotion: metadata.emotion,
+            metadataArousal: metadataVad.arousal,
+            metadataDominance: metadataVad.dominance,
+            metadataValence: metadataVad.valence,
+            requestedExpression: expression,
+            requestedIntensity: intensity,
+            requestedDurationMs: durationMs,
+            resolvedExpressionNames: [],
+            appliedIntensity: 0,
+            expressionAccepted: null,
+            expressionReason: 'pending',
+            animationIndex: index,
+            animationId: animationEntry?.id ?? null,
+            animationName: animationEntry?.name ?? null,
+            animationAccepted: index === -1 ? false : null,
+            animationReason: index === -1 ? 'no enabled emotion animation match' : 'pending',
+          },
+          ...current,
+        ].slice(0, 20),
+      );
 
-    setFacialExpressionRequest({
-      durationMs,
-      expression,
-      intensity,
-      nonce,
-      telemetryId,
-    });
+      setFacialExpressionRequest({
+        durationMs,
+        expression,
+        intensity,
+        nonce,
+        telemetryId,
+      });
 
-    if (index === -1) {
-      return;
-    }
+      if (index === -1) {
+        return;
+      }
 
-    setManualPlayRequest({
-      index,
-      kind: 'reaction',
-      nonce: nonce + 1,
-      telemetryId,
-    });
-  }, []);
+      setManualPlayRequest({
+        index,
+        kind: 'reaction',
+        nonce: nonce + 1,
+        telemetryId,
+      });
+    },
+    [commitScopedRelationshipMemory, getScopedRelationshipMemory],
+  );
 
   const handleSendMessage = useCallback(
     async (overrideInput?: string) => {
@@ -5563,7 +5586,7 @@ function App() {
         if (!assistantContent) {
           throw new Error('AI backend returned an empty chat reply.');
         }
-        playAssistantMetadataAnimation(assistantReply.metadata);
+        playAssistantMetadataAnimation(assistantReply.metadata, stateKey);
         const completedAssistantMessage = {
           ...assistantMessage,
           content: assistantContent,

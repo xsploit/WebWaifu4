@@ -1,4 +1,5 @@
 import type {
+  AffectState,
   AiSettings,
   PersonaProfile,
   PersonaVoiceBinding,
@@ -150,6 +151,18 @@ export function createDefaultRelationshipMemory(): RelationshipMemory {
     summary: '',
     diaryEntry: '',
     diaryHistory: [],
+    affectState: createDefaultAffectState(),
+  };
+}
+
+export function createDefaultAffectState(): AffectState {
+  return {
+    arousal: 0.18,
+    dominance: 0,
+    label: 'guarded',
+    lastEmotion: 'neutral',
+    updatedAt: null,
+    valence: 0,
   };
 }
 

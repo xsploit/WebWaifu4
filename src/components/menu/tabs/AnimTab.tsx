@@ -378,6 +378,10 @@ export function AnimTab({
                         ? event.resolvedExpressionNames.join(' / ')
                         : 'none'}
                     </span>
+                    <span className="anim-tags">
+                      affect {event.affectLabel} V {event.affectValence.toFixed(2)} / A{' '}
+                      {event.affectArousal.toFixed(2)} / D {event.affectDominance.toFixed(2)}
+                    </span>
                   </span>
                 </div>
                 <div className="anim-meta">

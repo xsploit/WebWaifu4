@@ -49,6 +49,7 @@ import {
   sanitizeDiaryEntry,
 } from './memory-shared';
 import { normalizeReplyLengthMode } from './reply-length';
+import { normalizeAffectState } from './affect-bridge';
 
 function getLocalStorage() {
   if (typeof window === 'undefined') {
@@ -524,6 +525,7 @@ function normalizeRelationshipMemory(value: unknown): RelationshipMemory {
     summary: String(source.summary ?? defaults.summary).slice(0, 900),
     diaryEntry,
     diaryHistory: appendDiaryHistory(diaryHistory, diaryEntry),
+    affectState: normalizeAffectState((source as { affectState?: unknown }).affectState),
   };
 
   next.relationshipStage = deriveRelationshipStage(next);

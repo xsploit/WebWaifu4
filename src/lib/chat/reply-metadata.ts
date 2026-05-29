@@ -41,7 +41,10 @@ export type AssistantFacialExpression =
   | 'caring';
 
 export type AssistantReplyMetadata = {
+  arousal: number;
+  dominance: number;
   emotion: AssistantEmotion;
+  valence: number;
 };
 
 export type AssistantReplyParseResult = {
@@ -81,8 +84,20 @@ export const ASSISTANT_REPLY_JSON_FORMAT = {
         ],
         description: 'The single emotion felt toward the current message. This is not an animation name.',
       },
+      valence: {
+        type: 'number',
+        description: 'Emotional positivity from -1 negative to 1 positive.',
+      },
+      arousal: {
+        type: 'number',
+        description: 'Emotional energy from 0 calm to 1 intense.',
+      },
+      dominance: {
+        type: 'number',
+        description: 'Felt control from -1 uncertain/submissive to 1 confident/in-control.',
+      },
     },
-    required: ['message', 'emotion'],
+    required: ['message', 'emotion', 'valence', 'arousal', 'dominance'],
     additionalProperties: false,
   },
   strict: true,
@@ -154,13 +169,37 @@ const EMOTION_ANIMATION_KEYWORDS: Record<AssistantEmotion, string[]> = {
   caring: ['caring', 'approval', 'gratitude'],
 };
 
+const EMOTION_VAD_DEFAULTS: Record<
+  AssistantEmotion,
+  { arousal: number; dominance: number; valence: number }
+> = {
+  angry: { arousal: 0.82, dominance: 0.55, valence: -0.72 },
+  annoyed: { arousal: 0.58, dominance: 0.34, valence: -0.42 },
+  amused: { arousal: 0.56, dominance: 0.25, valence: 0.58 },
+  caring: { arousal: 0.32, dominance: 0.08, valence: 0.68 },
+  confused: { arousal: 0.42, dominance: -0.36, valence: -0.18 },
+  curious: { arousal: 0.48, dominance: 0.05, valence: 0.22 },
+  embarrassed: { arousal: 0.62, dominance: -0.48, valence: -0.12 },
+  excited: { arousal: 0.86, dominance: 0.42, valence: 0.78 },
+  grateful: { arousal: 0.36, dominance: 0.02, valence: 0.74 },
+  happy: { arousal: 0.6, dominance: 0.24, valence: 0.72 },
+  nervous: { arousal: 0.68, dominance: -0.58, valence: -0.28 },
+  neutral: { arousal: 0.18, dominance: 0, valence: 0 },
+  optimistic: { arousal: 0.52, dominance: 0.38, valence: 0.7 },
+  proud: { arousal: 0.56, dominance: 0.72, valence: 0.62 },
+  sad: { arousal: 0.24, dominance: -0.42, valence: -0.68 },
+  surprised: { arousal: 0.78, dominance: -0.08, valence: 0.12 },
+  thinking: { arousal: 0.28, dominance: 0.06, valence: 0.04 },
+};
+
 export function buildReplyMetadataInstruction() {
   return [
-    'When the reply format is JSON, return only a JSON object with message and emotion. Put the spoken dialogue in message.',
+    'When the reply format is JSON, return only a JSON object with message, emotion, valence, arousal, and dominance. Put the spoken dialogue in message.',
     'When the reply format is normal text, append exactly one metadata block at the very end using this exact tag shape:',
-    `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral"}${ASSISTANT_REPLY_META_CLOSE}`,
+    `${ASSISTANT_REPLY_META_OPEN}{"emotion":"neutral","valence":0,"arousal":0.18,"dominance":0}${ASSISTANT_REPLY_META_CLOSE}`,
     'The block must be valid compact JSON and must not be explained. Do not use any other wrapper name such as hidden block.',
     `emotion must be one of: ${Array.from(EMOTIONS).join(', ')}.`,
+    'valence must be -1 to 1, arousal must be 0 to 1, and dominance must be -1 to 1.',
     'Choose the emotion you genuinely feel toward the current message and your reply, not the topic category.',
     'Use amused for playful teasing, annoyed or angry for irritation, embarrassed or nervous for flustered/shy replies, caring or grateful for warmth, and surprised, confused, curious, or thinking for uncertainty or discovery.',
     'Use neutral only when there is no clear emotional color. Prefer a real emotion when the reply is teasing, playful, caring, irritated, surprised, embarrassed, or excited.',
@@ -450,7 +489,25 @@ function findNextMetadataOpen(text: string) {
 
 function normalizeReplyMetadataRecord(parsed: Record<string, unknown>): AssistantReplyMetadata {
   const emotion = normalizeSetValue(parsed['emotion'], EMOTIONS, 'neutral');
-  return { emotion };
+  const fallback = getDefaultVadForEmotion(emotion);
+  return {
+    arousal: clampNumber(parsed['arousal'], 0, 1, fallback.arousal),
+    dominance: clampNumber(parsed['dominance'], -1, 1, fallback.dominance),
+    emotion,
+    valence: clampNumber(parsed['valence'], -1, 1, fallback.valence),
+  };
+}
+
+function getDefaultVadForEmotion(emotion: AssistantEmotion) {
+  return EMOTION_VAD_DEFAULTS[emotion] ?? EMOTION_VAD_DEFAULTS.neutral;
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, parsed));
 }
 
 function parseStructuredReplyEnvelope(text: string): AssistantReplyParseResult | null {

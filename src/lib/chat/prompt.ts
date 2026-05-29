@@ -7,6 +7,7 @@ import type { PomlPromptMessage } from './poml';
 import { buildReplyMetadataInstruction } from './reply-metadata';
 import { getReplyLengthInstruction, normalizeReplyLengthMode } from './reply-length';
 import type { ReplyLengthMode } from './types';
+import { buildAffectBridgePromptBlock, normalizeAffectState } from './affect-bridge';
 
 type CompletionMessage = PomlPromptMessage;
 type PromptTurnContextValue = string | number | boolean | null | undefined;
@@ -66,6 +67,10 @@ function serializeTurnMetadataContext({
     personaId: persona?.id,
     personaName: persona?.name,
     relationshipMood: relationshipMemory.mood,
+    affectArousal: normalizeAffectState(relationshipMemory.affectState).arousal.toFixed(2),
+    affectDominance: normalizeAffectState(relationshipMemory.affectState).dominance.toFixed(2),
+    affectLabel: normalizeAffectState(relationshipMemory.affectState).label,
+    affectValence: normalizeAffectState(relationshipMemory.affectState).valence.toFixed(2),
     semanticMemory: semanticMemoryContext.trim() ? 'present' : 'absent',
     timezone,
     ttsExpressionTags: ttsExpressionTagsEnabled,
@@ -125,6 +130,7 @@ function buildDynamicPromptState({
     'current user';
   const relationshipMood = relationshipMemory.mood;
   const relationshipStage = relationshipMemory.relationshipStage;
+  const affectState = normalizeAffectState(relationshipMemory.affectState);
 
   return {
     affectionate_state:
@@ -133,6 +139,10 @@ function buildDynamicPromptState({
       relationshipMemory.attraction >= 12,
     animation_catalog_present: Boolean(animationCatalogContext.trim()),
     attraction_score: relationshipMemory.attraction,
+    affect_arousal: affectState.arousal.toFixed(2),
+    affect_dominance: affectState.dominance.toFixed(2),
+    affect_label: affectState.label,
+    affect_valence: affectState.valence.toFixed(2),
     close_relationship: relationshipStage === 'close',
     conversation_scope: conversationScope || 'chat',
     current_speaker: currentSpeaker,
@@ -364,7 +374,7 @@ export async function buildChatCompletionMessages({
     grilloContext,
     history: contextualHistory,
     personaContext: personaBlocks.join('\n\n'),
-    relationshipMemoryContext: '',
+    relationshipMemoryContext: buildAffectBridgePromptBlock(relationshipMemory.affectState),
     replyMetadataInstruction: buildReplyMetadataInstruction(),
     semanticMemoryContext: '',
     turnMetadataContext: serializeTurnMetadataContext({

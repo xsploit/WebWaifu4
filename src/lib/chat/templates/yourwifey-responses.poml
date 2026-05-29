@@ -69,6 +69,10 @@ Use tools only when they are available. When the current turn explicitly asks yo
         <item>reply_length: {{ reply_length_mode || "balanced" }}</item>
         <item>relationship_stage: {{ relationship_stage || "new" }}</item>
         <item>relationship_mood: {{ relationship_mood || "guarded" }}</item>
+        <item>affect_label: {{ affect_label || "steady" }}</item>
+        <item>affect_valence: {{ affect_valence || "0.00" }}</item>
+        <item>affect_arousal: {{ affect_arousal || "0.18" }}</item>
+        <item>affect_dominance: {{ affect_dominance || "0.00" }}</item>
         <item>last_action_tag: {{ last_action_tag || "none" }}</item>
         <item>trust: {{ trust_score || 0 }}</item>
         <item>attraction: {{ attraction_score || 0 }}</item>

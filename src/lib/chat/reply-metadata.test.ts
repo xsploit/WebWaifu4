@@ -14,6 +14,11 @@ import {
   resolveFacialExpressionIntensityForReplyMetadata,
   stripAssistantReplyMetadata,
 } from './reply-metadata';
+import type { AssistantEmotion, AssistantReplyMetadata } from './reply-metadata';
+
+function metadata(emotion: AssistantEmotion): AssistantReplyMetadata {
+  return { arousal: 0.5, dominance: 0, emotion, valence: 0 };
+}
 
 describe('assistant reply metadata', () => {
   it('parses emotion-only metadata without leaking it into spoken text', () => {
@@ -22,7 +27,7 @@ describe('assistant reply metadata', () => {
     );
 
     expect(parsed.text).toBe('Nice one.');
-    expect(parsed.metadata).toEqual({ emotion: 'amused' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'amused' });
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('happy');
     expect(resolveFacialExpressionIntensityForReplyMetadata(parsed.metadata)).toBeGreaterThan(0.5);
   });
@@ -33,7 +38,7 @@ describe('assistant reply metadata', () => {
     );
 
     expect(parsed.text).toBe('Spend the chaos budget. [pause] Keep it moving.');
-    expect(parsed.metadata).toEqual({ emotion: 'excited' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'excited' });
   });
 
   it('filters streamed accidental hidden block metadata', () => {
@@ -47,7 +52,7 @@ describe('assistant reply metadata', () => {
 
     expect(visible).toBe('Spend the chaos budget. [pause] ');
     expect(parsed.text).toBe('Spend the chaos budget. [pause]');
-    expect(parsed.metadata).toEqual({ emotion: 'happy' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'happy' });
   });
 
   it('ignores old over-specified fields and keeps only emotion', () => {
@@ -55,7 +60,7 @@ describe('assistant reply metadata', () => {
       `${ASSISTANT_REPLY_META_OPEN}{"emotion":"annoyed","motion":"wave","purpose":"gesture","expression":"happy","animation":"sachi-wave01"}${ASSISTANT_REPLY_META_CLOSE}`,
     );
 
-    expect(parsed.metadata).toEqual({ emotion: 'annoyed' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'annoyed' });
     expect(resolveFacialExpressionForReplyMetadata(parsed.metadata)).toBe('angry');
   });
 
@@ -65,7 +70,7 @@ describe('assistant reply metadata', () => {
     );
 
     expect(parsed.text).toBe('Quit staring at the wiring, subby. I am awake.');
-    expect(parsed.metadata).toEqual({ emotion: 'annoyed' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'annoyed' });
   });
 
   it('unwraps fenced structured reply envelopes from fallback providers', () => {
@@ -74,7 +79,7 @@ describe('assistant reply metadata', () => {
     );
 
     expect(parsed.text).toBe('Yeah, I heard you that time.');
-    expect(parsed.metadata).toEqual({ emotion: 'happy' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'happy' });
   });
 
   it('defines the strict structured reply schema used by chat providers', () => {
@@ -85,7 +90,7 @@ describe('assistant reply metadata', () => {
     });
     expect(ASSISTANT_REPLY_JSON_FORMAT.schema).toMatchObject({
       additionalProperties: false,
-      required: ['message', 'emotion'],
+      required: ['message', 'emotion', 'valence', 'arousal', 'dominance'],
       type: 'object',
     });
   });
@@ -101,7 +106,7 @@ describe('assistant reply metadata', () => {
 
     expect(visible).toBe('Hey subby, [pause] I\nheard you.');
     expect(parsed.text).toBe('Hey subby, [pause] I\nheard you.');
-    expect(parsed.metadata).toEqual({ emotion: 'happy' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'happy' });
   });
 
   it('decodes streamed structured JSON unicode escapes before the object completes', () => {
@@ -115,7 +120,7 @@ describe('assistant reply metadata', () => {
 
     expect(visible).toBe('Hi A 😀');
     expect(parsed.text).toBe('Hi A 😀');
-    expect(parsed.metadata).toEqual({ emotion: 'happy' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'happy' });
   });
 
   it('starts streaming structured message text before the message string closes', () => {
@@ -127,14 +132,14 @@ describe('assistant reply metadata', () => {
 
     const parsed = filter.finish(`{"message":"I'm already live","emotion":"amused"}`);
     expect(parsed.text).toBe("I'm already live");
-    expect(parsed.metadata).toEqual({ emotion: 'amused' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'amused' });
   });
 
   it('does not leak structured JSON when the message field is empty', () => {
     const parsed = stripAssistantReplyMetadata('{"message":"","emotion":"neutral"}');
 
     expect(parsed.text).toBe('');
-    expect(parsed.metadata).toEqual({ emotion: 'neutral' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'neutral' });
   });
 
   it('keeps legacy streamed metadata fallback working through the combined filter', () => {
@@ -147,7 +152,7 @@ describe('assistant reply metadata', () => {
 
     expect(visible).toBe('Legacy text. ');
     expect(parsed.text).toBe('Legacy text.');
-    expect(parsed.metadata).toEqual({ emotion: 'sad' });
+    expect(parsed.metadata).toMatchObject({ emotion: 'sad' });
   });
 
   it('does not trigger reactions for neutral metadata', () => {
@@ -196,7 +201,7 @@ describe('assistant reply metadata', () => {
       },
     ];
 
-    expect(resolveAnimationIndexForReplyMetadata({ emotion: 'grateful' }, playlist)).toBe(1);
+    expect(resolveAnimationIndexForReplyMetadata(metadata('grateful'), playlist)).toBe(1);
   });
 
   it('maps every supported emotion to an equivalent enabled animation when the catalog has one', () => {
@@ -220,7 +225,7 @@ describe('assistant reply metadata', () => {
     ] as const;
 
     for (const [emotion, expectedKeywords] of emotionCases) {
-      const index = resolveAnimationIndexForReplyMetadata({ emotion }, DEFAULT_ANIMATIONS);
+      const index = resolveAnimationIndexForReplyMetadata(metadata(emotion), DEFAULT_ANIMATIONS);
       const selected = DEFAULT_ANIMATIONS[index];
       const haystack =
         `${selected?.id ?? ''} ${selected?.name ?? ''} ${(selected?.tags ?? []).join(' ')}`.toLowerCase();
@@ -238,7 +243,8 @@ describe('assistant reply metadata', () => {
   it('does not ask the model to pick animations, motions, expressions, or purposes', () => {
     const instruction = buildReplyMetadataInstruction();
 
-    expect(instruction).toContain('{"emotion":"neutral"}');
+    expect(instruction).toContain('"emotion":"neutral"');
+    expect(instruction).toContain('"valence":0');
     expect(instruction).toContain('Do not choose animation names, motions, gestures');
     expect(instruction).toContain('Use neutral only when there is no clear emotional color');
     expect(instruction).toContain('Use amused for playful teasing');
@@ -269,6 +275,6 @@ describe('assistant reply metadata', () => {
       },
     ];
 
-    expect(resolveAnimationIndexForReplyMetadata({ emotion: 'grateful' }, playlist)).toBe(1);
+    expect(resolveAnimationIndexForReplyMetadata(metadata('grateful'), playlist)).toBe(1);
   });
 });

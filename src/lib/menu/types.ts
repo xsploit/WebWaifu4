@@ -144,9 +144,16 @@ export type FacialExpressionRequest = {
 };
 
 export type EmotionTelemetryEvent = {
+  affectArousal: number;
+  affectDominance: number;
+  affectLabel: string;
+  affectValence: number;
   id: string;
   createdAt: number;
   emotion: string;
+  metadataArousal: number;
+  metadataDominance: number;
+  metadataValence: number;
   requestedExpression: string;
   requestedIntensity: number;
   requestedDurationMs: number;
