@@ -247,4 +247,21 @@ describe('Ladybug memory client routing', () => {
       scopeKey: 'local:persona:hikari-chan',
     });
   });
+
+  it('surfaces backend GRILLO tick errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      json: async () => ({
+        backend: 'ladybug',
+        error: 'Server provider proxy cannot be steered to an unapproved model.',
+        ok: false,
+      }),
+    } as Response);
+
+    await expect(
+      runLadybugGrilloTick({
+        reason: 'manual_ui',
+        scopeKey: 'local:persona:hikari-chan',
+      }),
+    ).rejects.toThrow('Server provider proxy cannot be steered to an unapproved model.');
+  });
 });

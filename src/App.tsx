@@ -4620,7 +4620,8 @@ function App() {
       })
       .catch((error) => {
         console.warn('[App] Backend GRILLO tick failed', error);
-        setMemoryAgentStatus('Backend GRILLO tick failed.');
+        const message = error instanceof Error ? error.message : String(error);
+        setMemoryAgentStatus(`Backend GRILLO tick failed: ${message}`);
       })
       .finally(() => {
         setBackendGrilloTickBusy(false);

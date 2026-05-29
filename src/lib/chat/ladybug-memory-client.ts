@@ -296,6 +296,9 @@ export async function runLadybugGrilloTick(
       method: 'POST',
     },
   );
+  if (response?.ok === false) {
+    throw new Error(response.error || 'Backend GRILLO tick failed.');
+  }
   return response?.ok === true ? response.result : null;
 }
 
