@@ -582,6 +582,68 @@ describe('GrilloWorkerService', () => {
     }
   });
 
+  it('instructs reflection beats to synthesize higher-order memory insights', async () => {
+    const { grillo, memory } = createServices();
+    const requests: GrilloWorkerCompletionRequest[] = [];
+    try {
+      const scopeKey = 'local:persona:hikari-chan';
+      const participantKey = 'local:local:subsect';
+
+      await grillo.ingestTurnPair({
+        assistantName: 'Hikari-chan',
+        assistantText: 'I will keep the recurring bit in mind without overdoing it.',
+        authorName: 'Subsect',
+        channelId: 'local',
+        createdAt: 1770000001000,
+        participantKey,
+        scopeKey,
+        source: 'local',
+        userText: 'keep the joke going but do not make every reply the same bit',
+      });
+
+      const tick = await grillo.runTickWithOptions(
+        {
+          beatType: 'reflection',
+          reason: 'manual_reflection',
+          scopeKey,
+        },
+        {
+          completion: async (request) => {
+            requests.push(request);
+            return JSON.stringify({
+              candidate: null,
+              diary: null,
+              done: true,
+              memory: null,
+              notes: 'reflection prompt verified',
+              relationship: null,
+              toolCalls: [],
+            });
+          },
+          model: 'openai/gpt-5-nano',
+          provider: 'vercel-gateway',
+        },
+      );
+
+      expect(tick).toMatchObject({
+        beatType: 'reflection',
+        noOpReason: 'worker_no_writes',
+        writes: 0,
+      });
+      expect(requests[0]?.messages[0]?.content).toContain(
+        'Reflection beats synthesize higher-order insight',
+      );
+      expect(requests[0]?.messages[1]?.content).toContain(
+        'Synthesize higher-order insight, not a literal transcript summary.',
+      );
+      expect(requests[0]?.messages[1]?.content).toContain('core.worker_emotion_read');
+      expect(requests[0]?.messages[1]?.content).toContain('what the pattern means for future replies');
+      expect(requests[0]?.messages[1]?.content).toContain('block_name="relationship_state"');
+    } finally {
+      await memory.close();
+    }
+  });
+
   it('runs a backend debrief recovery round when LLM extraction writes no candidate or diary', async () => {
     const { grillo, memory } = createServices();
     const requests: Array<{

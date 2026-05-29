@@ -1718,6 +1718,8 @@ function buildBackendWorkerSystemPrompt() {
     'Extract durable memory only when the transcript contains a preference, fact, goal, boundary, bond signal, or ongoing thread.',
     'Write diary entries only when the exchange meaningfully changes mood, relationship, goals, or stream context.',
     'Diary personal_thought is private first-person avatar reflection, not a mechanical receipt.',
+    'Reflection beats synthesize higher-order insight from clusters of turns and memories; they do not restate isolated facts.',
+    'A useful reflection explains what pattern is emerging, what changed emotionally or relationally, and how future replies should adapt.',
     'Use memory_write only for grounded consolidated slots such as open_threads, ongoing_threads, preferences, boundaries, verified_facts, or relationship_state.',
     '',
     'Available tools:',
@@ -1825,10 +1827,14 @@ function buildBackendBeatPrompt({
             ]
           : [
               'This is a reflection beat.',
-              'Review recent channel_history, thoughts, recalled_memories, and relationship_memory.',
-              'Use core.worker_memory_read or core.worker_memory_search if useful.',
-              'Write a diary reflection only if there is something meaningful to remember internally.',
-              'Use core.worker_memory_write for grounded open_threads or ongoing_threads updates.',
+              'Synthesize higher-order insight, not a literal transcript summary.',
+              'Compare recent channel_history with thoughts, recalled_memories, relationship_memory, and emotion state.',
+              'Look for repeated patterns: user preferences, recurring tension, trust or guard shifts, unresolved goals, bits that should continue, and community mood.',
+              'Use core.worker_emotion_read first when emotional continuity is relevant.',
+              'Use core.worker_memory_search before writing if a pattern may already exist.',
+              'Write a diary reflection only when you can state what the pattern means for future replies.',
+              'Use core.worker_memory_write with block_name="relationship_state", "ongoing_threads", or "tone_preferences" only for grounded higher-order insights.',
+              'Do not write diary text that only says what happened; write why it matters.',
             ];
   return [
     `scopeKey: ${scopeKey}`,
