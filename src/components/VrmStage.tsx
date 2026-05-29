@@ -1079,6 +1079,11 @@ function updateVrmFrame(
   vrm.update(delta);
 }
 
+// Cap the render/animation loop at ~60fps. Budget is slightly under a 60Hz
+// frame (1/63s) so 60Hz displays never throttle, while high-refresh displays
+// stop rendering the full VRM + post-processing pipeline faster than needed.
+const MIN_FRAME_DELTA_SECONDS = 1 / 63;
+
 function SceneRuntime({
   active,
   animationSpeed,
@@ -1099,6 +1104,7 @@ function SceneRuntime({
   const cameraLookAtTargetRef = useRef(new THREE.Vector3());
   const blinkRuntimeRef = useRef(createBlinkRuntimeState());
   const gazeRuntimeRef = useRef(createGazeRuntimeState());
+  const frameAccumulatorRef = useRef(0);
 
   if (!cameraRefsInitializedRef.current) {
     const initialCameraRig = getCameraRigVectors(visualSettings, cameraRigScratchRef.current);
@@ -1202,9 +1208,16 @@ function SceneRuntime({
   }, [visualSettings.autoGaze, vrm]);
 
   useFrame((frameState, delta) => {
+    frameAccumulatorRef.current += delta;
+    if (frameAccumulatorRef.current < MIN_FRAME_DELTA_SECONDS) {
+      return;
+    }
+    const stepDelta = frameAccumulatorRef.current;
+    frameAccumulatorRef.current = 0;
+
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
     const ttsPlaybackActive = isTtsPlaybackActive(ttsManager);
-    const cameraLerp = 1 - Math.exp(-delta * 9);
+    const cameraLerp = 1 - Math.exp(-stepDelta * 9);
     perspectiveCamera.position.lerp(cameraTargetPositionRef.current, cameraLerp);
     cameraLookAtRef.current.lerp(cameraLookAtTargetRef.current, cameraLerp);
     perspectiveCamera.lookAt(cameraLookAtRef.current);
@@ -1213,18 +1226,18 @@ function SceneRuntime({
       if (!ttsPlaybackActive) {
         updateLipSync(vrm, ttsManager);
       }
-      updateAutoBlink(vrm, blinkRuntimeRef.current, delta, visualSettings);
+      updateAutoBlink(vrm, blinkRuntimeRef.current, stepDelta, visualSettings);
     }
 
     if (mixer && active) {
       mixer.timeScale = animationSpeed;
-      mixer.update(delta);
+      mixer.update(stepDelta);
     }
 
     if (vrm && active) {
-      updateVrmFrame(vrm, ttsManager, delta, ttsPlaybackActive);
+      updateVrmFrame(vrm, ttsManager, stepDelta, ttsPlaybackActive);
       updateArmClipGuard(vrm, visualSettings);
-      updateAutoGaze(vrm, gazeRuntimeRef.current, delta, visualSettings, frameState.pointer);
+      updateAutoGaze(vrm, gazeRuntimeRef.current, stepDelta, visualSettings, frameState.pointer);
     } else if (vrm) {
       clearProceduralGaze(vrm, gazeRuntimeRef.current);
     }
