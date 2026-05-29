@@ -59,6 +59,16 @@ describe('server visible delta filter', () => {
     expect(visible).toBe('Visible  text');
   });
 
+  it('strips metadata when the close tag is split across stream chunks', () => {
+    const filter = createAiVisibleDeltaFilter(undefined);
+    const visible =
+      filter.push('Visible <yw-meta>{"emotion":"happy"}</yw-me') +
+      filter.push('ta> text') +
+      filter.flush();
+
+    expect(visible).toBe('Visible  text');
+  });
+
   it('extracts final JSON message for non-stream fallback paths', () => {
     expect(
       getSafeFinalVisibleText(

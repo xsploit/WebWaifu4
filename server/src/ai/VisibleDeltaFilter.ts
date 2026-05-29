@@ -217,6 +217,16 @@ function createMetadataDeltaFilter() {
     return value.length;
   };
 
+  const closeTailLength = (value: string) => {
+    const maxTail = Math.min(activeCloseTag.length - 1, value.length);
+    for (let tail = maxTail; tail > 0; tail -= 1) {
+      if (activeCloseTag.startsWith(value.slice(value.length - tail))) {
+        return tail;
+      }
+    }
+    return 0;
+  };
+
   const findNextOpen = (value: string) => {
     let match: { close: string; index: number; open: string } | null = null;
     for (const delimiter of ASSISTANT_METADATA_DELIMITERS) {
@@ -237,7 +247,8 @@ function createMetadataDeltaFilter() {
         if (suppressing) {
           const closeIndex = buffer.indexOf(activeCloseTag);
           if (closeIndex === -1) {
-            buffer = '';
+            const tailLength = closeTailLength(buffer);
+            buffer = tailLength > 0 ? buffer.slice(-tailLength) : '';
             break;
           }
           buffer = buffer.slice(closeIndex + activeCloseTag.length);

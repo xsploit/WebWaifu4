@@ -67,7 +67,11 @@ async function getPersistedItem(key: string) {
 }
 
 async function setPersistedItem(key: string, value: string) {
-  getLocalStorage()?.setItem(key, value);
+  try {
+    getLocalStorage()?.setItem(key, value);
+  } catch {
+    // Persistence is best-effort; quota/private-mode failures should not break chat.
+  }
 }
 
 function safeParse<T>(value: string | null, fallback: T): T {
