@@ -5,7 +5,11 @@ import type { Socket } from 'node:net';
 import { AiSdkGatewayProvider } from './ai/AiSdkGatewayProvider.js';
 import { MockChatProvider } from './ai/MockChatProvider.js';
 import { TAVILY_OPENAI_TOOLS } from './ai/TavilyTools.js';
-import { createAiVisibleDeltaFilter, getSafeFinalVisibleText } from './ai/VisibleDeltaFilter.js';
+import {
+  createAiVisibleDeltaFilter,
+  createMetadataDeltaFilter,
+  getSafeFinalVisibleText,
+} from './ai/VisibleDeltaFilter.js';
 import type {
   ChatProvider,
   ChatProviderInputImage,
@@ -928,59 +932,14 @@ function normalizeLiveSpeechChunk(value: string) {
 }
 
 function createMetadataSpeechFilter() {
-  const open = '<yw-meta>';
-  const close = '</yw-meta>';
-  let buffer = '';
-  let suppressing = false;
-
-  const safeLength = (value: string) => {
-    for (let tail = Math.min(open.length - 1, value.length); tail > 0; tail -= 1) {
-      if (open.startsWith(value.slice(value.length - tail))) {
-        return value.length - tail;
-      }
-    }
-    return value.length;
-  };
+  const filter = createMetadataDeltaFilter();
 
   return {
     push(delta: string) {
-      buffer += delta;
-      let visible = '';
-      while (buffer) {
-        if (suppressing) {
-          const closeIndex = buffer.indexOf(close);
-          if (closeIndex === -1) {
-            buffer = '';
-            break;
-          }
-          buffer = buffer.slice(closeIndex + close.length);
-          suppressing = false;
-          continue;
-        }
-        const openIndex = buffer.indexOf(open);
-        if (openIndex !== -1) {
-          visible += buffer.slice(0, openIndex);
-          buffer = buffer.slice(openIndex + open.length);
-          suppressing = true;
-          continue;
-        }
-        const length = safeLength(buffer);
-        if (length <= 0) {
-          break;
-        }
-        visible += buffer.slice(0, length);
-        buffer = buffer.slice(length);
-      }
-      return visible;
+      return filter.push(delta);
     },
     finish() {
-      if (suppressing) {
-        buffer = '';
-        return '';
-      }
-      const visible = buffer;
-      buffer = '';
-      return visible;
+      return filter.flush();
     },
   };
 }

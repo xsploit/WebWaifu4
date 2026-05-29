@@ -199,7 +199,7 @@ function createJsonMessageDeltaFilter() {
   };
 }
 
-function createMetadataDeltaFilter() {
+export function createMetadataDeltaFilter() {
   let buffer = '';
   let suppressing = false;
   let activeCloseTag: string = ASSISTANT_METADATA_DELIMITERS[0].close;
