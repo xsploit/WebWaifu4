@@ -377,6 +377,7 @@ export function ContextTab({
             <p>
               {memoryEmbeddingDebug.status} / {memoryEmbeddingDebug.operation} /{' '}
               {memoryEmbeddingDebug.provider} / chars {memoryEmbeddingDebug.inputChars}
+              {memoryEmbeddingDebug.model ? ` / model ${memoryEmbeddingDebug.model}` : ''}
               {typeof memoryEmbeddingDebug.vectorDims === 'number'
                 ? ` / dims ${memoryEmbeddingDebug.vectorDims}`
                 : ''}

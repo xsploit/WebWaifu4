@@ -20,9 +20,10 @@ export type MemoryPromptDebugSnapshot = {
 export type MemoryEmbeddingDebugSnapshot = {
   error?: string;
   inputChars: number;
+  model?: string;
   operation: 'prompt-recall' | 'semantic-save' | 'worker-search' | 'worker-insert';
   provider: string;
-  status: 'ok' | 'failed' | 'skipped-empty';
+  status: 'ok' | 'failed' | 'skipped-empty' | 'warming' | 'ready';
   updatedAt: number;
   vectorDims?: number;
 };

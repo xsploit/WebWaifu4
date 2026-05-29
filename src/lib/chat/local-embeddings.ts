@@ -1,3 +1,5 @@
+import { DEFAULT_LOCAL_EMBEDDING_MODEL } from './defaults';
+
 type LocalEmbeddingResponse =
   | {
       embedding: number[];
@@ -17,8 +19,14 @@ type PendingLocalEmbedding = {
 };
 
 const pendingEmbeddings = new Map<number, PendingLocalEmbedding>();
+const warmedModels = new Set<string>();
 let nextEmbeddingId = 1;
 let worker: Worker | null = null;
+const FIRST_LOCAL_EMBEDDING_TIMEOUT_MS = 45000;
+
+function normalizeLocalEmbeddingModel(model?: string) {
+  return model?.trim() || DEFAULT_LOCAL_EMBEDDING_MODEL;
+}
 
 function getLocalEmbeddingWorker() {
   worker ??= new Worker(new URL('./local-embedding-worker.ts', import.meta.url), {
@@ -61,12 +69,33 @@ export function requestLocalTextEmbedding(text: string, timeoutMs: number, model
   }
 
   const id = nextEmbeddingId++;
+  const modelId = normalizeLocalEmbeddingModel(model);
+  const effectiveTimeoutMs = warmedModels.has(modelId)
+    ? timeoutMs
+    : Math.max(timeoutMs, FIRST_LOCAL_EMBEDDING_TIMEOUT_MS);
   return new Promise<number[]>((resolve, reject) => {
     const timer = setTimeout(() => {
       pendingEmbeddings.delete(id);
-      reject(new Error('Local embedding worker timed out.'));
-    }, timeoutMs);
-    pendingEmbeddings.set(id, { reject, resolve, timer });
-    getLocalEmbeddingWorker().postMessage({ id, model, text: normalizedText });
+      reject(new Error(`Local embedding worker timed out after ${effectiveTimeoutMs}ms.`));
+    }, effectiveTimeoutMs);
+    pendingEmbeddings.set(id, {
+      reject,
+      resolve: (embedding) => {
+        warmedModels.add(modelId);
+        resolve(embedding);
+      },
+      timer,
+    });
+    getLocalEmbeddingWorker().postMessage({ id, model: modelId, text: normalizedText });
   });
+}
+
+export function warmLocalTextEmbeddingModel(model?: string, timeoutMs = FIRST_LOCAL_EMBEDDING_TIMEOUT_MS) {
+  const modelId = normalizeLocalEmbeddingModel(model);
+  if (warmedModels.has(modelId)) {
+    return Promise.resolve(true);
+  }
+  return requestLocalTextEmbedding('warm up local semantic memory embeddings', timeoutMs, modelId)
+    .then((embedding) => Boolean(embedding?.length))
+    .catch(() => false);
 }

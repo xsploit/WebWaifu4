@@ -110,7 +110,7 @@ import {
   clearSemanticMemory,
   findSemanticMemoryMatches,
 } from './lib/chat/semantic-memory';
-import { requestLocalTextEmbedding } from './lib/chat/local-embeddings';
+import { requestLocalTextEmbedding, warmLocalTextEmbeddingModel } from './lib/chat/local-embeddings';
 import {
   clearScopedRelationshipMemoryState,
   commitScopedRelationshipMemoryState,
@@ -1033,15 +1033,17 @@ async function requestTextEmbedding(
   }
 
   if (embeddingMode === 'browser' || embeddingMode === 'auto') {
+    const localModel = embeddingLocalModel.trim() || DEFAULT_LOCAL_EMBEDDING_MODEL;
     try {
       const localEmbedding = await requestLocalTextEmbedding(
         text,
         operation === 'prompt-recall' || operation === 'worker-search' ? 2500 : 6000,
-        embeddingLocalModel,
+        localModel,
       );
       if (localEmbedding?.length) {
         onDebug?.({
           inputChars: text.length,
+          model: localModel,
           operation,
           provider: 'transformers-local',
           status: 'ok',
@@ -1054,6 +1056,7 @@ async function requestTextEmbedding(
       onDebug?.({
         error: error instanceof Error ? error.message : String(error),
         inputChars: text.length,
+        model: localModel,
         operation,
         provider: 'transformers-local',
         status: 'failed',
@@ -2256,6 +2259,44 @@ function App() {
   useEffect(() => {
     aiSettingsRef.current = aiSettings;
   }, [aiSettings]);
+
+  useEffect(() => {
+    if (
+      !hydrated ||
+      (aiSettings.embeddingMode !== 'browser' && aiSettings.embeddingMode !== 'auto')
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const model = aiSettings.embeddingLocalModel.trim() || DEFAULT_LOCAL_EMBEDDING_MODEL;
+    setMemoryEmbeddingDebug({
+      inputChars: 0,
+      model,
+      operation: 'prompt-recall',
+      provider: 'transformers-local',
+      status: 'warming',
+      updatedAt: Date.now(),
+    });
+    void warmLocalTextEmbeddingModel(model).then((ok) => {
+      if (cancelled) {
+        return;
+      }
+      setMemoryEmbeddingDebug({
+        error: ok ? undefined : 'Local embedding model warmup failed.',
+        inputChars: 0,
+        model,
+        operation: 'prompt-recall',
+        provider: 'transformers-local',
+        status: ok ? 'ready' : 'failed',
+        updatedAt: Date.now(),
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [aiSettings.embeddingLocalModel, aiSettings.embeddingMode, hydrated]);
 
   useEffect(() => {
     twitchSettingsRef.current = twitchSettings;
