@@ -1,4 +1,9 @@
-import type { SequencerSettings, SettingsTabId, VisualSettings } from '../menu/types';
+import type {
+  EmotionTelemetryEvent,
+  SequencerSettings,
+  SettingsTabId,
+  VisualSettings,
+} from '../menu/types';
 
 export type ChatRole = 'system' | 'user' | 'assistant';
 
@@ -263,6 +268,7 @@ export type PersistedChatState = {
   currentCustomVrmModelId: string;
   twitchChannel: string;
   twitchSettings: TwitchSettings;
+  emotionTelemetryEvents: EmotionTelemetryEvent[];
   sequencerSettings: SequencerSettings;
   visualSettings: VisualSettings;
 };

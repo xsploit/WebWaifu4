@@ -3597,6 +3597,7 @@ function App() {
       setActiveTab(persistedState.activeTab);
       setTwitchChannel(hydratedTwitchChannel);
       setTwitchSettings(persistedState.twitchSettings);
+      setEmotionTelemetryEvents(persistedState.emotionTelemetryEvents);
       setCurrentBundledModelId(persistedState.currentBundledModelId || DEFAULT_BUNDLED_MODEL_ID);
       setCurrentCustomVrmModelId(persistedState.currentCustomVrmModelId);
       setSequencerSettings(persistedState.sequencerSettings);
@@ -3674,6 +3675,7 @@ function App() {
           activeTab,
           currentBundledModelId,
           currentCustomVrmModelId,
+          emotionTelemetryEvents,
           twitchChannel,
           twitchSettings,
           sequencerSettings,
@@ -3720,6 +3722,7 @@ function App() {
     currentCustomVrmModelId,
     currentBundledModelId,
     hydrated,
+    emotionTelemetryEvents,
     menuOpen,
     personas,
     personaVoiceBindings,
@@ -6215,6 +6218,7 @@ function App() {
       chatHistory,
       currentBundledModelId,
       currentCustomVrmModelId,
+      emotionTelemetryEvents,
       personaVoiceBindings,
       personas,
       relationshipMemories,
@@ -6239,6 +6243,7 @@ function App() {
       chatLogOpen,
       currentBundledModelId,
       currentCustomVrmModelId,
+      emotionTelemetryEvents,
       menuOpen,
       personaVoiceBindings,
       personas,

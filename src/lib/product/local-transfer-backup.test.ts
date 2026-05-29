@@ -23,6 +23,32 @@ function createState(): PersistedChatState {
     chatHistory: [],
     currentBundledModelId: '',
     currentCustomVrmModelId: 'custom-vrm-test',
+    emotionTelemetryEvents: [
+      {
+        affectArousal: 0.4,
+        affectDominance: 0.1,
+        affectLabel: 'steady',
+        affectValence: 0.2,
+        animationAccepted: true,
+        animationId: 'sachi-happy',
+        animationIndex: 1,
+        animationName: 'Sachi Happy',
+        animationReason: 'applied',
+        appliedIntensity: 0.67,
+        createdAt: 1778889700000,
+        emotion: 'amused',
+        expressionAccepted: true,
+        expressionReason: 'applied',
+        id: 'emotion-transfer-1',
+        metadataArousal: 0.35,
+        metadataDominance: 0.2,
+        metadataValence: 0.4,
+        requestedDurationMs: 1200,
+        requestedExpression: 'happy',
+        requestedIntensity: 0.67,
+        resolvedExpressionNames: ['happy', 'relaxed'],
+      },
+    ],
     personaVoiceBindings: createDefaultPersonaVoiceBindings(),
     personas: [
       {
@@ -94,6 +120,7 @@ describe('local transfer backup', () => {
     expect(parsed.state.activeTab).toBe('background');
     expect(parsed.state.sequencerSettings.duration).toBe(9);
     expect(parsed.state.sequencerSettings.speed).toBe(1.25);
+    expect(parsed.state.emotionTelemetryEvents[0]?.emotion).toBe('amused');
     expect(parsed.state.visualSettings.sceneBackgroundMode).toBe('transparent');
     expect(parsed.state.visualSettings.sceneExposure).toBe(1.2);
     expect(parsed.providerSecrets[0]?.secret).toBe('sk-test-1234');

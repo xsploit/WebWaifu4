@@ -158,6 +158,32 @@ describe('chat settings persistence', () => {
       ],
       currentBundledModelId: 'hikari-chan',
       currentCustomVrmModelId: 'custom-vrm-test-avatar',
+      emotionTelemetryEvents: [
+        {
+          affectArousal: 0.6,
+          affectDominance: 0.2,
+          affectLabel: 'bright',
+          affectValence: 0.5,
+          animationAccepted: true,
+          animationId: 'sachi-happy',
+          animationIndex: 2,
+          animationName: 'Sachi Happy',
+          animationReason: 'applied',
+          appliedIntensity: 0.74,
+          createdAt: 1778889700000,
+          emotion: 'amused',
+          expressionAccepted: true,
+          expressionReason: 'applied',
+          id: 'emotion-test-1',
+          metadataArousal: 0.7,
+          metadataDominance: 0.3,
+          metadataValence: 0.6,
+          requestedDurationMs: 1400,
+          requestedExpression: 'happy',
+          requestedIntensity: 0.72,
+          resolvedExpressionNames: ['happy', 'relaxed'],
+        },
+      ],
       personaVoiceBindings: {
         [DEFAULT_PERSONA.id]: {
           customVoiceId: 'voice-lab-1',
@@ -254,6 +280,12 @@ describe('chat settings persistence', () => {
     expect(loaded.activeTab).toBe('background');
     expect(loaded.currentBundledModelId).toBe('hikari-chan');
     expect(loaded.currentCustomVrmModelId).toBe('custom-vrm-test-avatar');
+    expect(loaded.emotionTelemetryEvents[0]).toMatchObject({
+      animationName: 'Sachi Happy',
+      emotion: 'amused',
+      expressionReason: 'applied',
+      resolvedExpressionNames: ['happy', 'relaxed'],
+    });
     expect(loaded.twitchChannel).toBe('cohhcarnage');
     expect(loaded.twitchSettings).toMatchObject({
       batchLowSize: 7,
@@ -403,6 +435,7 @@ describe('chat settings persistence', () => {
       chatHistory: [],
       currentBundledModelId: '',
       currentCustomVrmModelId: '',
+      emotionTelemetryEvents: [],
       personaVoiceBindings: createDefaultPersonaVoiceBindings(),
       personas: editedPersonas,
       relationshipMemories: {},

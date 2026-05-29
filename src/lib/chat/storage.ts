@@ -36,6 +36,7 @@ import type {
   AnimationEntry,
   AnimationFormat,
   AnimationPurpose,
+  EmotionTelemetryEvent,
   SettingsTabId,
   VisualSettings,
 } from '../menu/types';
@@ -594,6 +595,72 @@ function clampInteger(value: unknown, fallback: number, min: number, max: number
   return Math.max(min, Math.min(max, next));
 }
 
+function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+  const next = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.max(min, Math.min(max, next));
+}
+
+function normalizeEmotionTelemetryEvent(value: unknown): EmotionTelemetryEvent | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const source = value as Partial<EmotionTelemetryEvent>;
+  const id = String(source.id ?? '').trim().slice(0, 160);
+  const emotion = String(source.emotion ?? '').trim().slice(0, 80);
+  if (!id || !emotion) {
+    return null;
+  }
+  const expressionAccepted =
+    typeof source.expressionAccepted === 'boolean' ? source.expressionAccepted : null;
+  const animationAccepted =
+    typeof source.animationAccepted === 'boolean' ? source.animationAccepted : null;
+  const resolvedExpressionNames = Array.isArray(source.resolvedExpressionNames)
+    ? source.resolvedExpressionNames
+        .map((name) => String(name).trim().slice(0, 80))
+        .filter(Boolean)
+        .slice(0, 8)
+    : [];
+  return {
+    affectArousal: clampNumber(source.affectArousal, 0, -1, 1),
+    affectDominance: clampNumber(source.affectDominance, 0, -1, 1),
+    affectLabel: String(source.affectLabel ?? 'neutral').trim().slice(0, 80) || 'neutral',
+    affectValence: clampNumber(source.affectValence, 0, -1, 1),
+    animationAccepted,
+    animationId:
+      typeof source.animationId === 'string' && source.animationId.trim()
+        ? source.animationId.trim().slice(0, 160)
+        : null,
+    animationIndex: clampInteger(source.animationIndex, -1, -1, 10000),
+    animationName:
+      typeof source.animationName === 'string' && source.animationName.trim()
+        ? source.animationName.trim().slice(0, 160)
+        : null,
+    animationReason: String(source.animationReason ?? '').trim().slice(0, 160),
+    appliedIntensity: clampNumber(source.appliedIntensity, 0, 0, 1),
+    createdAt: clampInteger(source.createdAt, Date.now(), 0, Number.MAX_SAFE_INTEGER),
+    emotion,
+    expressionAccepted,
+    expressionReason: String(source.expressionReason ?? '').trim().slice(0, 160),
+    id,
+    metadataArousal: clampNumber(source.metadataArousal, 0, -1, 1),
+    metadataDominance: clampNumber(source.metadataDominance, 0, -1, 1),
+    metadataValence: clampNumber(source.metadataValence, 0, -1, 1),
+    requestedDurationMs: clampInteger(source.requestedDurationMs, 0, 0, 60000),
+    requestedExpression: String(source.requestedExpression ?? '').trim().slice(0, 80),
+    requestedIntensity: clampNumber(source.requestedIntensity, 0, 0, 1),
+    resolvedExpressionNames,
+  };
+}
+
+function normalizeEmotionTelemetryEvents(value: unknown): EmotionTelemetryEvent[] {
+  return Array.isArray(value)
+    ? value
+        .map(normalizeEmotionTelemetryEvent)
+        .filter((event): event is EmotionTelemetryEvent => Boolean(event))
+        .slice(0, 20)
+    : [];
+}
+
 function normalizeTwitchSettings(value: unknown): TwitchSettings {
   const defaults = createDefaultTwitchSettings();
   if (!value || typeof value !== 'object') {
@@ -1125,6 +1192,7 @@ export function createDefaultPersistedChatState(): PersistedChatState {
     currentCustomVrmModelId: '',
     twitchChannel: '',
     twitchSettings: createDefaultTwitchSettings(),
+    emotionTelemetryEvents: [],
     sequencerSettings: createDefaultSequencerSettings(),
     visualSettings: createDefaultVisualSettings(),
   };
@@ -1189,6 +1257,7 @@ export function normalizePersistedChatStateSnapshot(value: unknown): PersistedCh
       typeof source.twitchChannel === 'string' ? source.twitchChannel : null,
     ),
     twitchSettings: normalizeTwitchSettings(source.twitchSettings),
+    emotionTelemetryEvents: normalizeEmotionTelemetryEvents(source.emotionTelemetryEvents),
     sequencerSettings: normalizeSequencerSettings(source.sequencerSettings),
     visualSettings: normalizeVisualSettings(source.visualSettings),
   };
@@ -1215,6 +1284,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       currentCustomVrmModelIdRaw,
       twitchChannelRaw,
       twitchSettingsRaw,
+      emotionTelemetryEventsRaw,
       sequencerSettingsRaw,
       visualSettingsRaw,
     ] = await Promise.all([
@@ -1232,6 +1302,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       getPersistedItem(STORAGE_KEYS.currentCustomVrmModelId),
       getPersistedItem(STORAGE_KEYS.twitchChannel),
       getPersistedItem(STORAGE_KEYS.twitchSettings),
+      getPersistedItem(STORAGE_KEYS.emotionTelemetryEvents),
       getPersistedItem(STORAGE_KEYS.sequencerSettings),
       getPersistedItem(STORAGE_KEYS.visualSettings),
     ]);
@@ -1266,6 +1337,9 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
         : '';
     const twitchChannel = normalizeTwitchChannel(twitchChannelRaw);
     const twitchSettings = normalizeTwitchSettings(safeParse(twitchSettingsRaw, null));
+    const emotionTelemetryEvents = normalizeEmotionTelemetryEvents(
+      safeParse(emotionTelemetryEventsRaw, null),
+    );
     const sequencerSettings = normalizeSequencerSettings(safeParse(sequencerSettingsRaw, null));
     const visualSettings = normalizeVisualSettings(safeParse(visualSettingsRaw, null));
 
@@ -1298,6 +1372,7 @@ export async function loadPersistedChatState(): Promise<PersistedChatState> {
       currentCustomVrmModelId,
       twitchChannel,
       twitchSettings,
+      emotionTelemetryEvents,
       sequencerSettings,
       visualSettings,
     };
@@ -1333,6 +1408,10 @@ export async function savePersistedChatState(state: PersistedChatState) {
     [
       STORAGE_KEYS.twitchSettings,
       JSON.stringify(normalizeTwitchSettings(normalizedState.twitchSettings)),
+    ],
+    [
+      STORAGE_KEYS.emotionTelemetryEvents,
+      JSON.stringify(normalizedState.emotionTelemetryEvents.slice(0, 20)),
     ],
     [
       STORAGE_KEYS.sequencerSettings,

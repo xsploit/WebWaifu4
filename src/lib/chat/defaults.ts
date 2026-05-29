@@ -22,6 +22,7 @@ export const STORAGE_KEYS = {
   currentCustomVrmModelId: 'yourwifey.currentCustomVrmModelId.v1',
   twitchChannel: 'yourwifey.twitchChannel.v1',
   twitchSettings: 'yourwifey.twitchSettings.v1',
+  emotionTelemetryEvents: 'yourwifey.emotionTelemetryEvents.v1',
   sequencerSettings: 'yourwifey.sequencerSettings.v1',
   visualSettings: 'yourwifey.visualSettings.v1',
   personaVoiceBindings: 'yourwifey.personaVoiceBindings.v1',
