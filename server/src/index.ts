@@ -1657,17 +1657,19 @@ const httpServer = createServer(async (request, response) => {
           config.providerProxyEnabled &&
           getProviderEnvApiKey(memoryProviderName),
       );
-      const modelDecision = resolveServerProviderProxyModel({
-        allowlistEnvNames: getAllowlistEnvNamesForProvider(memoryProviderName),
-        browserProviderKeyPresent,
-        configuredModel: getConfiguredModelForProvider(memoryProviderName, config),
-        defaultModel: getDefaultModelForProvider(memoryProviderName),
-        requestedModel: typeof body.model === 'string' ? body.model : '',
-      });
-      if (!modelDecision.allowed) {
+      const useProviderLane = browserProviderKeyPresent || serverProviderKeyPresent;
+      const modelDecision = useProviderLane
+        ? resolveServerProviderProxyModel({
+            allowlistEnvNames: getAllowlistEnvNamesForProvider(memoryProviderName),
+            browserProviderKeyPresent,
+            configuredModel: getConfiguredModelForProvider(memoryProviderName, config),
+            defaultModel: getDefaultModelForProvider(memoryProviderName),
+            requestedModel: typeof body.model === 'string' ? body.model : '',
+          })
+        : null;
+      if (modelDecision && !modelDecision.allowed) {
         throw new Error(modelDecision.error);
       }
-      const useProviderLane = browserProviderKeyPresent || serverProviderKeyPresent;
       const embeddingMode =
         body.embeddingMode === 'browser' ||
         body.embeddingMode === 'provider' ||
@@ -1702,7 +1704,7 @@ const httpServer = createServer(async (request, response) => {
                     maxToolRounds: workerRequest.maxToolRounds,
                     messages: workerRequest.messages,
                     mode: 'direct',
-                    model: modelDecision.model,
+                    model: modelDecision?.model,
                     responseFormat: workerRequest.responseFormat,
                     stateKey: workerRequest.stateKey,
                     stateScope: workerRequest.stateScope,
@@ -1719,7 +1721,7 @@ const httpServer = createServer(async (request, response) => {
                 };
               },
               maxToolRounds: body.maxToolRounds,
-              model: modelDecision.model,
+              model: modelDecision?.model ?? '',
               provider: memoryProviderName,
               ...(useProviderEmbeddingLane
                 ? {

@@ -345,6 +345,15 @@ function getPresetPersonaVoiceBinding(preset: PersonaScenePreset): PersonaVoiceB
 
 const PERSIST_DEBOUNCE_MS = 900;
 const MEMORY_AGENT_DELAY_MS = 2500;
+const BACKEND_GRILLO_CADENCE_BEATS = ['extraction', 'relationship', 'reflection'] as const;
+
+type BackendGrilloBeatType =
+  | 'extraction'
+  | 'reflection'
+  | 'relationship'
+  | 'consolidation'
+  | 'compaction'
+  | 'semantic_indexing';
 const AI_CHAT_HARD_TIMEOUT_MS = 120000;
 const AI_CHAT_STREAM_IDLE_TIMEOUT_MS = 90000;
 const OVERLAY_RECONNECT_MS = 3000;
@@ -1930,6 +1939,7 @@ function App() {
   const memoryAgentTimeoutRef = useRef<number | null>(null);
   const memoryAgentRunRef = useRef(0);
   const memoryAgentFailedModelsRef = useRef<Set<string>>(new Set());
+  const backendGrilloCadenceBusyRef = useRef(false);
   const grilloMemoryHydrationRunRef = useRef(0);
   const grilloRecentTurnsByStateKeyRef = useRef<Record<string, ChatTurn[]>>({});
   const ttsManager = useMemo(() => getTtsManager(), []);
@@ -4208,6 +4218,78 @@ function App() {
     setMemoryAgentStatus('Local chat context reset. Durable memory was kept.');
   }, [activeRelationshipStateKey, cancelAssistantPresentation, syncMemoryAgentPendingCounts]);
 
+  const runBackendGrilloTickOnce = useCallback(
+    async ({
+      beatType,
+      reason,
+      stateKey,
+    }: {
+      beatType: BackendGrilloBeatType;
+      reason: string;
+      stateKey: string;
+    }) => {
+      const settings = aiSettingsRef.current;
+      const model = settings.memoryAgentModel.trim() || settings.model;
+      const headers = await buildBackendProviderHeaders({
+        llmProvider: settings.llmProvider,
+        providerKeyVaultWorkspaceId,
+      });
+      return runLadybugGrilloTick(
+        {
+          beatType,
+          embeddingMode: settings.embeddingMode,
+          embeddingModel: settings.embeddingModel,
+          llmProvider: settings.llmProvider,
+          maxToolRounds: settings.maxToolRounds,
+          model,
+          reason,
+          scopeKey: stateKey,
+        },
+        { headers },
+      );
+    },
+    [providerKeyVaultWorkspaceId],
+  );
+
+  const runBackendGrilloCadence = useCallback(
+    async (stateKey: string, reason: string) => {
+      if (backendGrilloCadenceBusyRef.current) {
+        setMemoryAgentStatus('Backend GRILLO cadence skipped: tick already running.');
+        return;
+      }
+      backendGrilloCadenceBusyRef.current = true;
+      setBackendGrilloTickBusy(true);
+      setMemoryAgentStatus('Running backend GRILLO cadence beats...');
+      const summaries: string[] = [];
+      try {
+        for (const beatType of BACKEND_GRILLO_CADENCE_BEATS) {
+          const result = await runBackendGrilloTickOnce({
+            beatType,
+            reason: `${reason}_${beatType}`,
+            stateKey,
+          });
+          summaries.push(
+            result?.noOpReason
+              ? `${result.beatType ?? beatType}: ${result.noOpReason}`
+              : `${result?.beatType ?? beatType}: ${result?.writes ?? 0} write${
+                  result?.writes === 1 ? '' : 's'
+                }`,
+          );
+        }
+        setMemoryAgentStatus(`Backend GRILLO cadence complete: ${summaries.join(' / ')}.`);
+      } catch (error) {
+        console.warn('[App] Backend GRILLO cadence failed', error);
+        const message = error instanceof Error ? error.message : String(error);
+        setMemoryAgentStatus(`Backend GRILLO cadence failed: ${message}`);
+      } finally {
+        backendGrilloCadenceBusyRef.current = false;
+        setBackendGrilloTickBusy(false);
+        void refreshMemoryBackendStatus();
+      }
+    },
+    [refreshMemoryBackendStatus, runBackendGrilloTickOnce],
+  );
+
   const runRelationshipMemoryRefresh = useCallback(
     async (
       historySnapshot: ChatMessage[],
@@ -4458,6 +4540,9 @@ function App() {
         if (memoryAgentRunRef.current === scheduledRun) {
           setMemoryAgentBusy(false);
         }
+        if (reason === 'chat-cadence' && memoryAgentRunRef.current === scheduledRun) {
+          void runBackendGrilloCadence(stateKey, 'chat_cadence');
+        }
       }
     },
     [
@@ -4472,6 +4557,7 @@ function App() {
       providerKeyVaultWorkspaceId,
       refreshGrilloMemoryState,
       refreshMemoryBackendStatus,
+      runBackendGrilloCadence,
       syncMemoryAgentPendingCounts,
       twitchChannel,
     ],
@@ -4568,45 +4654,29 @@ function App() {
     );
   }, [activeRelationshipStateKey, chatHistory, runRelationshipMemoryRefresh]);
 
-  const runBackendGrilloTask = useCallback((
-    beatType: 'extraction' | 'reflection' | 'consolidation' | 'compaction' | 'semantic_indexing',
-  ) => {
+  const runBackendGrilloTask = useCallback((beatType: BackendGrilloBeatType) => {
     if (backendGrilloTickBusy) {
       return;
     }
     const stateKey = activeRelationshipStateKeyRef.current;
     setBackendGrilloTickBusy(true);
     setMemoryAgentStatus(`Running backend GRILLO ${beatType} through memory lane.`);
-    void (async () => {
-      const settings = aiSettingsRef.current;
-      const model = settings.memoryAgentModel.trim() || settings.model;
-      const headers = await buildBackendProviderHeaders({
-        llmProvider: settings.llmProvider,
-        providerKeyVaultWorkspaceId,
-      });
-      return runLadybugGrilloTick(
-        {
-          beatType,
-          embeddingMode: settings.embeddingMode,
-          embeddingModel: settings.embeddingModel,
-          llmProvider: settings.llmProvider,
-          maxToolRounds: settings.maxToolRounds,
-          model,
-          reason:
-            beatType === 'reflection'
-              ? 'manual_ui_beat'
-              : beatType === 'consolidation'
-                ? 'manual_ui_consolidation'
-                : beatType === 'compaction'
-                  ? 'manual_ui_compaction'
-                  : beatType === 'semantic_indexing'
-                    ? 'manual_ui_semantic_indexing'
-                    : 'manual_ui',
-          scopeKey: stateKey,
-        },
-        { headers },
-      );
-    })()
+    void runBackendGrilloTickOnce({
+      beatType,
+      reason:
+        beatType === 'reflection'
+          ? 'manual_ui_beat'
+          : beatType === 'relationship'
+            ? 'manual_ui_relationship'
+            : beatType === 'consolidation'
+              ? 'manual_ui_consolidation'
+              : beatType === 'compaction'
+                ? 'manual_ui_compaction'
+                : beatType === 'semantic_indexing'
+                  ? 'manual_ui_semantic_indexing'
+                  : 'manual_ui',
+      stateKey,
+    })
       .then((result) => {
         if (!result) {
           setMemoryAgentStatus('Backend GRILLO tick did not return a result.');
@@ -4627,7 +4697,7 @@ function App() {
         setBackendGrilloTickBusy(false);
         void refreshMemoryBackendStatus();
       });
-  }, [backendGrilloTickBusy, providerKeyVaultWorkspaceId, refreshMemoryBackendStatus]);
+  }, [backendGrilloTickBusy, refreshMemoryBackendStatus, runBackendGrilloTickOnce]);
 
   const handleRunBackendGrilloTick = useCallback(() => {
     runBackendGrilloTask('extraction');
