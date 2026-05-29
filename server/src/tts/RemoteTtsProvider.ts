@@ -1,4 +1,4 @@
-import { InworldTTS, type DeliveryMode, type VoiceInfo } from '@inworld/tts';
+import { InworldTTS, type DeliveryMode, type TimestampInfo, type VoiceInfo } from '@inworld/tts';
 import {
   FishAudioClient,
   RealtimeEvents,
@@ -34,8 +34,23 @@ export type RemoteTtsRequest = {
 
 export type RemoteTtsAudioChunk = {
   audio: Buffer;
+  lipSync?: RemoteLipSyncData | null;
   mimeType: string;
   sampleRate?: number;
+};
+
+export type RemoteLipSyncData = {
+  phonemes?: string[] | null;
+  visemes?: Array<{
+    durationSeconds: number;
+    startTimeSeconds: number;
+    viseme: string;
+  }> | null;
+  wordBoundaries?: Array<{
+    duration: number;
+    offset: number;
+    word: string;
+  }>;
 };
 
 export type RemoteTtsVoice = {
@@ -211,6 +226,64 @@ function normalizeInworldDeliveryMode(value: unknown): DeliveryMode | undefined 
     return 'CREATIVE';
   }
   return undefined;
+}
+
+export function mapInworldTimestamps(timestamps?: TimestampInfo): RemoteLipSyncData | null {
+  const alignment = timestamps?.wordAlignment;
+  if (!alignment?.words?.length) {
+    return null;
+  }
+
+  const wordIndexMap = new Map<number, number>();
+  const wordBoundaries: NonNullable<RemoteLipSyncData['wordBoundaries']> = [];
+  alignment.words.forEach((word, index) => {
+    const normalizedWord = String(word ?? '').trim();
+    const start = alignment.wordStartTimeSeconds?.[index] ?? 0;
+    const end = alignment.wordEndTimeSeconds?.[index] ?? start;
+    const duration = Math.max(0, end - start);
+    if (!normalizedWord || duration <= 0.005) {
+      return;
+    }
+    wordIndexMap.set(index, wordBoundaries.length);
+    wordBoundaries.push({
+      word: normalizedWord,
+      offset: Math.round(start * 10000000),
+      duration: Math.round(duration * 10000000),
+    });
+  });
+
+  const phonemes = new Array<string>(wordBoundaries.length).fill('');
+  const visemes: NonNullable<RemoteLipSyncData['visemes']> = [];
+  for (const detail of alignment.phoneticDetails ?? []) {
+    const mappedIndex = wordIndexMap.get(detail.wordIndex);
+    const phones = detail.phones ?? [];
+    if (mappedIndex !== undefined) {
+      phonemes[mappedIndex] = phones
+        .map((phone) => phone.phoneSymbol)
+        .filter((phone) => phone && phone !== '[silence]')
+        .join('');
+    }
+    for (const phone of phones) {
+      if (!phone.visemeSymbol || phone.phoneSymbol === '[silence]') {
+        continue;
+      }
+      const durationSeconds = Math.max(0, Number(phone.durationSeconds) || 0);
+      if (durationSeconds <= 0.005) {
+        continue;
+      }
+      visemes.push({
+        durationSeconds,
+        startTimeSeconds: Math.max(0, Number(phone.startTimeSeconds) || 0),
+        viseme: String(phone.visemeSymbol),
+      });
+    }
+  }
+
+  return {
+    phonemes: phonemes.some(Boolean) ? phonemes : null,
+    visemes: visemes.length ? visemes : null,
+    wordBoundaries,
+  };
 }
 
 function normalizeBaseUrl(value: string, endpointSuffix: string) {
@@ -641,17 +714,18 @@ async function streamInworld(
       : [request.text];
 
   for (const textChunk of textChunks) {
-    const stream = client.stream({
+    const stream = client.streamWithTimestamps({
       text: textChunk,
       voice: voiceId,
       model: modelId,
       encoding,
       sampleRate: config.inworldSampleRate,
       deliveryMode,
+      timestampType: 'WORD',
     });
 
-    for await (const audio of stream) {
-      const chunk = bufferFromAudioChunk(audio);
+    for await (const frame of stream) {
+      const chunk = bufferFromAudioChunk(frame.audio);
       if (chunk?.length) {
         const pcmChunk = stripWavHeaderFromPcmChunk(chunk);
         if (!pcmChunk.length) {
@@ -659,6 +733,7 @@ async function streamInworld(
         }
         handlers.onAudioChunk({
           audio: pcmChunk,
+          lipSync: mapInworldTimestamps(frame.timestamps),
           mimeType,
           sampleRate: config.inworldSampleRate,
         });

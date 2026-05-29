@@ -21,8 +21,23 @@ export type RemoteTtsRequest = {
 
 export type RemoteTtsAudioChunk = {
   audioBlob: Blob;
+  lipSync?: RemoteLipSyncData | null;
   mimeType: string;
   sampleRate?: number | null;
+};
+
+export type RemoteLipSyncData = {
+  phonemes?: string[] | null;
+  visemes?: Array<{
+    durationSeconds: number;
+    startTimeSeconds: number;
+    viseme: string;
+  }> | null;
+  wordBoundaries?: Array<{
+    duration: number;
+    offset: number;
+    word: string;
+  }>;
 };
 
 export type RemoteTtsVoice = {
@@ -61,6 +76,7 @@ type RemoteTtsStreamEvent =
   | {
       type: 'audio';
       audio: string;
+      lipSync?: RemoteLipSyncData | null;
       mimeType?: string;
       sampleRate?: number;
     }
@@ -148,6 +164,7 @@ export function createRemoteTtsStream(
       const mimeType = event.mimeType || 'audio/mpeg';
       queue.push({
         audioBlob: new Blob([base64ToBytes(event.audio)], { type: mimeType }),
+        lipSync: event.lipSync ?? null,
         mimeType,
         sampleRate: event.sampleRate ?? null,
       });

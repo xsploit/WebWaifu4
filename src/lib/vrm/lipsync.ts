@@ -1,5 +1,6 @@
 import type { VRM } from '@pixiv/three-vrm';
 import type { TtsManager } from '../tts/manager';
+import type { VisemeFrame } from '../tts/piper-shared';
 
 export const PHONEME_TO_BLEND_SHAPE: Record<string, Record<string, number>> = {
   // Vowels
@@ -97,6 +98,54 @@ function getThrottledFrequencyBands(
     cachedFrequencyBands = ttsManager.getFrequencyBands();
   }
   return cachedFrequencyBands;
+}
+
+function findCurrentVisemeFrame(
+  visemes: readonly VisemeFrame[] | null | undefined,
+  currentTime: number,
+) {
+  if (!visemes?.length) {
+    return null;
+  }
+
+  for (const frame of visemes) {
+    const start = frame.startTimeSeconds;
+    const end = start + frame.durationSeconds;
+    if (currentTime >= start && currentTime <= end + 0.025) {
+      return frame;
+    }
+  }
+
+  return null;
+}
+
+function applyInworldVisemeTargets(
+  viseme: string,
+  audioAmplitude: number,
+): { aa: number; ih: number; ou: number; ee: number; oh: number } {
+  const openGain = Math.max(audioAmplitude, 0.22) * PHONEME_GAIN;
+  switch (viseme) {
+    case 'aei':
+      return { aa: 0.95 * openGain, ih: 0.12 * openGain, ou: 0, ee: 0.18 * openGain, oh: 0 };
+    case 'ee':
+      return { aa: 0.2 * openGain, ih: 0.28 * openGain, ou: 0, ee: 0.9 * openGain, oh: 0 };
+    case 'o':
+      return { aa: 0.12 * openGain, ih: 0, ou: 0.8 * openGain, ee: 0, oh: 0.56 * openGain };
+    case 'qw':
+    case 'r':
+      return { aa: 0.08 * openGain, ih: 0.08 * openGain, ou: 0.65 * openGain, ee: 0, oh: 0.32 * openGain };
+    case 'chjsh':
+      return { aa: 0, ih: 0.18 * openGain, ou: 0.44 * openGain, ee: 0.1 * openGain, oh: 0.12 * openGain };
+    case 'fv':
+    case 'l':
+    case 'th':
+    case 'cdgknstxyz':
+      return { aa: 0.08 * openGain, ih: 0.48 * openGain, ou: 0.04 * openGain, ee: 0.18 * openGain, oh: 0 };
+    case 'bmp':
+      return { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
+    default:
+      return { aa: 0.35 * openGain, ih: 0.1 * openGain, ou: 0.05 * openGain, ee: 0.08 * openGain, oh: 0 };
+  }
 }
 
 const phonemeCache = new Map<string, string[]>();
@@ -205,9 +254,20 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
   }
 
   let usedPhonemeMode = false;
+  const currentVisemeFrame = findCurrentVisemeFrame(ttsManager.currentVisemes, currentTime);
+  if (currentVisemeFrame) {
+    const targets = applyInworldVisemeTargets(currentVisemeFrame.viseme, audioAmplitude);
+    targetAa = targets.aa;
+    targetIh = targets.ih;
+    targetOu = targets.ou;
+    targetEe = targets.ee;
+    targetOh = targets.oh;
+    usedPhonemeMode = true;
+  }
+
   const useMfccMode = !!mfccWeights && mfccEnergy > 0.02;
 
-  if (useMfccMode && mfccWeights) {
+  if (!usedPhonemeMode && useMfccMode && mfccWeights) {
     const rawA = clamp01(mfccWeights.A);
     const rawI = clamp01(mfccWeights.I);
     const rawU = clamp01(mfccWeights.U);

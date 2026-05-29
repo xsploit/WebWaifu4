@@ -412,6 +412,7 @@ type AiProxyStreamEvent = {
   audio?: string;
   delta?: string;
   error?: string;
+  lipSync?: RemoteTtsAudioChunk['lipSync'];
   mimeType?: string;
   meta?: AiProxyHealth['providerState'];
   ok?: boolean;
@@ -622,6 +623,7 @@ function decodeAiProxyAudioEvent(event: AiProxyStreamEvent): RemoteTtsAudioChunk
   const mimeType = event.mimeType || 'audio/pcm';
   return {
     audioBlob: new Blob([bytes], { type: mimeType }),
+    lipSync: event.lipSync ?? null,
     mimeType,
     sampleRate: typeof event.sampleRate === 'number' ? event.sampleRate : undefined,
   };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  mapInworldTimestamps,
   normalizeFishSpeechBaseUrl,
   normalizeInworldBaseUrl,
   stripWavHeaderFromPcmChunk,
@@ -45,5 +46,58 @@ describe('RemoteTtsProvider normalization', () => {
   it('leaves already-raw PCM chunks untouched', () => {
     const pcm = Buffer.from([1, 2, 3, 4]);
     expect(stripWavHeaderFromPcmChunk(pcm)).toBe(pcm);
+  });
+
+  it('maps Inworld word timestamps into lip sync metadata', () => {
+    const mapped = mapInworldTimestamps({
+      wordAlignment: {
+        words: ['Hello', ' ', 'world'],
+        wordStartTimeSeconds: [0.1, 0.4, 0.4],
+        wordEndTimeSeconds: [0.4, 0.4, 0.8],
+        phoneticDetails: [
+          {
+            wordIndex: 0,
+            isPartial: false,
+            phones: [
+              {
+                phoneSymbol: 'h',
+                startTimeSeconds: 0.1,
+                durationSeconds: 0.04,
+                visemeSymbol: 'cdgknstxyz',
+              },
+              {
+                phoneSymbol: 'ə',
+                startTimeSeconds: 0.14,
+                durationSeconds: 0.2,
+                visemeSymbol: 'aei',
+              },
+            ],
+          },
+          {
+            wordIndex: 2,
+            isPartial: false,
+            phones: [
+              {
+                phoneSymbol: 'w',
+                startTimeSeconds: 0.4,
+                durationSeconds: 0.08,
+                visemeSymbol: 'qw',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(mapped?.wordBoundaries).toEqual([
+      { word: 'Hello', offset: 1000000, duration: 3000000 },
+      { word: 'world', offset: 4000000, duration: 4000000 },
+    ]);
+    expect(mapped?.phonemes).toEqual(['hə', 'w']);
+    expect(mapped?.visemes).toEqual([
+      { durationSeconds: 0.04, startTimeSeconds: 0.1, viseme: 'cdgknstxyz' },
+      { durationSeconds: 0.2, startTimeSeconds: 0.14, viseme: 'aei' },
+      { durationSeconds: 0.08, startTimeSeconds: 0.4, viseme: 'qw' },
+    ]);
   });
 });

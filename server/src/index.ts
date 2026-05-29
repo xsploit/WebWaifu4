@@ -164,7 +164,7 @@ type AiStateResetBody = {
 
 type AiChatStreamEvent =
   | { type: 'delta'; delta: string }
-  | { type: 'audio'; audio: string; mimeType: string; sampleRate?: number }
+  | { type: 'audio'; audio: string; lipSync?: unknown; mimeType: string; sampleRate?: number }
   | { type: 'tts-error'; ok: false; error: string };
 
 const CORS_REQUEST_HEADERS =
@@ -1248,6 +1248,7 @@ async function runAiChatRequest({
             void streamEvent({
               type: 'audio',
               audio: chunk.audio.toString('base64'),
+              lipSync: chunk.lipSync ?? undefined,
               mimeType: chunk.mimeType,
               sampleRate: chunk.sampleRate,
             });
@@ -2089,6 +2090,7 @@ const httpServer = createServer(async (request, response) => {
             void ndjson.write({
               type: 'audio',
               audio: chunk.audio.toString('base64'),
+              lipSync: chunk.lipSync ?? undefined,
               mimeType: chunk.mimeType,
               sampleRate: chunk.sampleRate,
             });
