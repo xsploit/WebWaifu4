@@ -590,6 +590,57 @@ function resolveFacialExpressionNames(manager: VrmExpressionManager, expression:
   return [];
 }
 
+function resolveFirstFacialExpressionName(manager: VrmExpressionManager, expression: string) {
+  return resolveFacialExpressionNames(manager, expression)[0] ?? null;
+}
+
+function addFacialExpressionWeight(
+  entries: Map<string, number>,
+  manager: VrmExpressionManager,
+  expression: string,
+  weight: number,
+) {
+  if (weight <= 0.04) {
+    return;
+  }
+  const name = resolveFirstFacialExpressionName(manager, expression);
+  if (!name) {
+    return;
+  }
+  entries.set(name, Math.max(entries.get(name) ?? 0, THREE.MathUtils.clamp(weight, 0, 1)));
+}
+
+function resolveFacialExpressionWeights(manager: VrmExpressionManager, request: FacialExpressionRequest) {
+  const entries = new Map<string, number>();
+  for (const name of resolveFacialExpressionNames(manager, request.expression)) {
+    entries.set(name, 1);
+  }
+
+  const vad = request.vad;
+  if (!vad) {
+    return Array.from(entries, ([name, weight]) => ({ name, weight }));
+  }
+
+  const valence = THREE.MathUtils.clamp(vad.valence, -1, 1);
+  const arousal = THREE.MathUtils.clamp(vad.arousal, 0, 1);
+  const dominance = THREE.MathUtils.clamp(vad.dominance, -1, 1);
+  const positive = Math.max(0, valence);
+  const negative = Math.max(0, -valence);
+  const uncertain = Math.max(0, -dominance);
+
+  addFacialExpressionWeight(entries, manager, 'happy', positive * (0.34 + arousal * 0.22));
+  addFacialExpressionWeight(entries, manager, 'caring', positive * Math.max(0, 0.44 - arousal * 0.2));
+  addFacialExpressionWeight(entries, manager, 'relaxed', Math.max(0, 0.28 - arousal * 0.18 + positive * 0.12));
+  addFacialExpressionWeight(entries, manager, 'surprised', Math.max(0, arousal - 0.55) * 0.48);
+  addFacialExpressionWeight(entries, manager, 'angry', negative * arousal * Math.max(0.35, dominance + 0.45));
+  addFacialExpressionWeight(entries, manager, 'sad', negative * Math.max(0, 0.62 - arousal) * 0.72);
+  addFacialExpressionWeight(entries, manager, 'embarrassed', uncertain * arousal * 0.42);
+  addFacialExpressionWeight(entries, manager, 'confused', uncertain * Math.max(0.12, 0.38 - Math.abs(valence) * 0.16));
+  addFacialExpressionWeight(entries, manager, 'thinking', Math.max(0, 0.3 - Math.abs(valence) * 0.12));
+
+  return Array.from(entries, ([name, weight]) => ({ name, weight }));
+}
+
 function setFacialExpressionValues(
   manager: VrmExpressionManager,
   names: readonly string[],
@@ -639,7 +690,8 @@ function playFacialExpressionRequest(
   clearFacialExpressionRuntime(vrm, state);
   state.nonce = request.nonce;
 
-  const names = resolveFacialExpressionNames(manager, request.expression);
+  const weights = resolveFacialExpressionWeights(manager, request);
+  const names = weights.map((entry) => entry.name);
   const peak = THREE.MathUtils.clamp(request.intensity, 0, 1);
   if (names.length === 0 || peak <= 0) {
     return {
@@ -669,7 +721,9 @@ function playFacialExpressionRequest(
       value = peak * Math.max(0, 1 - (elapsed - holdEndMs) / releaseMs);
     }
 
-    setFacialExpressionValues(manager, names, value);
+    for (const entry of weights) {
+      manager.setValue(entry.name, THREE.MathUtils.clamp(value * entry.weight, 0, 1));
+    }
     if (elapsed < durationMs) {
       state.animationFrame = window.requestAnimationFrame(tick);
       return;

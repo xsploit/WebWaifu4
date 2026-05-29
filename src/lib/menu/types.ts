@@ -141,6 +141,11 @@ export type FacialExpressionRequest = {
   intensity: number;
   nonce: number;
   telemetryId?: string;
+  vad?: {
+    arousal: number;
+    dominance: number;
+    valence: number;
+  };
 };
 
 export type EmotionTelemetryEvent = {

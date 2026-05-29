@@ -4675,6 +4675,11 @@ function App() {
         intensity,
         nonce,
         telemetryId,
+        vad: {
+          arousal: nextAffectState.arousal,
+          dominance: nextAffectState.dominance,
+          valence: nextAffectState.valence,
+        },
       });
 
       if (index === -1) {
