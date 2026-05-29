@@ -17,6 +17,8 @@ const LIP_SYNC_PROFILE_URL =
       ).toString();
 const AUTO_RESUME_AUDIO = import.meta.env['VITE_AUTO_RESUME_AUDIO'] === 'true';
 const REMOTE_PCM_REAP_GRACE_MS = 5000;
+const REMOTE_PCM_INITIAL_LEAD_SECONDS = 0.18;
+const REMOTE_PCM_MIN_SCHEDULE_LEAD_SECONDS = 0.08;
 
 interface ChunkData {
   audioBlob: Blob;
@@ -287,14 +289,16 @@ export class TtsManager {
           () => undefined,
           () => undefined,
         );
-        const ended = scheduled.then(async (scheduledChunk) => {
-          if (!scheduledChunk) {
-            return;
-          }
-          playbackTail = scheduledChunk.ended.catch(() => {});
-          await scheduledChunk.ended;
-        });
-        return ended;
+        scheduled
+          .then(async (scheduledChunk) => {
+            if (!scheduledChunk) {
+              return;
+            }
+            playbackTail = scheduledChunk.ended.catch(() => {});
+            await scheduledChunk.ended;
+          })
+          .catch(() => {});
+        return scheduled.then(() => undefined);
       },
       close: async () => {
         await scheduleTail.catch(() => {});
@@ -491,7 +495,7 @@ export class TtsManager {
       void this.audioContext.resume().catch(() => {});
     }
     this.streamPlaybackEndTime = Math.max(
-      this.audioContext.currentTime + 0.05,
+      this.audioContext.currentTime + REMOTE_PCM_INITIAL_LEAD_SECONDS,
       this.audioContext.currentTime,
     );
     this.streamScheduledChunkCount = 0;
@@ -534,7 +538,7 @@ export class TtsManager {
     const duration = audioBuffer.duration / Math.max(0.01, this.playbackRate);
     const startAt = Math.max(
       this.streamPlaybackEndTime,
-      this.audioContext.currentTime + 0.02,
+      this.audioContext.currentTime + REMOTE_PCM_MIN_SCHEDULE_LEAD_SECONDS,
     );
     const endAt = startAt + duration;
     frameGain.gain.cancelScheduledValues(startAt);
