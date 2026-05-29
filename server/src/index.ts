@@ -1242,6 +1242,7 @@ async function runAiChatRequest({
     }
     const bridge = bridgeRequest && bridgeConfig ? createLiveSpeechTextBridge(bridgeRequest) : null;
     let bridgeTextPushed = false;
+    let bridgeFinalizationTimedOut = false;
     const bridgeDone = bridge
       ? streamFishSpeechTextStream(bridgeConfig!, bridgeRequest!, bridge.stream, {
           onAudioChunk: (chunk) => {
@@ -1253,10 +1254,15 @@ async function runAiChatRequest({
             });
           },
         }).catch((error) => {
+          const message =
+            error instanceof Error ? error.message : 'Live TTS bridge failed.';
+          if (bridgeFinalizationTimedOut && message === 'Live TTS bridge finalization timed out.') {
+            return;
+          }
           void streamEvent({
             type: 'tts-error',
             ok: false,
-            error: error instanceof Error ? error.message : 'Live TTS bridge failed.',
+            error: message,
           });
         })
       : null;
@@ -1299,6 +1305,7 @@ async function runAiChatRequest({
       bridge?.close();
       if (bridgeDone) {
         const bridgeFinished = await waitForLiveTtsBridge(bridgeDone, () => {
+          bridgeFinalizationTimedOut = true;
           bridge?.fail(new Error('Live TTS bridge finalization timed out.'));
         });
         if (!bridgeFinished) {

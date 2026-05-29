@@ -793,12 +793,12 @@ async function readAiProxyStream(
     }
 
     const event = JSON.parse(data) as AiProxyStreamEvent;
-    if (event.type === 'error' || event.ok === false) {
-      throw new Error(event.error ?? 'Stream bot AI proxy stream failed.');
-    }
     if (event.type === 'tts-error') {
       console.warn('[TTS] Live bridge failed:', event.error);
       return;
+    }
+    if (event.type === 'error' || event.ok === false) {
+      throw new Error(event.error ?? 'Stream bot AI proxy stream failed.');
     }
     if (event.type === 'audio') {
       const chunk = decodeAiProxyAudioEvent(event);
