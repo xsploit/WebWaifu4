@@ -22,7 +22,6 @@ interface ChunkData {
   audioBlob: Blob;
   wordBoundaries: WordBoundary[];
   phonemes: string[] | null;
-  visemes?: NonNullable<RemoteTtsAudioChunk['lipSync']>['visemes'];
   text: string;
   sampleRate?: number | null;
 }
@@ -62,7 +61,6 @@ export class TtsManager {
 
   wordBoundaries: WordBoundary[] = [];
   currentPhonemes: string[] | null = null;
-  currentVisemes: NonNullable<RemoteTtsAudioChunk['lipSync']>['visemes'] = null;
   wordBoundaryStartTime: number | null = null;
 
   audioAnalyser: AnalyserNode | null = null;
@@ -100,7 +98,6 @@ export class TtsManager {
     this.isPlaying = false;
     this.wordBoundaries = [];
     this.currentPhonemes = null;
-    this.currentVisemes = null;
     this.wordBoundaryStartTime = null;
   }
 
@@ -466,7 +463,6 @@ export class TtsManager {
     const firstChunk = chunks[0];
     const mimeType = firstChunk?.mimeType || 'audio/mpeg';
     const sampleRate = chunks.find((chunk) => typeof chunk.sampleRate === 'number')?.sampleRate;
-    const firstLipSync = chunks.find((chunk) => chunk.lipSync)?.lipSync ?? null;
     return {
       audioBlob:
         chunks.length === 1
@@ -475,9 +471,8 @@ export class TtsManager {
               chunks.map((chunk) => chunk.audioBlob),
               { type: mimeType },
             ),
-      wordBoundaries: firstLipSync?.wordBoundaries ?? [],
-      phonemes: firstLipSync?.phonemes ?? null,
-      visemes: firstLipSync?.visemes ?? null,
+      wordBoundaries: [],
+      phonemes: null,
       text,
       sampleRate,
     };
@@ -487,9 +482,8 @@ export class TtsManager {
     this.teardownCurrentAudio();
     this.wordBoundaries = [];
     this.currentPhonemes = null;
-    this.currentVisemes = null;
     this.wordBoundaryStartTime = null;
-    this.onLipSyncData?.({ wordBoundaries: [], phonemes: null, visemes: null, text });
+    this.onLipSyncData?.({ wordBoundaries: [], phonemes: null, text });
     if (!this.audioContext) {
       throw new Error('AudioContext not initialized');
     }
@@ -511,23 +505,6 @@ export class TtsManager {
   ): Promise<ScheduledRemotePcmChunk | null> {
     if (!this.audioContext || !this.audioAnalyser) {
       throw new Error('AudioContext not initialized');
-    }
-    if (chunk.lipSync) {
-      if (chunk.lipSync.wordBoundaries?.length) {
-        this.wordBoundaries = [...this.wordBoundaries, ...chunk.lipSync.wordBoundaries];
-      }
-      if (chunk.lipSync.phonemes?.length) {
-        this.currentPhonemes = [...(this.currentPhonemes ?? []), ...chunk.lipSync.phonemes];
-      }
-      if (chunk.lipSync.visemes?.length) {
-        this.currentVisemes = [...(this.currentVisemes ?? []), ...chunk.lipSync.visemes];
-      }
-      this.onLipSyncData?.({
-        wordBoundaries: this.wordBoundaries,
-        phonemes: this.currentPhonemes,
-        visemes: this.currentVisemes,
-        text,
-      });
     }
     const raw = new Uint8Array(await chunk.audioBlob.arrayBuffer());
     if (generation !== this.queueGeneration || signal.aborted || raw.byteLength < 2) {
@@ -612,15 +589,10 @@ export class TtsManager {
         if (generation !== this.queueGeneration || signal.aborted) {
           return;
         }
-        this.wordBoundaryStartTime = startAt;
+        this.wordBoundaryStartTime = 0;
         this.isPlaying = true;
         this.onSpeechStarted?.();
-        this.onLipSyncData?.({
-          wordBoundaries: this.wordBoundaries,
-          phonemes: this.currentPhonemes,
-          visemes: this.currentVisemes,
-          text,
-        });
+        this.onLipSyncData?.({ wordBoundaries: [], phonemes: null, text });
       }, delayMs);
     }
 
@@ -733,7 +705,7 @@ export class TtsManager {
 
   private async playAudioChunk(chunkData: ChunkData) {
     return new Promise<void>(async (resolve, reject) => {
-      let { audioBlob, wordBoundaries, phonemes, text, sampleRate, visemes } = chunkData;
+      let { audioBlob, wordBoundaries, phonemes, text, sampleRate } = chunkData;
 
       this.teardownCurrentAudio();
 
@@ -743,7 +715,6 @@ export class TtsManager {
 
       this.wordBoundaries = wordBoundaries;
       this.currentPhonemes = phonemes;
-      this.currentVisemes = visemes ?? null;
       this.wordBoundaryStartTime = null;
 
       if (!this.audioContext) {
@@ -808,7 +779,7 @@ export class TtsManager {
           this.isPlaying = true;
           this.onSpeechStarted?.();
         }
-        this.onLipSyncData?.({ wordBoundaries, phonemes, visemes: visemes ?? null, text });
+        this.onLipSyncData?.({ wordBoundaries, phonemes, text });
       }, { signal: audioEvents.signal });
 
       audio.addEventListener('ended', () => {

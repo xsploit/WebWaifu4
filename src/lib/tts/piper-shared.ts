@@ -9,14 +9,7 @@ export interface WordBoundary {
 export interface LipSyncData {
   wordBoundaries: WordBoundary[];
   phonemes: string[] | null;
-  visemes?: VisemeFrame[] | null;
   text: string;
-}
-
-export interface VisemeFrame {
-  durationSeconds: number;
-  startTimeSeconds: number;
-  viseme: string;
 }
 
 export type SynthesizedPiperChunkPayload = LipSyncData & {
